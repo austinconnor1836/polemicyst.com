@@ -1,0 +1,51 @@
+:root {
+  --size: 20px;
+}
+
+.el {
+  background: conic-gradient(from 180deg at 50% 70%, hsla(0, 0%, 98%, 1) 0deg, #eec32d 72deg, #ec4b4b 144deg, #709ab9 216deg, #4dffbf 288deg, hsla(0, 0%, 98%, 1) 1turn);
+  width: 100%;
+  height: 100%;
+  mask:
+    radial-gradient(circle at 50% 50%, white 2px, transparent 2.5px) 50% 50% / var(--size) var(--size),
+    url("/images/noise-mask.png") 256px 50% / 256px 256px;
+  mask-composite: intersect;
+  animation: flicker 20s infinite linear;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+@keyframes flicker {
+  to {
+    mask-position: 50% 50%, 0 50%;
+  }
+}
+
+#animated-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  margin: 0;
+  font-size: clamp(6rem, 8vw + 1rem, 14rem);
+  font-family: "Geist", sans-serif;
+  font-weight: bold;
+  color: #871d25;
+  /* mix-blend-mode: soft-light; */
+  /* mix-blend-mode:hard-light; */
+/*   -webkit-text-stroke: 2px hsl(0 0% 100% / 0.95); */
+  filter: drop-shadow(0 0 2px white);
+  text-shadow: 2px 2px white;
+  animation: textAnimation 2s infinite;
+}
+
+@keyframes textAnimation {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}

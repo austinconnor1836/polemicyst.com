@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo
+    container_name: mongodb
+    restart: always
+    env_file: .env
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db  # Add this line to persist MongoDB data
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE}
+
+  nextjs:
+    build:
+      context: .
+      target: development
+      args:
+        - MONGO_URI=${MONGO_URI}  # Pass MONGO_URI during build
+    container_name: nextjs-app
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file: .env
+    depends_on:
+      - mongo
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: >
+      sh -c "if [ '$NODE_ENV' = 'production' ]; then npm run start; else npm run dev; fi"
+
+volumes:
+  mongo-data:
