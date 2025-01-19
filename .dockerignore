@@ -1,0 +1,15 @@
+# Ignore all files
+*
+
+# Unignore specific directories
+!_posts/
+!.next/
+!public/
+!src/
+!.gitignore
+!package.json
+!package-lock.json
+!tsconfig.json
+!postcss.config.js
+!tailwind.config.ts
+!next.config.js

@@ -1,0 +1,29 @@
+.circle-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.circle-segment {
+  stroke-dasharray: 94 189; /* 1/3 of the circumference for the segment, 2/3 gap */
+  stroke-dashoffset: 0;
+  animation: rotate 4s linear infinite;
+}
+
+.segment-1 {
+  stroke-dashoffset: 0;
+}
+
+.segment-2 {
+  stroke-dashoffset: 94; /* Offset by one segment length */
+}
+
+.segment-3 {
+  stroke-dashoffset: 188; /* Offset by two segment lengths */
+}
+
+@keyframes rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}

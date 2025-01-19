@@ -1,0 +1,35 @@
+.button-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100px;
+  height: 100px;
+}
+
+.rotating-outline {
+  position: absolute;
+  top: 1;
+  left: 0;
+  animation: rotate 4s linear infinite;
+  cursor: pointer;
+}
+
+.center-button {
+  position: relative;
+  /* background-color: white; */
+  border: none;
+  padding: 10px 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
