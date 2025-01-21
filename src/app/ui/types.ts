@@ -7,4 +7,5 @@ export enum THEME_MODE {
 export interface SideNavItem {
     label: string;
     element: React.ReactNode;
+    href: string;
 }

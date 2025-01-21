@@ -20,12 +20,8 @@ const ClientLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   const [splitView, setSplitView] = useState(false);
   const [theme, setTheme] = useState('light');
   const isMenuOpen = useAppSelector(selectIsMenuOpen);
-  // const sideNavItems = ['Home', 'New Post', 'Categories', 'Archives'];
   const sideNavItems: SideNavItem[] = [
-  { label: 'Home', element: <HomeIcon /> },
-  { label: 'New Post', element: <PostAddIcon /> },
-  { label: 'Categories', element: <CategoryIcon /> },
-  { label: 'Archives', element: <ArchiveIcon /> },
+  { label: 'Home', element: <HomeIcon />, href: '/' },
 ];
 
   const handleOpenChat = (id: number) => {

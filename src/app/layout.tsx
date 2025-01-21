@@ -1,32 +1,32 @@
 import "@/app/ui/global.css";
 import React from 'react';
-// import { Inter } from "next/font/google";
 import LocalFont from "next/font/local";
 import { Metadata } from "next";
 import { Provider } from "react-redux";
 import { Analytics } from "@/app/_components/analytics";
-import { HamburgerProvider } from '@/app/context/HamburgerContext';
+import { HamburgerProvider, useHamburger } from '@/app/context/HamburgerContext';
 import { ThemeSwitcher } from "./_components/theme-switcher";
-// import cn from "classnames";
 import { inter } from "./ui/fonts";
-// import { useState } from "react";
 import ClientLayout from './client-layout';
 import Navbar from './_components/navbar';
 import StoreProvider from "./StoreProvider";
 import HamburgerMenu from "./_components/hamburger";
+import { SideNavItem } from "./ui/types";
+import SidePanel from "./_components/sidenav";
+import SharedLayout from "./SharedLayout";
 
 export const metadata: Metadata = {
   title: {
-    default: "austinconnor.com",
-    template: "%s | austinconnor.com",
+    default: "polemicyst.com",
+    template: "%s | polemicyst.com",
   },
-  description: "Founder of Tyromaniac.",
+  description: "Founder of Polemicyst.",
   openGraph: {
-    title: "austinconnor.com",
+    title: "polemicyst.com",
     description:
       "Founder of Tyromaniac.",
-    url: "https://austinconnor.com",
-    siteName: "austinconnor.com",
+    url: "https://polemicyst.com",
+    siteName: "polemicyst.com",
     locale: "en-US",
     type: "website",
   },
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     },
   },
   twitter: {
-    title: "austinconnor",
+    title: "Polemicyst",
     card: "summary_large_image",
   },
   icons: {
@@ -56,6 +56,7 @@ const calSans = LocalFont({
 });
 
 export default function Layout({ children }: { children: React.ReactNode }) {
+
   return (
     <html lang="en" className={[inter.variable, calSans.variable].join(" ")}>
       <head>
@@ -103,13 +104,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       >
         <StoreProvider>
           <HamburgerProvider>
-          <ThemeSwitcher />
-          <Navbar />
-          <ClientLayout>
-            {children}
-          </ClientLayout>
+            <SharedLayout>{children}</SharedLayout>
           </HamburgerProvider>
-          </StoreProvider>
+        </StoreProvider>
       </body>
     </html>
   );

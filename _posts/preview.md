@@ -4,8 +4,8 @@ excerpt: "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmo
 coverImage: "/assets/blog/preview/cover.jpg"
 date: "2020-03-16T05:35:07.322Z"
 author:
-  name: Austin Connor 
-  picture: "/assets/blog/authors/me.jpg"
+  name: Dexter Macaroni
+  picture: "/assets/blog/authors/me.png"
 ogImage:
   url: "/assets/blog/preview/cover.jpg"
 ---
