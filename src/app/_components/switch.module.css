@@ -1,7 +1,7 @@
 .switch {
   all: unset;
   position: absolute;
-  right: 3.4rem;
+  right: 4.4rem;
   top: 2.3rem;
   display: inline-block;
   color: currentColor;
@@ -15,7 +15,7 @@
   z-index: 1000; /* Ensures the switch is above the navbar */
 }
 
-[data-mode="system"] .switch::after {
+[data-mode='system'] .switch::after {
   position: absolute;
   height: 100%;
   width: 100%;
@@ -26,16 +26,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  content: "A";
+  content: 'A';
 }
 
-[data-mode="light"] .switch {
+[data-mode='light'] .switch {
   box-shadow: 0 0 50px 10px yellow;
   background-color: yellow;
   border: 1px solid orangered;
 }
 
-[data-mode="dark"] .switch {
+[data-mode='dark'] .switch {
   box-shadow: calc(var(--size) / 4) calc(var(--size) / -4) calc(var(--size) / 8)
     inset #fff;
   border: none;
