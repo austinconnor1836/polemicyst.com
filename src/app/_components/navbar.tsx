@@ -1,8 +1,8 @@
 'use client'
 
 import React from 'react'
-import RotatingButton from './rotating-button/rotating-button'
-import HamburgerMenu from './hamburger'
+import RotatingButton from './theme-switcher/rotating-button'
+import HamburgerMenu from './hamburger/hamburger'
 
 const Navbar: React.FC = () => {
   return (

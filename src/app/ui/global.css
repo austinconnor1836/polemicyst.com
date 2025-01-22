@@ -9,7 +9,7 @@
 }
 
 :root {
-  --navbar-height: 6.3rem; /* Adjust this value to match the actual height of your navbar */
+  --navbar-height: 3.3rem; /* Adjust this value to match the actual height of your navbar */
 }
 
 .navbar {

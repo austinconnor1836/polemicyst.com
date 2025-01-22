@@ -32,11 +32,11 @@ const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
           'w-0 overflow-hidden': !isOpen, // Ensure it's completely hidden when closed
         }
       )}
-      style={{ top: '6.28rem' }} // Adjust margin to be below the navbar
+      style={{ marginTop: 'var(--navbar-height)' }} // Adjust margin to be below the navbar
     >
       <ul className="flex flex-col">
         {sideNavItems.map((item, index) => (
-          <Link href={item.href} passHref>
+          <Link key={item.label} href={item.href} passHref>
             <li
               key={index}
               className="rounded-md cursor-pointer hover:bg-blue-100 transition-colors flex items-center space-x-2 p-2"

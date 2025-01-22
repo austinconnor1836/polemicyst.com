@@ -1,15 +1,20 @@
-'use client';
+'use client'
 
-import React from 'react';
-import './rotating-button.css';
+import React from 'react'
+import './rotating-button.css'
 
 const RotatingButton: React.FC = () => {
-    const cx = 50;
-    const cy = 50;
-    const r = 45;
+  const cx = 50
+  const cy = 50
+  const r = 45
   return (
     <div className="button-container">
-      <svg width="65" height="65" viewBox="0 0 100 100" className="rotating-outline">
+      <svg
+        width="35"
+        height="35"
+        viewBox="0 0 100 100"
+        className="rotating-outline"
+      >
         <circle
           cx={`${cx}`}
           cy={`${cy}`}
@@ -42,7 +47,7 @@ const RotatingButton: React.FC = () => {
       </svg>
       <button className="center-button"></button>
     </div>
-  );
-};
+  )
+}
 
-export default RotatingButton;
+export default RotatingButton

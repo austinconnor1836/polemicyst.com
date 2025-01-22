@@ -1,11 +1,13 @@
-'use client';
+'use client'
 
-import React from 'react';
-import Navbar from './_components/navbar';
-import SidePanel from './_components/sidenav';
-import { ThemeSwitcher } from './_components/theme-switcher';
+import React from 'react'
+import Navbar from './_components/navbar'
+import SidePanel from './_components/sidenav'
+import { ThemeSwitcher } from './_components/theme-switcher/theme-switcher'
 
-const SharedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const SharedLayout: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   return (
     <>
       <ThemeSwitcher />
@@ -13,7 +15,7 @@ const SharedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       <SidePanel />
       <main>{children}</main>
     </>
-  );
-};
+  )
+}
 
-export default SharedLayout;
+export default SharedLayout

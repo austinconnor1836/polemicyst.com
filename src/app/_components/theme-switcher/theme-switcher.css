@@ -1,4 +1,4 @@
-#darkmode{
+#darkmode {
   display: flex;
   justify-content: center;
 }
@@ -14,9 +14,9 @@
 #darkmode .label {
   width: 38px;
   height: 14px;
-  background-color:#111;
+  background-color: #111;
   display: flex;
-  border-radius:50px;
+  border-radius: 50px;
   align-items: center;
   justify-content: space-between;
   padding: 5px;
@@ -36,6 +36,6 @@
   transition: transform 0.2s linear;
 }
 
-#darkmode .checkbox:checked + .label .ball{
+#darkmode .checkbox:checked + .label .ball {
   transform: translateX(24px);
 }
