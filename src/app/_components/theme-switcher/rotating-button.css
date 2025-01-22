@@ -8,7 +8,7 @@
 }
 
 .rotating-outline {
-  position: absolute;
+  position: fixed;
   animation: rotate 4s linear infinite;
   cursor: pointer;
 }
