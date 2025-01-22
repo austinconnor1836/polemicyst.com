@@ -1,37 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import React, { useState } from 'react'
+import React from 'react'
 import Particles from '@/app/_components/particles'
 import { lusitana } from './ui/fonts'
-import { useAppSelector } from '@/lib/hooks'
-import { selectIsMenuOpen } from '@/lib/slices/uiSlice'
-import { usePathname } from 'next/navigation'
-import ChatBot from './_components/chat/chatbot'
-import ChatBar from './_components/chat/chatbar'
 
-const navigation = [
-  { name: 'Blog', href: '/posts' },
-  // { name: "Playground - Custom Components - Context Menu", href: "/playground/custom-components/custom-context-menu" },
-  // { name: "Playground - Custom Components - Side Nav", href: "/playground/custom-components/sidenav" },
-]
+const navigation = [{ name: 'Blog', href: '/posts' }]
 
 export default function Home() {
-  const [openChats, setOpenChats] = useState<number[]>([])
-  const isMenuOpen = useAppSelector(selectIsMenuOpen)
-
-  const handleOpenChat = (id: number) => {
-    if (!openChats.includes(id)) {
-      setOpenChats((prevChats) => [...prevChats, id])
-    }
-  }
-
-  const handleCloseChat = (id: number) => {
-    setOpenChats((prevChats) => prevChats.filter((chatId) => chatId !== id))
-  }
-
-  const pathname = usePathname()
-
   return (
     <div className="flex flex-col items-center justify-center w-screen h-screen overflow-hidden bg-gradient-to-tl from-black via-zinc-600/20 to-black">
       <nav className="my-16 animate-fade-in">
@@ -48,16 +24,6 @@ export default function Home() {
         </ul>
       </nav>
       <div className="hidden w-screen h-px animate-glow md:block animate-fade-left bg-gradient-to-r from-zinc-300/0 via-zinc-300/50 to-zinc-300/0" />
-      {isMenuOpen && pathname !== '/' ? (
-        <div className="flex h-full">chat bot</div>
-      ) : (
-        <>
-          {openChats.map((chatId) => (
-            <ChatBot key={chatId} id={chatId} onClose={handleCloseChat} />
-          ))}
-        </>
-      )}
-      <ChatBar openChats={openChats} onSelectChat={handleOpenChat} />
       <Particles
         className="absolute inset-0 -z-10 animate-fade-in"
         quantity={100}

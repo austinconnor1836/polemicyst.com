@@ -1,19 +1,21 @@
 ---
-title: "Dynamic Routing and Static Generation"
-excerpt: "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Praesent elementum facilisis leo vel fringilla est ullamcorper eget. At imperdiet dui accumsan sit amet nulla facilities morbi tempus."
-coverImage: "/assets/blog/dynamic-routing/cover.jpg"
-date: "2020-03-16T05:35:07.322Z"
+title: 'About This Site'
+excerpt: 'From destruction arises creation, and from creation arises destruction. The wheel of time turns, and the other shall always return.'
+coverImage: '/assets/blog/dynamic-routing/cover.jpg'
+date: '2024-01-22T05:35:07.322Z'
 author:
   name: Dexter Macaroni
-  picture: "/assets/blog/authors/me.png"
+  picture: '/assets/blog/authors/me.png'
 ogImage:
-  url: "/assets/blog/dynamic-routing/cover.jpg"
+  url: '/assets/blog/dynamic-routing/cover.jpg'
 ---
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Praesent elementum facilisis leo vel fringilla est ullamcorper eget. At imperdiet dui accumsan sit amet nulla facilities morbi tempus. Praesent elementum facilisis leo vel fringilla. Congue mauris rhoncus aenean vel. Egestas sed tempus urna et pharetra pharetra massa massa ultricies.
+From destruction arises creation, and from creation arises destruction. The wheel of time turns, and the other shall always return.
 
-Venenatis cras sed felis eget velit. Consectetur libero id faucibus nisl tincidunt. Gravida in fermentum et sollicitudin ac orci phasellus egestas tellus. Volutpat consequat mauris nunc congue nisi vitae. Id aliquet risus feugiat in ante metus dictum at tempor. Sed blandit libero volutpat sed cras. Sed odio morbi quis commodo odio aenean sed adipiscing. Velit euismod in pellentesque massa placerat. Mi bibendum neque egestas congue quisque egestas diam in arcu. Nisi lacus sed viverra tellus in. Nibh cras pulvinar mattis nunc sed. Luctus accumsan tortor posuere ac ut consequat semper viverra. Fringilla ut morbi tincidunt augue interdum velit euismod.
+Since the civil rights movement in the 1960s, the reaction to this increase in democratic expression of the American people from the undemocratic opulent minority has been extraordinarily powerful. Taxes which used to fund public infrastructure like education and public health have been gutted. The life expectancy of Americans which used to be similar to that of other industrialized countries has declined rapidly and the percentage of real income growth which used to be evenly distributed amongst the classes in society now is more concentrated than it has ever been. Due to this tyranny of the opulent minority, the hyper wealthy of the most wealthy, have gutted their responsibility to fund the infrastructure of America and have left it to the rest of us to pay for the massive debt of the nation they have caused from their manufactured financial crises.
 
-## Lorem Ipsum
+Every action has an equal and opposite reaction, as Isaac Newton discovered in the 17th century. The swings between periods of conservative and progressive controlled government is ineluctable, unless one of these two decides to break the constitutional pendulum and replace the American form of government with their own. With Donald Trump serving his second presidential term after refusing to give up the consent of his American subjects after losing the presidency in 2020, his tyrannicide of the current American regime can be expected to continue. Progressives will lead this charge against these fascist forces like they did under President Franklin D. Roosevelt in the 1930s-1940s.
 
-Tristique senectus et netus et malesuada fames ac turpis. Ridiculous mus mauris vitae ultricies leo integer malesuada nunc vel. In mollis nunc sed id semper. Egestas tellus rutrum tellus pellentesque. Phasellus vestibulum lorem sed risus ultricies tristique nulla. Quis blandit turpis cursus in hac habitasse platea dictumst quisque. Eros donec ac odio tempor orci dapibus ultrices. Aliquam sem et tortor consequat id porta nibh. Adipiscing elit duis tristique sollicitudin nibh sit amet commodo nulla. Diam vulputate ut pharetra sit amet. Ut tellus elementum sagittis vitae et leo. Arcu non odio euismod lacinia at quis risus sed vulputate.
+This site is about reaffirming the values that define America. It will never be controlled or operated by the corporate tyranny nor intimidated into submission. America is the land of the free and it will never be Trump's empire no matter the ideological subversion he and the adversaries of the nation employ to demoralize and destabilize her. Trump's normalization of his tyranny as the new form of American government that attacks the press and calls American citizens "enemy of the people" like Stalin will fail at the hands of ordinary Americans, everyday people like you and me who fight to make this country the land of the free.
+
+We are the renegades with our own philosophies, who change the course of history, everyday people like you and me.
