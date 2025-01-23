@@ -1,15 +1,16 @@
 ---
-title: "Welcome to Wonka's website."
-excerpt: "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Praesent elementum facilisis leo vel fringilla est ullamcorper eget. At imperdiet dui accumsan sit amet nulla facilities morbi tempus."
-coverImage: "/assets/blog/hello-world/cover.jpg"
-date: "2020-03-16T05:35:07.322Z"
+title: "Trump's Potential Invasion of Mexico and His Validation of Putin"
+excerpt: 'Trump declares Mexican cartels as terrorists, sends active troops to the southern border'
+coverImage: '/assets/blog/hello-world/cover.jpg'
+date: '2020-03-16T05:35:07.322Z'
 author:
   name: Dexter Macaroni
-  picture: "/assets/blog/authors/me.png"
+  picture: '/assets/blog/authors/me.png'
 ogImage:
-  url: "/assets/blog/hello-world/cover.jpg"
+  url: '/assets/blog/hello-world/cover.jpg'
 ---
 
+Trump declares Mexican cartels as terrorists, sends active troops to the southern border, whereof he declares an invasion is ongoing [^1](#reference-1).
 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Praesent elementum facilisis leo vel fringilla est ullamcorper eget. At imperdiet dui accumsan sit amet nulla facilities morbi tempus. Praesent elementum facilisis leo vel fringilla. Congue mauris rhoncus aenean vel. Egestas sed tempus urna et pharetra pharetra massa massa ultricies.
 
 Venenatis cras sed felis eget velit. Consectetur libero id faucibus nisl tincidunt. Gravida in fermentum et sollicitudin ac orci phasellus egestas tellus. Volutpat consequat mauris nunc congue nisi vitae. Id aliquet risus feugiat in ante metus dictum at tempor. Sed blandit libero volutpat sed cras. Sed odio morbi quis commodo odio aenean sed adipiscing. Velit euismod in pellentesque massa placerat. Mi bibendum neque egestas congue quisque egestas diam in arcu. Nisi lacus sed viverra tellus in. Nibh cras pulvinar mattis nunc sed. Luctus accumsan tortor posuere ac ut consequat semper viverra. Fringilla ut morbi tincidunt augue interdum velit euismod.
@@ -17,3 +18,9 @@ Venenatis cras sed felis eget velit. Consectetur libero id faucibus nisl tincidu
 ## Lorem Ipsum
 
 Tristique senectus et netus et malesuada fames ac turpis. Ridiculous mus mauris vitae ultricies leo integer malesuada nunc vel. In mollis nunc sed id semper. Egestas tellus rutrum tellus pellentesque. Phasellus vestibulum lorem sed risus ultricies tristique nulla. Quis blandit turpis cursus in hac habitasse platea dictumst quisque. Eros donec ac odio tempor orci dapibus ultrices. Aliquam sem et tortor consequat id porta nibh. Adipiscing elit duis tristique sollicitudin nibh sit amet commodo nulla. Diam vulputate ut pharetra sit amet. Ut tellus elementum sagittis vitae et leo. Arcu non odio euismod lacinia at quis risus sed vulputate.
+
+## References
+
+<a id="reference-1"></a>
+
+1. Trump, Donald J. "Guaranteeing the States Protection Against Invasion." _The White House_, January 20, 2025. [https://www.whitehouse.gov/presidential-actions/2025/01/guaranteeing-the-states-protection-against-invasion/](https://www.whitehouse.gov/presidential-actions/2025/01/guaranteeing-the-states-protection-against-invasion/). Accessed January 23, 2025. Referenced from paragraph 10. [↩](#)

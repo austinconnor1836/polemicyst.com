@@ -1,6 +1,6 @@
 ---
 title: 'About This Site'
-excerpt: 'From destruction arises creation, and from creation arises destruction. The wheel of time turns, and the other shall always return.'
+excerpt: 'True progressivism has yet to fully unfold but the hard right has. From destruction arises creation, and from creation arises destruction. The wheel of time turns, and the other shall always return.'
 coverImage: '/assets/blog/dynamic-routing/cover.jpg'
 date: '2024-01-22T05:35:07.322Z'
 author:
@@ -10,7 +10,7 @@ ogImage:
   url: '/assets/blog/dynamic-routing/cover.jpg'
 ---
 
-From destruction arises creation, and from creation arises destruction. The wheel of time turns, and the other shall always return.
+True progressivism has yet to fully unfold but the hard right has. From destruction arises creation, and from creation arises destruction. The wheel of time turns, and the other shall always return.
 
 Since the civil rights movement in the 1960s, the reaction to this increase in democratic expression of the American people from the undemocratic opulent minority has been extraordinarily powerful. Taxes which used to fund public infrastructure like education and public health have been gutted. The life expectancy of Americans which used to be similar to that of other industrialized countries has declined rapidly and the percentage of real income growth which used to be evenly distributed amongst the classes in society now is more concentrated than it has ever been. Due to this tyranny of the opulent minority, the hyper wealthy of the most wealthy, have gutted their responsibility to fund the infrastructure of America and have left it to the rest of us to pay for the massive debt of the nation they have caused from their manufactured financial crises.
 
