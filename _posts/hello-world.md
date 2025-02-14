@@ -4,7 +4,7 @@ excerpt: 'Trump declares Mexican cartels as terrorists, sends active troops to t
 coverImage: '/assets/blog/hello-world/cover.jpg'
 date: '2025-01-23T05:35:07.322Z'
 author:
-  name: Dexter Macaroni
+  name: Polemicyst
   picture: '/assets/blog/authors/me.png'
 ogImage:
   url: '/assets/blog/hello-world/cover.jpg'

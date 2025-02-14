@@ -4,7 +4,7 @@ excerpt: 'True progressivism has yet to fully unfold but the hard right has. Fro
 coverImage: '/assets/blog/dynamic-routing/cover.jpg'
 date: '2024-01-22T05:35:07.322Z'
 author:
-  name: Dexter Macaroni
+  name: Polemicyst
   picture: '/assets/blog/authors/me.png'
 ogImage:
   url: '/assets/blog/dynamic-routing/cover.jpg'
