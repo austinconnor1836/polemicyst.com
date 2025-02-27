@@ -97,7 +97,7 @@ const ClipsGenie = () => {
   };
 
   return (
-    <div className="flex flex-col items-center p-6 space-y-4">
+    <div className="flex flex-col items-center p-16 space-y-4">
       <Toaster position="top-right" />
 
       <h1 className="text-2xl font-bold">Clips-Genie</h1>
