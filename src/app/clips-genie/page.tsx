@@ -1,9 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { signIn, signOut, useSession } from 'next-auth/react';
 import toast, { Toaster } from 'react-hot-toast';
+import axios from 'axios';
 
 const ClipsGenie = () => {
+  const { data: session } = useSession(); // Instagram & Facebook session
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState('');
@@ -14,6 +17,8 @@ const ClipsGenie = () => {
   const [blueskyHandle, setBlueskyHandle] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
+  const [isMetaPosting, setIsMetaPosting] = useState(false);
 
   useEffect(() => {
     const session = localStorage.getItem('blueskySession');
@@ -24,9 +29,8 @@ const ClipsGenie = () => {
     }
   }, []);
 
-  const handlePost = async () => {
+  const handleBlueskyPost = async () => {
     setLoading(true);
-
     try {
       const sessionData = localStorage.getItem('blueskySession');
       if (!sessionData) {
@@ -57,6 +61,44 @@ const ClipsGenie = () => {
       toast.error('Something went wrong.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMetaPost = async () => {
+    if (!session?.accessToken) {
+      toast.error('You must log in to Facebook first.');
+      return;
+    }
+
+    setIsMetaPosting(true);
+
+    try {
+      // Step 1: Get Facebook Page & Instagram Business Account ID
+      const { data: accountData } = await axios.post('/api/meta/account', {
+        accessToken: session.accessToken,
+      });
+
+      // Step 2: Upload to Facebook
+      await axios.post('/api/meta/uploadFacebook', {
+        pageId: accountData.pageId,
+        accessToken: session.accessToken,
+        videoUrl,
+        caption: description,
+      });
+
+      // Step 3: Upload to Instagram
+      await axios.post('/api/meta/uploadInstagram', {
+        instagramAccountId: accountData.instagramAccountId,
+        accessToken: session.accessToken,
+        videoUrl,
+        caption: description,
+      });
+
+      toast.success('Video posted successfully to Facebook & Instagram!');
+    } catch (error) {
+      toast.error('Failed to post video.');
+    } finally {
+      setIsMetaPosting(false);
     }
   };
 
@@ -102,6 +144,7 @@ const ClipsGenie = () => {
 
       <h1 className="text-2xl font-bold">Clips-Genie</h1>
 
+      {/* Bluesky Authentication */}
       {!isAuthenticated ? (
         <button
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
@@ -121,36 +164,46 @@ const ClipsGenie = () => {
         </div>
       )}
 
+      {/* Facebook & Instagram Authentication */}
+      {!session ? (
+        <button
+          className="bg-blue-700 text-white px-4 py-2 rounded hover:bg-blue-800"
+          onClick={() => signIn('facebook')}
+        >
+          Login to Facebook
+        </button>
+      ) : (
+        <div className="flex items-center space-x-4">
+          <span>Logged in with Facebook</span>
+          <button
+            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+            onClick={() => signOut()}
+          >
+            Logout
+          </button>
+        </div>
+      )}
+
       <button
         className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
         onClick={() => setIsPostModalOpen(true)}
-        disabled={!isAuthenticated}
       >
-        Post to Bluesky
+        Post Video
       </button>
 
       {/* Post Modal */}
       {isPostModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white p-6 rounded shadow-lg w-96">
-            <h2 className="text-xl font-semibold mb-4">Post to Bluesky</h2>
+            <h2 className="text-xl font-semibold mb-4">Post a Video</h2>
 
-            <label className="block mb-2 text-sm font-medium">YouTube URL</label>
+            <label className="block mb-2 text-sm font-medium">Video URL</label>
             <input
               type="text"
-              value={youtubeUrl}
-              onChange={(e) => setYoutubeUrl(e.target.value)}
+              value={videoUrl}
+              onChange={(e) => setVideoUrl(e.target.value)}
               className="w-full p-2 border rounded"
-              placeholder="Enter YouTube URL"
-            />
-
-            <label className="block mt-4 mb-2 text-sm font-medium">Title</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full p-2 border rounded"
-              placeholder="Enter video title"
+              placeholder="Enter Video URL"
             />
 
             <label className="block mt-4 mb-2 text-sm font-medium">Description</label>
@@ -169,12 +222,11 @@ const ClipsGenie = () => {
               >
                 Cancel
               </button>
-              <button
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400"
-                onClick={handlePost}
-                disabled={loading}
-              >
-                {loading ? 'Posting...' : 'Post'}
+              <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700" onClick={handleBlueskyPost}>
+                Post to Bluesky
+              </button>
+              <button className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700" onClick={handleMetaPost} disabled={isMetaPosting}>
+                {isMetaPosting ? 'Posting...' : 'Post to Facebook & Instagram'}
               </button>
             </div>
           </div>

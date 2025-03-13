@@ -3,10 +3,11 @@ import React from 'react'
 import LocalFont from 'next/font/local'
 import { Metadata } from 'next'
 import { Analytics } from '@/app/_components/analytics'
-import { HamburgerProvider, useHamburger } from '@/app/context/HamburgerContext'
+import { HamburgerProvider } from '@/app/context/HamburgerContext'
 import { inter } from './ui/fonts'
 import StoreProvider from './StoreProvider'
 import SharedLayout from './SharedLayout'
+import SessionProviderWrapper from '@/app/_components/SessionProviderWrapper' // ✅ Import the wrapper
 
 export const metadata: Metadata = {
   title: {
@@ -95,7 +96,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       >
         <StoreProvider>
           <HamburgerProvider>
-            <SharedLayout>{children}</SharedLayout>
+            <SessionProviderWrapper> {/* ✅ Wrap with Client Component */}
+              <SharedLayout>{children}</SharedLayout>
+            </SessionProviderWrapper>
           </HamburgerProvider>
         </StoreProvider>
       </body>
