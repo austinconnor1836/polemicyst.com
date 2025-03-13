@@ -8,10 +8,24 @@
   stroke-width: 6;
 }
 
-:root {
-  --navbar-height: 3.3rem; /* Adjust this value to match the actual height of your navbar */
-}
-
 .navbar {
   height: var(--navbar-height);
 }
+
+:root {
+  --navbar-height: 3.3rem; /* Adjust this value to match the actual height of your navbar */
+  --bg-color: #f9f9f9;
+  --text-color: #2E2E2E;
+}
+
+[data-mode="dark"] {
+  --bg-color: #292c35;
+  --text-color: #E0E0E0;
+}
+
+.bg-theme {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+

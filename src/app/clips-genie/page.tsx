@@ -29,40 +29,86 @@ const ClipsGenie = () => {
     }
   }, []);
 
+  const BLUESKY_CHARACTER_LIMIT = 300;
+
   const handleBlueskyPost = async () => {
     setLoading(true);
+
     try {
-      const sessionData = localStorage.getItem('blueskySession');
+      const sessionData = localStorage.getItem("blueskySession");
       if (!sessionData) {
-        toast.error('You must be logged in to post.');
+        toast.error("You must be logged in to post.");
         return;
       }
 
       const session = JSON.parse(sessionData);
 
-      const response = await fetch('/api/bluesky/post', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ youtubeUrl, title, description, session }),
+      // ✅ Ensure description fits within Bluesky's character limit
+      let postText = description.trim();
+      if (postText.length > BLUESKY_CHARACTER_LIMIT) {
+        toast.error("Post is too long. Truncating to fit the limit.");
+        postText = postText.substring(0, BLUESKY_CHARACTER_LIMIT) + "...";
+      }
+
+      const response = await fetch("/api/bluesky/post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ youtubeUrl, title, description: postText, session }),
       });
 
       const result = await response.json();
 
       if (response.ok) {
-        toast.success('Posted successfully to Bluesky!');
-        setYoutubeUrl('');
-        setTitle('');
-        setDescription('');
+        toast.success("Posted successfully to Bluesky!");
+        setYoutubeUrl("");
+        setTitle("");
+        setDescription("");
         setIsPostModalOpen(false);
       } else {
-        toast.error(result.message || 'Failed to post.');
+        toast.error(result.message || "Failed to post.");
       }
     } catch (err) {
-      toast.error('Something went wrong.');
+      toast.error("Something went wrong.");
     } finally {
       setLoading(false);
     }
   };
+
+
+  // const handleBlueskyPost = async () => {
+  //   setLoading(true);
+  //   try {
+  //     const sessionData = localStorage.getItem('blueskySession');
+  //     if (!sessionData) {
+  //       toast.error('You must be logged in to post.');
+  //       return;
+  //     }
+
+  //     const session = JSON.parse(sessionData);
+
+  //     const response = await fetch('/api/bluesky/post', {
+  //       method: 'POST',
+  //       headers: { 'Content-Type': 'application/json' },
+  //       body: JSON.stringify({ youtubeUrl, title, description, session }),
+  //     });
+
+  //     const result = await response.json();
+
+  //     if (response.ok) {
+  //       toast.success('Posted successfully to Bluesky!');
+  //       setYoutubeUrl('');
+  //       setTitle('');
+  //       setDescription('');
+  //       setIsPostModalOpen(false);
+  //     } else {
+  //       toast.error(result.message || 'Failed to post.');
+  //     }
+  //   } catch (err) {
+  //     toast.error('Something went wrong.');
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
   const handleMetaPost = async () => {
     if (!session?.accessToken) {
@@ -137,6 +183,7 @@ const ClipsGenie = () => {
     setBlueskyHandle('');
     toast.success('Logged out successfully!');
   };
+  
 
   return (
     <div className="flex flex-col items-center p-16 space-y-4">
@@ -193,8 +240,15 @@ const ClipsGenie = () => {
 
       {/* Post Modal */}
       {isPostModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white p-6 rounded shadow-lg w-96">
+        <div
+          className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm z-40"
+          style={{ overflow: "hidden", width: "100vw", height: "100vh" }} // Prevents page scrolling
+        >
+          <div
+            className="bg-white dark:bg-[#292c35] text-gray-900 dark:text-[#E0E0E0] 
+        p-6 rounded-lg shadow-xl sm:w-[500px] lg:w-[600px] xl:w-[700px] 
+        max-w-[90vw] mx-4 min-w-[24rem] overflow-hidden relative z-50"
+          >
             <h2 className="text-xl font-semibold mb-4">Post a Video</h2>
 
             <label className="block mb-2 text-sm font-medium">Video URL</label>
@@ -210,28 +264,41 @@ const ClipsGenie = () => {
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full p-2 border rounded"
+              className="w-[90%] lg:w-full p-2 border rounded h-32 sm:h-40 resize-none overflow-y-scroll"
               placeholder="Enter a custom description"
               rows={3}
             ></textarea>
 
-            <div className="flex justify-between mt-4">
+            <div className="flex justify-between mt-4 space-x-2">
+              {/* Cancel Button */}
               <button
-                className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+                className="bg-gray-500 text-white text-sm px-3 py-1 rounded-md hover:bg-gray-600 transition"
                 onClick={() => setIsPostModalOpen(false)}
               >
                 Cancel
               </button>
-              <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700" onClick={handleBlueskyPost}>
+
+              {/* Post to Bluesky Button */}
+              <button
+                className="bg-blue-600 text-white text-sm px-3 py-1 rounded-md hover:bg-blue-700 transition"
+                onClick={handleBlueskyPost}
+              >
                 Post to Bluesky
               </button>
-              <button className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700" onClick={handleMetaPost} disabled={isMetaPosting}>
-                {isMetaPosting ? 'Posting...' : 'Post to Facebook & Instagram'}
+
+              {/* Post to Facebook & Instagram Button */}
+              <button
+                className="bg-green-600 text-white text-sm px-3 py-1 rounded-md hover:bg-green-700 transition disabled:bg-gray-400"
+                onClick={handleMetaPost}
+                disabled={isMetaPosting}
+              >
+                {isMetaPosting ? "Posting..." : "Post to Facebook & Instagram"}
               </button>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 };
