@@ -21,6 +21,7 @@ const ClipsGenie = () => {
   const [isMetaPosting, setIsMetaPosting] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
 
   useEffect(() => {
     const sessionData = localStorage.getItem("blueskySession");
@@ -31,64 +32,43 @@ const ClipsGenie = () => {
     }
   }, []);
 
-  const BLUESKY_CHARACTER_LIMIT = 300;
-
-  const handleBlueskyPost = async () => {
-    setLoading(true);
-
-    try {
-      const sessionData = localStorage.getItem("blueskySession");
-      if (!sessionData) {
-        toast.error("You must be logged in to post.");
-        return;
-      }
-
-      const session = JSON.parse(sessionData);
-
-      let postText = description.trim();
-      if (postText.length > BLUESKY_CHARACTER_LIMIT) {
-        toast.error("Post is too long. Truncating to fit the limit.");
-        postText = postText.substring(0, BLUESKY_CHARACTER_LIMIT) + "...";
-      }
-
-      const response = await fetch("/api/bluesky/post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ youtubeUrl, title, description: postText, session }),
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        toast.success("Posted successfully to Bluesky!");
-        setYoutubeUrl("");
-        setTitle("");
-        setDescription("");
-        setIsPostModalOpen(false);
-      } else {
-        toast.error(result.message || "Failed to post.");
-      }
-    } catch (err) {
-      toast.error("Something went wrong.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       setSelectedFile(file);
       setVideoPreview(URL.createObjectURL(file));
+      await generateDescription(file); // Automatically generate description
     }
   };
 
-  const handleFileDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleFileDrop = async (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     const file = event.dataTransfer.files[0];
     if (file) {
       setSelectedFile(file);
       setVideoPreview(URL.createObjectURL(file));
+      await generateDescription(file); // Automatically generate description
+    }
+  };
+
+  const generateDescription = async (file: File) => {
+    setIsGeneratingDescription(true);
+    setDescription("Generating description...");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await axios.post("/api/generateDescription", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      setDescription(response.data.description);
+    } catch (error) {
+      toast.error("Failed to generate description.");
+      setDescription("");
+    } finally {
+      setIsGeneratingDescription(false);
     }
   };
 
@@ -109,14 +89,12 @@ const ClipsGenie = () => {
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("description", description);
-      formData.append("accessToken", session.accessToken); // Pass the User Access Token
+      formData.append("accessToken", session.accessToken);
 
-      // Upload to Facebook & Instagram via /api/meta/upload
       const response = await axios.post("/api/meta/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      // Get response data
       const { facebookVideoId, instagramPostId } = response.data;
 
       if (facebookVideoId) {
@@ -126,16 +104,12 @@ const ClipsGenie = () => {
       if (instagramPostId) {
         toast.success(`✅ Instagram upload successful! Post ID: ${instagramPostId}`);
       }
-
     } catch (error) {
-      console.error("Upload failed:", error.response?.data || error.message);
       toast.error("❌ Failed to upload video.");
     } finally {
       setIsMetaPosting(false);
     }
   };
-
-
 
   return (
     <div className="flex flex-col items-center p-16 space-y-4">
@@ -183,6 +157,15 @@ const ClipsGenie = () => {
           <div className="bg-white dark:bg-[#292c35] text-gray-900 dark:text-[#E0E0E0] p-6 rounded-lg shadow-xl sm:w-[500px] lg:w-[600px] xl:w-[700px] max-w-[90vw] mx-4 min-w-[24rem] overflow-hidden relative z-50">
             <h2 className="text-xl font-semibold mb-4">Post a Video</h2>
 
+            {/* AI Description Regenerate Button */}
+            <button
+              className="absolute top-4 right-4 bg-blue-500 text-white px-3 py-1 rounded-md hover:bg-blue-600 transition"
+              onClick={() => generateDescription(selectedFile!)}
+              disabled={!selectedFile || isGeneratingDescription}
+            >
+              {isGeneratingDescription ? "Generating..." : "Regenerate AI Description"}
+            </button>
+
             <label className="block mb-2 text-sm font-medium">Video URL</label>
             <input
               type="text"
@@ -192,14 +175,12 @@ const ClipsGenie = () => {
               placeholder="Enter Video URL"
             />
 
-            {/* File Upload */}
             <label className="block mb-2 text-sm font-medium">Upload Video File</label>
             <div
               className="border-2 border-dashed border-gray-400 p-6 text-center rounded-lg mt-4 cursor-pointer"
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleFileDrop}
             >
-              <p className="text-sm">Drag & Drop a video file here, or</p>
               <input type="file" accept="video/*" onChange={handleFileSelect} className="hidden" id="fileUpload" />
               <label htmlFor="fileUpload" className="block mt-2 bg-blue-600 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-700">
                 Choose from device
@@ -210,24 +191,11 @@ const ClipsGenie = () => {
             {videoPreview && <video className="mt-4 w-full max-h-40" controls><source src={videoPreview} type="video/mp4" /></video>}
 
             <label className="block mt-4 mb-2 text-sm font-medium">Description</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-[90%] lg:w-full p-2 border rounded h-32 sm:h-40 resize-none" placeholder="Enter a custom description"></textarea>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-[90%] lg:w-full p-2 border rounded h-32 sm:h-40 resize-none"></textarea>
 
-            <div className="flex justify-between mt-4 space-x-2">
-              {/* Cancel Button */}
-              <button className="bg-gray-500 text-white text-sm px-3 py-1 rounded-md hover:bg-gray-600 transition" onClick={() => setIsPostModalOpen(false)}>
-                Cancel
-              </button>
-
-              {/* Post to Bluesky Button */}
-              <button className="bg-blue-600 text-white text-sm px-3 py-1 rounded-md hover:bg-blue-700 transition" onClick={handleBlueskyPost}>
-                Post to Bluesky
-              </button>
-
-              {/* Post to Facebook & Instagram Button */}
-              <button className="bg-green-600 text-white text-sm px-3 py-1 rounded-md hover:bg-green-700 transition disabled:bg-gray-400" onClick={handleMetaPost} disabled={isMetaPosting}>
-                {isMetaPosting ? "Posting..." : "Post to Facebook & Instagram"}
-              </button>
-            </div>
+            <button className="bg-green-600 text-white text-sm px-3 py-1 rounded-md hover:bg-green-700 transition" onClick={handleMetaPost} disabled={isMetaPosting}>
+              {isMetaPosting ? "Posting..." : "Post to Facebook & Instagram"}
+            </button>
           </div>
         </div>
       )}
