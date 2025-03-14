@@ -111,17 +111,30 @@ const ClipsGenie = () => {
       formData.append("description", description);
       formData.append("accessToken", session.accessToken); // Pass the User Access Token
 
-      await axios.post("/api/meta/uploadFacebook", formData, {
+      // Upload to Facebook & Instagram via /api/meta/upload
+      const response = await axios.post("/api/meta/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      toast.success("Video posted successfully to Facebook!");
+      // Get response data
+      const { facebookVideoId, instagramPostId } = response.data;
+
+      if (facebookVideoId) {
+        toast.success(`✅ Facebook upload successful! Video ID: ${facebookVideoId}`);
+      }
+
+      if (instagramPostId) {
+        toast.success(`✅ Instagram upload successful! Post ID: ${instagramPostId}`);
+      }
+
     } catch (error) {
-      toast.error("Failed to upload video.");
+      console.error("Upload failed:", error.response?.data || error.message);
+      toast.error("❌ Failed to upload video.");
     } finally {
       setIsMetaPosting(false);
     }
   };
+
 
 
   return (
