@@ -48,21 +48,34 @@ async function extractAndCompressAudio(videoBuffer: Uint8Array): Promise<string>
   });
 }
 
-// ✅ Function to Generate AI-Based Description
-async function generateDescription(transcript: string): Promise<string> {
+// ✅ Function to Generate AI-Based Description and Hashtags
+async function generateDescriptionAndHashtags(transcript: string): Promise<{ description: string; hashtags: string[] }> {
   const response = await openai.chat.completions.create({
     model: "gpt-4",
     messages: [
       { role: "system", content: "Summarize the following transcript into an engaging social media post:" },
       { role: "user", content: transcript }
     ],
-    max_tokens: 100,
+    max_tokens: 150,
   });
 
-  // Ensure response contains valid data
-  const aiGeneratedText = response.choices?.[0]?.message?.content?.trim();
-  
-  return aiGeneratedText || "No description generated.";
+  // Extract AI-generated description
+  const aiGeneratedText = response.choices?.[0]?.message?.content?.trim() || "No description generated.";
+
+  // Generate five hashtags based on the transcript
+  const hashtagResponse = await openai.chat.completions.create({
+    model: "gpt-4",
+    messages: [
+      { role: "system", content: "Generate five relevant hashtags based on this transcript. Return them as a comma-separated list." },
+      { role: "user", content: transcript }
+    ],
+    max_tokens: 20,
+  });
+
+  // Convert response into an array of hashtags
+  const aiGeneratedHashtags = hashtagResponse.choices?.[0]?.message?.content?.trim().split(", ") || [];
+
+  return { description: aiGeneratedText, hashtags: aiGeneratedHashtags };
 }
 
 
@@ -102,14 +115,14 @@ export async function POST(req: NextRequest) {
 
     // ✅ Generate AI description
     console.log("🤖 Generating description...");
-    const description = await generateDescription(transcript);
+    const { description, hashtags } = await generateDescriptionAndHashtags(transcript);
     console.log("📢 AI-Generated Description:", description);
 
     // ✅ Cleanup temp files
     fs.unlinkSync(compressedAudioPath);
 
     return new Response(
-      JSON.stringify({ transcript, generatedDescription: description }),
+      JSON.stringify({ transcript, description, hashtags }),
       { status: 200 }
     );
   } catch (error: any) {

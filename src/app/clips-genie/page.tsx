@@ -63,14 +63,51 @@ const ClipsGenie = () => {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      setDescription(response.data.description);
+      // Ensure response contains valid data
+      console.log('response.data', response.data);
+      const { description, hashtags } = response.data;
+
+      if (description && hashtags) {
+        // Predefined hashtags
+        const fixedHashtags = [
+          "#Polemicyst",
+          "#news",
+          "#politics",
+          "#youtube",
+          "#trump",
+          "#left",
+          "#progressive",
+          "#viral",
+          "#maga",
+        ];
+
+        // Merge AI-generated hashtags with fixed ones
+        const allHashtags = [...fixedHashtags, ...hashtags];
+
+        // Convert hashtags array into a comma-separated string
+        const hashtagsString = allHashtags.join(", ");
+
+        // Patreon link
+        const patreonLink = "\n\nSupport me on Patreon: https://www.patreon.com/c/Polemicyst";
+
+        // Final formatted description
+        const finalDescription = `${description}\n\n${hashtagsString}${patreonLink}`;
+
+        setDescription(finalDescription);
+      } else {
+        setDescription("Failed to generate description.");
+      }
     } catch (error) {
+      console.error("Error generating description:", error);
       toast.error("Failed to generate description.");
-      setDescription("");
+      setDescription("Failed to generate description.");
     } finally {
       setIsGeneratingDescription(false);
     }
   };
+
+
+
 
   const handleMetaPost = async () => {
     if (!session?.accessToken) {
@@ -157,10 +194,10 @@ const ClipsGenie = () => {
           <div className="bg-white dark:bg-[#292c35] text-gray-900 dark:text-[#E0E0E0] p-6 rounded-lg shadow-xl sm:w-[500px] lg:w-[600px] xl:w-[700px] max-w-[90vw] mx-4 min-w-[24rem] overflow-hidden relative z-50">
             <h2 className="text-xl font-semibold mb-4">Post a Video</h2>
 
-            {/* AI Description Regenerate Button */}
             <button
-              className="absolute top-4 right-4 bg-blue-500 text-white px-3 py-1 rounded-md hover:bg-blue-600 transition"
-              onClick={() => generateDescription(selectedFile!)}
+              className={`absolute top-4 right-4 bg-blue-500 text-white px-3 py-1 rounded-md transition ${!selectedFile || isGeneratingDescription ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
+                }`}
+              onClick={() => selectedFile && generateDescription(selectedFile)}
               disabled={!selectedFile || isGeneratingDescription}
             >
               {isGeneratingDescription ? "Generating..." : "Regenerate AI Description"}
