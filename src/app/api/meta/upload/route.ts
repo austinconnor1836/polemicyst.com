@@ -20,7 +20,7 @@ export const config = {
 };
 
 // Function to upload video to S3
-async function uploadToS3(file: Blob, filename: string): Promise<string> {
+async function uploadToS3(file: Blob, filename: string): Promise<{ url: string; key: string }> {
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
@@ -33,7 +33,10 @@ async function uploadToS3(file: Blob, filename: string): Promise<string> {
 
   await s3.upload(uploadParams).promise();
 
-  return `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${filename}`;
+  return {
+    url: `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${filename}`,
+    key: filename, // Store object key for deletion
+  };
 }
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -66,8 +69,9 @@ async function waitForInstagramMedia(creationId: string, accessToken: string) {
   return false; // Media never became ready
 }
 
-
 export async function POST(req: NextRequest) {
+  let s3ObjectKey = ""; // Declare S3 object key
+
   try {
     const formData = await req.formData();
     const file = formData.get("file") as Blob | null;
@@ -125,7 +129,8 @@ export async function POST(req: NextRequest) {
     // Step 5: Upload Video to AWS S3 for Instagram
     console.log("📤 Uploading to AWS S3 for Instagram...");
     const filename = `uploads/${Date.now()}-video.mp4`;
-    const s3VideoUrl = await uploadToS3(file, filename);
+    const { url: s3VideoUrl, key: objectKey } = await uploadToS3(file, filename);
+    s3ObjectKey = objectKey; // Store object key for deletion
     console.log("✅ S3 Upload Successful:", s3VideoUrl);
 
     // Step 6: Upload to Instagram using S3 Public URL
@@ -159,8 +164,33 @@ export async function POST(req: NextRequest) {
 
     console.log("✅ Instagram upload successful:", publishResponse.data.id);
 
+    // Step 9: Delete the video from S3
+    if (s3ObjectKey) {
+      console.log("🗑️ Deleting video from S3...");
+      await deleteFromS3(s3ObjectKey);
+      console.log("✅ S3 Video Deleted:", s3ObjectKey);
+    }
+
+    return new Response(
+      JSON.stringify({
+        facebookVideoId,
+        instagramPostId: publishResponse.data.id,
+      }),
+      { status: 200 }
+    );
+
   } catch (error: any) {
     console.error("Error uploading video:", error.response?.data || error.message);
     return new Response(JSON.stringify({ error: "Failed to upload video" }), { status: 500 });
   }
+}
+
+// Function to delete video from AWS S3 using `aws-sdk`
+async function deleteFromS3(objectKey: string) {
+  const deleteParams = {
+    Bucket: S3_BUCKET,
+    Key: objectKey,
+  };
+
+  await s3.deleteObject(deleteParams).promise();
 }
