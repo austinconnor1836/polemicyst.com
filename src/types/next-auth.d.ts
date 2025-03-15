@@ -1,8 +1,9 @@
 import NextAuth from "next-auth";
 
 declare module "next-auth" {
-  interface Session {
-    accessToken?: string;
+  interface Session extends DefaultSession {
+    facebookAccessToken?: string;
+    googleAccessToken?: string;
   }
 
   interface JWT {

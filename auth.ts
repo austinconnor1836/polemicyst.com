@@ -1,9 +1,11 @@
 import NextAuth from "next-auth";
-import Facebook from "next-auth/providers/facebook";
+import FacebookProvider from "next-auth/providers/facebook";
+import GoogleProvider from "next-auth/providers/google";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
-    Facebook({
+    // Facebook (Meta) Provider
+    FacebookProvider({
       clientId: process.env.AUTH_FACEBOOK_ID!,
       clientSecret: process.env.AUTH_FACEBOOK_SECRET!,
       authorization: {
@@ -12,16 +14,38 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         },
       },
     }),
+
+    // Google (YouTube) Provider
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          scope: "openid email profile https://www.googleapis.com/auth/youtube.upload",
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    }),
   ],
+
   callbacks: {
-    async jwt({ token, account }) {
+    // Store both Facebook and Google access tokens
+    async jwt({ token, account, profile }) {
       if (account) {
-        token.accessToken = account.access_token; // Store accessToken in token
+        if (account.provider === "facebook") {
+          token.facebookAccessToken = account.access_token;
+        } else if (account.provider === "google") {
+          token.googleAccessToken = account.access_token;
+        }
       }
       return token;
     },
+
+    // Attach tokens to session for client-side access
     async session({ session, token }) {
-      session.accessToken = token.accessToken as string; // Add accessToken to session
+      session.facebookAccessToken = token.facebookAccessToken as string | undefined;
+      session.googleAccessToken = token.googleAccessToken as string | undefined;
       return session;
     },
   },

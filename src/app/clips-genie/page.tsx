@@ -4,6 +4,12 @@ import React, { useState, useEffect } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import toast, { Toaster } from "react-hot-toast";
 import axios from "axios";
+import { CheckCircle } from "@mui/icons-material";
+import { FaFacebook, FaTwitter, FaInstagram, FaYoutube } from "react-icons/fa";
+import { SiBluesky } from "react-icons/si";
+
+
+
 
 const ClipsGenie = () => {
   const { data: session } = useSession(); // Instagram & Facebook session
@@ -12,6 +18,33 @@ const ClipsGenie = () => {
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [facebookTemplate, setFacebookTemplate] = useState(
+    `For more from Polemicyst:\n
+Youtube: https://www.youtube.com/@Polemicyst
+Twitter: https://x.com/Polemicyst
+Instagram: https://www.instagram.com/polemicyst/
+Bluesky: https://bsky.app/profile/polemicyst.bsky.social
+Threads: https://www.threads.net/@polemicyst`
+  );
+
+  const [instagramTemplate, setInstagramTemplate] = useState(
+    `For more from Polemicyst:\n
+Youtube: https://www.youtube.com/@Polemicyst
+Twitter: https://x.com/Polemicyst
+Facebook: https://www.facebook.com/profile.php?id=61573192766929
+Bluesky: https://bsky.app/profile/polemicyst.bsky.social
+Threads: https://www.threads.net/@polemicyst`
+  );
+  const [youtubeTemplate, setYoutubeTemplate] = useState(
+    `For more from Polemicyst:\n
+Twitter: https://x.com/Polemicyst
+Instagram: https://www.instagram.com/polemicyst/
+Facebook: https://www.facebook.com/profile.php?id=61573192766929
+Bluesky: https://bsky.app/profile/polemicyst.bsky.social
+Threads: https://www.threads.net/@polemicyst`
+  );
+  const [blueskyTemplate, setBlueskyTemplate] = useState("");
+  const [twitterTemplate, setTwitterTemplate] = useState("");
   const [loading, setLoading] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [blueskyHandle, setBlueskyHandle] = useState("");
@@ -22,6 +55,23 @@ const ClipsGenie = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+
+  const platforms = [
+    { name: "Bluesky", icon: <SiBluesky className="text-blue-500 text-xl" /> },
+    { name: "Facebook", icon: <FaFacebook className="text-blue-600 text-xl" /> },
+    { name: "Instagram", icon: <FaInstagram className="text-pink-500 text-xl" /> },
+    { name: "YouTube", icon: <FaYoutube className="text-red-600 text-xl" /> },
+    { name: "Twitter", icon: <FaTwitter className="text-blue-400 text-xl" /> },
+  ];
+
+  const togglePlatform = (platform: string) => {
+    setSelectedPlatforms((prev) =>
+      prev.includes(platform)
+        ? prev.filter((p) => p !== platform)
+        : [...prev, platform]
+    );
+  };
 
   useEffect(() => {
     const sessionData = localStorage.getItem("blueskySession");
@@ -52,65 +102,73 @@ const ClipsGenie = () => {
   };
 
   const generateDescription = async (file: File) => {
-    setIsGeneratingDescription(true);
-    setDescription("Generating description...");
+  setIsGeneratingDescription(true);
+  setDescription("Generating description...");
 
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
 
-      const response = await axios.post("/api/generateDescription", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+    const response = await axios.post("/api/generateDescription", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
 
-      // Ensure response contains valid data
-      console.log('response.data', response.data);
-      const { description, hashtags } = response.data;
+    // Ensure response contains valid data
+    console.log("response.data", response.data);
+    const { description, hashtags } = response.data;
 
-      if (description && hashtags) {
-        // Predefined hashtags
-        const fixedHashtags = [
-          "#Polemicyst",
-          "#news",
-          "#politics",
-          "#youtube",
-          "#trump",
-          "#left",
-          "#progressive",
-          "#viral",
-          "#maga",
-        ];
+    if (description && hashtags) {
+      // Predefined hashtags
+      const fixedHashtags = [
+        "#Polemicyst",
+        "#news",
+        "#politics",
+        "#youtube",
+        "#trump",
+        "#left",
+        "#progressive",
+        "#viral",
+        "#maga",
+      ];
 
-        // Merge AI-generated hashtags with fixed ones
-        const allHashtags = [...fixedHashtags, ...hashtags];
+      // Merge AI-generated hashtags with fixed ones
+      const allHashtags = [...fixedHashtags, ...hashtags];
 
-        // Convert hashtags array into a comma-separated string
-        const hashtagsString = allHashtags.join(", ");
+      // Convert hashtags array into a comma-separated string
+      const hashtagsString = allHashtags.join(", ");
 
-        // Patreon link
-        const patreonLink = "\n\nSupport me on Patreon: https://www.patreon.com/c/Polemicyst";
+      // Patreon link
+      const patreonLink = "\n\nSupport me on Patreon: https://www.patreon.com/c/Polemicyst";
 
-        // Final formatted description
-        const finalDescription = `${description}\n\n${hashtagsString}${patreonLink}`;
+      // Final formatted description
+      const finalDescription = `${description}\n\n${hashtagsString}${patreonLink}`;
+      setDescription(finalDescription);
 
-        setDescription(finalDescription);
-      } else {
-        setDescription("Failed to generate description.");
-      }
-    } catch (error) {
-      console.error("Error generating description:", error);
-      toast.error("Failed to generate description.");
+      // ✅ Generate a 300-character version for Bluesky and Twitter
+      const maxLength = 300;
+      const trimmedDescription = `${description} ${hashtagsString}`.substring(0, maxLength).trim();
+
+      setBlueskyTemplate(trimmedDescription);
+      setTwitterTemplate(trimmedDescription);
+    } else {
       setDescription("Failed to generate description.");
-    } finally {
-      setIsGeneratingDescription(false);
+      setBlueskyTemplate("Failed to generate description.");
+      setTwitterTemplate("Failed to generate description.");
     }
-  };
-
-
+  } catch (error) {
+    console.error("Error generating description:", error);
+    toast.error("Failed to generate description.");
+    setDescription("Failed to generate description.");
+    setBlueskyTemplate("Failed to generate description.");
+    setTwitterTemplate("Failed to generate description.");
+  } finally {
+    setIsGeneratingDescription(false);
+  }
+};
 
 
   const handleMetaPost = async () => {
-    if (!session?.accessToken) {
+    if (!session?.facebookAccessToken) {
       toast.error("You must log in to Facebook first.");
       return;
     }
@@ -190,52 +248,103 @@ const ClipsGenie = () => {
       </button>
 
       {isPostModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm z-40">
-          <div className="bg-white dark:bg-[#292c35] text-gray-900 dark:text-[#E0E0E0] p-6 rounded-lg shadow-xl sm:w-[500px] lg:w-[600px] xl:w-[700px] max-w-[90vw] mx-4 min-w-[24rem] overflow-hidden relative z-50">
-            <h2 className="text-xl font-semibold mb-4">Post a Video</h2>
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm z-40 p-6">
+          <div className="bg-white dark:bg-[#292c35] text-gray-900 dark:text-[#E0E0E0] p-6 rounded-lg shadow-xl sm:w-[500px] lg:w-[700px] xl:w-[800px] max-w-[90vw] mx-4 min-w-[24rem] overflow-hidden relative z-50 flex flex-col max-h-screen">
 
-            <button
-              className={`absolute top-4 right-4 bg-blue-500 text-white px-3 py-1 rounded-md transition ${!selectedFile || isGeneratingDescription ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
-                }`}
-              onClick={() => selectedFile && generateDescription(selectedFile)}
-              disabled={!selectedFile || isGeneratingDescription}
-            >
-              {isGeneratingDescription ? "Generating..." : "Regenerate AI Description"}
-            </button>
+            {/* Header with Title and Regenerate AI Button */}
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold">Post a Video</h2>
 
-            <label className="block mb-2 text-sm font-medium">Video URL</label>
-            <input
-              type="text"
-              value={videoUrl}
-              onChange={(e) => setVideoUrl(e.target.value)}
-              className="w-full p-2 border rounded"
-              placeholder="Enter Video URL"
-            />
-
-            <label className="block mb-2 text-sm font-medium">Upload Video File</label>
-            <div
-              className="border-2 border-dashed border-gray-400 p-6 text-center rounded-lg mt-4 cursor-pointer"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={handleFileDrop}
-            >
-              <input type="file" accept="video/*" onChange={handleFileSelect} className="hidden" id="fileUpload" />
-              <label htmlFor="fileUpload" className="block mt-2 bg-blue-600 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-700">
-                Choose from device
-              </label>
-              {selectedFile && <p className="text-xs text-gray-500 mt-2">{selectedFile.name}</p>}
+              {/* Regenerate AI Description Button - Fixed Position */}
+              <button
+                className="bg-blue-500 text-white px-3 py-1 rounded-md transition hover:bg-blue-600"
+                onClick={() => selectedFile && generateDescription(selectedFile)}
+                disabled={!selectedFile || isGeneratingDescription}
+              >
+                {isGeneratingDescription ? "Generating..." : "Regenerate AI Description"}
+              </button>
             </div>
 
-            {videoPreview && <video className="mt-4 w-full max-h-40" controls><source src={videoPreview} type="video/mp4" /></video>}
+            {/* Scrollable Content */}
+            <div className="flex w-full h-full max-h-[65vh] overflow-y-auto mt-4">
 
-            <label className="block mt-4 mb-2 text-sm font-medium">Description</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-[90%] lg:w-full p-2 border rounded h-32 sm:h-40 resize-none"></textarea>
+              {/* Left Column: Platforms List */}
+              <div className="w-1/4 bg-gray-100 dark:bg-[#1e1e1e] p-4 rounded-l-lg">
+                <h3 className="text-lg font-semibold mb-2 md:block">Platforms</h3>
+                <ul className="space-y-2">
+                  {platforms.map(({ name, icon }) => (
+                    <li
+                      key={name}
+                      className="flex items-center justify-between cursor-pointer hover:bg-gray-200 dark:hover:bg-[#292c35] rounded-md transition"
+                      onClick={() => togglePlatform(name)}
+                    >
+                      <span className="hidden md:block">{name}</span>
+                      <span className="md:hidden">{icon}</span>
+                      {selectedPlatforms.includes(name) && <CheckCircle className="text-green-500 ml-2" />}
+                    </li>
+                  ))}
+                </ul>
+              </div>
 
-            <button className="bg-green-600 text-white text-sm px-3 py-1 rounded-md hover:bg-green-700 transition" onClick={handleMetaPost} disabled={isMetaPosting}>
-              {isMetaPosting ? "Posting..." : "Post to Facebook & Instagram"}
-            </button>
+              {/* Right Column: Form */}
+              <div className="w-3/4 p-6">
+                {/* File Upload */}
+                <label className="block mb-2 text-sm font-medium">Upload Video File</label>
+                <div className="border-2 border-dashed border-gray-400 p-6 text-center rounded-lg mt-4 cursor-pointer" onDragOver={(e) => e.preventDefault()} onDrop={handleFileDrop}>
+                  <input type="file" accept="video/*" onChange={handleFileSelect} className="hidden" id="fileUpload" />
+                  <label htmlFor="fileUpload" className="block mt-2 bg-blue-600 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-700">
+                    Choose from device
+                  </label>
+                  {selectedFile && <p className="text-xs text-gray-500 mt-2">{selectedFile.name}</p>}
+                </div>
+
+                {videoPreview && <video className="mt-4 w-full max-h-40" controls><source src={videoPreview} type="video/mp4" /></video>}
+
+                {/* Shared Description */}
+                <label className="block mt-4 mb-2 text-sm font-medium">General Description</label>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-2 border rounded h-32 sm:h-40 resize-none"></textarea>
+
+                {/* Platform-Specific Descriptions */}
+                <h3 className="text-lg font-semibold mt-6">Platform-Specific Descriptions</h3>
+
+                <label className="block mt-4 mb-2 text-sm font-medium">Facebook</label>
+                <textarea value={facebookTemplate} onChange={(e) => setFacebookTemplate(e.target.value)} className="w-full p-2 border rounded h-24 resize-none"></textarea>
+
+                <label className="block mt-4 mb-2 text-sm font-medium">Instagram</label>
+                <textarea value={instagramTemplate} onChange={(e) => setInstagramTemplate(e.target.value)} className="w-full p-2 border rounded h-24 resize-none"></textarea>
+
+                <label className="block mt-4 mb-2 text-sm font-medium">YouTube</label>
+                <textarea value={youtubeTemplate} onChange={(e) => setYoutubeTemplate(e.target.value)} className="w-full p-2 border rounded h-24 resize-none"></textarea>
+
+                <label className="block mt-4 mb-2 text-sm font-medium">Bluesky</label>
+                <textarea value={blueskyTemplate} onChange={(e) => setBlueskyTemplate(e.target.value)} className="w-full p-2 border rounded h-24 resize-none"></textarea>
+
+                <label className="block mt-4 mb-2 text-sm font-medium">Twitter</label>
+                <textarea value={twitterTemplate} onChange={(e) => setTwitterTemplate(e.target.value)} className="w-full p-2 border rounded h-24 resize-none"></textarea>
+              </div>
+            </div>
+
+            {/* Buttons Outside the Scrollable Content */}
+            <div className="flex justify-between items-center p-4 border-t">
+              {/* Cancel Button (Bottom Left) */}
+              <button
+                className="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition"
+                onClick={() => setIsPostModalOpen(false)}
+              >
+                ✖ Cancel
+              </button>
+
+              {/* Post Button */}
+              <button className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition" onClick={handleMetaPost} disabled={isMetaPosting}>
+                {isMetaPosting ? "Posting..." : "Post to Selected Platforms"}
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+
+
     </div>
   );
 };
