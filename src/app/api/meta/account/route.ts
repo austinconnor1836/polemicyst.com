@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       pageId: page.id,
       instagramAccountId: instaResponse.data.instagram_business_account?.id || null,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching Facebook account info:", error.response?.data || error.message);
     return NextResponse.json({ error: "Failed to retrieve account details" }, { status: 500 });
   }
