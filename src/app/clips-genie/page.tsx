@@ -184,7 +184,7 @@ Threads: https://www.threads.net/@polemicyst`
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("description", description);
-      formData.append("accessToken", session.accessToken);
+      formData.append("accessToken", session.facebookAccessToken);
 
       const response = await axios.post("/api/meta/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" },

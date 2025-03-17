@@ -47,4 +47,6 @@ export const authOptions: NextAuthOptions = {
   },
 };
 
-export default authOptions;
+// ✅ Create and export the `auth` instance
+export const auth = NextAuth(authOptions);
+export default auth;
