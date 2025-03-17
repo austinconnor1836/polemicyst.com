@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import WbSunnyIcon from '@mui/icons-material/WbSunny';
@@ -14,6 +14,8 @@ const Navbar: React.FC = () => {
   const user = session?.user;
   const [menuOpen, setMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Load theme from localStorage
   useEffect(() => {
@@ -37,9 +39,24 @@ const Navbar: React.FC = () => {
     applyTheme(nextMode);
   };
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    if (menuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
+
   return (
     <nav className="navbar dark:bg-[#121212] dark:text-slate-400 bg-[#F9F9F9] text-[#2E2E2E] fixed top-0 left-0 z-50 w-full shadow-lg">
-      <div className="flex justify-between items-center px-4">
+      <div className="flex justify-between items-center px-4 py-2">
         <HamburgerMenu />
         <div className="flex items-center gap-4 relative">
           {/* Account Icon Button */}
@@ -55,7 +72,10 @@ const Navbar: React.FC = () => {
 
           {/* Dropdown Menu */}
           {menuOpen && (
-            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow-lg">
+            <div
+              ref={menuRef}
+              className="absolute right-0 mt-40 w-48 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow-lg"
+            >
               {user ? (
                 <>
                   <p className="px-4 py-2 text-sm">{user.name || 'User'}</p>
