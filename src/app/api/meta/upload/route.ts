@@ -61,7 +61,7 @@ async function waitForInstagramMedia(creationId: string, accessToken: string) {
       if (status === "FINISHED") {
         return true;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("⚠️ Error checking Instagram media status:", error.response?.data || error.message);
     }
   }

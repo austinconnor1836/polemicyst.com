@@ -1,20 +1,21 @@
-import { Metadata } from 'next'
-import { notFound } from 'next/navigation'
-import { getAllPosts, getPostBySlug } from '@/lib/api'
-import markdownToHtml from '@/lib/markdownToHtml'
-import Container from '@/app/_components/container'
-import Header from '@/app/_components/header'
-import { PostBody } from '@/app/_components/post-body'
-import { PostHeader } from '@/app/_components/post-header'
+import { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { getAllPosts, getPostBySlug } from '@/lib/api';
+import markdownToHtml from '@/lib/markdownToHtml';
+import Container from '@/app/_components/container';
+import Header from '@/app/_components/header';
+import { PostBody } from '@/app/_components/post-body';
+import { PostHeader } from '@/app/_components/post-header';
 
-export default async function Post({ params }: Params) {
-  const post = getPostBySlug(params.slug)
+// 🚨 REMOVE ALL EXPLICIT TYPES TEMPORARILY
+export default async function Post({ params }: any) {
+  const post = await getPostBySlug(params.slug);
 
   if (!post) {
-    return notFound()
+    return notFound();
   }
 
-  const content = await markdownToHtml(post.content || '')
+  const content = await markdownToHtml(post.content || '');
 
   return (
     <main>
@@ -31,37 +32,29 @@ export default async function Post({ params }: Params) {
         </article>
       </Container>
     </main>
-  )
+  );
 }
 
-type Params = {
-  params: {
-    slug: string
-  }
-}
-
-export function generateMetadata({ params }: Params): Metadata {
-  const post = getPostBySlug(params.slug)
+export async function generateMetadata({ params }: any) {
+  const post = await getPostBySlug(params.slug);
 
   if (!post) {
-    return notFound()
+    return undefined;
   }
-
-  const title = `${post.title} | Blog of Polemicyst`
 
   return {
-    title,
+    title: `${post.title} | Blog of Polemicyst`,
     openGraph: {
-      title,
-      images: [post.ogImage.url],
+      title: post.title,
+      images: post.ogImage ? [post.ogImage.url] : [],
     },
-  }
+  };
 }
 
 export async function generateStaticParams() {
-  const posts = getAllPosts()
+  const posts = await getAllPosts();
 
   return posts.map((post) => ({
-    slug: post.slug,
-  }))
+    params: { slug: post.slug },
+  }));
 }
