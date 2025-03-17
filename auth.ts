@@ -1,8 +1,14 @@
-import NextAuth from "next-auth";
+import NextAuth, { NextAuthOptions } from "next-auth";
 import FacebookProvider from "next-auth/providers/facebook";
 import GoogleProvider from "next-auth/providers/google";
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import { PrismaClient } from "@prisma/client";
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+const prisma = new PrismaClient();
+
+export const authOptions: NextAuthOptions = {
+  adapter: PrismaAdapter(prisma), // PostgreSQL persistence
+  debug: true,
   providers: [
     // Facebook (Meta) Provider
     FacebookProvider({
@@ -28,25 +34,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       },
     }),
   ],
-
+  session: {
+    strategy: "jwt",
+  },
   callbacks: {
-    // Store both Facebook and Google access tokens
-    async jwt({ token, account, profile }) {
-      if (account) {
-        if (account.provider === "facebook") {
-          token.facebookAccessToken = account.access_token;
-        } else if (account.provider === "google") {
-          token.googleAccessToken = account.access_token;
-        }
+    async session({ session, user }) {
+      if (user) {
+        session.user = { ...session.user, id: user.id };
       }
-      return token;
-    },
-
-    // Attach tokens to session for client-side access
-    async session({ session, token }) {
-      session.facebookAccessToken = token.facebookAccessToken as string | undefined;
-      session.googleAccessToken = token.googleAccessToken as string | undefined;
       return session;
     },
   },
-});
+};
+
+export default authOptions;
