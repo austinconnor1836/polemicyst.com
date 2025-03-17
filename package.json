@@ -3,7 +3,8 @@
   "scripts": {
     "dev": "next",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@atproto/api": "^0.14.7",

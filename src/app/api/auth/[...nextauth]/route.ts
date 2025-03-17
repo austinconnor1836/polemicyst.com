@@ -1,6 +1,3 @@
-import NextAuth from "next-auth";
-import authOptions from "../../../../../auth";
+import { GET, POST } from "../../../../../auth";
 
-const handler = (req: any, res: any) => NextAuth(req, res, authOptions);
-
-export { handler as GET, handler as POST };
+export { GET, POST };

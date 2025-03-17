@@ -10,7 +10,6 @@ export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma), // PostgreSQL persistence
   debug: true,
   providers: [
-    // Facebook (Meta) Provider
     FacebookProvider({
       clientId: process.env.AUTH_FACEBOOK_ID!,
       clientSecret: process.env.AUTH_FACEBOOK_SECRET!,
@@ -20,8 +19,6 @@ export const authOptions: NextAuthOptions = {
         },
       },
     }),
-
-    // Google (YouTube) Provider
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
@@ -38,15 +35,15 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
   },
   callbacks: {
-    async session({ session, user }) {
-      if (user) {
-        session.user = { ...session.user, id: user.id };
+    async session({ session, token }) {
+      if (token) {
+        session.user = { ...session.user, id: token.sub };
       }
       return session;
     },
   },
 };
 
-// ✅ Create and export the `auth` instance
-export const auth = NextAuth(authOptions);
-export default auth;
+// ✅ Correct export for API routes
+const handler = NextAuth(authOptions);
+export { handler as GET, handler as POST };

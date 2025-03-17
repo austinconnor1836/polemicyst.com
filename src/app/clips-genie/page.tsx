@@ -7,6 +7,7 @@ import axios from "axios";
 import { CheckCircle } from "@mui/icons-material";
 import { FaFacebook, FaTwitter, FaInstagram, FaYoutube } from "react-icons/fa";
 import { SiBluesky } from "react-icons/si";
+import LoginButtons from "../_components/login-buttons";
 
 
 
@@ -243,105 +244,80 @@ Threads: https://www.threads.net/@polemicyst`
         </div>
       )}
 
-      <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700" onClick={() => setIsPostModalOpen(true)}>
-        Post Video
-      </button>
+      <div className="p-6 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-semibold">Post a Video</h2>
+        <button
+          className="bg-blue-500 text-white px-3 py-1 rounded-md transition hover:bg-blue-600"
+          onClick={() => selectedFile && generateDescription(selectedFile)}
+          disabled={!selectedFile || isGeneratingDescription}
+        >
+          {isGeneratingDescription ? 'Generating...' : 'Regenerate AI Description'}
+        </button>
+      </div>
 
-      {isPostModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm z-40 p-6">
-          <div className="bg-white dark:bg-[#292c35] text-gray-900 dark:text-[#E0E0E0] p-6 rounded-lg shadow-xl sm:w-[500px] lg:w-[700px] xl:w-[800px] max-w-[90vw] mx-4 min-w-[24rem] overflow-hidden relative z-50 flex flex-col max-h-screen">
-
-            {/* Header with Title and Regenerate AI Button */}
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold">Post a Video</h2>
-
-              {/* Regenerate AI Description Button - Fixed Position */}
-              <button
-                className="bg-blue-500 text-white px-3 py-1 rounded-md transition hover:bg-blue-600"
-                onClick={() => selectedFile && generateDescription(selectedFile)}
-                disabled={!selectedFile || isGeneratingDescription}
+      {/* Content */}
+      <div className="flex flex-col md:flex-row mt-6 gap-6">
+        {/* Left Column: Platforms List */}
+        <div className="md:w-1/4 bg-gray-100 dark:bg-[#1e1e1e] p-4 rounded-lg">
+          <h3 className="text-lg font-semibold mb-2">Platforms</h3>
+          <ul className="space-y-2">
+            {['Facebook', 'Instagram', 'YouTube', 'Bluesky', 'Twitter'].map((name) => (
+              <li
+                key={name}
+                className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-200 dark:hover:bg-[#292c35] rounded-md transition"
               >
-                {isGeneratingDescription ? "Generating..." : "Regenerate AI Description"}
-              </button>
+                {name}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Right Column: Upload & Descriptions */}
+        <div className="md:w-3/4 p-6 bg-white dark:bg-[#292c35] shadow-md rounded-lg">
+          {/* File Upload */}
+          <label className="block mb-2 text-sm font-medium">Upload Video File</label>
+          <div className="border-2 border-dashed border-gray-400 p-6 text-center rounded-lg cursor-pointer">
+            <input type="file" accept="video/*" onChange={handleFileSelect} className="hidden" id="fileUpload" />
+            <label htmlFor="fileUpload" className="block mt-2 bg-blue-600 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-700">
+              Choose from device
+            </label>
+            {selectedFile && <p className="text-xs text-gray-500 mt-2">{selectedFile.name}</p>}
+          </div>
+
+          {/* Shared Description */}
+          <label className="block mt-4 mb-2 text-sm font-medium">General Description</label>
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-2 border rounded h-32 resize-none"></textarea>
+
+          {/* Platform-Specific Descriptions */}
+          <h3 className="text-lg font-semibold mt-6">Platform-Specific Descriptions</h3>
+
+          {[
+            { label: 'Facebook', state: facebookTemplate, setState: setFacebookTemplate },
+            { label: 'Instagram', state: instagramTemplate, setState: setInstagramTemplate },
+            { label: 'YouTube', state: youtubeTemplate, setState: setYoutubeTemplate },
+            { label: 'Bluesky', state: blueskyTemplate, setState: setBlueskyTemplate },
+            { label: 'Twitter', state: twitterTemplate, setState: setTwitterTemplate },
+          ].map(({ label, state, setState }) => (
+            <div key={label} className="mt-4">
+              <label className="block mb-2 text-sm font-medium">{label}</label>
+              <textarea value={state} onChange={(e) => setState(e.target.value)} className="w-full p-2 border rounded h-24 resize-none"></textarea>
             </div>
+          ))}
 
-            {/* Scrollable Content */}
-            <div className="flex w-full h-full max-h-[65vh] overflow-y-auto mt-4">
-
-              {/* Left Column: Platforms List */}
-              <div className="w-1/4 bg-gray-100 dark:bg-[#1e1e1e] p-4 rounded-l-lg">
-                <h3 className="text-lg font-semibold mb-2 md:block">Platforms</h3>
-                <ul className="space-y-2">
-                  {platforms.map(({ name, icon }) => (
-                    <li
-                      key={name}
-                      className="flex items-center justify-between cursor-pointer hover:bg-gray-200 dark:hover:bg-[#292c35] rounded-md transition"
-                      onClick={() => togglePlatform(name)}
-                    >
-                      <span className="hidden md:block">{name}</span>
-                      <span className="md:hidden">{icon}</span>
-                      {selectedPlatforms.includes(name) && <CheckCircle className="text-green-500 ml-2" />}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Right Column: Form */}
-              <div className="w-3/4 p-6">
-                {/* File Upload */}
-                <label className="block mb-2 text-sm font-medium">Upload Video File</label>
-                <div className="border-2 border-dashed border-gray-400 p-6 text-center rounded-lg mt-4 cursor-pointer" onDragOver={(e) => e.preventDefault()} onDrop={handleFileDrop}>
-                  <input type="file" accept="video/*" onChange={handleFileSelect} className="hidden" id="fileUpload" />
-                  <label htmlFor="fileUpload" className="block mt-2 bg-blue-600 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-700">
-                    Choose from device
-                  </label>
-                  {selectedFile && <p className="text-xs text-gray-500 mt-2">{selectedFile.name}</p>}
-                </div>
-
-                {videoPreview && <video className="mt-4 w-full max-h-40" controls><source src={videoPreview} type="video/mp4" /></video>}
-
-                {/* Shared Description */}
-                <label className="block mt-4 mb-2 text-sm font-medium">General Description</label>
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-2 border rounded h-32 sm:h-40 resize-none"></textarea>
-
-                {/* Platform-Specific Descriptions */}
-                <h3 className="text-lg font-semibold mt-6">Platform-Specific Descriptions</h3>
-
-                <label className="block mt-4 mb-2 text-sm font-medium">Facebook</label>
-                <textarea value={facebookTemplate} onChange={(e) => setFacebookTemplate(e.target.value)} className="w-full p-2 border rounded h-24 resize-none"></textarea>
-
-                <label className="block mt-4 mb-2 text-sm font-medium">Instagram</label>
-                <textarea value={instagramTemplate} onChange={(e) => setInstagramTemplate(e.target.value)} className="w-full p-2 border rounded h-24 resize-none"></textarea>
-
-                <label className="block mt-4 mb-2 text-sm font-medium">YouTube</label>
-                <textarea value={youtubeTemplate} onChange={(e) => setYoutubeTemplate(e.target.value)} className="w-full p-2 border rounded h-24 resize-none"></textarea>
-
-                <label className="block mt-4 mb-2 text-sm font-medium">Bluesky</label>
-                <textarea value={blueskyTemplate} onChange={(e) => setBlueskyTemplate(e.target.value)} className="w-full p-2 border rounded h-24 resize-none"></textarea>
-
-                <label className="block mt-4 mb-2 text-sm font-medium">Twitter</label>
-                <textarea value={twitterTemplate} onChange={(e) => setTwitterTemplate(e.target.value)} className="w-full p-2 border rounded h-24 resize-none"></textarea>
-              </div>
-            </div>
-
-            {/* Buttons Outside the Scrollable Content */}
-            <div className="flex justify-between items-center p-4 border-t">
-              {/* Cancel Button (Bottom Left) */}
-              <button
-                className="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition"
-                onClick={() => setIsPostModalOpen(false)}
-              >
-                ✖ Cancel
-              </button>
-
-              {/* Post Button */}
-              <button className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition" onClick={handleMetaPost} disabled={isMetaPosting}>
-                {isMetaPosting ? "Posting..." : "Post to Selected Platforms"}
-              </button>
-            </div>
+          {/* Action Buttons */}
+          <div className="flex justify-between items-center mt-6">
+            <button className="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition">
+              ✖ Cancel
+            </button>
+            <button className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition" onClick={handleMetaPost} disabled={isMetaPosting}>
+              {isMetaPosting ? 'Posting...' : 'Post to Selected Platforms'}
+            </button>
           </div>
         </div>
-      )}
+      </div>
+    </div>
 
 
 

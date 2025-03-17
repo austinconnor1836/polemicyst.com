@@ -1,0 +1,8 @@
+{
+  "build": {
+    "env": {
+      "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/clips-genie"
+    },
+    "command": "npx prisma generate && npm run build"
+  }
+}
