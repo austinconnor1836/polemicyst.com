@@ -24,6 +24,7 @@
     "date-fns": "^3.6.0",
     "formidable": "^3.5.2",
     "fs": "^0.0.1-security",
+    "googleapis": "^146.0.0",
     "gray-matter": "^4.0.3",
     "next": "^15.2.2",
     "next-auth": "^4.24.11",

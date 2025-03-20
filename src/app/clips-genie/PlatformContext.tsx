@@ -24,6 +24,8 @@ interface PlatformContextProps {
   setSelectedPlatforms: React.Dispatch<React.SetStateAction<string[]>>;
   togglePlatform: (provider: string) => void;
   isAuthenticated: Record<string, boolean>;
+  isPosting: boolean;
+  setIsPosting: (isPosting: boolean) => void;
   authenticate: (provider: string) => void;
   refreshAuthStatus: () => void;
   sharedDescription: string;
@@ -73,6 +75,7 @@ Threads: https://www.threads.net/@polemicyst`
     bluesky: false,
     twitter: false,
   });
+  const [isPosting, setIsPosting] = useState(false);
 
   // Function to fetch authentication status from the API
   const fetchAuthenticationStatus = async () => {
@@ -136,7 +139,9 @@ Threads: https://www.threads.net/@polemicyst`
         authenticate,
         refreshAuthStatus: fetchAuthenticationStatus,
         sharedDescription,
-        setSharedDescription
+        setSharedDescription,
+        isPosting,
+        setIsPosting
       }}
     >
       {children}

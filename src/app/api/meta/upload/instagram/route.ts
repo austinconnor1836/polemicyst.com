@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import axios from "axios";
-import FormData from "form-data";
 import AWS from "aws-sdk";
 
 // AWS S3 Configuration
@@ -105,35 +104,14 @@ export async function POST(req: NextRequest) {
       return new Response(JSON.stringify({ error: "No Instagram Business Account linked to this page." }), { status: 400 });
     }
 
-    // Step 3: Convert Blob to Buffer for Facebook Upload
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    // Step 4: Upload video to Facebook (returns video ID)
-    const fbForm = new FormData();
-    fbForm.append("description", description);
-    fbForm.append("access_token", pageAccessToken);
-    fbForm.append("source", buffer, "video.mp4");
-
-    const fbUploadResponse = await axios.post(
-      `https://graph.facebook.com/v19.0/${pageId}/videos`,
-      fbForm,
-      { headers: fbForm.getHeaders() }
-    );
-
-    const facebookVideoId = fbUploadResponse.data.id;
-    const facebookVideoUrl = `https://www.facebook.com/${pageId}/videos/${facebookVideoId}`;
-
-    console.log("✅ Facebook upload successful:", facebookVideoUrl);
-
-    // Step 5: Upload Video to AWS S3 for Instagram
+    // Step 3: Upload Video to AWS S3 for Instagram
     console.log("📤 Uploading to AWS S3 for Instagram...");
     const filename = `uploads/${Date.now()}-video.mp4`;
     const { url: s3VideoUrl, key: objectKey } = await uploadToS3(file, filename);
     s3ObjectKey = objectKey; // Store object key for deletion
     console.log("✅ S3 Upload Successful:", s3VideoUrl);
 
-    // Step 6: Upload to Instagram using S3 Public URL
+    // Step 4: Upload to Instagram using S3 Public URL
     const igUploadResponse = await axios.post(
       `https://graph.facebook.com/v19.0/${instagramAccountId}/media`,
       {
@@ -147,13 +125,13 @@ export async function POST(req: NextRequest) {
     const creationId = igUploadResponse.data.id;
     console.log("📤 Instagram upload started, waiting for processing...");
 
-    // Step 7: Wait for Instagram media to be ready
+    // Step 5: Wait for Instagram media to be ready
     const isReady = await waitForInstagramMedia(creationId, pageAccessToken);
     if (!isReady) {
       return new Response(JSON.stringify({ error: "Instagram media processing took too long." }), { status: 500 });
     }
 
-    // Step 8: Publish the Instagram video
+    // Step 6: Publish the Instagram video
     const publishResponse = await axios.post(
       `https://graph.facebook.com/v19.0/${instagramAccountId}/media_publish`,
       {
@@ -164,7 +142,7 @@ export async function POST(req: NextRequest) {
 
     console.log("✅ Instagram upload successful:", publishResponse.data.id);
 
-    // Step 9: Delete the video from S3
+    // Step 7: Delete the video from S3
     if (s3ObjectKey) {
       console.log("🗑️ Deleting video from S3...");
       await deleteFromS3(s3ObjectKey);
@@ -173,7 +151,6 @@ export async function POST(req: NextRequest) {
 
     return new Response(
       JSON.stringify({
-        facebookVideoId,
         instagramPostId: publishResponse.data.id,
       }),
       { status: 200 }
