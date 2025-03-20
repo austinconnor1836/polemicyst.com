@@ -4,12 +4,20 @@ declare module "next-auth" {
   interface Session extends DefaultSession {
     user: {
       id: string;
-    } & DefaultSession["user"];
-    facebookAccessToken?: string;
-    googleAccessToken?: string;
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
+      facebookAccessToken?: string;
+      googleAccessToken?: string;
+      twitterAccessToken?: string;
+      blueskyAccessToken?: string;
+      instagramAccessToken?: string;
+      providers?: string[];
+    };
   }
+}
 
-  interface JWT {
-    accessToken?: string;
-  }
+
+interface JWT {
+  accessToken?: string;
 }

@@ -1,8 +1,10 @@
 import NextAuth, { NextAuthOptions } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
 import FacebookProvider from "next-auth/providers/facebook";
 import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { PrismaClient } from "@prisma/client";
+import { BskyAgent } from "@atproto/api";
 
 const prisma = new PrismaClient();
 
@@ -30,20 +32,144 @@ export const authOptions: NextAuthOptions = {
         },
       },
     }),
+    CredentialsProvider({
+      name: "Bluesky",
+      credentials: {
+        username: { label: "Bluesky Handle or Email", type: "text" },
+        password: { label: "App Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.username || !credentials?.password) {
+          throw new Error("Missing Bluesky credentials.");
+        }
+
+        try {
+          const agent = new BskyAgent({ service: "https://bsky.social" });
+          const session = await agent.login({
+            identifier: credentials.username,
+            password: credentials.password,
+          });
+
+          // Find or create user in PostgreSQL
+          let user = await prisma.user.findFirst({
+            where: { email: credentials.username },
+          });
+
+          if (!user) {
+            user = await prisma.user.create({
+              data: {
+                email: credentials.username,
+                name: credentials.username,
+              },
+            });
+          }
+
+          // Store Bluesky session tokens in the database
+          await prisma.account.upsert({
+            where: { provider_providerAccountId: { provider: "bluesky", providerAccountId: credentials.username } },
+            update: {
+              access_token: session.data.accessJwt,
+              refresh_token: session.data.refreshJwt,
+              expires_at: Math.floor(Date.now() / 1000) + 86400, // Token valid for 24h
+            },
+            create: {
+              userId: user.id,
+              provider: "bluesky",
+              providerAccountId: credentials.username,
+              access_token: session.data.accessJwt,
+              refresh_token: session.data.refreshJwt,
+              expires_at: Math.floor(Date.now() / 1000) + 86400,
+              type: "credentials",
+            },
+          });
+
+          return user;
+        } catch (error) {
+          console.error("Bluesky authentication error:", error);
+          throw new Error("Invalid Bluesky credentials.");
+        }
+      },
+    }),
   ],
   session: {
     strategy: "jwt",
   },
+  pages: {
+    signIn: '/auth/signin'
+  },
   callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id; // ✅ Store user ID in token
+      }
+      return token;
+    },
+    async signIn({ user, account }) {
+      if (!user.email) {
+        throw new Error("Email is required for authentication.");
+      }
+
+      const existingUser = await prisma.user.findUnique({
+        where: { email: user.email },
+        include: { accounts: true },
+      });
+
+      if (existingUser) {
+        const hasSameProvider = existingUser.accounts.some((acc: any) => acc.provider === account?.provider);
+
+        if (!hasSameProvider) {
+          // ✅ Link new provider (Facebook, Google, etc.) to existing user
+          await prisma.account.upsert({
+            where: { provider_providerAccountId: { provider: account!.provider, providerAccountId: account!.providerAccountId } },
+            update: {
+              access_token: account?.access_token,
+              refresh_token: account?.refresh_token,
+              expires_at: account?.expires_at,
+            },
+            create: {
+              userId: existingUser.id,
+              provider: account!.provider,
+              providerAccountId: account!.providerAccountId,
+              access_token: account?.access_token,
+              refresh_token: account?.refresh_token,
+              expires_at: account?.expires_at,
+              type: "credentials",
+            },
+          });
+
+          return true;
+        }
+      }
+
+      return true;
+    },
+
     async session({ session, token }) {
       if (token) {
-        session.user = { ...session.user, id: token.sub };
+        session.user = { ...session.user, id: token.sub as string };
       }
+
+      // ✅ Fetch linked accounts and store in session
+      const accounts = await prisma.account.findMany({
+        where: { userId: session.user.id },
+        select: { provider: true },
+      });
+
+      let providers = accounts.map((acc: any) => acc.provider);
+
+      // ✅ If Facebook is authenticated, Instagram should be considered authenticated
+      if (providers.includes("facebook") && !providers.includes("instagram")) {
+        providers.push("instagram");
+      }
+
+      session.user.providers = providers;
       return session;
     },
-  },
+  }
+
+
 };
 
-// ✅ Correct export for API routes
+// ✅ Correct export for API routes in Next.js App Router
 const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };
