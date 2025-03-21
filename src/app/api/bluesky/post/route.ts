@@ -1,15 +1,38 @@
 import { NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
 import { BskyAgent, RichText } from '@atproto/api';
+
+const prisma = new PrismaClient();
 
 export async function POST(req: Request) {
   try {
-    const { youtubeUrl, title, description, session } = await req.json();
+    const { youtubeUrl, description, userId } = await req.json();
 
-    if (!session || !session.accessJwt || !session.refreshJwt || !session.handle || !session.did) {
-      return NextResponse.json({ message: 'Invalid session data.' }, { status: 401 });
+    if (!userId) {
+      return NextResponse.json({ message: 'Missing user ID.' }, { status: 400 });
     }
 
-    // ✅ Improved YouTube URL regex to support Shorts, normal, and youtu.be links
+    // ✅ Fetch Bluesky session details from DB
+    const account = await prisma.account.findFirst({
+      where: {
+        userId,
+        provider: 'bluesky',
+      },
+    });
+
+    if (!account || !account.access_token || !account.refresh_token || !account.scope) {
+      return NextResponse.json({ message: 'Bluesky session not found or incomplete.' }, { status: 401 });
+    }
+
+    const session = {
+      accessJwt: account.access_token,
+      refreshJwt: account.refresh_token,
+      handle: account.providerAccountId,
+      did: account.scope, // ✅ DID stored in the 'scope' field
+      active: true,
+    };
+
+    // ✅ Extract YouTube video ID
     const videoIdMatch = youtubeUrl.match(
       /(?:youtube\.com\/(?:.*[?&]v=|shorts\/)|youtu\.be\/)([^"&?\/ ]{11})/
     );
@@ -22,11 +45,19 @@ export async function POST(req: Request) {
     const embedUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
 
-    // Resume session with full data
+    // ✅ Fetch title from YouTube API
+    const youtubeRes = await fetch(`https://www.youtube.com/oembed?url=${embedUrl}&format=json`);
+    if (!youtubeRes.ok) {
+      return NextResponse.json({ message: 'Failed to fetch YouTube title' }, { status: 500 });
+    }
+    const youtubeData = await youtubeRes.json();
+    const title = youtubeData.title || 'YouTube Video';
+
+    // ✅ Resume session
     const agent = new BskyAgent({ service: 'https://bsky.social' });
     await agent.resumeSession(session);
 
-    // Upload thumbnail and create post
+    // ✅ Upload thumbnail image
     const imageResponse = await fetch(thumbnailUrl);
     const imageArrayBuffer = await imageResponse.arrayBuffer();
     const imageUint8Array = new Uint8Array(imageArrayBuffer);
@@ -34,9 +65,6 @@ export async function POST(req: Request) {
 
     const rt = new RichText({ text: description });
     await rt.detectFacets(agent);
-
-    // Ensure title is provided
-    const videoTitle = title.trim() || 'YouTube Video';
 
     const post = await agent.post({
       text: rt.text,
@@ -46,7 +74,7 @@ export async function POST(req: Request) {
         $type: 'app.bsky.embed.external',
         external: {
           uri: embedUrl,
-          title: videoTitle,
+          title: title,
           description: '',
           thumb: uploadedImage.data.blob,
         },

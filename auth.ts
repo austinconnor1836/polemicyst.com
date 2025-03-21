@@ -65,13 +65,19 @@ export const authOptions: NextAuthOptions = {
             });
           }
 
-          // Store Bluesky session tokens in the database
+          // Store Bluesky session tokens and DID in the database
           await prisma.account.upsert({
-            where: { provider_providerAccountId: { provider: "bluesky", providerAccountId: credentials.username } },
+            where: {
+              provider_providerAccountId: {
+                provider: "bluesky",
+                providerAccountId: credentials.username,
+              },
+            },
             update: {
               access_token: session.data.accessJwt,
               refresh_token: session.data.refreshJwt,
-              expires_at: Math.floor(Date.now() / 1000) + 86400, // Token valid for 24h
+              expires_at: Math.floor(Date.now() / 1000) + 86400,
+              scope: session.data.did, // ✅ Store DID here
             },
             create: {
               userId: user.id,
@@ -81,6 +87,7 @@ export const authOptions: NextAuthOptions = {
               refresh_token: session.data.refreshJwt,
               expires_at: Math.floor(Date.now() / 1000) + 86400,
               type: "credentials",
+              scope: session.data.did, // ✅ Store DID here
             },
           });
 
@@ -94,7 +101,7 @@ export const authOptions: NextAuthOptions = {
     TwitterProvider({
       clientId: process.env.TWITTER_CONSUMER_KEY!,
       clientSecret: process.env.TWITTER_CONSUMER_SECRET!,
-      version: "2.0", // Enable OAuth 2.0 for newer Twitter API,
+      version: "2.0",
       authorization: {
         url: "https://twitter.com/i/oauth2/authorize",
         params: {
@@ -112,15 +119,13 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user, account }) {
       if (user) {
-        token.id = user.id; // ✅ Store user ID in token
+        token.id = user.id;
       }
 
-      // When signing in with Google, store the access token as a string.
       if (account?.provider === "google" && account.access_token) {
         token.googleAccessToken = account.access_token as string;
       }
 
-      // When signing in with Google, store the access token as a string.
       if (account?.provider === "facebook" && account.access_token) {
         token.facebookAccessToken = account.access_token as string;
       }
@@ -140,13 +145,16 @@ export const authOptions: NextAuthOptions = {
         const hasSameProvider = existingUser.accounts.some((acc: any) => acc.provider === account?.provider);
 
         if (!hasSameProvider) {
-          // ✅ Ensure providerAccountId is not null
           if (!account?.providerAccountId) {
             throw new Error(`Missing providerAccountId for ${account?.provider}`);
           }
-          // ✅ Link new provider (Facebook, Google, etc.) to existing user
           await prisma.account.upsert({
-            where: { provider_providerAccountId: { provider: account!.provider, providerAccountId: account!.providerAccountId } },
+            where: {
+              provider_providerAccountId: {
+                provider: account!.provider,
+                providerAccountId: account!.providerAccountId,
+              },
+            },
             update: {
               access_token: account?.access_token,
               refresh_token: account?.refresh_token,
@@ -175,17 +183,14 @@ export const authOptions: NextAuthOptions = {
         session.user = { ...session.user, id: token.sub as string };
       }
 
-      // Expose Google access token in session
       if (token.googleAccessToken) {
         session.user.googleAccessToken = token.googleAccessToken;
       }
 
-      // Expose Google access token in session
       if (token.facebookAccessToken) {
         session.user.facebookAccessToken = token.facebookAccessToken;
       }
 
-      // ✅ Fetch linked accounts and store in session
       const accounts = await prisma.account.findMany({
         where: { userId: session.user.id },
         select: { provider: true },
@@ -193,7 +198,6 @@ export const authOptions: NextAuthOptions = {
 
       let providers = accounts.map((acc: any) => acc.provider);
 
-      // ✅ If Facebook is authenticated, Instagram should be considered authenticated
       if (providers.includes("facebook") && !providers.includes("instagram")) {
         providers.push("instagram");
       }
@@ -201,11 +205,8 @@ export const authOptions: NextAuthOptions = {
       session.user.providers = providers;
       return session;
     },
-  }
-
-
+  },
 };
 
-// ✅ Correct export for API routes in Next.js App Router
 const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };

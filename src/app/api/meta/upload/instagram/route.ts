@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import axios from "axios";
 import AWS from "aws-sdk";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
 
 // AWS S3 Configuration
 const S3_BUCKET = "clips-genie-uploads";
@@ -42,7 +45,7 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function waitForInstagramMedia(creationId: string, accessToken: string) {
   let attempts = 0;
-  const maxAttempts = 15; // Increase retries
+  const maxAttempts = 50; // Increase retries
   const waitTime = 5000; // Wait 5 seconds per attempt
 
   while (attempts < maxAttempts) {
@@ -75,11 +78,21 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get("file") as Blob | null;
     const description = formData.get("description") as string;
-    const userAccessToken = formData.get("accessToken") as string;
+    const userId = formData.get("userId") as string;
 
-    if (!file || !description || !userAccessToken) {
+    if (!file || !description || !userId) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
     }
+
+    // ✅ Fetch Facebook access token from DB via Prisma
+    const fbAccount = await prisma.account.findFirst({
+      where: {
+        userId,
+        provider: "facebook",
+      },
+    });
+
+    const userAccessToken = fbAccount?.access_token;
 
     // Step 1: Get Facebook Page & Access Token
     const { data: pagesData } = await axios.get(

@@ -41,7 +41,6 @@ const PlatformList = () => {
 
     // If user logs out from Instagram, treat it as Facebook
     const effectiveProvider = provider === "instagram" ? "facebook" : provider;
-    console.log(`Logging out from ${effectiveProvider}`); // ✅ Debugging log
 
     const response = await fetch(`/api/auth/logout`, {
       method: "POST",
@@ -73,7 +72,6 @@ const PlatformList = () => {
           }
 
           const isSelected = selectedPlatforms.includes(provider);
-          console.log('name', name)
 
           return (
             <li

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { google } from "googleapis";
 import { Readable } from "stream";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
 
 export async function POST(req: Request) {
   try {
@@ -8,13 +11,22 @@ export async function POST(req: Request) {
     const file = formData.get("file") as File | null;
     const title = formData.get("title") as string;
     const description = formData.get("description") as string;
-    const accessToken = formData.get("accessToken") as string; // YouTube OAuth Token
+    const userId = formData.get("userId") as string;
 
-    console.log('file', file);
-    if (!file || !title || !description || !accessToken) {
+    if (!file || !title || !description || !userId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    // ✅ Fetch Facebook access token from DB via Prisma
+    const googleAccount = await prisma.account.findFirst({
+      where: {
+        userId,
+        provider: "google",
+      },
+    });
+
+    const accessToken = googleAccount?.access_token;
+    
     console.log("📺 Uploading to YouTube...");
 
     // Initialize YouTube API client

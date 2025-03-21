@@ -54,8 +54,8 @@ const DescriptionEditor = () => {
 
     const endpointMap: Record<string, string> = {
       bluesky: "/api/bluesky/post",
-      facebook: "/api/meta/facebook/upload",
-      instagram: "/api/meta/instagram/upload",
+      facebook: "/api/meta/upload/facebook",
+      instagram: "/api/meta/upload/instagram",
       google: "/api/youtube/upload",
       twitter: "/api/twitter/post",
     };
@@ -66,11 +66,10 @@ const DescriptionEditor = () => {
     if (selectedPlatforms.includes("google")) {
       try {
         const ytForm = new FormData();
-        console.log('selectedFile', selectedFile);
         ytForm.append("file", selectedFile);
         ytForm.append("title", videoTitle);
         ytForm.append("description", descriptions.google);
-        ytForm.append("accessToken", session?.user.googleAccessToken || "");
+        ytForm.append("userId", session?.user.id!);
 
         const ytRes = await axios.post(endpointMap.google, ytForm, {
           headers: { "Content-Type": "multipart/form-data" },
@@ -100,16 +99,18 @@ const DescriptionEditor = () => {
           const form = new FormData();
           form.append("file", selectedFile);
           form.append("description", descriptions[platform]);
-          form.append("accessToken", session?.user.facebookAccessToken || "");
+          // form.append("accessToken", session?.user.facebookAccessToken || "");
+          form.append("userId", session?.user.id!);
 
           await axios.post(endpointMap[platform], form, {
             headers: { "Content-Type": "multipart/form-data" },
           });
         } else {
+          // post to bluesky
           await axios.post(endpointMap[platform], {
             youtubeUrl: uploadedYouTubeUrl,
             description: descriptions[platform],
-            session,
+            userId: session?.user.id,
           });
         }
 
