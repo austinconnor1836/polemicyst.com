@@ -2,6 +2,8 @@
 
 import { useSession } from "next-auth/react";
 import React, { createContext, useState, useContext, useEffect } from "react";
+import toast from 'react-hot-toast';
+import axios from 'axios';
 
 interface PlatformContextProps {
   selectedFile: File | null;
@@ -30,6 +32,11 @@ interface PlatformContextProps {
   refreshAuthStatus: () => void;
   sharedDescription: string;
   setSharedDescription: (desc: string) => void;
+  videoTitle: string;
+  setVideoTitle: (title: string) => void;
+  isGenerating: boolean;
+  setIsGenerating: (isGenerating: boolean) => void;
+  generateDescription: (file: File) => void;
 }
 
 const PlatformContext = createContext<PlatformContextProps | undefined>(undefined);
@@ -40,6 +47,7 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [sharedDescription, setSharedDescription] = useState("");
+  const [videoTitle, setVideoTitle] = useState("");
   const [facebookTemplate, setFacebookTemplate] = useState(
     `For more from Polemicyst:\n
 Youtube: https://www.youtube.com/@Polemicyst
@@ -75,6 +83,7 @@ Threads: https://www.threads.net/@polemicyst`
     bluesky: false,
     twitter: false,
   });
+  const [isGenerating, setIsGenerating] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
 
   // Function to fetch authentication status from the API
@@ -113,6 +122,65 @@ Threads: https://www.threads.net/@polemicyst`
     }));
   };
 
+  const generateDescription = async (file: File) => {
+    setIsGenerating(true);
+    setSharedDescription("Generating description...");
+    setVideoTitle("Generating video title...");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await axios.post("/api/generateDescription", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const { description, hashtags, title } = response.data;
+
+      if (description && hashtags) {
+        const fixedHashtags = [
+          "#Polemicyst",
+          "#news",
+          "#politics",
+          "#youtube",
+          "#trump",
+          "#left",
+          "#progressive",
+          "#viral",
+          "#maga",
+        ];
+
+        const allHashtags = [...fixedHashtags, ...hashtags];
+        const hashtagsString = allHashtags.join(", ");
+        const patreonLink = "\n\nSupport me on Patreon: https://www.patreon.com/c/Polemicyst";
+        const finalDescription = `${description}\n\n${hashtagsString}${patreonLink}`;
+
+        setSharedDescription(finalDescription);
+        setVideoTitle(title);
+
+        const maxLength = 300;
+        const trimmedDescription = `${description} ${hashtagsString}`.substring(0, maxLength).trim();
+
+        setBlueskyTemplate(trimmedDescription);
+        setTwitterTemplate(trimmedDescription);
+      } else {
+        setSharedDescription("Failed to generate description.");
+        setVideoTitle("Failed to generate title.");
+        setBlueskyTemplate("Failed to generate description.");
+        setTwitterTemplate("Failed to generate description.");
+      }
+    } catch (error) {
+      console.error("Error generating description:", error);
+      toast.error("Failed to generate description.");
+      setSharedDescription("Failed to generate description.");
+      setVideoTitle("Failed to generate title.");
+      setBlueskyTemplate("Failed to generate description.");
+      setTwitterTemplate("Failed to generate description.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return (
     <PlatformContext.Provider
       value={{
@@ -141,7 +209,12 @@ Threads: https://www.threads.net/@polemicyst`
         sharedDescription,
         setSharedDescription,
         isPosting,
-        setIsPosting
+        setIsPosting,
+        videoTitle,
+        setVideoTitle,
+        isGenerating,
+        setIsGenerating,
+        generateDescription
       }}
     >
       {children}

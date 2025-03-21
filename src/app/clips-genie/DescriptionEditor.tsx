@@ -8,7 +8,6 @@ import { useSession } from "next-auth/react";
 
 const DescriptionEditor = () => {
   const { data: session } = useSession();
-  console.log('session',  session);
   const {
     sharedDescription, setSharedDescription,
     facebookTemplate, setFacebookTemplate,
@@ -17,7 +16,9 @@ const DescriptionEditor = () => {
     blueskyTemplate, setBlueskyTemplate,
     twitterTemplate, setTwitterTemplate,
     selectedPlatforms,
-    selectedFile
+    selectedFile,
+    videoTitle,
+    setVideoTitle
   } = usePlatformContext();
 
   const [isPosting, setIsPosting] = useState(false);
@@ -27,6 +28,11 @@ const DescriptionEditor = () => {
   const handlePostToSelectedPlatforms = async () => {
     if (!selectedFile) {
       toast.error("No video file selected.");
+      return;
+    }
+
+    if (!selectedPlatforms || selectedPlatforms.length === 0) {
+      toast.error("No platforms selected.");
       return;
     }
 
@@ -62,7 +68,7 @@ const DescriptionEditor = () => {
         const ytForm = new FormData();
         console.log('selectedFile', selectedFile);
         ytForm.append("file", selectedFile);
-        ytForm.append("title", "Polemicyst Video Upload");
+        ytForm.append("title", videoTitle);
         ytForm.append("description", descriptions.google);
         ytForm.append("accessToken", session?.user.googleAccessToken || "");
 
@@ -122,6 +128,14 @@ const DescriptionEditor = () => {
 
   return (
     <div>
+      <label className="block mt-4 mb-2 text-sm font-medium">Video Title</label>
+      <input
+        type="text"
+        value={videoTitle}
+        onChange={(e) => setVideoTitle(e.target.value)}
+        className="w-full p-2 border rounded"
+      />
+
       <label className="block mt-4 mb-2 text-sm font-medium">General Description</label>
       <textarea
         value={sharedDescription}

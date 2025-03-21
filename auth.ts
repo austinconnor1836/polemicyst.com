@@ -111,9 +111,6 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user, account }) {
-      console.log("🔐 JWT callback token:", token);
-      console.log("🔐 JWT callback account:", account);
-
       if (user) {
         token.id = user.id; // ✅ Store user ID in token
       }
@@ -121,6 +118,11 @@ export const authOptions: NextAuthOptions = {
       // When signing in with Google, store the access token as a string.
       if (account?.provider === "google" && account.access_token) {
         token.googleAccessToken = account.access_token as string;
+      }
+
+      // When signing in with Google, store the access token as a string.
+      if (account?.provider === "facebook" && account.access_token) {
+        token.facebookAccessToken = account.access_token as string;
       }
       return token;
     },
@@ -176,6 +178,11 @@ export const authOptions: NextAuthOptions = {
       // Expose Google access token in session
       if (token.googleAccessToken) {
         session.user.googleAccessToken = token.googleAccessToken;
+      }
+
+      // Expose Google access token in session
+      if (token.facebookAccessToken) {
+        session.user.facebookAccessToken = token.facebookAccessToken;
       }
 
       // ✅ Fetch linked accounts and store in session

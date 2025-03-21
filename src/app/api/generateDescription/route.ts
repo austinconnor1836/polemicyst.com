@@ -49,33 +49,43 @@ async function extractAndCompressAudio(videoBuffer: Uint8Array): Promise<string>
 }
 
 // ✅ Function to Generate AI-Based Description and Hashtags
-async function generateDescriptionAndHashtags(transcript: string): Promise<{ description: string; hashtags: string[] }> {
-  const response = await openai.chat.completions.create({
-    model: "gpt-4",
-    messages: [
-      { role: "system", content: "Summarize the following transcript into an engaging social media post:" },
-      { role: "user", content: transcript }
-    ],
-    max_tokens: 150,
-  });
+async function generateDescriptionAndHashtags(transcript: string): Promise<{
+  title: string;
+  description: string;
+  hashtags: string[];
+}> {
+  const [descResponse, hashtagResponse, titleResponse] = await Promise.all([
+    openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        { role: "system", content: "Summarize the following transcript into an engaging social media post:" },
+        { role: "user", content: transcript },
+      ],
+      max_tokens: 150,
+    }),
+    openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        { role: "system", content: "Generate five relevant hashtags based on this transcript. Return them as a comma-separated list." },
+        { role: "user", content: transcript },
+      ],
+      max_tokens: 20,
+    }),
+    openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        { role: "system", content: "Generate a compelling, YouTube-style title for this video based on the transcript." },
+        { role: "user", content: transcript },
+      ],
+      max_tokens: 20,
+    }),
+  ]);
 
-  // Extract AI-generated description
-  const aiGeneratedText = response.choices?.[0]?.message?.content?.trim() || "No description generated.";
+  const description = descResponse.choices?.[0]?.message?.content?.trim() || "No description generated.";
+  const hashtags = hashtagResponse.choices?.[0]?.message?.content?.trim().split(", ") || [];
+  const title = titleResponse.choices?.[0]?.message?.content?.trim() || "Untitled";
 
-  // Generate five hashtags based on the transcript
-  const hashtagResponse = await openai.chat.completions.create({
-    model: "gpt-4",
-    messages: [
-      { role: "system", content: "Generate five relevant hashtags based on this transcript. Return them as a comma-separated list." },
-      { role: "user", content: transcript }
-    ],
-    max_tokens: 20,
-  });
-
-  // Convert response into an array of hashtags
-  const aiGeneratedHashtags = hashtagResponse.choices?.[0]?.message?.content?.trim().split(", ") || [];
-
-  return { description: aiGeneratedText, hashtags: aiGeneratedHashtags };
+  return { title, description, hashtags };
 }
 
 
@@ -115,14 +125,14 @@ export async function POST(req: NextRequest) {
 
     // ✅ Generate AI description
     console.log("🤖 Generating description...");
-    const { description, hashtags } = await generateDescriptionAndHashtags(transcript);
+    const { description, hashtags, title } = await generateDescriptionAndHashtags(transcript);
     console.log("📢 AI-Generated Description:", description);
 
     // ✅ Cleanup temp files
     fs.unlinkSync(compressedAudioPath);
 
     return new Response(
-      JSON.stringify({ transcript, description, hashtags }),
+      JSON.stringify({ transcript, description, hashtags, title }),
       { status: 200 }
     );
   } catch (error: any) {

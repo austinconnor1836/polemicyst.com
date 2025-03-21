@@ -38,16 +38,19 @@ const PlatformList = () => {
   const handleLogout = async (e: React.MouseEvent, provider: string) => {
     e.stopPropagation();
 
-    console.log(`Logging out from ${provider}`); // ✅ Debugging log
+
+    // If user logs out from Instagram, treat it as Facebook
+    const effectiveProvider = provider === "instagram" ? "facebook" : provider;
+    console.log(`Logging out from ${effectiveProvider}`); // ✅ Debugging log
 
     const response = await fetch(`/api/auth/logout`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider }), // ✅ Ensure provider is sent
+      body: JSON.stringify({ provider: effectiveProvider }), // ✅ Ensure provider is sent
     });
 
     if (response.ok) {
-      console.log(`✅ Successfully logged out from ${provider}`);
+      console.log(`✅ Successfully logged out from ${effectiveProvider}`);
       refreshAuthStatus();
     } else {
       console.error("❌ Logout failed:", await response.json());
@@ -70,6 +73,7 @@ const PlatformList = () => {
           }
 
           const isSelected = selectedPlatforms.includes(provider);
+          console.log('name', name)
 
           return (
             <li
@@ -91,14 +95,14 @@ const PlatformList = () => {
                   >
                     Logout
                   </button>
-                ) : (
+                ) : name !== "Instagram" ? (
                   <button
                     onClick={(e) => handleAuthenticate(e, provider)}
                     className="text-sm text-blue-500 hover:underline"
                   >
                     Connect
                   </button>
-                )}
+                ) : null}
                 {isSelected ? <CheckCircle className="text-blue-500" /> : <RadioButtonUnchecked className="text-gray-400" />}
               </div>
             </li>
