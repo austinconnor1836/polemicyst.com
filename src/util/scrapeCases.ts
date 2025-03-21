@@ -1,7 +1,7 @@
 // /util/scrapeCases.ts
 
 import axios from 'axios';
-import cheerio from 'cheerio';
+import * as cheerio from 'cheerio';
 
 export type Case = {
   number: string;

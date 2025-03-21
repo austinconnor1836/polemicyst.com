@@ -33,7 +33,6 @@ export async function POST(req: Request) {
     // Step 1: INITIATE MEDIA UPLOAD
     const mediaInit = await rwClient.v1.uploadMedia(fileBuffer, {
       type: "video/mp4",
-      media_category: "tweet_video",
     });
 
     console.log("✅ Media uploaded to Twitter, Media ID:", mediaInit);
