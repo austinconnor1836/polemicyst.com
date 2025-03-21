@@ -2,7 +2,7 @@
   "private": true,
   "scripts": {
     "dev": "next",
-    "build": "next build",
+    "build": "npx prisma generate && next build",
     "start": "next start",
     "postinstall": "npx prisma generate"
   },
