@@ -2,6 +2,7 @@ import NextAuth, { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import FacebookProvider from "next-auth/providers/facebook";
 import GoogleProvider from "next-auth/providers/google";
+import TwitterProvider from "next-auth/providers/twitter";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { PrismaClient } from "@prisma/client";
 import { BskyAgent } from "@atproto/api";
@@ -90,6 +91,17 @@ export const authOptions: NextAuthOptions = {
         }
       },
     }),
+    TwitterProvider({
+      clientId: process.env.TWITTER_CONSUMER_KEY!,
+      clientSecret: process.env.TWITTER_CONSUMER_SECRET!,
+      version: "2.0", // Enable OAuth 2.0 for newer Twitter API,
+      authorization: {
+        url: "https://twitter.com/i/oauth2/authorize",
+        params: {
+          scope: "tweet.read tweet.write users.read offline.access",
+        },
+      },
+    }),
   ],
   session: {
     strategy: "jwt",
@@ -98,9 +110,17 @@ export const authOptions: NextAuthOptions = {
     signIn: '/auth/signin'
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
+      console.log("🔐 JWT callback token:", token);
+      console.log("🔐 JWT callback account:", account);
+
       if (user) {
         token.id = user.id; // ✅ Store user ID in token
+      }
+
+      // When signing in with Google, store the access token as a string.
+      if (account?.provider === "google" && account.access_token) {
+        token.googleAccessToken = account.access_token as string;
       }
       return token;
     },
@@ -118,6 +138,10 @@ export const authOptions: NextAuthOptions = {
         const hasSameProvider = existingUser.accounts.some((acc: any) => acc.provider === account?.provider);
 
         if (!hasSameProvider) {
+          // ✅ Ensure providerAccountId is not null
+          if (!account?.providerAccountId) {
+            throw new Error(`Missing providerAccountId for ${account?.provider}`);
+          }
           // ✅ Link new provider (Facebook, Google, etc.) to existing user
           await prisma.account.upsert({
             where: { provider_providerAccountId: { provider: account!.provider, providerAccountId: account!.providerAccountId } },
@@ -133,7 +157,7 @@ export const authOptions: NextAuthOptions = {
               access_token: account?.access_token,
               refresh_token: account?.refresh_token,
               expires_at: account?.expires_at,
-              type: "credentials",
+              type: account?.provider,
             },
           });
 
@@ -147,6 +171,11 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (token) {
         session.user = { ...session.user, id: token.sub as string };
+      }
+
+      // Expose Google access token in session
+      if (token.googleAccessToken) {
+        session.user.googleAccessToken = token.googleAccessToken;
       }
 
       // ✅ Fetch linked accounts and store in session

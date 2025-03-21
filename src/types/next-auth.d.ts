@@ -1,23 +1,28 @@
-import NextAuth, { DefaultSession } from "next-auth";
+// src/types/next-auth.d.ts
+import NextAuth, { DefaultSession, DefaultUser } from "next-auth";
 
 declare module "next-auth" {
-  interface Session extends DefaultSession {
+  interface Session {
     user: {
       id: string;
       name?: string | null;
       email?: string | null;
       image?: string | null;
-      facebookAccessToken?: string;
-      googleAccessToken?: string;
-      twitterAccessToken?: string;
-      blueskyAccessToken?: string;
-      instagramAccessToken?: string;
       providers?: string[];
-    };
+      googleAccessToken?: string;
+      facebookAccessToken?: string;
+    } & DefaultSession["user"];
+  }
+
+  interface User extends DefaultUser {
+    id: string;
   }
 }
 
-
-interface JWT {
-  accessToken?: string;
+declare module "next-auth/jwt" {
+  interface JWT {
+    id?: string;
+    googleAccessToken?: string;
+    facebookAccessToken?: string;
+  }
 }

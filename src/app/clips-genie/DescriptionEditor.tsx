@@ -4,8 +4,11 @@ import React, { useState } from "react";
 import { usePlatformContext } from "./PlatformContext";
 import axios from "axios";
 import toast from "react-hot-toast";
+import { useSession } from "next-auth/react";
 
 const DescriptionEditor = () => {
+  const { data: session } = useSession();
+  console.log('session',  session);
   const {
     sharedDescription, setSharedDescription,
     facebookTemplate, setFacebookTemplate,
@@ -14,73 +17,123 @@ const DescriptionEditor = () => {
     blueskyTemplate, setBlueskyTemplate,
     twitterTemplate, setTwitterTemplate,
     selectedPlatforms,
+    selectedFile
   } = usePlatformContext();
 
   const [isPosting, setIsPosting] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [showYouTubeModal, setShowYouTubeModal] = useState(false);
 
-  // ✅ Get the correct description template for each platform
-  const getPlatformTemplate = (platform: string): string => {
-    switch (platform) {
-      case "facebook":
-        return `${sharedDescription}\n\n${facebookTemplate}`;
-      case "instagram":
-        return `${sharedDescription}\n\n${instagramTemplate}`;
-      case "youtube":
-        return `${sharedDescription}\n\n${youtubeTemplate}`;
-      case "bluesky":
-      case "twitter":
-        return `${blueskyTemplate}`; // Bluesky & Twitter only get their specific template
-      default:
-        return "";
-    }
-  };
-
-  // ✅ Handle post submission
   const handlePostToSelectedPlatforms = async () => {
-    // Check if Bluesky is selected without YouTube
-    if (selectedPlatforms.includes("bluesky") && !selectedPlatforms.includes("youtube") && !youtubeUrl) {
+    if (!selectedFile) {
+      toast.error("No video file selected.");
+      return;
+    }
+
+    if (selectedPlatforms.includes("bluesky") && !selectedPlatforms.includes("google") && !youtubeUrl) {
       setShowYouTubeModal(true);
       return;
     }
 
     setIsPosting(true);
-    try {
-      const response = await axios.post("/api/postToPlatforms", {
-        platforms: selectedPlatforms,
-        descriptions: selectedPlatforms.reduce((acc, platform) => {
-          acc[platform] = getPlatformTemplate(platform);
-          return acc;
-        }, {} as Record<string, string>),
-        videoUrl: youtubeUrl, // Use the provided YouTube URL if required
-      });
+    const results: any[] = [];
 
-      toast.success("Posted successfully!");
-      console.log("✅ Posting result:", response.data);
-    } catch (error) {
-      console.error("❌ Posting error:", error);
-      toast.error("Failed to post.");
-    } finally {
-      setIsPosting(false);
+    const descriptions: Record<string, string> = {
+      facebook: `${sharedDescription}\n\n${facebookTemplate}`,
+      instagram: `${sharedDescription}\n\n${instagramTemplate}`,
+      google: `${sharedDescription}\n\n${youtubeTemplate}`,
+      bluesky: blueskyTemplate,
+      twitter: twitterTemplate,
+    };
+
+    const endpointMap: Record<string, string> = {
+      bluesky: "/api/bluesky/post",
+      facebook: "/api/meta/facebook/upload",
+      instagram: "/api/meta/instagram/upload",
+      google: "/api/youtube/upload",
+      twitter: "/api/twitter/post",
+    };
+
+    let uploadedYouTubeUrl = youtubeUrl;
+
+    // ✅ Upload to YouTube first if selected
+    if (selectedPlatforms.includes("google")) {
+      try {
+        const ytForm = new FormData();
+        console.log('selectedFile', selectedFile);
+        ytForm.append("file", selectedFile);
+        ytForm.append("title", "Polemicyst Video Upload");
+        ytForm.append("description", descriptions.google);
+        ytForm.append("accessToken", session?.user.googleAccessToken || "");
+
+        const ytRes = await axios.post(endpointMap.google, ytForm, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+
+        uploadedYouTubeUrl = ytRes.data.youtubeLink;
+        results.push({ platform: "youtube", success: true });
+      } catch (err: any) {
+        results.push({ platform: "youtube", success: false, error: err.response?.data || err.message });
+        toast.error("YouTube upload failed. Skipping Bluesky.");
+        // Remove Bluesky from selectedPlatforms if YouTube failed
+        return setIsPosting(false);
+      }
     }
+
+    // ✅ Post to other platforms
+    for (const platform of selectedPlatforms) {
+      if (platform === "google") continue;
+
+      try {
+        if (!endpointMap[platform]) {
+          results.push({ platform, success: false, error: "Unknown platform" });
+          continue;
+        }
+
+        if (platform === "facebook" || platform === "instagram") {
+          const form = new FormData();
+          form.append("file", selectedFile);
+          form.append("description", descriptions[platform]);
+          form.append("accessToken", session?.user.facebookAccessToken || "");
+
+          await axios.post(endpointMap[platform], form, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+        } else {
+          await axios.post(endpointMap[platform], {
+            youtubeUrl: uploadedYouTubeUrl,
+            description: descriptions[platform],
+            session,
+          });
+        }
+
+        results.push({ platform, success: true });
+      } catch (err: any) {
+        results.push({ platform, success: false, error: err.response?.data || err.message });
+      }
+    }
+
+    console.log("✅ Post Results:", results);
+    toast.success("Posting completed!");
+
+    setIsPosting(false);
   };
+
 
   return (
     <div>
       <label className="block mt-4 mb-2 text-sm font-medium">General Description</label>
-      <textarea 
-        value={sharedDescription} 
-        onChange={(e) => setSharedDescription(e.target.value)} 
+      <textarea
+        value={sharedDescription}
+        onChange={(e) => setSharedDescription(e.target.value)}
         className="w-full p-2 border rounded h-32 resize-none"
-      ></textarea>
+      />
 
       {[
         { label: "Facebook", state: facebookTemplate, setState: setFacebookTemplate },
         { label: "Instagram", state: instagramTemplate, setState: setInstagramTemplate },
         { label: "YouTube", state: youtubeTemplate, setState: setYoutubeTemplate },
         { label: "Bluesky", state: blueskyTemplate, setState: setBlueskyTemplate },
-        { label: "Twitter", state: twitterTemplate, setState: setTwitterTemplate },
       ].map(({ label, state, setState }) => (
         <div key={label} className="mt-4">
           <label className="block mb-2 text-sm font-medium">{label}</label>
@@ -88,19 +141,18 @@ const DescriptionEditor = () => {
             value={state}
             onChange={(e) => setState(e.target.value)}
             className="w-full p-2 border rounded h-24 resize-none"
-          ></textarea>
+          />
         </div>
       ))}
 
-      {/* ✅ Action Buttons */}
       <div className="flex justify-between items-center mt-6">
-        <button 
+        <button
           className="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition"
           onClick={() => toast("Editing canceled.")}
         >
           ✖ Cancel
         </button>
-        <button 
+        <button
           className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
           onClick={handlePostToSelectedPlatforms}
           disabled={isPosting}
@@ -109,7 +161,6 @@ const DescriptionEditor = () => {
         </button>
       </div>
 
-      {/* ✅ YouTube URL Modal */}
       {showYouTubeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
           <div className="bg-white p-6 rounded-md shadow-md max-w-md w-full">
@@ -125,13 +176,13 @@ const DescriptionEditor = () => {
               className="w-full p-2 border rounded mb-4"
             />
             <div className="flex justify-end gap-2">
-              <button 
+              <button
                 className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition"
                 onClick={() => setShowYouTubeModal(false)}
               >
                 Cancel
               </button>
-              <button 
+              <button
                 className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
                 onClick={() => {
                   setShowYouTubeModal(false);

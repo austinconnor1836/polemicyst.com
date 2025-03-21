@@ -12,14 +12,13 @@ const platforms = [
   { name: "Facebook", icon: <FaFacebook className="text-blue-600 text-xl" />, provider: "facebook" },
   { name: "Instagram", icon: <FaInstagram className="text-pink-500 text-xl" />, provider: "instagram" },
   { name: "YouTube", icon: <FaYoutube className="text-red-600 text-xl" />, provider: "google" },
-  { name: "Twitter", icon: <FaTwitter className="text-blue-400 text-xl" />, provider: "twitter" },
+  // { name: "Twitter", icon: <FaTwitter className="text-blue-400 text-xl" />, provider: "twitter" },
 ];
 
 const PlatformList = () => {
   const router = useRouter();
   const { selectedPlatforms, togglePlatform, isAuthenticated, refreshAuthStatus } = usePlatformContext();
   const { data: session } = useSession();
-  console.log('isAuthenticated: ', isAuthenticated);
 
   const handleAuthenticate = async (e: React.MouseEvent, provider: string) => {
     e.stopPropagation(); // Prevent toggling selection when clicking "Connect"

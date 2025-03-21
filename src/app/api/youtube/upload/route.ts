@@ -10,6 +10,7 @@ export async function POST(req: Request) {
     const description = formData.get("description") as string;
     const accessToken = formData.get("accessToken") as string; // YouTube OAuth Token
 
+    console.log('file', file);
     if (!file || !title || !description || !accessToken) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
