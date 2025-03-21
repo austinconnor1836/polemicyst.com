@@ -149,6 +149,7 @@ const DescriptionEditor = () => {
         { label: "Instagram", state: instagramTemplate, setState: setInstagramTemplate },
         { label: "YouTube", state: youtubeTemplate, setState: setYoutubeTemplate },
         { label: "Bluesky", state: blueskyTemplate, setState: setBlueskyTemplate },
+        { label: "Twitter", state: twitterTemplate, setState: setTwitterTemplate }
       ].map(({ label, state, setState }) => (
         <div key={label} className="mt-4">
           <label className="block mb-2 text-sm font-medium">{label}</label>
