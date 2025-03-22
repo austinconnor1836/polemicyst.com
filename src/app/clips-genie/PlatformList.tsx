@@ -6,6 +6,8 @@ import { usePlatformContext } from "./PlatformContext";
 import { FaFacebook, FaTwitter, FaInstagram, FaYoutube } from "react-icons/fa";
 import { SiBluesky } from "react-icons/si";
 import { CheckCircle, RadioButtonUnchecked } from "@mui/icons-material";
+import { isMobile } from '@/lib/isMobile';
+import { openFacebookOAuth } from "@/lib/openFacebookOAuth";
 
 const platforms = [
   { name: "Bluesky", icon: <SiBluesky className="text-blue-500 text-xl" />, provider: "bluesky" },
@@ -20,20 +22,71 @@ const PlatformList = () => {
   const { selectedPlatforms, togglePlatform, isAuthenticated, refreshAuthStatus } = usePlatformContext();
   const { data: session } = useSession();
 
+  // const handleAuthenticate = async (e: React.MouseEvent, provider: string) => {
+  //   e.stopPropagation();
+
+  //   if (provider === "bluesky") {
+  //     router.push(`/auth/signin?provider=bluesky`);
+  //   } else if (isMobile()) {
+  //     // Open Facebook login in a new window on mobile to simulate native behavior
+  //     const width = 500;
+  //     const height = 600;
+  //     const left = (window.innerWidth - width) / 2;
+  //     const top = (window.innerHeight - height) / 2;
+
+  //     const authWindow = window.open(
+  //       `/api/auth/signin/${provider}?callbackUrl=${encodeURIComponent(window.location.origin + "/clips-genie")}`,
+  //       "_blank",
+  //       `width=${width},height=${height},top=${top},left=${left}`
+  //     );
+
+  //     if (authWindow) {
+  //       const timer = setInterval(() => {
+  //         if (authWindow.closed) {
+  //           clearInterval(timer);
+  //           refreshAuthStatus(); // Refresh after the window closes
+  //         }
+  //       }, 500);
+  //     }
+  //   } else {
+  //     await signIn(provider, { callbackUrl: "/clips-genie" });
+  //     setTimeout(() => {
+  //       refreshAuthStatus();
+  //     }, 1000);
+  //   }
+  // };
+
+  // const handleAuthenticate = async (e: React.MouseEvent, provider: string) => {
+  //   e.stopPropagation(); // Prevent toggling selection when clicking "Connect"
+
+  //   if (provider === "bluesky") {
+  //     router.push(`/auth/signin?provider=bluesky`); // Redirect to custom Bluesky sign-in page
+  //   } else {
+  //     await signIn(provider, { callbackUrl: '/clips-genie' });
+  //   }
+
+  //   // Refresh authentication status after a short delay
+  //   setTimeout(() => {
+  //     refreshAuthStatus();
+  //   }, 1000);
+  // };
+
   const handleAuthenticate = async (e: React.MouseEvent, provider: string) => {
-    e.stopPropagation(); // Prevent toggling selection when clicking "Connect"
+  e.stopPropagation();
+  console.log('provider', provider);
 
-    if (provider === "bluesky") {
-      router.push(`/auth/signin?provider=bluesky`); // Redirect to custom Bluesky sign-in page
-    } else {
-      await signIn(provider, { callbackUrl: '/clips-genie' });
-    }
-
-    // Refresh authentication status after a short delay
+  if (provider === "bluesky") {
+    router.push(`/auth/signin?provider=bluesky`);
+  } else if (provider === "facebook") {
+    openFacebookOAuth(); // ✅ Redirect that opens FB app if possible
+  } else {
+    await signIn(provider, { callbackUrl: "/clips-genie" });
     setTimeout(() => {
       refreshAuthStatus();
     }, 1000);
-  };
+  }
+};
+
 
   const handleLogout = async (e: React.MouseEvent, provider: string) => {
     e.stopPropagation();
