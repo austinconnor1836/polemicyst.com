@@ -156,12 +156,12 @@ const DescriptionEditor = () => {
           <textarea
             value={state}
             onChange={(e) => setState(e.target.value)}
-            className="w-full p-2 border rounded h-24 resize-none"
+            className="w-full p-2 border rounded h-24 resize-none dark:text-black"
           />
         </div>
       ))}
 
-      <div className="flex justify-between items-center mt-6">
+      <div className="flex justify-end items-center gap-4 mt-6">
         <button
           className="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition"
           onClick={() => toast("Editing canceled.")}

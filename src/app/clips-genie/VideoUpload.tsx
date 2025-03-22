@@ -31,7 +31,7 @@ const VideoUpload = () => {
 
   return (
     <div>
-      <label className="block mb-2 text-sm font-medium">Upload Video File</label>
+      <label className="block mb-2 text-sm font-medium pt-8">Upload Video File</label>
       <div className="border-2 border-dashed border-gray-400 p-6 text-center rounded-lg cursor-pointer">
         <input type="file" accept="video/*" onChange={handleFileSelect} className="hidden" id="fileUpload" />
         <label htmlFor="fileUpload" className="block mt-2 bg-blue-600 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-700">
