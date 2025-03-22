@@ -163,13 +163,13 @@ const DescriptionEditor = () => {
 
       <div className="flex justify-end items-center gap-4 mt-6">
         <button
-          className="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition"
+          className="bg-gray-300 text-black dark:bg-gray-700 dark:text-white px-4 py-2 rounded-md hover:bg-gray-600 dark:hover:bg-gray-600 transition"
           onClick={() => toast("Editing canceled.")}
         >
           ✖ Cancel
         </button>
         <button
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
           onClick={handlePostToSelectedPlatforms}
           disabled={isPosting}
         >
