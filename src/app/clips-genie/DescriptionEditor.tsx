@@ -134,14 +134,14 @@ const DescriptionEditor = () => {
         type="text"
         value={videoTitle}
         onChange={(e) => setVideoTitle(e.target.value)}
-        className="w-full p-2 border rounded"
+        className="w-full p-2 border rounded dark:text-black"
       />
 
       <label className="block mt-4 mb-2 text-sm font-medium">General Description</label>
       <textarea
         value={sharedDescription}
         onChange={(e) => setSharedDescription(e.target.value)}
-        className="w-full p-2 border rounded h-32 resize-none"
+        className="w-full p-2 border rounded h-32 resize-none dark:text-black"
       />
 
       {[

@@ -7,6 +7,7 @@ import PlatformList from "./PlatformList";
 import VideoUpload from "./VideoUpload";
 import DescriptionEditor from "./DescriptionEditor";
 import Header from "./Header";
+import PlatformStatusBar from "./PlatformStatusBar";
 
 const ClipsGenie = () => {
   return (

@@ -4,6 +4,13 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { randomUUID } from "crypto";
+import type { ChatCompletionMessageParam } from "openai/resources/chat";
+
+type Highlight = {
+  text: string;
+  start: number;
+  end: number;
+};
 
 // Initialize OpenAI API
 const openai = new OpenAI({
@@ -118,21 +125,132 @@ export async function POST(req: NextRequest) {
       file: compressedAudioStream,
       model: "whisper-1",
       language: "en",
+      response_format: "verbose_json", // 🆕 Use verbose to get word timestamps
     });
 
     const transcript = transcriptionResponse.text;
-    console.log("📄 Transcript:", transcript);
+    const segments = transcriptionResponse.segments || []; // 🆕 Expect timestamps
 
     // ✅ Generate AI description
     console.log("🤖 Generating description...");
     const { description, hashtags, title } = await generateDescriptionAndHashtags(transcript);
     console.log("📢 AI-Generated Description:", description);
 
+    // ✅ Generate highlights using OpenAI
+    console.log("🎯 Extracting highlights...");
+
+    // Chunk segments into blocks of 15–45s
+    const candidates: Highlight[] = [];
+    let tempText = '';
+    let tempStart = segments[0]?.start ?? 0;
+
+    const MAX_CLIP_LENGTH = 90; // seconds
+    const MIN_CLIP_LENGTH = 15;
+
+    for (const seg of segments) {
+      tempText += seg.text + ' ';
+
+      // if this chunk is now >= MIN_CLIP_LENGTH and <= MAX_CLIP_LENGTH
+      const currentLength = seg.end - tempStart;
+
+      if (currentLength >= MIN_CLIP_LENGTH) {
+        if (currentLength > MAX_CLIP_LENGTH) {
+          candidates.push({
+            text: tempText.trim(),
+            start: tempStart,
+            end: tempStart + MAX_CLIP_LENGTH, // force trim
+          });
+          tempText = '';
+          tempStart = seg.end;
+        } else if (currentLength >= 30) {
+          candidates.push({ text: tempText.trim(), start: tempStart, end: seg.end });
+          tempText = '';
+          tempStart = seg.end;
+        }
+      }
+    }
+
+
+    const messages: ChatCompletionMessageParam[] = [
+      {
+        role: 'system',
+        content:
+          'You are an expert video editor. Choose the most engaging, emotional, or viral-worthy chunks of transcript from a video. Return the result wrapped in a markdown-style JSON code block.',
+      },
+      {
+        role: 'user',
+        content: `Here are the transcript chunks:\n\n${JSON.stringify(candidates, null, 2)}`,
+      },
+    ];
+
+    const highlightResponse = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages,
+    });
+
+    let highlights: Highlight[] = [];
+
+    try {
+      const raw = highlightResponse.choices[0]?.message?.content || '';
+
+      // Extract JSON from inside ```json ... ```
+      const match = raw.match(/```json\n([\s\S]*?)\n```/) || raw.match(/```([\s\S]*?)```/);
+
+      const jsonString = match ? match[1] : raw; // fallback to raw if no fenced code
+
+      highlights = JSON.parse(jsonString.trim());
+    } catch (err) {
+      console.error('❌ Failed to parse highlights JSON:', err);
+      highlights = [];
+    }
+
+    // After getting 'highlights'
+    const ratedHighlights = await Promise.all(
+      highlights.map(async (highlight) => {
+        try {
+          const res = await openai.chat.completions.create({
+            model: 'gpt-4',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a short-form video editor. Rate the following clip on a scale from 0 to 100 across Hook, Flow, Value, and Trend. Return as JSON in markdown code block.',
+              },
+              {
+                role: 'user',
+                content: `Clip Transcript:\n"${highlight.text}"`,
+              },
+            ],
+          });
+
+          const raw = res.choices[0].message?.content || '';
+          const match = raw.match(/```json\n([\s\S]*?)\n```/) || raw.match(/```([\s\S]*?)```/);
+          const jsonString = match ? match[1] : raw;
+          const rating = JSON.parse(jsonString.trim());
+
+          return {
+            ...highlight,
+            score: rating.TotalScore || (
+              (rating.Hook + rating.Flow + rating.Value + rating.Trend) / 4
+            ),
+            breakdown: rating,
+          };
+        } catch (err) {
+          console.error('❌ Failed to rate highlight:', err);
+          return { ...highlight, score: 0, breakdown: null };
+        }
+      })
+    );
+
+    // Sort descending
+    ratedHighlights.sort((a, b) => b.score - a.score);
+
+
+
     // ✅ Cleanup temp files
     fs.unlinkSync(compressedAudioPath);
 
     return new Response(
-      JSON.stringify({ transcript, description, hashtags, title }),
+      JSON.stringify({ transcript, description, hashtags, title, highlights: ratedHighlights }),
       { status: 200 }
     );
   } catch (error: any) {
