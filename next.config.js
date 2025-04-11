@@ -7,4 +7,12 @@ module.exports = {
       bodySizeLimit: '2000mb',
     },
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/backend/:path*',
+        destination: 'http://host.docker.internal:3001/:path*' // backend runs in Docker on port 3001
+      },
+    ];
+  },
 };
