@@ -18,3 +18,21 @@ services:
     ports:
       - '10300:10300'
     restart: unless-stopped
+
+  ollama:
+    build:
+      context: ./backend
+      dockerfile: ollama.Dockerfile
+    container_name: ollama
+    volumes:
+      - ./backend/scripts/start-ollama.sh:/start.sh
+      - ollama-data:/root/.ollama
+    entrypoint: ["/bin/bash", "/start.sh"]
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+
+
+
+volumes:
+  ollama-data:
