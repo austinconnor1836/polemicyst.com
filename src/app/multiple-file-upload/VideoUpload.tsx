@@ -22,7 +22,8 @@ const VideoUpload = () => {
     setSelectedVideos,
     facebookTemplate,
     instagramTemplate,
-    youtubeTemplate
+    youtubeTemplate,
+    setPendingGenerationIndexes
   } = usePlatformContext();
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,10 +57,15 @@ const VideoUpload = () => {
     // Add to selectedVideos state first, so we can show spinners
     setSelectedVideos((prev) => {
       const updated = [...prev, ...newVideoEntries];
-      // Kick off generation
-      newVideoEntries.forEach((_, idx) => generateDescription(prev.length + idx));
+      const newIndexes = newVideoEntries.map((_, idx) => prev.length + idx);
+
+      // queue background generation
+      setPendingGenerationIndexes((prev) => [...prev, ...newIndexes]);
+
       return updated;
     });
+
+
   };
 
 

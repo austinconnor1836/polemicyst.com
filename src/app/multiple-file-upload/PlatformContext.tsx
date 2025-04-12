@@ -55,6 +55,7 @@ interface PlatformContextProps {
   isGenerating: boolean;
   setIsGenerating: (isGenerating: boolean) => void;
   generateDescription: (index: number) => void;
+  setPendingGenerationIndexes: React.Dispatch<React.SetStateAction<number[]>>;
 }
 
 const PlatformContext = createContext<PlatformContextProps | undefined>(undefined);
@@ -105,6 +106,7 @@ Threads: https://www.threads.net/@polemicyst`
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
+  const [pendingGenerationIndexes, setPendingGenerationIndexes] = useState<number[]>([]);
 
   // Function to fetch authentication status from the API
   const fetchAuthenticationStatus = async () => {
@@ -127,6 +129,17 @@ Threads: https://www.threads.net/@polemicyst`
     }
   }, [session, status]);
 
+  useEffect(() => {
+    if (pendingGenerationIndexes.length === 0) return;
+
+    pendingGenerationIndexes.forEach((index) => {
+      generateDescription(index);
+    });
+
+    setPendingGenerationIndexes([]); // reset after processing
+  }, [pendingGenerationIndexes]);
+
+
   // Toggle platform selection
   const togglePlatform = (provider: string) => {
     setSelectedPlatforms((prev) =>
@@ -143,73 +156,77 @@ Threads: https://www.threads.net/@polemicyst`
   };
 
   const generateDescription = async (index: number) => {
-    const video = selectedVideos[index];
-    if (!video) return;
+    setSelectedVideos(prev => {
+      const updated = [...prev];
+      const video = updated[index];
+      if (!video) return prev;
 
-    const updated = [...selectedVideos];
-    updated[index].isGenerating = true;
-    updated[index].sharedDescription = "Generating description...";
-    updated[index].title = "Generating video title...";
-    setSelectedVideos(updated);
+      console.log("🔁 Generating description for index:", index, video.title);
+
+      video.isGenerating = true;
+      video.sharedDescription = "Generating description...";
+      video.title = "Generating video title...";
+      return updated;
+    });
 
     try {
+      const currentVideo = selectedVideos[index]; // still fine for reading `file`
       const formData = new FormData();
-      formData.append("file", video.file);
+      formData.append("file", currentVideo.file);
 
-      const response = await fetch("http://localhost:3001/api/generate", {
+      const response = await fetch("/api/generateDescription", {
         method: "POST",
         body: formData,
       });
 
-      const { description, hashtags, title } = response.data;
+      const raw = await response.text();
+      const jsonStart = raw.indexOf("{");
+      const jsonEnd = raw.lastIndexOf("}");
+      const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+      const { description, hashtags, title } = parsed;
 
       const fixedHashtags = [
-        "#Polemicyst",
-        "#news",
-        "#politics",
-        "#youtube",
-        "#trump",
-        "#left",
-        "#progressive",
-        "#viral",
-        "#maga",
+        "#Polemicyst", "#news", "#politics", "#youtube", "#trump",
+        "#left", "#progressive", "#viral", "#maga"
       ];
-
       const allHashtags = [...fixedHashtags, ...hashtags];
       const hashtagsString = allHashtags.join(", ");
       const patreonLink = "\n\nSupport me on Patreon: https://www.patreon.com/c/Polemicyst";
       const finalDescription = `${description}\n\n${hashtagsString}${patreonLink}`;
       const trimmed = `${description} ${hashtagsString}`.substring(0, 300).trim();
 
-      updated[index] = {
-        ...video,
-        title: title || video.title,
-        sharedDescription: finalDescription,
-        facebookTemplate: video.facebookTemplate,
-        instagramTemplate: video.instagramTemplate,
-        youtubeTemplate: video.youtubeTemplate,
-        blueskyTemplate: trimmed,
-        twitterTemplate: trimmed,
-        isGenerating: false,
-      };
-
-      setSelectedVideos(updated);
+      setSelectedVideos(prev => {
+        const updated = [...prev];
+        updated[index] = {
+          ...updated[index],
+          title: title || updated[index].title,
+          sharedDescription: finalDescription,
+          blueskyTemplate: trimmed,
+          twitterTemplate: trimmed,
+          isGenerating: false,
+        };
+        return updated;
+      });
     } catch (error) {
-      console.error("Error generating description:", error);
+      console.error("❌ Error generating description:", error);
       toast.error("Failed to generate description.");
 
-      updated[index] = {
-        ...video,
-        title: "Failed to generate title",
-        sharedDescription: "Failed to generate description.",
-        blueskyTemplate: "Failed to generate description.",
-        twitterTemplate: "Failed to generate description.",
-        isGenerating: false,
-      };
-
-      setSelectedVideos(updated);
+      setSelectedVideos(prev => {
+        const updated = [...prev];
+        updated[index] = {
+          ...updated[index],
+          title: "Failed to generate title",
+          sharedDescription: "Failed to generate description.",
+          blueskyTemplate: "Failed to generate description.",
+          twitterTemplate: "Failed to generate description.",
+          isGenerating: false,
+        };
+        return updated;
+      });
     }
   };
+
+
 
   return (
     <PlatformContext.Provider
@@ -248,7 +265,8 @@ Threads: https://www.threads.net/@polemicyst`
         setVideoTitle,
         isGenerating,
         setIsGenerating,
-        generateDescription
+        generateDescription,
+        setPendingGenerationIndexes
       }}
     >
       {children}
