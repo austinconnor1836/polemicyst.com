@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build: ./backend
@@ -7,3 +5,16 @@ services:
       - '3001:3001'
     volumes:
       - ./backend/uploads:/app/uploads
+
+  faster-whisper:
+    image: lscr.io/linuxserver/faster-whisper:latest
+    container_name: faster-whisper
+    environment:
+      - TZ=Etc/UTC
+      - WHISPER_MODEL=tiny-int8
+      - WHISPER_LANG=en
+    volumes:
+      - ./faster-whisper-data:/config
+    ports:
+      - '10300:10300'
+    restart: unless-stopped

@@ -156,8 +156,9 @@ Threads: https://www.threads.net/@polemicyst`
       const formData = new FormData();
       formData.append("file", video.file);
 
-      const response = await axios.post("/api/generateDescription", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+      const response = await fetch("http://localhost:3001/api/generate", {
+        method: "POST",
+        body: formData,
       });
 
       const { description, hashtags, title } = response.data;
