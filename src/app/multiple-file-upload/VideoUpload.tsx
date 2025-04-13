@@ -26,6 +26,8 @@ const VideoUpload = () => {
     setPendingGenerationIndexes
   } = usePlatformContext();
 
+  const prevLengthRef = React.useRef(0);
+
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files) return;
@@ -35,11 +37,10 @@ const VideoUpload = () => {
     const newVideoEntries = await Promise.all(
       newFiles.map(async (file) => {
         const preview = URL.createObjectURL(file);
-
-        const video = {
+        return {
           file,
           videoPreview: preview,
-          title: file.name.replace(/\.[^/.]+$/, ""), // Remove extension
+          title: file.name.replace(/\.[^/.]+$/, ""),
           sharedDescription: "",
           facebookTemplate,
           instagramTemplate,
@@ -47,26 +48,35 @@ const VideoUpload = () => {
           blueskyTemplate: "",
           twitterTemplate: "",
           isGenerating: true,
-          selected: false
+          selected: false,
         };
-
-        return video;
       })
     );
 
-    // Add to selectedVideos state first, so we can show spinners
-    setSelectedVideos((prev) => {
-      const updated = [...prev, ...newVideoEntries];
-      const newIndexes = newVideoEntries.map((_, idx) => prev.length + idx);
+    const previousLength = selectedVideos.length;
+    prevLengthRef.current = previousLength;
 
-      // queue background generation
-      setPendingGenerationIndexes((prev) => [...prev, ...newIndexes]);
+    // const newIndexes: number[] = [];
+    // First update videos
+    setSelectedVideos((prev) => [...prev, ...newVideoEntries]);
 
-      return updated;
-    });
+    // Then trigger generation using correct indexes
+    const newIndexes = newVideoEntries.map((_, idx) => previousLength + idx);
+    setPendingGenerationIndexes((prev) => [...prev, ...newIndexes]);
+    // setSelectedVideos((prev) => {
+    //   const updated = [...prev, ...newVideoEntries];
+    //   for (let i = 0; i < newVideoEntries.length; i++) {
+    //     newIndexes.push(prev.length + i);
+    //   }
+    //   return updated;
+    // });
 
-
+    // // Use timeout to defer until selectedVideos has actually updated
+    // setTimeout(() => {
+    //   setPendingGenerationIndexes((prev) => [...prev, ...newIndexes]);
+    // }, 0);
   };
+
 
 
   return (
