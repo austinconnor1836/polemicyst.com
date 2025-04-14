@@ -133,7 +133,10 @@ Threads: https://www.threads.net/@polemicyst`
     if (pendingGenerationIndexes.length === 0) return;
 
     pendingGenerationIndexes.forEach((index) => {
-      generateDescription(index);
+      const video = selectedVideos[index];
+      if (video) {
+        generateDescription(index, video.file);
+      }
     });
 
     setPendingGenerationIndexes([]); // reset after processing
@@ -155,76 +158,75 @@ Threads: https://www.threads.net/@polemicyst`
     }));
   };
 
-  const generateDescription = async (index: number) => {
-    setSelectedVideos(prev => {
-      const updated = [...prev];
-      const video = updated[index];
-      if (!video) return prev;
+  const generateDescription = async (index: number, file: File) => {
+  setSelectedVideos(prev => {
+    const updated = [...prev];
+    const video = updated[index];
+    if (!video) return prev;
 
-      console.log("🔁 Generating description for index:", index, video.title);
+    console.log("🔁 Generating description for index:", index, video.title);
 
-      video.isGenerating = true;
-      video.sharedDescription = "Generating description...";
-      video.title = "Generating video title...";
-      return updated;
+    video.isGenerating = true;
+    video.sharedDescription = "Generating description...";
+    video.title = "Generating video title...";
+    return updated;
+  });
+
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/api/generateDescription", {
+      method: "POST",
+      body: formData,
     });
 
-    try {
-      const currentVideo = selectedVideos[index]; // still fine for reading `file`
-      const formData = new FormData();
-      formData.append("file", currentVideo.file);
+    const raw = await response.text();
+    const jsonStart = raw.indexOf("{");
+    const jsonEnd = raw.lastIndexOf("}");
+    const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+    const { description, hashtags, title } = parsed;
 
-      const response = await fetch("/api/generateDescription", {
-        method: "POST",
-        body: formData,
-      });
+    const fixedHashtags = [
+      "#Polemicyst", "#news", "#politics", "#youtube", "#trump",
+      "#left", "#progressive", "#viral", "#maga"
+    ];
+    const allHashtags = [...fixedHashtags, ...hashtags];
+    const hashtagsString = allHashtags.join(", ");
+    const patreonLink = "\n\nSupport me on Patreon: https://www.patreon.com/c/Polemicyst";
+    const finalDescription = `${description}\n\n${hashtagsString}${patreonLink}`;
+    const trimmed = `${description} ${hashtagsString}`.substring(0, 300).trim();
 
-      const raw = await response.text();
-      const jsonStart = raw.indexOf("{");
-      const jsonEnd = raw.lastIndexOf("}");
-      const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
-      const { description, hashtags, title } = parsed;
+    setSelectedVideos(prev => {
+      const updated = [...prev];
+      updated[index] = {
+        ...updated[index],
+        title: title || updated[index].title,
+        sharedDescription: finalDescription,
+        blueskyTemplate: trimmed,
+        twitterTemplate: trimmed,
+        isGenerating: false,
+      };
+      return updated;
+    });
+  } catch (error) {
+    console.error("❌ Error generating description:", error);
+    toast.error("Failed to generate description.");
 
-      const fixedHashtags = [
-        "#Polemicyst", "#news", "#politics", "#youtube", "#trump",
-        "#left", "#progressive", "#viral", "#maga"
-      ];
-      const allHashtags = [...fixedHashtags, ...hashtags];
-      const hashtagsString = allHashtags.join(", ");
-      const patreonLink = "\n\nSupport me on Patreon: https://www.patreon.com/c/Polemicyst";
-      const finalDescription = `${description}\n\n${hashtagsString}${patreonLink}`;
-      const trimmed = `${description} ${hashtagsString}`.substring(0, 300).trim();
-
-      setSelectedVideos(prev => {
-        const updated = [...prev];
-        updated[index] = {
-          ...updated[index],
-          title: title || updated[index].title,
-          sharedDescription: finalDescription,
-          blueskyTemplate: trimmed,
-          twitterTemplate: trimmed,
-          isGenerating: false,
-        };
-        return updated;
-      });
-    } catch (error) {
-      console.error("❌ Error generating description:", error);
-      toast.error("Failed to generate description.");
-
-      setSelectedVideos(prev => {
-        const updated = [...prev];
-        updated[index] = {
-          ...updated[index],
-          title: "Failed to generate title",
-          sharedDescription: "Failed to generate description.",
-          blueskyTemplate: "Failed to generate description.",
-          twitterTemplate: "Failed to generate description.",
-          isGenerating: false,
-        };
-        return updated;
-      });
-    }
-  };
+    setSelectedVideos(prev => {
+      const updated = [...prev];
+      updated[index] = {
+        ...updated[index],
+        title: "Failed to generate title",
+        sharedDescription: "Failed to generate description.",
+        blueskyTemplate: "Failed to generate description.",
+        twitterTemplate: "Failed to generate description.",
+        isGenerating: false,
+      };
+      return updated;
+    });
+  }
+};
 
 
 

@@ -48,3 +48,18 @@ model Session {
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+model Video {
+  id                  String   @id @default(uuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileName            String
+  videoTitle          String
+  sharedDescription   String
+  facebookTemplate    String
+  instagramTemplate   String
+  youtubeTemplate     String
+  blueskyTemplate     String
+  twitterTemplate     String
+  createdAt           DateTime @default(now())
+}
