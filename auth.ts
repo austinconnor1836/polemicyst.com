@@ -6,6 +6,15 @@ import TwitterProvider from "next-auth/providers/twitter";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { PrismaClient } from "@prisma/client";
 import { BskyAgent } from "@atproto/api";
+import { JWT } from "next-auth/jwt";
+import axios from "axios";
+
+interface ExtendedJWT extends JWT {
+  googleAccessToken?: string;
+  googleRefreshToken?: string;
+  accessTokenExpires?: number;
+  id?: string;
+}
 
 const prisma = new PrismaClient();
 
@@ -122,62 +131,75 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
       }
 
-      if (account?.provider === "google" && account.access_token) {
-        token.googleAccessToken = account.access_token as string;
+      if (account?.provider === "google") {
+        return {
+          ...token,
+          googleAccessToken: account.access_token,
+          googleRefreshToken: account.refresh_token,
+          accessTokenExpires: account.expires_at! * 1000,
+        };
       }
+
+      // if (account?.provider === "google" && account.access_token) {
+      //   token.googleAccessToken = account.access_token as string;
+      // }
 
       if (account?.provider === "facebook" && account.access_token) {
         token.facebookAccessToken = account.access_token as string;
       }
-      return token;
+
+      // Return token if access token is still valid
+      if (
+        token.googleAccessToken &&
+        typeof token.accessTokenExpires === "number" &&
+        Date.now() < token.accessTokenExpires
+      ) {
+        return token;
+      }
+
+      // return token;
+
+      // Access token expired, try to refresh it
+      return await refreshAccessToken(token);
     },
     async signIn({ user, account }) {
-      if (!user.email) {
-        throw new Error("Email is required for authentication.");
-      }
+      if (!user.email || !account) return false;
 
       const existingUser = await prisma.user.findUnique({
         where: { email: user.email },
-        include: { accounts: true },
       });
 
       if (existingUser) {
-        const hasSameProvider = existingUser.accounts.some((acc: any) => acc.provider === account?.provider);
-
-        if (!hasSameProvider) {
-          if (!account?.providerAccountId) {
-            throw new Error(`Missing providerAccountId for ${account?.provider}`);
-          }
-          await prisma.account.upsert({
-            where: {
-              provider_providerAccountId: {
-                provider: account!.provider,
-                providerAccountId: account!.providerAccountId,
-              },
+        await prisma.account.upsert({
+          where: {
+            provider_providerAccountId: {
+              provider: account.provider,
+              providerAccountId: account.providerAccountId,
             },
-            update: {
-              access_token: account?.access_token,
-              refresh_token: account?.refresh_token,
-              expires_at: account?.expires_at,
-            },
-            create: {
-              userId: existingUser.id,
-              provider: account!.provider,
-              providerAccountId: account!.providerAccountId,
-              access_token: account?.access_token,
-              refresh_token: account?.refresh_token,
-              expires_at: account?.expires_at,
-              type: account?.provider,
-            },
-          });
-
-          return true;
-        }
+          },
+          update: {
+            access_token: account.access_token,
+            refresh_token: account.refresh_token,
+            expires_at: account.expires_at,
+            scope: account.scope,
+            token_type: account.token_type,
+          },
+          create: {
+            userId: existingUser.id,
+            provider: account.provider,
+            providerAccountId: account.providerAccountId,
+            access_token: account.access_token,
+            refresh_token: account.refresh_token,
+            expires_at: account.expires_at,
+            type: account.type,
+            scope: account.scope,
+            token_type: account.token_type,
+          },
+        });
       }
 
       return true;
     },
-
     async session({ session, token }) {
       if (token) {
         session.user = { ...session.user, id: token.sub as string };
@@ -210,3 +232,52 @@ export const authOptions: NextAuthOptions = {
 
 const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };
+
+
+
+async function refreshAccessToken(token: ExtendedJWT): Promise<ExtendedJWT> {
+  try {
+    const params = new URLSearchParams();
+    params.append("client_id", process.env.GOOGLE_CLIENT_ID!);
+    params.append("client_secret", process.env.GOOGLE_CLIENT_SECRET!);
+    params.append("grant_type", "refresh_token");
+    params.append("refresh_token", token.googleRefreshToken!); // Now safe
+
+    const response = await axios.post("https://oauth2.googleapis.com/token", params, {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    });
+
+    const refreshedTokens = response.data;
+
+    const newAccessToken = refreshedTokens.access_token;
+    const newRefreshToken = refreshedTokens.refresh_token ?? token.googleRefreshToken;
+    const newExpiresAt = Date.now() + refreshedTokens.expires_in * 1000;
+
+    await prisma.account.updateMany({
+      where: {
+        provider: "google",
+        userId: token.sub,
+      },
+      data: {
+        access_token: newAccessToken,
+        refresh_token: newRefreshToken,
+        expires_at: Math.floor(newExpiresAt / 1000),
+      },
+    });
+
+    return {
+      ...token,
+      googleAccessToken: newAccessToken,
+      googleRefreshToken: newRefreshToken,
+      accessTokenExpires: newExpiresAt,
+    };
+  } catch (error: any) {
+    console.error("Error refreshing Google access token", error.response?.data || error.message);
+    return { ...token, error: "RefreshAccessTokenError" };
+  }
+}
+
+
+

@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "dev": "next",
+    "dev": "next dev --experimental-https",
     "build": "npx prisma generate && next build",
     "start": "next start",
     "postinstall": "npx prisma generate"

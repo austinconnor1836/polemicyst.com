@@ -1,29 +1,13 @@
 "use client";
 
+import { Video } from "@prisma/client";
 import { useSession } from "next-auth/react";
 import React, { createContext, useState, useContext, useEffect } from "react";
-import toast from 'react-hot-toast';
-import axios from 'axios';
-
-interface VideoData {
-  file: File;
-  videoPreview: string | null;
-  title: string;
-  sharedDescription: string;
-  facebookTemplate: string;
-  instagramTemplate: string;
-  youtubeTemplate: string;
-  blueskyTemplate: string;
-  twitterTemplate: string;
-  isGenerating: boolean;
-  selected: boolean;
-}
+import toast from "react-hot-toast";
 
 interface PlatformContextProps {
-  activeVideoIndex: number | null;
-  setActiveVideoIndex: React.Dispatch<React.SetStateAction<number | null>>;
-  selectedVideos: VideoData[];
-  setSelectedVideos: React.Dispatch<React.SetStateAction<VideoData[]>>;
+  activeVideo: Video | null;
+  setActiveVideo: React.Dispatch<React.SetStateAction<Video | null>>;
   selectedFile: File | null;
   setSelectedFile: (file: File | null) => void;
   videoPreview: string | null;
@@ -54,21 +38,20 @@ interface PlatformContextProps {
   setVideoTitle: (title: string) => void;
   isGenerating: boolean;
   setIsGenerating: (isGenerating: boolean) => void;
-  generateDescription: (index: number) => void;
-  setPendingGenerationIndexes: React.Dispatch<React.SetStateAction<number[]>>;
+  generateDescription: (file: File) => Promise<void>;
 }
 
 const PlatformContext = createContext<PlatformContextProps | undefined>(undefined);
 
 export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { data: session, status } = useSession();
-  const [activeVideoIndex, setActiveVideoIndex] = useState<number | null>(null);
+  const [activeVideo, setActiveVideo] = useState<Video | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedVideos, setSelectedVideos] = useState<VideoData[]>([]);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [sharedDescription, setSharedDescription] = useState("");
   const [videoTitle, setVideoTitle] = useState("");
+
   const [facebookTemplate, setFacebookTemplate] = useState(
     `For more from Polemicyst:\n
 Youtube: https://www.youtube.com/@Polemicyst
@@ -86,6 +69,7 @@ Facebook: https://www.facebook.com/profile.php?id=61573192766929
 Bluesky: https://bsky.app/profile/polemicyst.bsky.social
 Threads: https://www.threads.net/@polemicyst`
   );
+
   const [youtubeTemplate, setYoutubeTemplate] = useState(
     `For more from Polemicyst:\n
 Twitter: https://x.com/Polemicyst
@@ -94,6 +78,7 @@ Facebook: https://www.facebook.com/profile.php?id=61573192766929
 Bluesky: https://bsky.app/profile/polemicyst.bsky.social
 Threads: https://www.threads.net/@polemicyst`
   );
+
   const [blueskyTemplate, setBlueskyTemplate] = useState("");
   const [twitterTemplate, setTwitterTemplate] = useState("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
@@ -104,139 +89,84 @@ Threads: https://www.threads.net/@polemicyst`
     bluesky: false,
     twitter: false,
   });
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
-  const [pendingGenerationIndexes, setPendingGenerationIndexes] = useState<number[]>([]);
 
-  // Function to fetch authentication status from the API
   const fetchAuthenticationStatus = async () => {
     if (!session?.user?.id) return;
-
     try {
-      const res = await fetch(`/api/auth/status`);
+      const res = await fetch("/api/auth/status");
       const data = await res.json();
-
       setIsAuthenticated(data.isAuthenticated || {});
     } catch (error) {
       console.error("Error fetching authentication status:", error);
     }
   };
 
-  // Refresh authentication status when the session updates
   useEffect(() => {
     if (status === "authenticated") {
       fetchAuthenticationStatus();
     }
   }, [session, status]);
 
-  useEffect(() => {
-    if (pendingGenerationIndexes.length === 0) return;
-
-    pendingGenerationIndexes.forEach((index) => {
-      const video = selectedVideos[index];
-      if (video) {
-        generateDescription(index, video.file);
-      }
-    });
-
-    setPendingGenerationIndexes([]); // reset after processing
-  }, [pendingGenerationIndexes]);
-
-
-  // Toggle platform selection
   const togglePlatform = (provider: string) => {
     setSelectedPlatforms((prev) =>
       prev.includes(provider) ? prev.filter((p) => p !== provider) : [...prev, provider]
     );
   };
 
-  // Mark a platform as authenticated
   const authenticate = (provider: string) => {
-    setIsAuthenticated((prev) => ({
-      ...prev,
-      [provider]: true,
-    }));
+    setIsAuthenticated((prev) => ({ ...prev, [provider]: true }));
   };
 
-  const generateDescription = async (index: number, file: File) => {
-  setSelectedVideos(prev => {
-    const updated = [...prev];
-    const video = updated[index];
-    if (!video) return prev;
+  const generateDescription = async (file: File) => {
+    setIsGenerating(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
 
-    console.log("🔁 Generating description for index:", index, video.title);
+      const response = await fetch("/api/generateDescription", {
+        method: "POST",
+        body: formData,
+      });
 
-    video.isGenerating = true;
-    video.sharedDescription = "Generating description...";
-    video.title = "Generating video title...";
-    return updated;
-  });
+      const raw = await response.text();
+      const jsonStart = raw.indexOf("{");
+      const jsonEnd = raw.lastIndexOf("}");
+      const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+      const { description, hashtags, title } = parsed;
 
-  try {
-    const formData = new FormData();
-    formData.append("file", file);
+      const fixedHashtags = [
+        "#Polemicyst", "#news", "#politics", "#youtube", "#trump",
+        "#left", "#progressive", "#viral", "#maga",
+      ];
+      const allHashtags = [...fixedHashtags, ...hashtags];
+      const hashtagsString = allHashtags.join(", ");
+      const patreonLink = "\n\nSupport me on Patreon: https://www.patreon.com/c/Polemicyst";
 
-    const response = await fetch("/api/generateDescription", {
-      method: "POST",
-      body: formData,
-    });
-
-    const raw = await response.text();
-    const jsonStart = raw.indexOf("{");
-    const jsonEnd = raw.lastIndexOf("}");
-    const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
-    const { description, hashtags, title } = parsed;
-
-    const fixedHashtags = [
-      "#Polemicyst", "#news", "#politics", "#youtube", "#trump",
-      "#left", "#progressive", "#viral", "#maga"
-    ];
-    const allHashtags = [...fixedHashtags, ...hashtags];
-    const hashtagsString = allHashtags.join(", ");
-    const patreonLink = "\n\nSupport me on Patreon: https://www.patreon.com/c/Polemicyst";
-    const finalDescription = `${description}\n\n${hashtagsString}${patreonLink}`;
-    const trimmed = `${description} ${hashtagsString}`.substring(0, 300).trim();
-
-    setSelectedVideos(prev => {
-      const updated = [...prev];
-      updated[index] = {
-        ...updated[index],
-        title: title || updated[index].title,
-        sharedDescription: finalDescription,
-        blueskyTemplate: trimmed,
-        twitterTemplate: trimmed,
-        isGenerating: false,
-      };
-      return updated;
-    });
-  } catch (error) {
-    console.error("❌ Error generating description:", error);
-    toast.error("Failed to generate description.");
-
-    setSelectedVideos(prev => {
-      const updated = [...prev];
-      updated[index] = {
-        ...updated[index],
-        title: "Failed to generate title",
-        sharedDescription: "Failed to generate description.",
-        blueskyTemplate: "Failed to generate description.",
-        twitterTemplate: "Failed to generate description.",
-        isGenerating: false,
-      };
-      return updated;
-    });
-  }
-};
-
-
+      setVideoTitle(title || "Generated title");
+      setSharedDescription(`${description}\n\n${hashtagsString}${patreonLink}`);
+      const short = `${description} ${hashtagsString}`.substring(0, 300).trim();
+      setBlueskyTemplate(short);
+      setTwitterTemplate(short);
+    } catch (error) {
+      console.error("❌ Error generating description:", error);
+      toast.error("Failed to generate description.");
+      setVideoTitle("Failed to generate title");
+      setSharedDescription("Failed to generate description.");
+      setBlueskyTemplate("Failed to generate description.");
+      setTwitterTemplate("Failed to generate description.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   return (
     <PlatformContext.Provider
       value={{
-        activeVideoIndex,
-        setActiveVideoIndex,
-        selectedVideos,
-        setSelectedVideos,
+        activeVideo,
+        setActiveVideo,
         selectedFile,
         setSelectedFile,
         videoPreview,
@@ -268,7 +198,6 @@ Threads: https://www.threads.net/@polemicyst`
         isGenerating,
         setIsGenerating,
         generateDescription,
-        setPendingGenerationIndexes
       }}
     >
       {children}

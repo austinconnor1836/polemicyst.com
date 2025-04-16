@@ -1,13 +1,13 @@
-import '@/app/ui/global.css'
+import '@/src/app/ui/global.css'
 import React from 'react'
 import LocalFont from 'next/font/local'
 import { Metadata } from 'next'
-import { Analytics } from '@/app/_components/analytics'
-import { HamburgerProvider } from '@/app/context/HamburgerContext'
+import { Analytics } from '@/src/app/_components/analytics'
+import { HamburgerProvider } from '@/src/app/context/HamburgerContext'
 import { inter } from './ui/fonts'
 import StoreProvider from './StoreProvider'
 import SharedLayout from './SharedLayout'
-import SessionProviderWrapper from '@/app/_components/SessionProviderWrapper' // ✅ Import the wrapper
+import SessionProviderWrapper from '@/src/app/_components/SessionProviderWrapper' // ✅ Import the wrapper
 
 export const metadata: Metadata = {
   title: {

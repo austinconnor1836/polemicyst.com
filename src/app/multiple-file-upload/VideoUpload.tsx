@@ -37,10 +37,29 @@ const VideoUpload = () => {
     const newVideoEntries = await Promise.all(
       newFiles.map(async (file) => {
         const preview = URL.createObjectURL(file);
+        const title = file.name.replace(/\.[^/.]+$/, "");
+
+        // 👇 Save to DB
+        try {
+          await axios.post("/api/saveVideo", {
+            fileName: file.name,
+            videoTitle: title,
+            sharedDescription: "",
+            facebookTemplate,
+            instagramTemplate,
+            youtubeTemplate,
+            blueskyTemplate: "",
+            twitterTemplate: "",
+          });
+        } catch (err) {
+          toast.error(`❌ Failed to save ${file.name} to DB`);
+          console.error(err);
+        }
+
         return {
           file,
           videoPreview: preview,
-          title: file.name.replace(/\.[^/.]+$/, ""),
+          title,
           sharedDescription: "",
           facebookTemplate,
           instagramTemplate,

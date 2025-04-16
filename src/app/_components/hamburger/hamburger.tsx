@@ -1,6 +1,6 @@
 import React from 'react'
 import './hamburger.css'
-import { useHamburger } from '@/app/context/HamburgerContext'
+import { useHamburger } from '@/src/app/context/HamburgerContext';
 
 const HamburgerMenu: React.FC = () => {
   const { isOpen, toggleMenu } = useHamburger()
