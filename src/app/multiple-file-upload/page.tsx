@@ -6,10 +6,11 @@ import { Toaster } from "react-hot-toast";
 import PlatformList from "./PlatformList";
 import VideoUpload from "./VideoUpload";
 import DescriptionEditor from "./DescriptionEditor";
+import TemplateEditor from "./TemplateEditor"; // ← ✅ Import
 import Header from "./Header";
 import PlatformStatusBar from "./PlatformStatusBar";
 import VideoGrid from "./VideoGrid";
-import VideoEditorModal from "./VideoEditorModal"; // include modal if needed
+import VideoEditorModal from "./VideoEditorModal";
 import PublishSelectedButton from "./PublishSelectedButton";
 
 const ClipsGenie = () => {
@@ -27,7 +28,6 @@ const ClipsGenie = () => {
             <DescriptionEditor />
           </div>
         </div>
-
         {/* Grid goes underneath */}
         <VideoGrid />
         <PublishSelectedButton />

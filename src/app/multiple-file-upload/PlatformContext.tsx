@@ -38,7 +38,12 @@ interface PlatformContextProps {
   setVideoTitle: (title: string) => void;
   isGenerating: boolean;
   setIsGenerating: (isGenerating: boolean) => void;
-  generateDescription: (file: File) => Promise<void>;
+  generateDescription: (videoId: string, file: File) => Promise<void>;
+  regenerateDescription: (videoId: string, file: File) => Promise<void>;
+  refreshGridToggle: boolean;
+  triggerGridRefresh: () => void;
+  showTemplateModal: boolean;
+  setShowTemplateModal: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const PlatformContext = createContext<PlatformContextProps | undefined>(undefined);
@@ -52,33 +57,9 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [sharedDescription, setSharedDescription] = useState("");
   const [videoTitle, setVideoTitle] = useState("");
 
-  const [facebookTemplate, setFacebookTemplate] = useState(
-    `For more from Polemicyst:\n
-Youtube: https://www.youtube.com/@Polemicyst
-Twitter: https://x.com/Polemicyst
-Instagram: https://www.instagram.com/polemicyst/
-Bluesky: https://bsky.app/profile/polemicyst.bsky.social
-Threads: https://www.threads.net/@polemicyst`
-  );
-
-  const [instagramTemplate, setInstagramTemplate] = useState(
-    `For more from Polemicyst:\n
-Youtube: https://www.youtube.com/@Polemicyst
-Twitter: https://x.com/Polemicyst
-Facebook: https://www.facebook.com/profile.php?id=61573192766929
-Bluesky: https://bsky.app/profile/polemicyst.bsky.social
-Threads: https://www.threads.net/@polemicyst`
-  );
-
-  const [youtubeTemplate, setYoutubeTemplate] = useState(
-    `For more from Polemicyst:\n
-Twitter: https://x.com/Polemicyst
-Instagram: https://www.instagram.com/polemicyst/
-Facebook: https://www.facebook.com/profile.php?id=61573192766929
-Bluesky: https://bsky.app/profile/polemicyst.bsky.social
-Threads: https://www.threads.net/@polemicyst`
-  );
-
+  const [facebookTemplate, setFacebookTemplate] = useState("...");
+  const [instagramTemplate, setInstagramTemplate] = useState("...");
+  const [youtubeTemplate, setYoutubeTemplate] = useState("...");
   const [blueskyTemplate, setBlueskyTemplate] = useState("");
   const [twitterTemplate, setTwitterTemplate] = useState("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
@@ -89,9 +70,12 @@ Threads: https://www.threads.net/@polemicyst`
     bluesky: false,
     twitter: false,
   });
-
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
+  const [refreshGridToggle, setRefreshGridToggle] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+
+  const triggerGridRefresh = () => setRefreshGridToggle(prev => !prev);
 
   const fetchAuthenticationStatus = async () => {
     if (!session?.user?.id) return;
@@ -120,46 +104,47 @@ Threads: https://www.threads.net/@polemicyst`
     setIsAuthenticated((prev) => ({ ...prev, [provider]: true }));
   };
 
-  const generateDescription = async (file: File) => {
+  const generateDescription = async (videoId: string, file: File) => {
     setIsGenerating(true);
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("videoId", videoId);
 
       const response = await fetch("/api/generateDescription", {
         method: "POST",
         body: formData,
       });
 
-      const raw = await response.text();
-      const jsonStart = raw.indexOf("{");
-      const jsonEnd = raw.lastIndexOf("}");
-      const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
-      const { description, hashtags, title } = parsed;
+      const updated = await response.json();
 
-      const fixedHashtags = [
-        "#Polemicyst", "#news", "#politics", "#youtube", "#trump",
-        "#left", "#progressive", "#viral", "#maga",
-      ];
-      const allHashtags = [...fixedHashtags, ...hashtags];
-      const hashtagsString = allHashtags.join(", ");
-      const patreonLink = "\n\nSupport me on Patreon: https://www.patreon.com/c/Polemicyst";
-
-      setVideoTitle(title || "Generated title");
-      setSharedDescription(`${description}\n\n${hashtagsString}${patreonLink}`);
-      const short = `${description} ${hashtagsString}`.substring(0, 300).trim();
-      setBlueskyTemplate(short);
-      setTwitterTemplate(short);
+      setActiveVideo((prev) =>
+        prev
+          ? {
+            ...prev,
+            videoTitle: updated.title,
+            sharedDescription: updated.fullDescription,
+            blueskyTemplate: updated.shortTemplate,
+            twitterTemplate: updated.shortTemplate,
+            // ✅ Preserve existing facebook/insta/youtube templates
+            facebookTemplate: prev.facebookTemplate,
+            instagramTemplate: prev.instagramTemplate,
+            youtubeTemplate: prev.youtubeTemplate,
+          }
+          : null
+      );
     } catch (error) {
       console.error("❌ Error generating description:", error);
       toast.error("Failed to generate description.");
-      setVideoTitle("Failed to generate title");
-      setSharedDescription("Failed to generate description.");
-      setBlueskyTemplate("Failed to generate description.");
-      setTwitterTemplate("Failed to generate description.");
     } finally {
       setIsGenerating(false);
     }
+  };
+
+
+  const regenerateDescription = async (videoId: string, file: File) => {
+    await generateDescription(videoId, file);
+    triggerGridRefresh();
   };
 
   return (
@@ -198,6 +183,11 @@ Threads: https://www.threads.net/@polemicyst`
         isGenerating,
         setIsGenerating,
         generateDescription,
+        regenerateDescription,
+        refreshGridToggle,
+        triggerGridRefresh,
+        showTemplateModal,
+        setShowTemplateModal
       }}
     >
       {children}
