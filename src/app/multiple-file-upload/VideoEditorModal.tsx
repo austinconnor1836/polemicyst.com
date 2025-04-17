@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState } from "react";
 import toast from "react-hot-toast";
 import { usePlatformContext } from "./PlatformContext";
@@ -15,7 +17,9 @@ const VideoEditorModal = () => {
   if (!activeVideo) return null;
 
   const updateField = (field: keyof typeof activeVideo, value: string) => {
-    setActiveVideo({ ...activeVideo, [field]: value });
+    setActiveVideo((prev) =>
+      prev ? { ...prev, [field]: value } : prev
+    );
   };
 
   const handleSave = async () => {
@@ -29,7 +33,10 @@ const VideoEditorModal = () => {
         body: JSON.stringify(activeVideo),
       });
 
-      if (!response.ok) throw new Error("Failed to save video");
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(err);
+      }
 
       toast.success("✅ Video saved");
       triggerGridRefresh();
@@ -51,7 +58,6 @@ const VideoEditorModal = () => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="relative bg-white dark:bg-gray-900 p-6 rounded-lg w-full max-w-2xl shadow-lg max-h-[90vh] overflow-y-auto">
-
         {/* Close */}
         <button
           className="absolute top-4 right-4 bg-blue-500 text-white px-3 py-1 rounded-md text-sm hover:bg-blue-600"
@@ -77,8 +83,11 @@ const VideoEditorModal = () => {
           {isSaving ? "Saving..." : "Save"}
         </button>
 
-        <h2 className="text-xl font-semibold mb-4 pr-32">Edit Video: {activeVideo.videoTitle}</h2>
+        <h2 className="text-xl font-semibold mb-4 pr-32">
+          Edit Video: {activeVideo.videoTitle}
+        </h2>
 
+        {/* Video Title */}
         <label className="block mb-2 text-sm font-medium">Video Title</label>
         <input
           type="text"
@@ -87,6 +96,7 @@ const VideoEditorModal = () => {
           className="w-full p-2 border rounded dark:text-black"
         />
 
+        {/* Shared Description */}
         <label className="block mt-4 mb-2 text-sm font-medium">General Description</label>
         <textarea
           value={activeVideo.sharedDescription}
@@ -94,6 +104,7 @@ const VideoEditorModal = () => {
           className="w-full p-2 border rounded h-32 resize-none dark:text-black"
         />
 
+        {/* Platform Templates */}
         {[
           { key: "facebookTemplate", label: "Facebook" },
           { key: "instagramTemplate", label: "Instagram" },

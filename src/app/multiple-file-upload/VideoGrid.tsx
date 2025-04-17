@@ -7,7 +7,7 @@ import TemplateModal from './TemplateModal';
 interface Video {
   id: string;
   fileName: string;
-  s3Url: string; // ✅ NEW FIELD
+  s3Url: string;
   videoTitle: string;
   sharedDescription: string;
   facebookTemplate: string;
@@ -19,44 +19,40 @@ interface Video {
 }
 
 const VideoGrid = () => {
-  const { setActiveVideo, refreshGridToggle, showTemplateModal, setShowTemplateModal } = usePlatformContext();
-  const [videos, setVideos] = useState<Video[]>([]);
-  const [selectedVideoIds, setSelectedVideoIds] = useState<Set<string>>(new Set());
+  const {
+    setActiveVideo,
+    refreshGridToggle,
+    showTemplateModal,
+    setShowTemplateModal,
+    selectedVideoIds,
+    setSelectedVideoIds,
+    toggleVideoSelection,
+    uploadedVideos,
+    setUploadedVideos
+  } = usePlatformContext();
   const [isDeleting, setIsDeleting] = useState(false);
 
-  useEffect(() => {
-    const fetchVideos = async () => {
-      try {
-        const response = await fetch('/api/videos');
-        if (!response.ok) throw new Error('Failed to fetch videos');
-        const data: Video[] = await response.json();
-        setVideos(data);
-      } catch (error) {
-        console.error('Error fetching videos:', error);
-      }
-    };
+  // useEffect(() => {
+  //   const fetchVideos = async () => {
+  //     try {
+  //       const response = await fetch('/api/videos');
+  //       if (!response.ok) throw new Error('Failed to fetch videos');
+  //       const data: Video[] = await response.json();
+  //       setVideos(data);
+  //     } catch (error) {
+  //       console.error('Error fetching videos:', error);
+  //     }
+  //   };
 
-    fetchVideos();
-  }, [refreshGridToggle]);
+  //   fetchVideos();
+  // }, [refreshGridToggle]);
 
   const handleSelectAll = () => {
-    if (selectedVideoIds.size === videos.length) {
+    if (selectedVideoIds.size === uploadedVideos.length) {
       setSelectedVideoIds(new Set());
     } else {
-      setSelectedVideoIds(new Set(videos.map((video) => video.id)));
+      setSelectedVideoIds(new Set(uploadedVideos.map((v) => v.id)));
     }
-  };
-
-  const toggleSelection = (id: string) => {
-    setSelectedVideoIds((prev) => {
-      const updated = new Set(prev);
-      if (updated.has(id)) {
-        updated.delete(id);
-      } else {
-        updated.add(id);
-      }
-      return updated;
-    });
   };
 
   const handleDeleteSelected = async () => {
@@ -70,7 +66,7 @@ const VideoGrid = () => {
         )
       );
 
-      setVideos((prev) => prev.filter((video) => !selectedVideoIds.has(video.id)));
+      setUploadedVideos((prev) => prev.filter((video) => !selectedVideoIds.has(video.id)));
       setSelectedVideoIds(new Set());
     } catch (error) {
       console.error('Error deleting videos:', error);
@@ -90,10 +86,10 @@ const VideoGrid = () => {
       {showTemplateModal && (
         <TemplateModal />
       )}
-      {videos.length === 0 ? <p className="text-center text-gray-500 mt-8">No videos uploaded yet.</p> : <div className="mt-10">
+      {uploadedVideos.length === 0 ? <p className="text-center text-gray-500 mt-8">No videos uploaded yet.</p> : <div className="mt-10">
         <div className="flex justify-between mb-2">
           <button onClick={handleSelectAll} className="text-sm text-blue-600 hover:underline">
-            {selectedVideoIds.size === videos.length ? 'Deselect All' : 'Select All'}
+            {selectedVideoIds.size === uploadedVideos.length ? 'Deselect All' : 'Select All'}
           </button>
 
           <button
@@ -106,7 +102,7 @@ const VideoGrid = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-          {videos.map((video) => (
+          {uploadedVideos.map((video) => (
             <div
               key={video.id}
               className="relative border rounded-lg p-4 shadow-sm bg-white dark:bg-gray-800"
@@ -116,7 +112,7 @@ const VideoGrid = () => {
                 type="checkbox"
                 className="absolute top-2 right-2"
                 checked={selectedVideoIds.has(video.id)}
-                onChange={() => toggleSelection(video.id)}
+                onChange={() => toggleVideoSelection(video.id)}
                 onClick={(e) => e.stopPropagation()}
               />
 
@@ -126,7 +122,7 @@ const VideoGrid = () => {
 
                 {/* ✅ Actual video preview */}
                 <video
-                  src={video.s3Url}
+                  src={video.s3Url ?? ""}
                   controls
                   className="w-full rounded max-h-48"
                 />

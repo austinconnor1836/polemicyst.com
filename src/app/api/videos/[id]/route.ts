@@ -34,12 +34,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function PUT(req: NextRequest, context: { params: { id: string } }) {
-  const id = context.params.id;
+  const videoId = context.params.id;
   const body = await req.json();
 
   try {
     const updated = await prisma.video.update({
-      where: { id },
+      where: { id: videoId },
       data: {
         videoTitle: body.videoTitle,
         sharedDescription: body.sharedDescription,
@@ -51,7 +51,7 @@ export async function PUT(req: NextRequest, context: { params: { id: string } })
       },
     });
 
-    return Response.json(updated);
+    return new Response(JSON.stringify(updated), { status: 200 });
   } catch (err) {
     console.error("Failed to update video", err);
     return new Response("Failed to update video", { status: 500 });

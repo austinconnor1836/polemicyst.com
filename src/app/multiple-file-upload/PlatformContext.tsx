@@ -5,16 +5,7 @@ import { useSession } from "next-auth/react";
 import React, { createContext, useState, useContext, useEffect, useRef } from "react";
 import toast from "react-hot-toast";
 
-export type UploadedVideo = {
-  id: string;
-  videoTitle: string;
-  sharedDescription: string;
-  facebookTemplate: string;
-  instagramTemplate: string;
-  youtubeTemplate: string;
-  blueskyTemplate: string;
-  twitterTemplate: string;
-};
+export type UploadedVideo = Video;
 
 interface PlatformContextProps {
   uploadedVideos: UploadedVideo[];
@@ -59,6 +50,9 @@ interface PlatformContextProps {
   setShowTemplateModal: React.Dispatch<React.SetStateAction<boolean>>;
   getFileFromCache: (videoId: string) => File | undefined;
   setFileInCache: (videoId: string, file: File) => void;
+  selectedVideoIds: Set<string>;
+  setSelectedVideoIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  toggleVideoSelection: (videoId: string) => void;
 }
 
 const PlatformContext = createContext<PlatformContextProps | undefined>(undefined);
@@ -90,6 +84,19 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [refreshGridToggle, setRefreshGridToggle] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [uploadedVideos, setUploadedVideos] = useState<UploadedVideo[]>([]);
+  const [selectedVideoIds, setSelectedVideoIds] = useState<Set<string>>(new Set());
+
+  const toggleVideoSelection = (id: string) => {
+    setSelectedVideoIds((prev) => {
+      const updated = new Set(prev);
+      if (updated.has(id)) {
+        updated.delete(id);
+      } else {
+        updated.add(id);
+      }
+      return updated;
+    });
+  };
 
   const videoFileCache = useRef<Map<string, File>>(new Map());
   const getFileFromCache = (videoId: string) => videoFileCache.current.get(videoId);
@@ -113,6 +120,21 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       fetchAuthenticationStatus();
     }
   }, [session, status]);
+
+  useEffect(() => {
+    const loadVideos = async () => {
+      try {
+        const res = await fetch("/api/videos");
+        const data = await res.json();
+        setUploadedVideos(data);
+      } catch (err) {
+        console.error("❌ Failed to fetch videos on mount:", err);
+      }
+    };
+
+    loadVideos();
+  }, []);
+
 
   const togglePlatform = (provider: string) => {
     setSelectedPlatforms((prev) =>
@@ -138,15 +160,15 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setActiveVideo((prev) =>
         prev
           ? {
-              ...prev,
-              videoTitle: updated.title,
-              sharedDescription: updated.fullDescription,
-              blueskyTemplate: updated.shortTemplate,
-              twitterTemplate: updated.shortTemplate,
-              facebookTemplate: prev.facebookTemplate,
-              instagramTemplate: prev.instagramTemplate,
-              youtubeTemplate: prev.youtubeTemplate,
-            }
+            ...prev,
+            videoTitle: updated.title,
+            sharedDescription: updated.fullDescription,
+            blueskyTemplate: updated.shortTemplate,
+            twitterTemplate: updated.shortTemplate,
+            facebookTemplate: prev.facebookTemplate,
+            instagramTemplate: prev.instagramTemplate,
+            youtubeTemplate: prev.youtubeTemplate,
+          }
           : null
       );
     } catch (error) {
@@ -206,7 +228,10 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         getFileFromCache,
         setFileInCache,
         uploadedVideos,
-        setUploadedVideos
+        setUploadedVideos,
+        selectedVideoIds,
+        setSelectedVideoIds,
+        toggleVideoSelection
       }}
     >
       {children}

@@ -9,16 +9,19 @@ import toast from "react-hot-toast";
 const PublishSelectedButton = () => {
   const {
     uploadedVideos,
+    selectedVideoIds,
     selectedPlatforms,
     isAuthenticated,
     setIsPosting,
   } = usePlatformContext();
-  const { data: session } = useSession();
 
+  const { data: session } = useSession();
   const [isPublishing, setIsPublishing] = useState(false);
 
   const handlePublish = async () => {
-    const videosToPublish = uploadedVideos.filter((video) => (video as any).selected);
+    const videosToPublish = uploadedVideos.filter((video) =>
+      selectedVideoIds.has(video.id)
+    );
 
     if (!videosToPublish.length) {
       toast.error("No videos selected for publishing.");
