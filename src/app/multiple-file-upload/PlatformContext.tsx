@@ -104,11 +104,10 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsAuthenticated((prev) => ({ ...prev, [provider]: true }));
   };
 
-  const generateDescription = async (videoId: string, file: File) => {
+  const generateDescription = async (videoId: string) => {
     setIsGenerating(true);
     try {
       const formData = new FormData();
-      formData.append("file", file);
       formData.append("videoId", videoId);
 
       const response = await fetch("/api/generateDescription", {
@@ -142,8 +141,8 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
 
-  const regenerateDescription = async (videoId: string, file: File) => {
-    await generateDescription(videoId, file);
+  const regenerateDescription = async (videoId: string) => {
+    await generateDescription(videoId);
     triggerGridRefresh();
   };
 

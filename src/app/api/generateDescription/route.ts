@@ -3,44 +3,55 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/src/lib/prisma";
 
 export async function POST(req: NextRequest) {
-  const formData = await req.formData();
-  const file = formData.get("file") as File;
-  const videoId = formData.get("videoId") as string;
+  const { videoId } = await req.json();
 
-  if (!file || !videoId) {
+  if (!videoId) {
+    return new Response("Missing videoId", { status: 400 });
+  }
+
+  if (!videoId) {
     return new Response("Missing file or videoId", { status: 400 });
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const blob = new Blob([buffer], { type: file.type });
-
-  const proxyFormData = new FormData();
-  proxyFormData.set("file", blob, file.name);
-
   try {
-    const backendRes = await fetch("http://localhost:3001/api/generate", {
-      method: "POST",
-      body: proxyFormData,
+    // ✅ Get video + transcript directly from Prisma
+    const video = await prisma.video.findUnique({
+      where: { id: videoId },
+      select: { transcript: true },
     });
 
-    const raw = await backendRes.text();
-    const jsonStart = raw.indexOf("{");
-    const jsonEnd = raw.lastIndexOf("}");
-    const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+    if (!video || !video.transcript) {
+      return new Response("Transcript not found for video", { status: 404 });
+    }
 
+    // ✅ Send transcript to backend generation endpoint
+    const generateRes = await fetch("http://localhost:3001/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript: video.transcript }),
+    });
+
+    if (!generateRes.ok) {
+      const errorText = await generateRes.text();
+      console.error("Generation failed:", errorText);
+      return new Response("Failed to generate metadata", { status: 500 });
+    }
+
+    const parsed = await generateRes.json();
     const { title, description, hashtags } = parsed;
 
     const fixedHashtags = [
       "#Polemicyst", "#news", "#politics", "#youtube", "#trump",
-      "#left", "#progressive", "#viral", "#maga"
+      "#left", "#progressive", "#viral", "#maga",
     ];
-    const allHashtags = [...fixedHashtags, ...hashtags];
+    const safeHashtags = Array.isArray(hashtags) ? hashtags : [];
+    const allHashtags = [...fixedHashtags, ...safeHashtags];
     const hashtagsString = allHashtags.join(", ");
     const patreonLink = "\n\nSupport me on Patreon: https://www.patreon.com/c/Polemicyst";
     const fullDescription = `${description}\n\n${hashtagsString}${patreonLink}`;
     const shortTemplate = `${description} ${hashtagsString}`.substring(0, 300).trim();
 
-    // Update the video in the DB
+    // 4. Update the video with the generated data
     const updated = await prisma.video.update({
       where: { id: videoId },
       data: {

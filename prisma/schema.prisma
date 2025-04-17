@@ -48,6 +48,7 @@ model Video {
   youtubeTemplate   String
   blueskyTemplate   String
   twitterTemplate   String
+  transcript        String?
   createdAt         DateTime @default(now())
 }
 

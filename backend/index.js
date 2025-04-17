@@ -12,6 +12,9 @@ app.use(express.json());
 app.use('/api/ping', pingRoute);
 app.use('/api/generate', generateRoute);
 
+const transcribeRoute = require('./routes/transcribe');
+app.use('/api/transcribe', transcribeRoute);
+
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Backend running on http://localhost:${PORT}`);

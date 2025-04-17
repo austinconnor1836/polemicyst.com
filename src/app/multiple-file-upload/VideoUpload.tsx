@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 import { usePlatformContext } from "./PlatformContext";
 
 const VideoUpload = () => {
-  const { regenerateDescription, triggerGridRefresh } = usePlatformContext();
+  const { triggerGridRefresh } = usePlatformContext();
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -18,9 +18,9 @@ const VideoUpload = () => {
         const title = file.name.replace(/\.[^/.]+$/, "");
 
         try {
-          // 🔽 Construct form data for file and metadata
+          // Step 1: Save video metadata and get videoId
           const formData = new FormData();
-          formData.append("file", file);
+          formData.append("file", file); // for saveVideo to extract metadata
           formData.append("fileName", file.name);
           formData.append("videoTitle", title);
           formData.append("sharedDescription", "");
@@ -38,7 +38,34 @@ const VideoUpload = () => {
           const { videoId } = await saveRes.json();
           if (!videoId) throw new Error("Missing video ID");
 
-          await regenerateDescription(videoId, file);
+          // Step 2: Transcribe the video
+          const transcribeForm = new FormData();
+          transcribeForm.append("file", file);
+          transcribeForm.append("videoId", videoId);
+
+          const transcribeRes = await fetch("/api/transcribe", {
+            method: "POST",
+            body: transcribeForm,
+          });
+
+          if (!transcribeRes.ok) {
+            const err = await transcribeRes.text();
+            throw new Error("Transcription failed: " + err);
+          }
+
+          // Step 3: Generate description from stored transcript
+          const generateRes = await fetch("/api/generateDescription", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ videoId }),
+          });
+
+          if (!generateRes.ok) {
+            const err = await generateRes.text();
+            throw new Error("Generation failed: " + err);
+          }
+
+          toast.success(`✅ Uploaded and processed ${file.name}`);
         } catch (err) {
           toast.error(`❌ Failed to upload ${file.name}`);
           console.error(err);
