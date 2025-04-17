@@ -3,7 +3,13 @@ import toast from "react-hot-toast";
 import { usePlatformContext } from "./PlatformContext";
 
 const VideoEditorModal = () => {
-  const { activeVideo, setActiveVideo, regenerateDescription, triggerGridRefresh } = usePlatformContext();
+  const {
+    activeVideo,
+    setActiveVideo,
+    regenerateDescription,
+    triggerGridRefresh,
+  } = usePlatformContext();
+
   const [isSaving, setIsSaving] = useState(false);
 
   if (!activeVideo) return null;
@@ -37,16 +43,9 @@ const VideoEditorModal = () => {
   };
 
   const handleRegenerate = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "video/*";
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (file && activeVideo?.id) {
-        regenerateDescription(activeVideo.id, file);
-      }
-    };
-    input.click();
+    if (activeVideo?.id) {
+      regenerateDescription(activeVideo.id);
+    }
   };
 
   return (

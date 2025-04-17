@@ -72,6 +72,10 @@ export async function DELETE(_: NextRequest, context: { params: { id: string } }
       return new Response("Video not found", { status: 404 });
     }
 
+    if (!video?.s3Key) {
+      return new Response("Missing S3 key for this video", { status: 400 });
+    }
+
     // Delete the video file from S3
     await s3
       .deleteObject({

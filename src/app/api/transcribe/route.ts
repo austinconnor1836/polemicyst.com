@@ -1,6 +1,17 @@
 // /src/app/api/transcribe/route.ts
 import { NextRequest } from "next/server";
 import { prisma } from "@/src/lib/prisma";
+import AWS from "aws-sdk";
+
+const S3_BUCKET = "clips-genie-uploads";
+const S3_REGION = process.env.S3_REGION;
+
+const s3 = new AWS.S3({
+  region: S3_REGION,
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  signatureVersion: "v4",
+});
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
@@ -12,14 +23,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Prepare the file for proxying to the backend
+    // Prepare file for backend transcription
     const buffer = Buffer.from(await file.arrayBuffer());
     const blob = new Blob([buffer], { type: file.type });
 
     const proxyFormData = new FormData();
     proxyFormData.set("file", blob, file.name);
 
-    // Send the file to the backend transcription endpoint
+    // Send file to backend for transcription
     const transcribeRes = await fetch("http://localhost:3001/api/transcribe", {
       method: "POST",
       body: proxyFormData,
@@ -41,7 +52,7 @@ export async function POST(req: NextRequest) {
       return new Response("Bad transcription response", { status: 500 });
     }
 
-    // Save the transcript to the DB
+    // Save transcript to DB
     await prisma.video.update({
       where: { id: videoId },
       data: { transcript },

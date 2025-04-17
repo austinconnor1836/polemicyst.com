@@ -14,24 +14,24 @@ datasource db {
 }
 
 model User {
-  id                   String    @id @default(uuid())
-  name                 String?
-  email                String?   @unique
-  emailVerified        DateTime?
-  image                String?
-  accounts             Account[]
-  sessions             Session[]
-  videos               Video[]
-  templatePreferences  TemplatePreferences?
+  id                  String               @id @default(uuid())
+  name                String?
+  email               String?              @unique
+  emailVerified       DateTime?
+  image               String?
+  accounts            Account[]
+  sessions            Session[]
+  videos              Video[]
+  templatePreferences TemplatePreferences?
 }
 
 model TemplatePreferences {
-  id                 String   @id @default(uuid())
-  userId             String   @unique
-  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  facebookTemplate   String
-  instagramTemplate  String
-  youtubeTemplate    String
+  id                String @id @default(uuid())
+  userId            String @unique
+  user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  facebookTemplate  String
+  instagramTemplate String
+  youtubeTemplate   String
 }
 
 model Video {
@@ -39,8 +39,8 @@ model Video {
   userId            String
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   fileName          String
-  s3Url             String
-  s3Key             String
+  s3Url             String?
+  s3Key             String?
   videoTitle        String
   sharedDescription String
   facebookTemplate  String

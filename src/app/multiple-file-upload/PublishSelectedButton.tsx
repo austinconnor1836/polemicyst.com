@@ -8,7 +8,7 @@ import toast from "react-hot-toast";
 
 const PublishSelectedButton = () => {
   const {
-    selectedVideos,
+    uploadedVideos,
     selectedPlatforms,
     isAuthenticated,
     setIsPosting,
@@ -18,7 +18,7 @@ const PublishSelectedButton = () => {
   const [isPublishing, setIsPublishing] = useState(false);
 
   const handlePublish = async () => {
-    const videosToPublish = selectedVideos.filter((video) => video.selected);
+    const videosToPublish = uploadedVideos.filter((video) => (video as any).selected);
 
     if (!videosToPublish.length) {
       toast.error("No videos selected for publishing.");
@@ -38,6 +38,14 @@ const PublishSelectedButton = () => {
     setIsPublishing(true);
     setIsPosting(true);
 
+    const endpointMap: Record<string, string> = {
+      facebook: "/api/meta/upload/facebook",
+      instagram: "/api/meta/upload/instagram",
+      google: "/api/youtube/upload",
+      bluesky: "/api/bluesky/post",
+      twitter: "/api/twitter/post",
+    };
+
     for (const video of videosToPublish) {
       const descriptions: Record<string, string> = {
         facebook: `${video.sharedDescription}\n\n${video.facebookTemplate}`,
@@ -47,56 +55,42 @@ const PublishSelectedButton = () => {
         twitter: video.twitterTemplate,
       };
 
-      const endpointMap: Record<string, string> = {
-        facebook: "/api/meta/upload/facebook",
-        instagram: "/api/meta/upload/instagram",
-        google: "/api/youtube/upload",
-        bluesky: "/api/bluesky/post",
-        twitter: "/api/twitter/post",
-      };
-
       let uploadedYouTubeUrl = "";
 
       if (selectedPlatforms.includes("google")) {
         try {
-          const ytForm = new FormData();
-          ytForm.append("file", video.file);
-          ytForm.append("title", video.title);
-          ytForm.append("description", descriptions.google);
-          ytForm.append("userId", session.user.id);
-
-          const ytRes = await axios.post(endpointMap.google, ytForm, {
-            headers: { "Content-Type": "multipart/form-data" },
+          const ytRes = await axios.post(endpointMap.google, {
+            videoId: video.id,
+            title: video.videoTitle,
+            description: descriptions.google,
+            userId: session.user.id,
           });
-
           uploadedYouTubeUrl = ytRes.data.youtubeLink;
-        } catch (err: any) {
-          toast.error(`YouTube upload failed for ${video.title}. Skipping Bluesky.`);
+        } catch (err) {
+          toast.error(`YouTube upload failed for ${video.videoTitle}. Skipping Bluesky.`);
           continue;
         }
       }
 
       for (const platform of selectedPlatforms) {
         if (!endpointMap[platform]) continue;
+
         try {
           if (platform === "facebook" || platform === "instagram") {
-            const form = new FormData();
-            form.append("file", video.file);
-            form.append("description", descriptions[platform]);
-            form.append("userId", session.user.id);
-
-            await axios.post(endpointMap[platform], form, {
-              headers: { "Content-Type": "multipart/form-data" },
+            await axios.post(endpointMap[platform], {
+              videoId: video.id,
+              description: descriptions[platform],
+              userId: session.user.id,
             });
-          } else {
+          } else if (platform === "bluesky" || platform === "twitter") {
             await axios.post(endpointMap[platform], {
               youtubeUrl: uploadedYouTubeUrl,
               description: descriptions[platform],
               userId: session.user.id,
             });
           }
-        } catch (err: any) {
-          toast.error(`${platform} post failed for ${video.title}`);
+        } catch (err) {
+          toast.error(`${platform} post failed for ${video.videoTitle}`);
         }
       }
     }

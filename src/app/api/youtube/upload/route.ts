@@ -1,73 +1,63 @@
+// /api/youtube/upload/route.ts
 import { NextResponse } from "next/server";
 import { google } from "googleapis";
 import { Readable } from "stream";
 import { PrismaClient } from "@prisma/client";
+import AWS from "aws-sdk";
 
 const prisma = new PrismaClient();
 
+const S3_BUCKET = "clips-genie-uploads";
+const S3_REGION = process.env.S3_REGION;
+const s3 = new AWS.S3({
+  region: S3_REGION,
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  signatureVersion: "v4",
+});
+
 export async function POST(req: Request) {
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    const title = formData.get("title") as string;
-    const description = formData.get("description") as string;
-    const userId = formData.get("userId") as string;
+    const { videoId, title, description, userId } = await req.json();
 
-    if (!file || !title || !description || !userId) {
+    if (!videoId || !title || !description || !userId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // ✅ Fetch Facebook access token from DB via Prisma
+    const video = await prisma.video.findUnique({ where: { id: videoId } });
+    if (!video || !video.s3Key) return NextResponse.json({ error: "Video not found" }, { status: 404 });
+
     const googleAccount = await prisma.account.findFirst({
-      where: {
-        userId,
-        provider: "google",
-      },
+      where: { userId, provider: "google" },
     });
 
     const accessToken = googleAccount?.access_token;
-    
-    console.log("📺 Uploading to YouTube...");
 
-    // Initialize YouTube API client
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
 
     const youtube = google.youtube({ version: "v3", auth });
 
-    // Convert File to Stream
-    const fileBuffer = Buffer.from(await file.arrayBuffer());
+    const s3Buffer = await s3.getObject({ Bucket: S3_BUCKET, Key: video.s3Key }).promise();
     const fileStream = new Readable();
-    fileStream.push(fileBuffer);
+    fileStream.push(s3Buffer.Body);
     fileStream.push(null);
 
-    // Upload video
     const response = await youtube.videos.insert({
       part: ["snippet", "status"],
       requestBody: {
-        snippet: {
-          title,
-          description,
-          categoryId: "25", // 25 = News & Politics
-        },
-        status: {
-          privacyStatus: "public",
-          selfDeclaredMadeForKids: false,
-        },
+        snippet: { title, description, categoryId: "25" },
+        status: { privacyStatus: "public", selfDeclaredMadeForKids: false },
       },
-      media: {
-        body: fileStream,
-      },
+      media: { body: fileStream },
     });
 
-    const videoId = response.data.id;
-    const youtubeLink = `https://youtu.be/${videoId}`;
+    const videoIdOut = response.data.id;
+    const youtubeLink = `https://youtu.be/${videoIdOut}`;
 
-    console.log(`✅ YouTube upload successful! Video Link: ${youtubeLink}`);
-
-    return NextResponse.json({ message: "YouTube upload successful!", youtubeLink }, { status: 200 });
-  } catch (error: any) {
-    console.error("❌ Error uploading to YouTube:", error.response?.data || error.message);
-    return NextResponse.json({ error: "Failed to upload video to YouTube" }, { status: 500 });
+    return NextResponse.json({ youtubeLink }, { status: 200 });
+  } catch (err: any) {
+    console.error("YouTube upload error:", err.response?.data || err.message);
+    return NextResponse.json({ error: "Failed to upload to YouTube" }, { status: 500 });
   }
 }

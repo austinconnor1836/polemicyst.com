@@ -40,7 +40,6 @@ export async function POST(req: NextRequest) {
 
   const preferences = user.templatePreferences;
 
-  // Upload file to S3
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
   const key = `video-uploads/${randomUUID()}-${fileName}`;
@@ -56,7 +55,6 @@ export async function POST(req: NextRequest) {
 
   const s3Url = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
 
-  // Save video to DB
   const newVideo = await prisma.video.create({
     data: {
       userId: user.id,
@@ -73,5 +71,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return Response.json({ videoId: newVideo.id });
+  return Response.json({ videoId: newVideo.id, s3Url });
 }

@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 import { usePlatformContext } from "./PlatformContext";
 
 const VideoUpload = () => {
-  const { triggerGridRefresh } = usePlatformContext();
+  const { triggerGridRefresh, setFileInCache } = usePlatformContext();
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -20,7 +20,7 @@ const VideoUpload = () => {
         try {
           // Step 1: Save video metadata and get videoId
           const formData = new FormData();
-          formData.append("file", file); // for saveVideo to extract metadata
+          formData.append("file", file);
           formData.append("fileName", file.name);
           formData.append("videoTitle", title);
           formData.append("sharedDescription", "");
@@ -35,14 +35,23 @@ const VideoUpload = () => {
             body: formData,
           });
 
-          const { videoId } = await saveRes.json();
-          if (!videoId) throw new Error("Missing video ID");
+          if (!saveRes.ok) {
+            const errText = await saveRes.text();
+            throw new Error(`❌ saveVideo failed: ${errText}`);
+          }
 
-          // Step 2: Transcribe the video
+          const { videoId, s3Url } = await saveRes.json();
+          if (!videoId || !s3Url) throw new Error("Missing video ID or s3Url");
+
+          // Optional: Cache file in memory
+          setFileInCache(videoId, file);
+
+          // Step 2: Transcribe
           const transcribeForm = new FormData();
           transcribeForm.append("file", file);
           transcribeForm.append("videoId", videoId);
 
+          console.log("📤 Calling /api/transcribe...");
           const transcribeRes = await fetch("/api/transcribe", {
             method: "POST",
             body: transcribeForm,
@@ -53,7 +62,7 @@ const VideoUpload = () => {
             throw new Error("Transcription failed: " + err);
           }
 
-          // Step 3: Generate description from stored transcript
+          // Step 3: Generate description
           const generateRes = await fetch("/api/generateDescription", {
             method: "POST",
             headers: { "Content-Type": "application/json" },

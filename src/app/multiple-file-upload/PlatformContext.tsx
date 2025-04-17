@@ -2,10 +2,23 @@
 
 import { Video } from "@prisma/client";
 import { useSession } from "next-auth/react";
-import React, { createContext, useState, useContext, useEffect } from "react";
+import React, { createContext, useState, useContext, useEffect, useRef } from "react";
 import toast from "react-hot-toast";
 
+export type UploadedVideo = {
+  id: string;
+  videoTitle: string;
+  sharedDescription: string;
+  facebookTemplate: string;
+  instagramTemplate: string;
+  youtubeTemplate: string;
+  blueskyTemplate: string;
+  twitterTemplate: string;
+};
+
 interface PlatformContextProps {
+  uploadedVideos: UploadedVideo[];
+  setUploadedVideos: React.Dispatch<React.SetStateAction<UploadedVideo[]>>;
   activeVideo: Video | null;
   setActiveVideo: React.Dispatch<React.SetStateAction<Video | null>>;
   selectedFile: File | null;
@@ -38,12 +51,14 @@ interface PlatformContextProps {
   setVideoTitle: (title: string) => void;
   isGenerating: boolean;
   setIsGenerating: (isGenerating: boolean) => void;
-  generateDescription: (videoId: string, file: File) => Promise<void>;
-  regenerateDescription: (videoId: string, file: File) => Promise<void>;
+  generateDescription: (videoId: string) => Promise<void>;
+  regenerateDescription: (videoId: string) => Promise<void>;
   refreshGridToggle: boolean;
   triggerGridRefresh: () => void;
   showTemplateModal: boolean;
   setShowTemplateModal: React.Dispatch<React.SetStateAction<boolean>>;
+  getFileFromCache: (videoId: string) => File | undefined;
+  setFileInCache: (videoId: string, file: File) => void;
 }
 
 const PlatformContext = createContext<PlatformContextProps | undefined>(undefined);
@@ -74,6 +89,11 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isPosting, setIsPosting] = useState(false);
   const [refreshGridToggle, setRefreshGridToggle] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [uploadedVideos, setUploadedVideos] = useState<UploadedVideo[]>([]);
+
+  const videoFileCache = useRef<Map<string, File>>(new Map());
+  const getFileFromCache = (videoId: string) => videoFileCache.current.get(videoId);
+  const setFileInCache = (videoId: string, file: File) => videoFileCache.current.set(videoId, file);
 
   const triggerGridRefresh = () => setRefreshGridToggle(prev => !prev);
 
@@ -107,12 +127,10 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const generateDescription = async (videoId: string) => {
     setIsGenerating(true);
     try {
-      const formData = new FormData();
-      formData.append("videoId", videoId);
-
       const response = await fetch("/api/generateDescription", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId }),
       });
 
       const updated = await response.json();
@@ -120,16 +138,15 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setActiveVideo((prev) =>
         prev
           ? {
-            ...prev,
-            videoTitle: updated.title,
-            sharedDescription: updated.fullDescription,
-            blueskyTemplate: updated.shortTemplate,
-            twitterTemplate: updated.shortTemplate,
-            // ✅ Preserve existing facebook/insta/youtube templates
-            facebookTemplate: prev.facebookTemplate,
-            instagramTemplate: prev.instagramTemplate,
-            youtubeTemplate: prev.youtubeTemplate,
-          }
+              ...prev,
+              videoTitle: updated.title,
+              sharedDescription: updated.fullDescription,
+              blueskyTemplate: updated.shortTemplate,
+              twitterTemplate: updated.shortTemplate,
+              facebookTemplate: prev.facebookTemplate,
+              instagramTemplate: prev.instagramTemplate,
+              youtubeTemplate: prev.youtubeTemplate,
+            }
           : null
       );
     } catch (error) {
@@ -139,7 +156,6 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setIsGenerating(false);
     }
   };
-
 
   const regenerateDescription = async (videoId: string) => {
     await generateDescription(videoId);
@@ -186,7 +202,11 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         refreshGridToggle,
         triggerGridRefresh,
         showTemplateModal,
-        setShowTemplateModal
+        setShowTemplateModal,
+        getFileFromCache,
+        setFileInCache,
+        uploadedVideos,
+        setUploadedVideos
       }}
     >
       {children}

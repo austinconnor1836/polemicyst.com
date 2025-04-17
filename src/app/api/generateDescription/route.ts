@@ -38,14 +38,13 @@ export async function POST(req: NextRequest) {
     }
 
     const parsed = await generateRes.json();
-    const { title, description, hashtags } = parsed;
+    const { title, description } = parsed;
 
     const fixedHashtags = [
       "#Polemicyst", "#news", "#politics", "#youtube", "#trump",
       "#left", "#progressive", "#viral", "#maga",
     ];
-    const safeHashtags = Array.isArray(hashtags) ? hashtags : [];
-    const allHashtags = [...fixedHashtags, ...safeHashtags];
+    const allHashtags = [...fixedHashtags];
     const hashtagsString = allHashtags.join(", ");
     const patreonLink = "\n\nSupport me on Patreon: https://www.patreon.com/c/Polemicyst";
     const fullDescription = `${description}\n\n${hashtagsString}${patreonLink}`;
