@@ -10,6 +10,7 @@ const TemplateModal: React.FC<> = () => {
   const [facebookTemplate, setFacebookTemplate] = useState("");
   const [instagramTemplate, setInstagramTemplate] = useState("");
   const [youtubeTemplate, setYoutubeTemplate] = useState("");
+  const [sharedPostscript, setSharedPostscript] = useState("");
 
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -18,6 +19,7 @@ const TemplateModal: React.FC<> = () => {
       setFacebookTemplate(data.facebookTemplate || "");
       setInstagramTemplate(data.instagramTemplate || "");
       setYoutubeTemplate(data.youtubeTemplate || "");
+      setSharedPostscript(data.sharedPostscript || "");
     };
 
     fetchTemplates();
@@ -28,6 +30,7 @@ const TemplateModal: React.FC<> = () => {
       facebookTemplate,
       instagramTemplate,
       youtubeTemplate,
+      sharedPostscript
     });
 
     setShowTemplateModal(false);
@@ -37,6 +40,14 @@ const TemplateModal: React.FC<> = () => {
     <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-center items-center">
       <div className="bg-white dark:bg-gray-900 p-6 rounded shadow-md w-full max-w-lg">
         <h2 className="text-xl font-bold mb-4">Edit Template Preferences</h2>
+
+        <label className="block text-sm font-medium mb-1">Shared Description (Postscript)</label>
+        <textarea
+          className="w-full p-2 mb-4 border rounded dark:text-black"
+          value={sharedPostscript}
+          onChange={(e) => setSharedPostscript(e.target.value)}
+        />
+
 
         <label className="block text-sm font-medium mb-1">Facebook</label>
         <textarea

@@ -12,14 +12,16 @@ export async function GET() {
     include: { templatePreferences: true },
   });
 
+  if (!user) return new Response("User not found", { status: 404 });
   if (!user?.templatePreferences) {
     // Create default preferences if not set
     const preferences = await prisma.templatePreferences.create({
       data: {
         userId: user.id,
-        facebookTemplate: "For more from Polemicyst...",
-        instagramTemplate: "For more from Polemicyst...",
-        youtubeTemplate: "For more from Polemicyst...",
+        facebookTemplate: "",
+        instagramTemplate: "",
+        youtubeTemplate: "",
+        sharedPostscript: ""
       },
     });
     return Response.json(preferences);
@@ -36,20 +38,30 @@ export async function PUT(req: NextRequest) {
   const user = await prisma.user.findUnique({ where: { email: session.user.email } });
   if (!user) return new Response("User not found", { status: 404 });
 
+  const {
+    facebookTemplate,
+    instagramTemplate,
+    youtubeTemplate,
+    sharedPostscript = "", // ✅ provide a fallback if undefined
+  } = body;
+
   const updated = await prisma.templatePreferences.upsert({
     where: { userId: user.id },
     update: {
-      facebookTemplate: body.facebookTemplate,
-      instagramTemplate: body.instagramTemplate,
-      youtubeTemplate: body.youtubeTemplate,
+      facebookTemplate,
+      instagramTemplate,
+      youtubeTemplate,
+      sharedPostscript,
     },
     create: {
       userId: user.id,
-      facebookTemplate: body.facebookTemplate,
-      instagramTemplate: body.instagramTemplate,
-      youtubeTemplate: body.youtubeTemplate,
+      facebookTemplate,
+      instagramTemplate,
+      youtubeTemplate,
+      sharedPostscript,
     },
   });
 
   return Response.json(updated);
 }
+

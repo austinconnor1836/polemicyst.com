@@ -15,7 +15,9 @@ const VideoUpload = () => {
 
     await Promise.all(
       newFiles.map(async (file) => {
-        const title = file.name.replace(/\.[^/.]+$/, "");
+        let title = file.name.replace(/\.[^/.]+$/, ""); // remove file extension
+        title = title.replace(/^#\d+\s*/, ""); // remove "#1 ", "#23 ", etc. at the start
+        title = title.replace(/_/g, ":"); // replace all underscores with colons
 
         try {
           // Step 1: Save video metadata and get videoId
