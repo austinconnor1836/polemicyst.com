@@ -5,7 +5,7 @@ export const transcriptionQueue = new Queue('transcription', {
   connection: redisConnection,
 });
 
-export function queueTranscriptionJob(data: { videoUrl: string; title: string; feedId: string; }) {
+export function queueTranscriptionJob(data: { sourceUrl: string; title: string; feedId: string; }) {
   return transcriptionQueue.add('transcribe', data, {
     removeOnComplete: true,
     removeOnFail: true,

@@ -10,6 +10,12 @@
 !package.json
 !package-lock.json
 !tsconfig.json
+!tsconfig.base.json
 !postcss.config.js
 !tailwind.config.ts
 !next.config.js
+!shared/
+!prisma/
+!backend/
+!workers/
+!.env

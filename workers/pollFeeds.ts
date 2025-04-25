@@ -1,6 +1,6 @@
-import prisma from '../../lib/prisma';
-import { getNewVideoFromFeed } from '../lib/feedScraper';
-import { queueTranscriptionJob } from '../queues/transcriptionQueue';
+import { prisma } from '@shared/lib/prisma';
+import { getNewVideoFromFeed } from './lib/feedScraper';
+import { queueTranscriptionJob } from './queues/transcriptionQueue';
 
 export async function pollFeeds() {
   const feeds = await prisma.videoFeed.findMany();
@@ -9,7 +9,7 @@ export async function pollFeeds() {
     try {
       console.log(`[${new Date().toISOString()}] Checking feed: ${feed.name}`);
 
-      const newVideo = await getNewVideoFromFeed(feed.sourceUrl, feed.lastVideoId);
+      const newVideo = await getNewVideoFromFeed(feed.sourceUrl, feed.lastVideoId ?? undefined);
 
       if (!newVideo) {
         console.log(`No new video found for feed: ${feed.name}`);

@@ -3,8 +3,7 @@
   "scripts": {
     "dev": "next dev --experimental-https",
     "build": "npx prisma generate && next build",
-    "start": "next start",
-    "postinstall": "npx prisma generate"
+    "start": "next start"
   },
   "dependencies": {
     "@atproto/api": "^0.14.7",
@@ -19,6 +18,7 @@
     "autoprefixer": "^10.4.19",
     "aws-sdk": "^2.1692.0",
     "axios": "^1.8.2",
+    "bullmq": "^5.51.0",
     "cheerio": "^1.0.0-rc.12",
     "classnames": "^2.5.1",
     "date-fns": "^3.6.0",

@@ -11,17 +11,18 @@ services:
 
   poller:
     build:
-      context: ./backend
-      dockerfile: worker.Dockerfile
-    command: ["node", "dist/workers/runPollFeeds.js"]
+      context: .
+      dockerfile: ./workers/worker.Dockerfile
     volumes:
       - ./shared:/app/shared  # ⬅️ needed for prisma and shared code
+      - ./prisma:/app/prisma
     depends_on:
       - backend
       - redis
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=your-database-url-here  # ⬅️ you need this
+    env_file:
+      - .env
     restart: unless-stopped
 
   redis:
