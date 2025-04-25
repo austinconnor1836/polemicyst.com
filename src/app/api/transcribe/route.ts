@@ -1,6 +1,6 @@
 // /src/app/api/transcribe/route.ts
 import { NextRequest } from "next/server";
-import { prisma } from "@/src/lib/prisma";
+import { prisma } from "@shared/lib/prisma";
 import AWS from "aws-sdk";
 
 const S3_BUCKET = "clips-genie-uploads";

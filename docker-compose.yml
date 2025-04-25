@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   backend:
     build: ./backend
@@ -5,6 +7,28 @@ services:
       - '3001:3001'
     volumes:
       - ./backend/uploads:/app/uploads
+      - ./shared:/app/shared  # ⬅️ add this so backend can access shared prisma client
+
+  poller:
+    build:
+      context: ./backend
+      dockerfile: worker.Dockerfile
+    command: ["node", "dist/workers/runPollFeeds.js"]
+    volumes:
+      - ./shared:/app/shared  # ⬅️ needed for prisma and shared code
+    depends_on:
+      - backend
+      - redis
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=your-database-url-here  # ⬅️ you need this
+    restart: unless-stopped
+
+  redis:
+    image: redis:6
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
 
   faster-whisper:
     image: lscr.io/linuxserver/faster-whisper:latest
@@ -31,8 +55,6 @@ services:
     ports:
       - "11434:11434"
     restart: unless-stopped
-
-
 
 volumes:
   ollama-data:

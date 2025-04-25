@@ -1,6 +1,6 @@
 // /src/app/api/generateDescription/route.ts
 import { NextRequest } from "next/server";
-import { prisma } from "@/src/lib/prisma";
+import { prisma } from "@shared/lib/prisma";
 
 export async function POST(req: NextRequest) {
   const { videoId } = await req.json();

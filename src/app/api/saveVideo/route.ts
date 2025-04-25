@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/src/lib/prisma";
+import { prisma } from "@shared/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/auth";
 import { randomUUID } from "crypto";

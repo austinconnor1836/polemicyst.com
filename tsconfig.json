@@ -1,4 +1,5 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "baseUrl": "./",
     "lib": [
@@ -22,11 +23,6 @@
         "name": "next"
       }
     ],
-    "paths": {
-      "@/*": [
-        "*"
-      ]
-    },
     "target": "ES2017",
     "types": ["react", "react-dom"]
   },
