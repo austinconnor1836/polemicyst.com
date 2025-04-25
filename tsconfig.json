@@ -1,5 +1,4 @@
 {
-  "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "baseUrl": "./",
     "lib": [
@@ -24,7 +23,10 @@
       }
     ],
     "target": "ES2017",
-    "types": ["react", "react-dom"]
+    "types": ["react", "react-dom"],
+    "paths": {
+      "@shared/*": ["shared/*"]
+    }
   },
   "include": [
     "next-env.d.ts",

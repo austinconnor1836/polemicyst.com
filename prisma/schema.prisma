@@ -6,6 +6,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -57,6 +58,7 @@ model VideoFeed {
   id              String   @id @default(cuid())
   name            String
   sourceUrl       String
+  sourceType      String
   pollingInterval Int      // In minutes
   lastCheckedAt   DateTime?
   lastVideoId     String?

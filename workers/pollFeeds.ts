@@ -1,6 +1,13 @@
-import { prisma } from '@shared/lib/prisma';
-import { getNewVideoFromFeed } from './lib/feedScraper';
+import { prisma } from './lib/prisma';
 import { queueTranscriptionJob } from './queues/transcriptionQueue';
+import { pollYouTubeFeed, downloadYouTubeVideo } from './poller/sources/youtube';
+import { pollCspanFeed, downloadCspanVideo } from './poller/sources/cspan';
+
+interface NewVideo {
+  id: string;
+  title: string;
+  url: string;
+}
 
 export async function pollFeeds() {
   const feeds = await prisma.videoFeed.findMany();
@@ -9,7 +16,19 @@ export async function pollFeeds() {
     try {
       console.log(`[${new Date().toISOString()}] Checking feed: ${feed.name}`);
 
-      const newVideo = await getNewVideoFromFeed(feed.sourceUrl, feed.lastVideoId ?? undefined);
+      let newVideo: NewVideo | null = null;
+
+      switch (feed.sourceType) {
+        case 'youtube':
+          newVideo = await pollYouTubeFeed(feed);
+          break;
+        case 'cspan':
+          newVideo = await pollCspanFeed(feed);
+          break;
+        default:
+          console.warn(`Unknown sourceType: ${feed.sourceType}`);
+          continue;
+      }
 
       if (!newVideo) {
         console.log(`No new video found for feed: ${feed.name}`);
@@ -26,8 +45,19 @@ export async function pollFeeds() {
         },
       });
 
+      let downloadedPath = '';
+
+      switch (feed.sourceType) {
+        case 'youtube':
+          downloadedPath = await downloadYouTubeVideo(newVideo.url, newVideo.id);
+          break;
+        case 'cspan':
+          downloadedPath = await downloadCspanVideo(newVideo.url, newVideo.id);
+          break;
+      }
+
       await queueTranscriptionJob({
-        sourceUrl: newVideo.url,
+        sourceUrl: downloadedPath,
         feedId: feed.id,
         title: newVideo.title,
       });
