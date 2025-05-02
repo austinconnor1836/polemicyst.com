@@ -1,22 +1,23 @@
 import { prisma } from './lib/prisma';
 import { queueTranscriptionJob } from './queues/transcriptionQueue';
-import { pollYouTubeFeed, downloadYouTubeVideo } from './poller/sources/youtube';
-import { pollCspanFeed, downloadCspanVideo } from './poller/sources/cspan';
-
-interface NewVideo {
-  id: string;
-  title: string;
-  url: string;
-}
+import { pollYouTubeFeed } from './poller/sources/youtube';
+import { pollCspanFeed } from './poller/sources/cspan';
+import { downloadAndUploadToS3 } from './downloadAndUploadToS3'; // your streaming S3 uploader
 
 export async function pollFeeds() {
+  const now = new Date();
   const feeds = await prisma.videoFeed.findMany();
 
   for (const feed of feeds) {
-    try {
-      console.log(`[${new Date().toISOString()}] Checking feed: ${feed.name}`);
+    const minutesSinceLastCheck = feed.lastCheckedAt
+      ? (now.getTime() - new Date(feed.lastCheckedAt).getTime()) / 60000
+      : Infinity;
 
-      let newVideo: NewVideo | null = null;
+    if (minutesSinceLastCheck < feed.pollingInterval) continue;
+
+    try {
+      console.log(`[${now.toISOString()}] Polling feed: ${feed.name}`);
+      let newVideo: { id: string; title: string; url: string } | null = null;
 
       switch (feed.sourceType) {
         case 'youtube':
@@ -30,37 +31,44 @@ export async function pollFeeds() {
           continue;
       }
 
+      // Update lastCheckedAt regardless of whether a new video was found
+      await prisma.videoFeed.update({
+        where: { id: feed.id },
+        data: { lastCheckedAt: now },
+      });
+
       if (!newVideo) {
-        console.log(`No new video found for feed: ${feed.name}`);
+        console.log(`No new video found for ${feed.name}`);
         continue;
       }
 
-      console.log(`New video found: ${newVideo.id} — ${newVideo.url}`);
+      // Upload video directly to S3
+      const s3Url = await downloadAndUploadToS3(newVideo.url, newVideo.id);
 
-      await prisma.videoFeed.update({
-        where: { id: feed.id },
+      // Store in FeedVideo table
+      await prisma.feedVideo.create({
         data: {
-          lastVideoId: newVideo.id,
-          lastCheckedAt: new Date(),
-        },
+          feedId: feed.id,
+          videoId: newVideo.id,
+          title: newVideo.title,
+          s3Url,
+        }
       });
 
-      let downloadedPath = '';
+      // Update last seen video ID
+      await prisma.videoFeed.update({
+        where: { id: feed.id },
+        data: { lastVideoId: newVideo.id },
+      });
 
-      switch (feed.sourceType) {
-        case 'youtube':
-          downloadedPath = await downloadYouTubeVideo(newVideo.url, newVideo.id);
-          break;
-        case 'cspan':
-          downloadedPath = await downloadCspanVideo(newVideo.url, newVideo.id);
-          break;
-      }
-
+      // Queue transcription
       await queueTranscriptionJob({
-        sourceUrl: downloadedPath,
+        sourceUrl: s3Url,
         feedId: feed.id,
         title: newVideo.title,
       });
+
+      console.log(`Queued transcription and stored video: ${newVideo.title}`);
 
     } catch (err) {
       console.error(`Error polling feed ${feed.name}:`, err);

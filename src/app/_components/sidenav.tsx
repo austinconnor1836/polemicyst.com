@@ -2,7 +2,7 @@
 
 import React from 'react'
 import cn from 'classnames'
-import { useHamburger } from '@/src/app/context/HamburgerContext' // Import context
+import { useHamburger } from '../context/HamburgerContext' // Import context
 import { IconButton } from '@mui/material'
 import { SideNavItem } from '../ui/types'
 import Link from 'next/link'

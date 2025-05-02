@@ -9,7 +9,7 @@ async function startPolling() {
     } catch (err) {
       console.error('Feed poller crashed:', err);
     }
-  }, 60_000); // Every 1 minute
+  }, 60_000); // Check every minute
 }
 
 startPolling();

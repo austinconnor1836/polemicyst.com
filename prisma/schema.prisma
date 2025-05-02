@@ -37,33 +37,47 @@ model TemplatePreferences {
 }
 
 model Video {
-  id                String   @id @default(uuid())
-  userId            String
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fileName          String
-  s3Url             String?
-  s3Key             String?
-  videoTitle        String
-  sharedDescription String
-  facebookTemplate  String
-  instagramTemplate String
-  youtubeTemplate   String
-  blueskyTemplate   String
-  twitterTemplate   String
-  transcript        String?
-  createdAt         DateTime @default(now())
+  id                  String   @id @default(uuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileName            String
+  s3Url               String?
+  s3Key               String?
+  videoTitle          String
+  sharedDescription   String
+  facebookTemplate    String
+  instagramTemplate   String
+  youtubeTemplate     String
+  blueskyTemplate     String
+  twitterTemplate     String
+  transcript          String?
+  approvedForSplicing Boolean  @default(false)
+  createdAt           DateTime @default(now())
 }
 
 model VideoFeed {
-  id              String   @id @default(cuid())
+  id              String      @id @default(cuid())
   name            String
   sourceUrl       String
   sourceType      String
-  pollingInterval Int      // In minutes
+  pollingInterval Int // In minutes
   lastCheckedAt   DateTime?
   lastVideoId     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  feedVideos      FeedVideo[]
+}
+
+model FeedVideo {
+  id        String    @id @default(uuid())
+  feedId    String
+  feed      VideoFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  videoId   String
+  title     String
+  s3Url     String
+  createdAt DateTime  @default(now())
+
+  @@unique([feedId, videoId])
 }
 
 model Account {

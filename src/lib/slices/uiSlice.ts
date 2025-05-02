@@ -1,5 +1,5 @@
 // lib/slices/uiSlice.ts
-import { THEME_MODE } from '@/src/app/ui/types';
+import { THEME_MODE } from '../../app/ui/types';
 import { createAppSlice } from '../createAppSlice';
 const { DARK, LIGHT, SYSTEM } = THEME_MODE;
 
