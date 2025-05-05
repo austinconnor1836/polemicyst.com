@@ -55,6 +55,15 @@ services:
       - '10300:10300'
     restart: unless-stopped
 
+  clip-worker:
+    build:
+      context: ./clip-worker
+      dockerfile: ./Dockerfile
+    environment:
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+
   ollama:
     build:
       context: ./backend

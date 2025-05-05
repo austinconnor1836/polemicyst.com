@@ -56,6 +56,7 @@
     "@types/xml2js": "^0.4.14",
     "postcss": "^8.4.38",
     "prisma": "^6.6.0",
-    "typescript": "5.8.3"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
   }
 }
