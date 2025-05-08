@@ -2,27 +2,31 @@ FROM node:18
 
 WORKDIR /app
 
+# Update and install dependencies
 RUN apt-get update && apt-get install -y python3 python3-pip yt-dlp
 
-# Install latest yt-dlp manually (better than relying on Debian apt package)
+# Install latest yt-dlp manually
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
     && chmod a+rx /usr/local/bin/yt-dlp \
     && yt-dlp --version  # Print version to verify install
 
-# Copy package.json and install dependencies
-COPY ./workers .
+# Copy worker scripts and package files
+COPY ./workers . 
 COPY ./prisma ./prisma
 COPY package*.json ./
+
+# Install Node.js dependencies
 RUN npm install
 
+# Generate Prisma client
 RUN npx prisma generate --schema=prisma/schema.prisma
 
-# Build TypeScript (assuming backend has tsconfig.json pointing to /dist)
+# Build TypeScript workers (assumes tsconfig.json is configured)
 RUN npm run build:worker
 
-# Copy the start.sh script into the container
+# Copy the start script
 COPY ./workers/start.sh ./start.sh
 RUN chmod +x ./start.sh
 
-# Set startup command to use start.sh
+# Set the default command to run the start script
 CMD ["./start.sh"]

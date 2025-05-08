@@ -34,6 +34,29 @@ export default function FeedsPage() {
     fetchFeeds();
   };
 
+  const triggerClip = async (video: any) => {
+    try {
+      const res = await fetch('/api/trigger-clip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId: video.id,
+          s3Url: video.s3Url,
+        }),
+      });
+
+      if (!res.ok) throw new Error('Failed to trigger clip');
+
+      const data = await res.json();
+      console.log('✅ Job enqueued:', data);
+      alert(`Clip job enqueued for "${video.title}"`);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to trigger clip job');
+    }
+  };
+
+
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-4">Video Feeds</h1>
@@ -87,8 +110,15 @@ export default function FeedsPage() {
               <div className="font-semibold">{video.title}</div>
               <div className="text-xs text-gray-500">Feed: {video.feed?.name}</div>
             </div>
+            <button
+              onClick={() => triggerClip(video)}
+              className="mt-2 bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+            >
+              Generate Clip
+            </button>
           </div>
         ))}
+
       </div>
     </div>
   );
