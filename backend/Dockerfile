@@ -8,18 +8,25 @@ RUN apt-get update && \
 # Install faster-whisper
 RUN pip3 install faster-whisper --break-system-packages
 
-# Create app directory
+# Set workdir and copy backend files
 WORKDIR /app
 
-# Copy package files and install Node.js dependencies
-COPY package*.json ./
+# Copy backend package files and install deps
+COPY ./backend/package*.json ./backend/
+WORKDIR /app/backend
 RUN npm install
 
-# Copy the rest of the backend code
+# Copy full context after installing deps
+WORKDIR /app
 COPY . .
 
-# Expose the backend port
-EXPOSE 3001
+# Generate Prisma client (output goes to backend/node_modules/.prisma)
+WORKDIR /app/backend
+RUN npx prisma generate --schema=../prisma/schema.prisma
 
-# Start the backend
+# Build backend TypeScript
+RUN npm run build
+
+EXPOSE 3001
 CMD ["node", "index.js"]
+# CMD ["sh"]

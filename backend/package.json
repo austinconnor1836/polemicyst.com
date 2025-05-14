@@ -11,9 +11,20 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.808.0",
+    "@prisma/client": "^6.7.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "multer": "^1.4.5-lts.2",
-    "node-fetch": "^2.6.7"
+    "node-fetch": "^2.6.7",
+    "typescript": "^5.8.3"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.18",
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.15.17",
+    "@types/node-fetch": "^2.6.12",
+    "prisma": "^5.9.0",
+    "typescript": "^5.3.3"
   }
 }

@@ -1,22 +1,25 @@
-FROM node:18-alpine
+FROM node:18-slim
 
+# System deps for Python + venv
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip python3-venv && \
+    python3 -m venv /venv
+
+# Activate virtualenv and install Python packages
+ENV PATH="/venv/bin:$PATH"
+RUN pip install --upgrade pip && \
+    pip install transformers torch soundfile
+
+# Node setup
 WORKDIR /app
-
-# Install Python3 and pip for AI models
-RUN apk add --no-cache python3 py3-pip
-
-# Install AI model dependencies (transformers, torch, soundfile)
-RUN pip3 install transformers torch soundfile
-
-# Copy the package files and install Node.js dependencies
 COPY package.json ./
 RUN npm install
 
-# Copy the entire project including Python scripts and TypeScript workers
+# Copy full project
 COPY . .
 
-# Build the TypeScript files
+# Build TypeScript
 RUN npm run build
 
-# Set the default command to start the worker
+# Start worker
 CMD ["node", "dist/index.js"]

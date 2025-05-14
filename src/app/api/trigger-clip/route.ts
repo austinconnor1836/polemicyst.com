@@ -1,26 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Queue } from 'bullmq';
+import Redis from 'ioredis';
 
-const connection = {
-  host: process.env.REDIS_HOST || 'localhost',
+const redis = new Redis({
+  host: 'redis',
   port: 6379,
-};
+  maxRetriesPerRequest: null,
+});
 
-type ClipJob = {
-  videoId: string;
-  s3Url: string;
-};
+const clipGenerationQueue = new Queue('clip-generation', { connection: redis });
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json()) as ClipJob;
+  try {
+    const { feedVideoId, userId } = await req.json();
 
-  if (!body.videoId || !body.s3Url) {
-    return NextResponse.json({ error: 'Missing videoId or s3Url' }, { status: 400 });
+    if (!feedVideoId || !userId) {
+      return NextResponse.json({ error: 'Missing feedVideoId or userId' }, { status: 400 });
+    }
+
+    const job = await clipGenerationQueue.add('clip-generation', { feedVideoId, userId }, {
+      jobId: feedVideoId,
+    });
+
+    return NextResponse.json({ message: 'Clip-generation job enqueued', jobId: job.id });
+  } catch (err) {
+    console.error('Failed to enqueue job:', err);
+    return NextResponse.json({ error: 'Enqueue failed' }, { status: 500 });
   }
-
-  const queue = new Queue('clip-jobs', { connection });
-
-  await queue.add('generateClip', body);
-
-  return NextResponse.json({ message: 'Job enqueued', job: body });
 }

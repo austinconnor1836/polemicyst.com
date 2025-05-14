@@ -1,11 +1,34 @@
 version: '3.9'
 services:
+  db:
+    image: postgres:15
+    container_name: clips-genie-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: clips-genie
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+  
   # Redis for job queuing
   redis:
     image: redis:alpine
     ports:
       - "6379:6379"
     restart: unless-stopped
+  
+  backend:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
+    depends_on:
+      - db
 
   # Clip Worker - Main job processing (Node.js)
   clip-worker:
@@ -17,26 +40,9 @@ services:
       - NODE_ENV=production
     depends_on:
       - redis
-      - ai-worker
     command: ["node", "dist/index.js"]
     restart: unless-stopped
 
-  # AI Worker - Emotion and Sentiment Analysis (Python)
-  ai-worker:
-    build:
-      context: ./ai-worker
-      dockerfile: ./Dockerfile
-    environment:
-      - REDIS_HOST=redis
-      - FLASK_APP=aiService.py
-      - FLASK_RUN_HOST=0.0.0.0
-      - FLASK_RUN_PORT=5000
-    ports:
-      - "5000:5000"
-    depends_on:
-      - redis
-    restart: unless-stopped
-  
   # Faster Whisper for transcription
   faster-whisper:
     image: lscr.io/linuxserver/faster-whisper:latest
@@ -64,7 +70,24 @@ services:
     ports:
       - "11434:11434"
     restart: unless-stopped
+  
+  poller:
+    build:
+      context: .
+      dockerfile: ./workers/workers.Dockerfile
+    volumes:
+      - ./shared:/app/shared  # ⬅️ needed for prisma and shared code
+      - ./prisma:/app/prisma
+    depends_on:
+      - backend
+      - redis
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env
+    restart: unless-stopped
 
 volumes:
   ollama-data:
   faster-whisper-data:
+  pg-data:

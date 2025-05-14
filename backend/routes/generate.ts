@@ -1,10 +1,10 @@
-const express = require('express');
-const fetch = require('node-fetch');
+import express, { Request, Response } from 'express';
+import fetch from 'node-fetch';
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
-  const { transcript } = req.body;
+router.post('/', async (req: Request, res: Response): Promise<any> => {
+  const { transcript } = req.body as { transcript?: string };
 
   if (!transcript) {
     return res.status(400).json({ error: 'Missing transcript in request body' });
@@ -22,7 +22,7 @@ router.post('/', async (req, res) => {
     });
 
     let raw = '';
-    for await (const chunk of ollamaRes.body) {
+    for await (const chunk of ollamaRes.body as NodeJS.ReadableStream) {
       raw += chunk.toString();
     }
 
@@ -32,7 +32,7 @@ router.post('/', async (req, res) => {
         try {
           const parsed = JSON.parse(line);
           combined += parsed.response || '';
-        } catch (e) {
+        } catch (e: any) {
           console.warn('Skipping line parse error:', e.message);
         }
       }
@@ -44,10 +44,10 @@ router.post('/', async (req, res) => {
     const parsed = JSON.parse(jsonString);
 
     return res.json(parsed);
-  } catch (err) {
+  } catch (err: any) {
     console.error('Ollama generation error:', err);
     return res.status(500).json({ error: 'Failed to generate description', details: err.message });
   }
 });
 
-module.exports = router;
+export default router;

@@ -69,13 +69,14 @@ model VideoFeed {
 }
 
 model FeedVideo {
-  id        String    @id @default(uuid())
-  feedId    String
-  feed      VideoFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
-  videoId   String
-  title     String
-  s3Url     String
-  createdAt DateTime  @default(now())
+  id         String    @id @default(uuid())
+  feedId     String
+  feed       VideoFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  videoId    String
+  title      String
+  s3Url      String
+  transcript String?
+  createdAt  DateTime  @default(now())
 
   @@unique([feedId, videoId])
 }
