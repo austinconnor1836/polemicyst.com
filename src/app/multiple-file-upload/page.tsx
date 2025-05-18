@@ -6,7 +6,6 @@ import { Toaster } from "react-hot-toast";
 import PlatformList from "./PlatformList";
 import VideoUpload from "./VideoUpload";
 import DescriptionEditor from "./DescriptionEditor";
-import TemplateEditor from "./TemplateEditor"; // ← ✅ Import
 import Header from "./Header";
 import PlatformStatusBar from "./PlatformStatusBar";
 import VideoGrid from "./VideoGrid";

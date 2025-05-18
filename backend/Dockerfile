@@ -2,7 +2,7 @@ FROM node:18
 
 # Install Python + pip
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip && \
+    apt-get install -y python3 python3-pip ffmpeg && \
     pip3 install --upgrade pip --break-system-packages
 
 # Install faster-whisper

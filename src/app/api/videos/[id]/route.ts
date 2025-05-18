@@ -1,7 +1,7 @@
 // /src/app/api/videos/[id]/route.ts
 import { prisma } from "@shared/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/auth";
+import { authOptions } from "../../../../../auth";
 import { NextRequest } from "next/server";
 import AWS from "aws-sdk";
 

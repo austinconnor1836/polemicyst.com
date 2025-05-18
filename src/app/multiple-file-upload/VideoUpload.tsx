@@ -15,12 +15,11 @@ const VideoUpload = () => {
 
     await Promise.all(
       newFiles.map(async (file) => {
-        let title = file.name.replace(/\.[^/.]+$/, ""); // remove file extension
-        title = title.replace(/^#\d+\s*/, ""); // remove "#1 ", "#23 ", etc. at the start
-        title = title.replace(/_/g, ":"); // replace all underscores with colons
+        let title = file.name.replace(/\.[^/.]+$/, ""); // remove extension
+        title = title.replace(/^#\d+\s*/, ""); // remove "#1 "
+        title = title.replace(/_/g, ":"); // replace _ with :
 
         try {
-          // Step 1: Save video metadata and get videoId
           const formData = new FormData();
           formData.append("file", file);
           formData.append("fileName", file.name);
@@ -32,54 +31,53 @@ const VideoUpload = () => {
           formData.append("blueskyTemplate", "");
           formData.append("twitterTemplate", "");
 
-          const saveRes = await fetch("/api/saveVideo", {
+          const res = await fetch("/api/videos", {
             method: "POST",
             body: formData,
           });
 
-          if (!saveRes.ok) {
-            const errText = await saveRes.text();
-            throw new Error(`❌ saveVideo failed: ${errText}`);
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`❌ Upload failed: ${errText}`);
           }
 
-          const { videoId, s3Url } = await saveRes.json();
+          const { videoId, s3Url } = await res.json();
           if (!videoId || !s3Url) throw new Error("Missing video ID or s3Url");
 
           // Optional: Cache file in memory
-          setFileInCache(videoId, file);
+          // setFileInCache(videoId, file);
 
           // Step 2: Transcribe
-          const transcribeForm = new FormData();
-          transcribeForm.append("file", file);
-          transcribeForm.append("videoId", videoId);
+          // const transcribeForm = new FormData();
+          // transcribeForm.append("file", file);
+          // transcribeForm.append("videoId", videoId);
 
-          console.log("📤 Calling /api/transcribe...");
-          const transcribeRes = await fetch("/api/transcribe", {
-            method: "POST",
-            body: transcribeForm,
-          });
+          // console.log("📤 Calling /api/transcribe...");
+          // const transcribeRes = await fetch("/api/transcribe", {
+          //   method: "POST",
+          //   body: transcribeForm,
+          // });
 
-          if (!transcribeRes.ok) {
-            const err = await transcribeRes.text();
-            throw new Error("Transcription failed: " + err);
-          }
+          // if (!transcribeRes.ok) {
+          //   const err = await transcribeRes.text();
+          //   throw new Error("Transcription failed: " + err);
+          // }
 
-          // Step 3: Generate description
-          const generateRes = await fetch("/api/generateDescription", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ videoId }),
-          });
+          // // Step 3: Generate description
+          // const generateRes = await fetch("/api/generateDescription", {
+          //   method: "POST",
+          //   headers: { "Content-Type": "application/json" },
+          //   body: JSON.stringify({ videoId }),
+          // });
 
-          if (!generateRes.ok) {
-            const err = await generateRes.text();
-            throw new Error("Generation failed: " + err);
-          }
-
-          toast.success(`✅ Uploaded and processed ${file.name}`);
+          // if (!generateRes.ok) {
+          //   const err = await generateRes.text();
+          //   throw new Error("Generation failed: " + err);
+          // }
+          toast.success(`✅ Uploaded ${file.name}`);
         } catch (err) {
-          toast.error(`❌ Failed to upload ${file.name}`);
           console.error(err);
+          toast.error(`❌ Failed to upload ${file.name}`);
         }
       })
     );

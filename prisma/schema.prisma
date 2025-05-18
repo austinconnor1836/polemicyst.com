@@ -40,7 +40,7 @@ model Video {
   id                  String   @id @default(uuid())
   userId              String
   user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fileName            String
+  fileName            String?
   s3Url               String?
   s3Key               String?
   videoTitle          String
@@ -53,6 +53,12 @@ model Video {
   transcript          String?
   approvedForSplicing Boolean  @default(false)
   createdAt           DateTime @default(now())
+
+  // ✅ Clip relationship (self-referencing)
+  sourceVideo         Video?   @relation("ClipSource", fields: [sourceVideoId], references: [id])
+  sourceVideoId       String?
+
+  generatedClips      Video[]  @relation("ClipSource")
 }
 
 model VideoFeed {
@@ -69,14 +75,15 @@ model VideoFeed {
 }
 
 model FeedVideo {
-  id         String    @id @default(uuid())
-  feedId     String
-  feed       VideoFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
-  videoId    String
-  title      String
-  s3Url      String
-  transcript String?
-  createdAt  DateTime  @default(now())
+  id             String    @id @default(uuid())
+  feedId         String
+  feed           VideoFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  videoId        String
+  title          String
+  s3Url          String
+  transcript     String?
+  transcriptJson Json?
+  createdAt      DateTime  @default(now())
 
   @@unique([feedId, videoId])
 }
