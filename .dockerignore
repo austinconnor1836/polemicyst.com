@@ -17,7 +17,9 @@
 !shared/
 !prisma/
 !backend/
+!clip-worker/
 !workers/
 !.env
 
 backend/node_modules
+clip-worker/node_modules

@@ -52,6 +52,7 @@ export async function pollFeeds() {
           videoId: newVideo.id,
           title: newVideo.title,
           s3Url,
+          userId: feed.userId
         }
       });
 

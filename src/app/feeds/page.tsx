@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { TrashIcon } from '@heroicons/react/24/solid';
 
 export default function FeedsPage() {
   const [feeds, setFeeds] = useState([]);
@@ -19,11 +20,6 @@ export default function FeedsPage() {
     setVideos(data);
   };
 
-  useEffect(() => {
-    fetchFeeds();
-    fetchVideos();
-  }, []);
-
   const addFeed = async () => {
     await fetch('/api/feeds', {
       method: 'POST',
@@ -40,9 +36,10 @@ export default function FeedsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          videoId: video.id,
-          s3Url: video.s3Url,
+          feedVideoId: video.id,
+          userId: video.userId
         }),
+
       });
 
       if (!res.ok) throw new Error('Failed to trigger clip');
@@ -55,6 +52,20 @@ export default function FeedsPage() {
       alert('Failed to trigger clip job');
     }
   };
+
+  const deleteFeed = async (feedId: string) => {
+    const res = await fetch(`/api/feeds/${feedId}`, { method: 'DELETE' });
+    if (res.ok) {
+      fetchFeeds(); // refresh feed list
+    } else {
+      alert('Failed to delete feed');
+    }
+  };
+
+  useEffect(() => {
+    fetchFeeds();
+    fetchVideos();
+  }, []);
 
 
   return (
@@ -88,10 +99,22 @@ export default function FeedsPage() {
       </div>
 
       {/* Feed List */}
-      <ul className="mb-10">
+      <ul className="mb-10 max-w-3xl mx-auto w-full">
         {feeds.map((feed: any) => (
-          <li key={feed.id} className="mb-2">
-            <strong>{feed.name}</strong> — {feed.sourceUrl} — every {feed.pollingInterval} min
+          <li
+            key={feed.id}
+            className="mb-2 flex items-center justify-between p-2 rounded hover:bg-gray-600 transition-colors"
+          >
+            <span>
+              <strong>{feed.name}</strong> — {feed.sourceUrl} — every {feed.pollingInterval} min
+            </span>
+            <button
+              onClick={() => deleteFeed(feed.id)}
+              className="text-red-600 hover:text-red-800 ml-2"
+              title="Delete feed"
+            >
+              <TrashIcon className="h-5 w-5" />
+            </button>
           </li>
         ))}
       </ul>

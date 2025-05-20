@@ -67,6 +67,7 @@ export async function transcribeVideo(feedVideoId: string): Promise<any[]> {
 }
 
 export async function generateViralClips(feedVideoId: string) {
+  console.info('Generating viral clips...')
   const feedVideo = await prisma.feedVideo.findUnique({
     where: { id: feedVideoId },
   });

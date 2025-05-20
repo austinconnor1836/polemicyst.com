@@ -3,7 +3,7 @@ import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
 const redis = new Redis({
-  host: 'redis',
+  host: process.env.REDIS_HOST || 'localhost',
   port: 6379,
   maxRetriesPerRequest: null,
 });

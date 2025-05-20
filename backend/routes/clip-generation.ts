@@ -2,7 +2,11 @@ import express, { Request, Response } from 'express';
 import { prisma } from '../../shared/lib/prisma';
 import { transcribeFeedVideo } from '../lib/transcription';
 import { generateViralClips } from '../lib/clip-generation';
-import { uploadToS3 } from '../lib/s3'; // make sure this exists
+import { uploadToS3 } from '../lib/s3';
+import { burnInCaptions } from '../lib/video';
+import { randomUUID } from 'crypto';
+import fs from 'fs/promises';
+import { queue } from '../queues';
 
 const router = express.Router();
 
@@ -17,27 +21,29 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
   }
 
   try {
-    // 🔁 Step 1: Transcribe and store to DB
+    console.log('clip-generation hit');
+
+    // Step 1: Transcribe the video
     await transcribeFeedVideo(feedVideoId);
 
-    // 🎬 Step 2: Generate viral clips and subtitles
+    // Step 2: Generate clips with subtitles
     const clipResults = await generateViralClips(feedVideoId);
-
     const createdClips = [];
 
     for (const clip of clipResults) {
-      // Upload video and .srt to S3
-      const [videoUpload, srtUpload] = await Promise.all([
-        uploadToS3(clip.videoPath, `clips/${feedVideoId}/${Date.now()}-clip.mp4`),
-        uploadToS3(clip.srtPath, `clips/${feedVideoId}/${Date.now()}-captions.srt`)
-      ]);
+      const uuid = randomUUID();
 
-      // Create a new Video entry in the DB
+      // Step 3: Burn subtitles into the video
+      const burnedPath = await burnInCaptions(clip.videoPath, clip.srtPath);
+
+      // Step 4: Upload burned-in video
+      const videoUpload = await uploadToS3(burnedPath, `video-uploads/${uuid}-clip.mp4`);
+
+      // Step 5: Save to database
       const created = await prisma.video.create({
         data: {
           userId,
-          sourceVideoId: feedVideoId,
-          videoTitle: clip.text.slice(0, 100),
+          videoTitle: '', // will be updated later
           s3Url: videoUpload.url,
           s3Key: videoUpload.key,
           transcript: clip.text,
@@ -48,9 +54,20 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
           blueskyTemplate: '',
           twitterTemplate: '',
           sharedDescription: '',
-          fileName: ''
+          fileName: '' // optional
         }
       });
+
+      // Step 6: Enqueue metadata generation job
+      await queue.add('generate', {
+        videoId: created.id,
+        transcript: clip.text
+      });
+
+      // Step 7: Clean up temp files
+      await fs.unlink(clip.videoPath).catch(() => {});
+      await fs.unlink(clip.srtPath).catch(() => {});
+      await fs.unlink(burnedPath).catch(() => {});
 
       createdClips.push(created);
     }

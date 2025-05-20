@@ -4,11 +4,23 @@ import { spawn } from 'child_process';
 import { Request } from 'express';
 
 export async function transcribeFeedVideo(feedVideoId: string): Promise<{ transcript: string, segments: any[] }> {
+  console.info('🔍 Checking for existing transcript...');
+
   const feedVideo = await prisma.feedVideo.findUnique({ where: { id: feedVideoId } });
 
   if (!feedVideo?.s3Url) {
     throw new Error('Feed video not found or missing S3 URL');
   }
+
+  if (feedVideo.transcript && feedVideo.transcriptJson) {
+    console.info('✅ Transcript already exists, skipping transcription');
+    return {
+      transcript: feedVideo.transcript,
+      segments: feedVideo.transcriptJson as any[],
+    };
+  }
+
+  console.info('🎤 Starting transcription...');
 
   const videoRes = await fetch(feedVideo.s3Url);
   if (!videoRes.ok || !videoRes.body) {

@@ -6,9 +6,10 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const S3_BUCKET_NAME = 'clips-genie-uploads';
+const AWS_REGION = 'us-east-2';
 
 const s3 = new S3({
-  region: process.env.AWS_REGION,
+  region: AWS_REGION,
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
 });
@@ -35,7 +36,7 @@ export async function uploadToS3(
     .promise();
 
   return {
-    url: `https://${S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`,
+    url: `https://${S3_BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com/${s3Key}`,
     key: s3Key,
   };
 }

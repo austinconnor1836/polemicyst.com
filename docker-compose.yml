@@ -11,6 +11,8 @@ services:
       POSTGRES_PASSWORD: postgres
     volumes:
       - pg-data:/var/lib/postgresql/data
+    networks:
+      - app-network
   
   # Redis for job queuing
   redis:
@@ -18,6 +20,8 @@ services:
     ports:
       - "6379:6379"
     restart: unless-stopped
+    networks:
+      - app-network
   
   backend:
     build:
@@ -27,21 +31,43 @@ services:
       - "3001:3001"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
+      - REDIS_HOST=redis
     depends_on:
       - db
+      - redis
+    networks:
+      - app-network
 
   # Clip Worker - Main job processing (Node.js)
   clip-worker:
     build:
-      context: ./clip-worker
-      dockerfile: ./Dockerfile
+      context: .
+      dockerfile: ./clip-worker/Dockerfile
     environment:
       - REDIS_HOST=redis
       - NODE_ENV=production
     depends_on:
       - redis
-    command: ["node", "dist/index.js"]
+    command: ["node", "index.js"]
     restart: unless-stopped
+    networks:
+      - app-network
+  
+  clip-metadata-worker:
+    build:
+      context: .
+      dockerfile: ./clip-worker/Dockerfile
+    command: ["node", "generate/generateMetadataWorker.js"]
+    environment:
+      - REDIS_HOST=redis
+      - NODE_ENV=production
+    depends_on:
+      - redis
+      - db
+    restart: unless-stopped
+    networks:
+      - app-network
+
 
   # Faster Whisper for transcription
   faster-whisper:
@@ -56,6 +82,8 @@ services:
     ports:
       - '10300:10300'
     restart: unless-stopped
+    networks:
+      - app-network
 
   # Ollama for language model processing
   ollama:
@@ -70,6 +98,8 @@ services:
     ports:
       - "11434:11434"
     restart: unless-stopped
+    networks:
+      - app-network
   
   poller:
     build:
@@ -86,8 +116,13 @@ services:
     env_file:
       - .env
     restart: unless-stopped
+    networks:
+      - app-network
 
 volumes:
   ollama-data:
   faster-whisper-data:
   pg-data:
+
+networks:
+  app-network:

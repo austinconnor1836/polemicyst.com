@@ -12,14 +12,17 @@ RUN pip install --upgrade pip && \
 
 # Node setup
 WORKDIR /app
-COPY package.json ./
+COPY ./clip-worker/package*.json ./clip-worker/
+COPY ./shared ./shared
+WORKDIR /app/clip-worker
 RUN npm install
 
-# Copy full project
+WORKDIR /app
 COPY . .
+
+# Generate Prisma client
+WORKDIR /app/clip-worker
+RUN npx prisma generate --schema=../prisma/schema.prisma
 
 # Build TypeScript
 RUN npm run build
-
-# Start worker
-CMD ["node", "dist/index.js"]
