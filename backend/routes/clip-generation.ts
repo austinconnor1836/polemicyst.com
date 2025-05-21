@@ -62,12 +62,20 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
       await queue.add('generate', {
         videoId: created.id,
         transcript: clip.text
+      }, {
+        attempts: 5,
+        backoff: {
+          type: 'exponential',
+          delay: 1000
+        },
+        removeOnComplete: true,
+        removeOnFail: false,
       });
 
       // Step 7: Clean up temp files
-      await fs.unlink(clip.videoPath).catch(() => {});
-      await fs.unlink(clip.srtPath).catch(() => {});
-      await fs.unlink(burnedPath).catch(() => {});
+      await fs.unlink(clip.videoPath).catch(() => { });
+      await fs.unlink(clip.srtPath).catch(() => { });
+      await fs.unlink(burnedPath).catch(() => { });
 
       createdClips.push(created);
     }
