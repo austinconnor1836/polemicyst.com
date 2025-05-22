@@ -19,6 +19,8 @@ model User {
   name                String?
   email               String?              @unique
   emailVerified       DateTime?
+  stripeCustomerId    String?
+  subscriptionPlan    String               @default("free") // 'free', 'pro', etc.
   image               String?
   accounts            Account[]
   sessions            Session[]

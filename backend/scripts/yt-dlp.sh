@@ -1,0 +1,1 @@
+C:\Users\ac130\AppData\Roaming\Python\Python313\Scripts\yt-dlp -o "%(title)s.%(ext)s" -f "270+233" https://www.youtube.com/watch?v=PbWVbQQwWJo
