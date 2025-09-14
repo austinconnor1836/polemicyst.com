@@ -12,15 +12,17 @@ const clipGenerationQueue = new Queue('clip-generation', { connection: redis });
 
 export async function POST(req: NextRequest) {
   try {
-    const { feedVideoId, userId } = await req.json();
+    const { feedVideoId, userId, aspectRatio } = await req.json();
 
     if (!feedVideoId || !userId) {
       return NextResponse.json({ error: 'Missing feedVideoId or userId' }, { status: 400 });
     }
 
-    const job = await clipGenerationQueue.add('clip-generation', { feedVideoId, userId }, {
-      jobId: feedVideoId,
-    });
+    const job = await clipGenerationQueue.add(
+      'clip-generation',
+      { feedVideoId, userId, aspectRatio }, // include aspectRatio
+      { jobId: feedVideoId }
+    );
 
     return NextResponse.json({ message: 'Clip-generation job enqueued', jobId: job.id });
   } catch (err) {
@@ -28,3 +30,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Enqueue failed' }, { status: 500 });
   }
 }
+

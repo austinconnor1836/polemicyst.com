@@ -23,18 +23,24 @@ new Worker(
 
       const data = await res.json();
 
+      if (!data.title || !data.description) {
+        throw new Error('Missing title or description from Ollama response');
+      }
+
       await prisma.video.update({
         where: { id: videoId },
         data: {
-          videoTitle: data.title || '',
-          sharedDescription: data.description || '',
+          videoTitle: data.title,
+          sharedDescription: data.description,
         }
       });
 
       console.log(`✅ Metadata updated for video ${videoId}`);
     } catch (err: any) {
       console.error(`❌ Failed to generate metadata for video ${videoId}:`, err.message);
+      throw err; // Mark job as failed → retry if attempts set
     }
   },
   { connection: redis }
 );
+

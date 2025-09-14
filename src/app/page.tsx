@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import React from 'react'
-import Particles from '@/app/_components/particles'
+import Particles from './_components/particles'
 import { lusitana } from './ui/fonts'
 
 const navigation = [{ name: 'Blog', href: '/posts' }]

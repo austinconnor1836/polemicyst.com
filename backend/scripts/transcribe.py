@@ -1,41 +1,45 @@
-from faster_whisper import WhisperModel
-import tempfile
 import sys
+import subprocess
 import json
+from faster_whisper import WhisperModel
 
-# Read from stdin and save to a temporary file
-with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-    tmp.write(sys.stdin.buffer.read())
-    tmp.flush()
-    temp_video_path = tmp.name
-
-# Load the Whisper model (use base or medium as needed)
 model = WhisperModel("base", compute_type="int8")
 
-# Transcribe with word-level timestamps
-segments, _ = model.transcribe(temp_video_path, beam_size=5, word_timestamps=True)
+temp_video_path = sys.argv[1]
 
-# Format output as JSON with text + timestamps
-results = []
-for segment in segments:
-    results.append({
-        "start": segment.start,
-        "end": segment.end,
-        "text": segment.text,
-        "words": [
-            {
-                "word": w.word,
-                "start": w.start,
-                "end": w.end
-            } for w in segment.words
-        ]
-    })
+def has_audio_stream(path):
+    try:
+        result = subprocess.run(
+            ['ffprobe', '-v', 'error', '-select_streams', 'a',
+             '-show_entries', 'stream=index', '-of', 'csv=p=0', path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        return bool(result.stdout.strip())
+    except Exception as e:
+        print(f"ffprobe error: {e}", file=sys.stderr)
+        return False
 
-# Combine text for full transcript
-full_transcript = " ".join([s["text"] for s in results])
+# 🔍 Check audio before transcription
+if not has_audio_stream(temp_video_path):
+    print("ERROR: No audio stream found in video", file=sys.stderr)
+    sys.exit(1)
 
-# Output JSON object with transcript and segments
-print(json.dumps({
-    "transcript": full_transcript,
-    "segments": results
-}))
+# 📝 Perform transcription
+try:
+    segments, info = model.transcribe(temp_video_path, beam_size=5, word_timestamps=True)
+    results = []
+    for segment in segments:
+        results.append({
+            "start": segment.start,
+            "end": segment.end,
+            "text": segment.text.strip()
+        })
+
+    print(json.dumps({
+        "transcript": " ".join([s["text"] for s in results]),
+        "segments": results
+    }))
+except Exception as e:
+    print(f"Transcription error: {e}", file=sys.stderr)
+    sys.exit(1)

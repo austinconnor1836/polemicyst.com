@@ -12,14 +12,14 @@ const redis = new Redis({
 new Worker(
   'clip-generation',
   async (job) => {
-    const { feedVideoId, userId } = job.data;
+    const { feedVideoId, userId, aspectRatio } = job.data;
     console.log(`📥 Enqueuing clip-generation for ${feedVideoId}`);
 
     // Fire-and-forget
     fetch('http://backend:3001/api/clip-generation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ feedVideoId, userId }),
+      body: JSON.stringify({ feedVideoId, userId, aspectRatio }),
     })
       .then(() => {
         console.log(`🚀 Triggered backend clip-generation for ${feedVideoId}`);

@@ -66,7 +66,7 @@ export async function transcribeVideo(feedVideoId: string): Promise<any[]> {
   return parsed.segments;
 }
 
-export async function generateViralClips(feedVideoId: string) {
+export async function generateViralClips(feedVideoId: string, aspectRatio: string = '9:16') {
   console.info('Generating viral clips...')
   const feedVideo = await prisma.feedVideo.findUnique({
     where: { id: feedVideoId },
@@ -94,6 +94,19 @@ export async function generateViralClips(feedVideoId: string) {
     out.on('finish', resolve);
   });
 
+  // 🔄 Aspect ratio scaling filter logic
+  const aspectRatioFilter = (() => {
+    switch (aspectRatio) {
+      case '16:9':
+        return 'scale=1280:720,setsar=1';
+      case '1:1':
+        return 'scale=720:720,setsar=1';
+      case '9:16':
+      default:
+        return 'scale=720:1280,setsar=1';
+    }
+  })();
+
   const results = [];
 
   for (let i = 0; i < segments.length; i += 3) {
@@ -116,7 +129,7 @@ export async function generateViralClips(feedVideoId: string) {
         '-i', videoPath,
         '-ss', `${start}`,
         '-to', `${end}`,
-        '-vf', `subtitles=${srtPath.replace(/:/g, '\\:')}`, // escape colons for FFmpeg
+        '-vf', `${aspectRatioFilter},subtitles=${srtPath.replace(/:/g, '\\:')}`, // escape colons for FFmpeg
         '-c:v', 'libx264',
         '-c:a', 'aac',
         outPath,
