@@ -66,6 +66,15 @@ export default function FeedsPage() {
     }
   };
 
+  const deleteVideo = async (videoId: string) => {
+    const res = await fetch(`/api/feedVideos/${videoId}`, { method: 'DELETE' });
+    if (res.ok) {
+      fetchVideos(); // refresh video list
+    } else {
+      alert('Failed to delete video');
+    }
+  };
+
   useEffect(() => {
     fetchFeeds();
     fetchVideos();
@@ -128,7 +137,7 @@ export default function FeedsPage() {
         {videos.map((video: any) => (
           <div
             key={video.id}
-            className="border p-2 rounded shadow cursor-pointer"
+            className="border p-2 rounded shadow cursor-pointer relative"
             onClick={() => { setSelectedVideo(video); setIsModalOpen(true); }}
           >
             <video
@@ -141,8 +150,17 @@ export default function FeedsPage() {
               <div className="font-semibold">{video.title}</div>
               <div className="text-xs text-gray-500">Feed: {video.feed?.name}</div>
             </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                deleteVideo(video.id);
+              }}
+              className="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700"
+              title="Delete video"
+            >
+              Delete
+            </button>
           </div>
-
         ))}
       </div>
 

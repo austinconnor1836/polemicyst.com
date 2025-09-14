@@ -42,6 +42,19 @@ export async function uploadToS3(
 }
 
 /**
+ * Delete an object from S3
+ * @param s3Key - S3 object key (e.g., clips/video123/clip1.mp4)
+ */
+export async function deleteFromS3(s3Key: string): Promise<void> {
+  await s3
+    .deleteObject({
+      Bucket: S3_BUCKET_NAME,
+      Key: s3Key,
+    })
+    .promise();
+}
+
+/**
  * Infer content type based on file extension (for S3 uploads)
  */
 function getMimeType(filePath: string): string {

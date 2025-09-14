@@ -1,31 +1,11 @@
-// src/app/api/feedVideos/route.ts
+// src/app/api/feedVideos/[id]/route.ts
 import { prisma } from '@shared/lib/prisma';
 import { NextResponse } from 'next/server';
-import { deleteFromS3 } from '../../../../backend/lib/s3';
+import { deleteFromS3 } from 'backend/lib/s3';
 
-export async function GET() {
-  const videos = await prisma.feedVideo.findMany({
-    orderBy: { createdAt: 'desc' },
-    include: { feed: true }
-  });
-  return NextResponse.json(videos);
-}
-
-export async function DELETE(req: Request) {
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   try {
-    // Support both /api/feedVideos/:id and /api/feedVideos?id=...
-    let videoId: string | null = null;
-    const { searchParams, pathname } = new URL(req.url);
-    videoId = searchParams.get('id');
-    if (!videoId) {
-      // Try to extract from path (e.g., /api/feedVideos/VIDEO_ID)
-      const parts = pathname.split('/');
-      const maybeId = parts[parts.length - 1];
-      // UUID v4 check (simple)
-      if (/^[0-9a-fA-F-]{36}$/.test(maybeId)) {
-        videoId = maybeId;
-      }
-    }
+    const videoId = params.id;
     console.log('Deleting video with id:', videoId);
     if (!videoId) {
       return NextResponse.json({ error: 'Missing video id' }, { status: 400 });
