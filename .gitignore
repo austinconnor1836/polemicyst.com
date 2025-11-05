@@ -12,6 +12,8 @@ clip-worker/node_modules
 # testing
 /coverage
 
+.copilot/
+
 # next.js
 /.next/
 /out/

@@ -63,6 +63,9 @@ model Video {
   sourceVideoId String?
 
   generatedClips Video[] @relation("ClipSource")
+
+  // Added relation for pipeline segments
+  segments        Segment[]
 }
 
 model VideoFeed {
@@ -122,4 +125,50 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Segment {
+  id        String   @id @default(cuid())
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  tStartS   Float
+  tEndS     Float
+  features  Json
+  llmNotes  Json?
+  score     Float
+  selected  Boolean  @default(false)
+  clips     Clip[]
+
+  @@index([videoId])
+  @@index([score])
+}
+
+model Clip {
+  id          String   @id @default(cuid())
+  segmentId   String
+  segment     Segment  @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  variant     String
+  s3Key       String?
+  title       String?
+  description String?
+  hashtags    String?
+  publishMap  Json?
+  metrics     Metric[]
+
+  @@index([segmentId])
+}
+
+model Metric {
+  id          String   @id @default(cuid())
+  clipId      String
+  clip        Clip     @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  platform    String
+  impressions Int
+  views3s     Int
+  views30s    Int
+  avgWatchS   Float
+  ctr         Float
+  collectedAt DateTime @default(now())
+
+  @@index([clipId])
 }
