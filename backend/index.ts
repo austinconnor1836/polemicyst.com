@@ -1,3 +1,5 @@
+// Enable runtime path alias resolution
+require('module-alias/register');
 // index.ts
 import express, { Request, Response } from 'express';
 import cors from 'cors';

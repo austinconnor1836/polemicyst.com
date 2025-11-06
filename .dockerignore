@@ -1,25 +1,35 @@
 # Ignore all files
-*
+# *
+.env*
+.env.local
+certificates/
+node_modules/
+src/
+public/
+src/
+.gitignore
+*.tf
 
 # Unignore specific directories
-!_posts/
-!.next/
-!public/
-!src/
-!.gitignore
-!package.json
-!package-lock.json
-!tsconfig.json
-!tsconfig.base.json
-!postcss.config.js
-!tailwind.config.ts
-!next.config.js
-!shared/
-!prisma/
-!backend/
-!clip-worker/
-!workers/
-!.env
+# !_posts/
+# !.next/
+# !public/
+# !src/
+# !auth.ts
+# !.gitignore
+# !package.json
+# !package-lock.json
+# !tsconfig.json
+# !tsconfig.base.json
+# !postcss.config.js
+# !tailwind.config.ts
+# !next.config.js
+# !shared/
+# !prisma/
+# !backend/
+# !clip-worker/
+# !workers/
+# !.env
 
-backend/node_modules
-clip-worker/node_modules
+# backend/node_modules
+# clip-worker/node_modules

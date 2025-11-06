@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { prisma } from '../../shared/lib/prisma';
+import { prisma } from '@shared/lib/prisma';
 import { transcribeFeedVideo } from '../lib/transcription';
 import { generateViralClips } from '../lib/clip-generation';
 import { uploadToS3 } from '../lib/s3';

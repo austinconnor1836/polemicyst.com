@@ -1,5 +1,8 @@
 {
   "private": true,
+  "_moduleAliases": {
+    "@shared": "dist/shared"
+  },
   "scripts": {
     "dev": "next dev --experimental-https",
     "build": "npx prisma generate && next build",

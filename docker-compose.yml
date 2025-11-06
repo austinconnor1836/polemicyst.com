@@ -27,6 +27,7 @@ services:
     build:
       context: .
       dockerfile: ./backend/Dockerfile
+    command: ["node", "dist/index.js"]
     ports:
       - "3001:3001"
     environment:
@@ -41,23 +42,23 @@ services:
   # Clip Worker - Main job processing (Node.js)
   clip-worker:
     build:
-      context: .
-      dockerfile: ./clip-worker/Dockerfile
+      context: ./backend
+      dockerfile: Dockerfile
     environment:
       - REDIS_HOST=redis
       - NODE_ENV=production
     depends_on:
       - redis
-    command: ["node", "index.js"]
+    command: ["node", "./workers/clip-worker/index.js"]
     restart: unless-stopped
     networks:
       - app-network
   
   clip-metadata-worker:
     build:
-      context: .
-      dockerfile: ./clip-worker/Dockerfile
-    command: ["node", "generate/generateMetadataWorker.js"]
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["node", "clip-worker/generate/generateMetadataWorker.js"]
     environment:
       - REDIS_HOST=redis
       - NODE_ENV=production
@@ -103,8 +104,10 @@ services:
   
   poller:
     build:
-      context: .
-      dockerfile: ./workers/workers.Dockerfile
+      context: ./backend
+      # dockerfile: ./workers/workers.Dockerfile
+      dockerfile: Dockerfile
+    command: ["./workers/start.sh"]
     volumes:
       - ./shared:/app/shared  # ⬅️ needed for prisma and shared code
       - ./prisma:/app/prisma

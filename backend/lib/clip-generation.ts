@@ -1,4 +1,4 @@
-import { prisma } from '../../shared/lib/prisma';
+import { prisma } from '@shared/lib/prisma';
 import fetch from 'node-fetch';
 import { createWriteStream, writeFileSync } from 'fs';
 import { spawn } from 'child_process';

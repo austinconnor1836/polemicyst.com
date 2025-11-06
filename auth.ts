@@ -1,4 +1,6 @@
-import NextAuth, { NextAuthOptions } from "next-auth";
+import NextAuth from "next-auth";
+import type { NextAuthOptions, User, Account, Session, Profile } from "next-auth";
+import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
 import FacebookProvider from "next-auth/providers/facebook";
 import GoogleProvider from "next-auth/providers/google";
@@ -6,8 +8,9 @@ import TwitterProvider from "next-auth/providers/twitter";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { PrismaClient } from "@prisma/client";
 import { BskyAgent } from "@atproto/api";
-import { JWT } from "next-auth/jwt";
+// Removed duplicate JWT import
 import axios from "axios";
+import { AdapterUser } from "next-auth/adapters";
 
 interface ExtendedJWT extends JWT {
   googleAccessToken?: string;
@@ -19,7 +22,7 @@ interface ExtendedJWT extends JWT {
 const prisma = new PrismaClient();
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma), // PostgreSQL persistence
+  adapter: PrismaAdapter(prisma), 
   debug: true,
   providers: [
     FacebookProvider({
@@ -126,7 +129,8 @@ export const authOptions: NextAuthOptions = {
     signIn: '/auth/signin'
   },
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt(params: any) {
+      const { token, user, account } = params;
       if (user) {
         token.id = user.id;
       }
@@ -162,7 +166,8 @@ export const authOptions: NextAuthOptions = {
       // Access token expired, try to refresh it
       return await refreshAccessToken(token);
     },
-    async signIn({ user, account }) {
+    async signIn(params: any) {
+      const { user, account } = params;
       if (!user.email || !account) return false;
 
       const existingUser = await prisma.user.findUnique({
@@ -200,7 +205,8 @@ export const authOptions: NextAuthOptions = {
 
       return true;
     },
-    async session({ session, token }) {
+    async session(params: any) {
+      const { session, token } = params;
       if (token) {
         session.user = { ...session.user, id: token.sub as string };
       }
@@ -230,8 +236,9 @@ export const authOptions: NextAuthOptions = {
   },
 };
 
-const handler = NextAuth(authOptions);
-export { handler as GET, handler as POST };
+// const handler = NextAuth(authOptions);
+// export { handler as GET, handler as POST };
+export default NextAuth(authOptions);
 
 
 

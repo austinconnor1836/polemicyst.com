@@ -1,7 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
 import fetch from 'node-fetch';
-import { prisma } from '../../shared/lib/prisma';
+import { prisma } from '@shared/lib/prisma';
 
 const redis = new Redis({
   host: process.env.REDIS_HOST || 'localhost',

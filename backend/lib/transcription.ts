@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { prisma } from '../../shared/lib/prisma';
+import { prisma } from '@shared/lib/prisma';
 import { spawn } from 'child_process';
 import { Request } from 'express';
 
