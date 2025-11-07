@@ -1,0 +1,30 @@
+{
+  "name": "clip-worker",
+  "version": "1.0.0",
+  "main": "index.js",
+  "_moduleAliases": {
+    "@shared": "dist/shared"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@prisma/client": "^6.19.0",
+    "bullmq": "^5.63.0",
+    "ioredis": "^5.8.2",
+    "node-fetch": "2.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/node-fetch": "^2.6.13",
+    "typescript": "^5.8.3"
+  },
+  "resolutions": {
+    "node-fetch": "2.6.7"
+  }
+}

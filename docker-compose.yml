@@ -23,10 +23,10 @@ services:
     networks:
       - app-network
   
-  backend:
+  api:
     build:
       context: .
-      dockerfile: ./backend/Dockerfile
+      dockerfile: ./backend/api/Dockerfile
     command: ["node", "dist/index.js"]
     ports:
       - "3001:3001"
@@ -42,23 +42,24 @@ services:
   # Clip Worker - Main job processing (Node.js)
   clip-worker:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./backend/workers/clip-worker/Dockerfile
     environment:
       - REDIS_HOST=redis
       - NODE_ENV=production
     depends_on:
       - redis
-    command: ["node", "./workers/clip-worker/index.js"]
+    command: ["node", "dist/index.js"]
     restart: unless-stopped
     networks:
       - app-network
   
   clip-metadata-worker:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    command: ["node", "clip-worker/generate/generateMetadataWorker.js"]
+      context: .
+      dockerfile: ./backend/workers/clip-worker/clip-metadata-worker.Dockerfile
+    # command: ["node", "dist/workers/clip-worker/generate/generateMetadataWorker.js"]
+    command: ["node", "dist/index.js"]
     environment:
       - REDIS_HOST=redis
       - NODE_ENV=production
@@ -89,13 +90,14 @@ services:
   # Ollama for language model processing
   ollama:
     build:
-      context: ./backend
-      dockerfile: ollama.Dockerfile
+      context: .
+      dockerfile: ./backend/workers/ollama-worker/Dockerfile
     container_name: ollama
     volumes:
-      - ./backend/scripts/start-ollama.sh:/start.sh
+      - ./scripts/start-ollama.sh:/start.sh
       - ollama-data:/root/.ollama
-    entrypoint: ["/bin/bash", "/start.sh"]
+    # entrypoint: ["/bin/bash", "/start.sh"]
+    command: ["./scripts/start-ollama.sh"]
     ports:
       - "11434:11434"
     restart: unless-stopped
@@ -104,10 +106,11 @@ services:
   
   poller:
     build:
-      context: ./backend
+      context: .
       # dockerfile: ./workers/workers.Dockerfile
-      dockerfile: Dockerfile
-    command: ["./workers/start.sh"]
+      dockerfile: ./backend/workers/poller-worker/Dockerfile
+    # entrypoint: ["/bin/bash", "/start.sh"]
+    command: ["./start.sh"]
     volumes:
       - ./shared:/app/shared  # ⬅️ needed for prisma and shared code
       - ./prisma:/app/prisma

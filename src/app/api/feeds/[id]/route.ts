@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../auth';
-import { deleteFromS3 } from '@backend/lib/s3';
+import { deleteFromS3 } from '@backend/api/lib/s3';
 
 export async function DELETE(
   req: NextRequest,

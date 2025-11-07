@@ -24,8 +24,12 @@ new Worker(
       .then(() => {
         console.log(`🚀 Triggered backend clip-generation for ${feedVideoId}`);
       })
-      .catch((err) => {
-        console.error(`❌ Failed to trigger backend clip-generation: ${err.message}`);
+      .catch((err: unknown) => {
+        if (err instanceof Error) {
+          console.error(`❌ Failed to trigger backend clip-generation: ${err.message}`);
+        } else {
+          console.error('❌ Failed to trigger backend clip-generation:', err);
+        }
       });
 
     // Don't wait for fetch to complete — exit immediately

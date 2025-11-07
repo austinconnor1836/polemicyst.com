@@ -21,7 +21,7 @@ new Worker(
         body: JSON.stringify({ transcript })
       });
 
-      const data = await res.json();
+      const data: any = await res.json();
 
       if (!data.title || !data.description) {
         throw new Error('Missing title or description from Ollama response');
