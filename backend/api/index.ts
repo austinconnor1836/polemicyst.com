@@ -3,9 +3,9 @@ require('module-alias/register');
 // index.ts
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import pingRoute from './api/routes/ping';
-import generateRoute from './api/routes/generate';
-import clipGenerationRoute from './api/routes/clip-generation';
+import pingRoute from './routes/ping';
+import generateRoute from './routes/generate';
+import clipGenerationRoute from './routes/clip-generation';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;

@@ -17,7 +17,7 @@ COPY ./prisma ./prisma/
 COPY tsconfig.docker.json tsconfig.json
 # COPY package*.json ./
 
-RUN chmod +x ./workers/start.sh
+# RUN chmod +x ./workers/start.sh
 # Install Node.js dependencies
 RUN npm install
 
@@ -25,4 +25,4 @@ RUN npm install
 RUN npx prisma generate --schema=prisma/schema.prisma
 
 # Build TypeScript workers (assumes tsconfig.json is configured)
-RUN npm run build:worker
+RUN npm run build
