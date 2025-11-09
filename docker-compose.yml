@@ -94,10 +94,10 @@ services:
       dockerfile: ./backend/workers/ollama-worker/Dockerfile
     container_name: ollama
     volumes:
-      - ./scripts/start-ollama.sh:/start.sh
+      - ./backend/workers/ollama-worker/scripts/start-ollama.sh:/start.sh
       - ollama-data:/root/.ollama
-    # entrypoint: ["/bin/bash", "/start.sh"]
-    command: ["./scripts/start-ollama.sh"]
+    entrypoint: ["/bin/bash", "/start.sh"]
+    # command: ["/start.sh"]
     ports:
       - "11434:11434"
     restart: unless-stopped

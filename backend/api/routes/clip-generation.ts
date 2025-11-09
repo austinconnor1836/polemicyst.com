@@ -6,7 +6,7 @@ import { uploadToS3 } from '../lib/s3';
 import { burnInCaptions } from '../lib/video';
 import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
-import { queue } from '../../queues';
+import { queue } from '../queues';
 
 const router = express.Router();
 
