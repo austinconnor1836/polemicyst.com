@@ -1,3 +1,4 @@
+require('module-alias/register');
 import { pollFeeds } from './pollFeeds';
 
 async function startPolling() {

@@ -1,4 +1,4 @@
-import { prisma } from 'shared/lib/prisma';
+import { prisma } from '@shared/lib/prisma';
 import { queueTranscriptionJob } from './queues/transcriptionQueue';
 import { pollYouTubeFeed } from './sources/youtube';
 import { pollCspanFeed } from './sources/cspan';

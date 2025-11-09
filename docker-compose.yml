@@ -109,13 +109,14 @@ services:
       context: .
       # dockerfile: ./workers/workers.Dockerfile
       dockerfile: ./backend/workers/poller-worker/Dockerfile
-    # entrypoint: ["/bin/bash", "/start.sh"]
-    command: ["./start.sh"]
+    entrypoint: ["/bin/bash", "./start.sh"]
+    # command: ["./start.sh"]
     volumes:
       - ./shared:/app/shared  # ⬅️ needed for prisma and shared code
       - ./prisma:/app/prisma
     depends_on:
-      - backend
+      - db
+      # - backend
       - redis
     environment:
       - NODE_ENV=production
