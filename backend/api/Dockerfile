@@ -29,7 +29,7 @@ RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o 
 # Copy full context after installing deps
 WORKDIR /app
 # COPY . .
-COPY ./backend/api .
+COPY ./backend/api/ .
 COPY ./shared/ ./shared/
 COPY ./prisma/ ./prisma/
 COPY tsconfig.docker.json tsconfig.json

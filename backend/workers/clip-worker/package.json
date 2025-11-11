@@ -7,6 +7,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "dev": "nodemon --watch './**/*.ts' --exec 'ts-node' index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -15,6 +16,7 @@
   "description": "",
   "dependencies": {
     "@prisma/client": "^6.19.0",
+    "aws-sdk": "^2.1692.0",
     "bullmq": "^5.63.0",
     "ioredis": "^5.8.2",
     "node-fetch": "2.6.7"
@@ -22,7 +24,9 @@
   "devDependencies": {
     "@types/node": "^24.10.0",
     "@types/node-fetch": "^2.6.13",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "ts-node": "^10.9.2",
+    "nodemon": "^3.1.10"
   },
   "resolutions": {
     "node-fetch": "2.6.7"

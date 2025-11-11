@@ -1,5 +1,5 @@
 {
-  "name": "api",
+  "name": "transcription-worker",
   "version": "1.0.0",
   "main": "index.js",
   "_moduleAliases": {
@@ -41,8 +41,8 @@
     "@types/node-fetch": "^2.6.12",
     "@types/xml2js": "^0.4.14",
     "prisma": "^5.9.0",
+    "typescript": "^5.3.3",
     "ts-node": "^10.9.2",
-    "nodemon": "^3.1.10",
-    "typescript": "^5.3.3"
+    "nodemon": "^3.1.10"
   }
 }

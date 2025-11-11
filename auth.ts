@@ -1,5 +1,5 @@
 import NextAuth from "next-auth";
-import type { NextAuthOptions, User, Account, Session, Profile } from "next-auth";
+import type { NextAuthOptions } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
 import FacebookProvider from "next-auth/providers/facebook";
@@ -239,8 +239,6 @@ export const authOptions: NextAuthOptions = {
 // const handler = NextAuth(authOptions);
 // export { handler as GET, handler as POST };
 export default NextAuth(authOptions);
-
-
 
 async function refreshAccessToken(token: ExtendedJWT): Promise<ExtendedJWT> {
   try {

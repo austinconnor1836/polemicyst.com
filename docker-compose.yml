@@ -1,3 +1,4 @@
+  
 version: '3.9'
 services:
   db:
@@ -27,7 +28,8 @@ services:
     build:
       context: .
       dockerfile: ./backend/api/Dockerfile
-    command: ["node", "dist/index.js"]
+    # command: ["node", "dist/index.js"]
+    entrypoint: ["/bin/bash", "./start.sh"]
     ports:
       - "3001:3001"
     environment:
@@ -36,6 +38,8 @@ services:
     depends_on:
       - db
       - redis
+    env_file:
+      - .env
     networks:
       - app-network
 
@@ -46,10 +50,13 @@ services:
       dockerfile: ./backend/workers/clip-worker/Dockerfile
     environment:
       - REDIS_HOST=redis
-      - NODE_ENV=production
+      # - NODE_ENV=production
     depends_on:
       - redis
-    command: ["node", "dist/index.js"]
+    # command: ["node", "dist/index.js"]
+    entrypoint: ["/bin/bash", "./start.sh"]
+    env_file:
+      - .env
     restart: unless-stopped
     networks:
       - app-network
@@ -59,13 +66,52 @@ services:
       context: .
       dockerfile: ./backend/workers/clip-worker/clip-metadata-worker.Dockerfile
     # command: ["node", "dist/workers/clip-worker/generate/generateMetadataWorker.js"]
-    command: ["node", "dist/index.js"]
+    # command: ["node", "dist/index.js"]
+    entrypoint: ["/bin/bash", "./start.sh"]
     environment:
       - REDIS_HOST=redis
-      - NODE_ENV=production
+      # - NODE_ENV=production
     depends_on:
       - redis
       - db
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - app-network
+
+  video-download-worker:
+    build:
+      context: .
+      dockerfile: ./backend/workers/video-download-worker/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      # - NODE_ENV=production
+    depends_on:
+      - redis
+      - db
+    # command: ["node", "dist/index.js"]
+    entrypoint: ["/bin/bash", "./start.sh"]
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - app-network
+  
+  transcription-worker:
+    build:
+      context: .
+      dockerfile: ./backend/workers/transcription-worker/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      # - NODE_ENV=production
+    depends_on:
+      - redis
+      - db
+    # command: ["node", "dist/index.js"]
+    entrypoint: ["/bin/bash", "./start.sh"]
+    env_file:
+      - .env
     restart: unless-stopped
     networks:
       - app-network
@@ -103,28 +149,47 @@ services:
     restart: unless-stopped
     networks:
       - app-network
-  
-  poller:
+
+  poller-worker:
     build:
       context: .
-      # dockerfile: ./workers/workers.Dockerfile
       dockerfile: ./backend/workers/poller-worker/Dockerfile
-    entrypoint: ["/bin/bash", "./start.sh"]
-    # command: ["./start.sh"]
-    volumes:
-      - ./shared:/app/shared  # ⬅️ needed for prisma and shared code
-      - ./prisma:/app/prisma
-    depends_on:
-      - db
-      # - backend
-      - redis
     environment:
-      - NODE_ENV=production
+      - REDIS_HOST=redis
+      # - NODE_ENV=production
+    depends_on:
+      - redis
+      - db
+    # command: ["node", "dist/index.js"]
+    entrypoint: ["/bin/bash", "./start.sh"]
     env_file:
       - .env
     restart: unless-stopped
     networks:
       - app-network
+  
+  # poller-worker:
+  #   build:
+  #     context: .
+  #     # dockerfile: ./workers/workers.Dockerfile
+  #     dockerfile: ./backend/workers/poller-worker/Dockerfile
+  #   entrypoint: ["/bin/bash", "./start.sh"]
+  #   # command: ["./start.sh"]
+  #   volumes:
+  #     - ./backend/workers/poller-worker:/app
+  #     - ./shared:/app/shared  # ⬅️ needed for prisma and shared code
+  #     - ./prisma:/app/prisma
+  #   depends_on:
+  #     - db
+  #     # - backend
+  #     - redis
+  #   # environment:
+  #     # - NODE_ENV=production
+  #   env_file:
+  #     - .env
+  #   restart: unless-stopped
+  #   networks:
+  #     - app-network
 
 volumes:
   ollama-data:

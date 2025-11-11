@@ -1,0 +1,26 @@
+{
+  "name": "video-download-worker",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "nodemon --watch './**/*.ts' --exec 'ts-node' index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.7.0",
+    "aws-sdk": "^2.1692.0",
+    "bullmq": "^5.51.0",
+    "ioredis": "^5.8.2",
+    "module-alias": "^2.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.2",
+    "nodemon": "^3.1.10"
+  },
+  "_moduleAliases": {
+    "@shared": "dist/shared"
+  }
+}

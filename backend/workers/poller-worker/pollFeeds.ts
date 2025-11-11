@@ -1,8 +1,8 @@
 import { prisma } from '@shared/lib/prisma';
-import { queueTranscriptionJob } from './queues/transcriptionQueue';
-import { pollYouTubeFeed } from './sources/youtube';
-import { pollCspanFeed } from './sources/cspan';
-import { downloadAndUploadToS3 } from './downloadAndUploadToS3'; // your streaming S3 uploader
+import { queueTranscriptionJob, queueVideoDownloadJob } from '@shared/queues';
+import { pollYouTubeFeed } from '@shared/util/youtube';
+import { pollCspanFeed } from '@shared/util/cspan';
+import { downloadAndUploadToS3 } from '@shared/util/downloadAndUploadToS3'; // your streaming S3 uploader
 
 export async function pollFeeds() {
   const now = new Date();
@@ -57,17 +57,13 @@ export async function pollFeeds() {
       });
 
       // Update last seen video ID
-      await prisma.videoFeed.update({
+      const updatedFeed = await prisma.videoFeed.update({
         where: { id: feed.id },
         data: { lastVideoId: newVideo.id },
       });
 
       // Queue transcription
-      await queueTranscriptionJob({
-        sourceUrl: s3Url,
-        feedId: feed.id,
-        title: newVideo.title,
-      });
+      await queueVideoDownloadJob(updatedFeed);
 
       console.log(`Queued transcription and stored video: ${newVideo.title}`);
 

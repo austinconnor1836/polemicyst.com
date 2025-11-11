@@ -15,7 +15,6 @@ RUN pip install --upgrade pip && \
 WORKDIR /app
 
 COPY ./backend/workers/clip-worker/package.json .
-COPY ./backend/workers/clip-worker/package-lock.json .
 
 RUN npm install
 RUN npm uninstall node-fetch && npm install node-fetch@2.6.7
