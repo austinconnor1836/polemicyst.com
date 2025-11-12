@@ -33,6 +33,7 @@ COPY ./backend/api/ .
 COPY ./shared/ ./shared/
 COPY ./prisma/ ./prisma/
 COPY tsconfig.docker.json tsconfig.json
+RUN chmod +x ./start.sh
 
 # RUN chmod +x ./workers/start.sh
 
@@ -44,6 +45,7 @@ RUN npm install
 # Generate Prisma client (output goes to backend/node_modules/.prisma)
 # WORKDIR /app/backend
 RUN npx prisma generate --schema=./prisma/schema.prisma
+# RUN npx prisma migrate deploy --schema=prisma/schema.prisma
 
 # Build backend TypeScript
 RUN npm run build

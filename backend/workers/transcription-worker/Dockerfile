@@ -11,6 +11,7 @@ COPY ./backend/workers/transcription-worker .
 COPY ./shared ./shared
 COPY ./prisma/ ./prisma/
 COPY tsconfig.docker.json tsconfig.json
+RUN chmod +x ./start.sh
 
 RUN npm install
 

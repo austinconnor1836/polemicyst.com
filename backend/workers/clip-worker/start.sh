@@ -5,6 +5,7 @@ if [ "$ENVIRONMENT" = "dev" ]; then
   echo "Starting Clip Worker in development mode..."
   npm install
   npx prisma generate --schema=./prisma/schema.prisma
+  npx prisma migrate deploy --schema=prisma/schema.prisma
   exec npm run dev
 else
   echo "Starting Clip Worker in production mode..."

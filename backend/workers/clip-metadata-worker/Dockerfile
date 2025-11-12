@@ -32,16 +32,15 @@ WORKDIR /app
 COPY ./backend/workers/clip-metadata-worker/package.json .
 
 RUN npm install
-RUN npm uninstall node-fetch && npm install node-fetch@2.6.7
+# RUN npm uninstall node-fetch && npm install node-fetch@2.6.7
 # COPY ./clip-worker/package*.json ./clip-worker/
 COPY ./backend/workers/clip-metadata-worker .
 COPY ./shared ./shared
 COPY ./prisma/ ./prisma/
 COPY tsconfig.docker.json tsconfig.json
-
-# RUN chmod +x ./workers/start.sh
 RUN chmod +x ./start.sh
 
+# RUN chmod +x ./workers/start.sh
 RUN npm install
 
 # Generate Prisma client (output goes to backend/node_modules/.prisma)

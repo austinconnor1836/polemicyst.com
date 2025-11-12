@@ -22,6 +22,7 @@ COPY ./backend/workers/clip-worker .
 COPY ./shared ./shared
 COPY ./prisma/ ./prisma/
 COPY tsconfig.docker.json tsconfig.json
+RUN chmod +x ./start.sh
 
 # Generate Prisma client
 # WORKDIR /app/clip-worker

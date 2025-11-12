@@ -17,7 +17,7 @@ COPY ./prisma ./prisma/
 COPY tsconfig.docker.json tsconfig.json
 # COPY package*.json ./
 
-# RUN chmod +x ./workers/start.sh
+RUN chmod +x ./start.sh
 # Install Node.js dependencies
 RUN npm install
 
