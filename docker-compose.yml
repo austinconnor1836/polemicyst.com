@@ -28,7 +28,6 @@ services:
     build:
       context: .
       dockerfile: ./backend/api/Dockerfile
-    # command: ["node", "dist/index.js"]
     entrypoint: ["/bin/bash", "./start.sh"]
     ports:
       - "3001:3001"
@@ -42,35 +41,41 @@ services:
       - .env
     networks:
       - app-network
+    volumes:
+      - ./backend/api:/app
+      - ./shared:/app/shared
+      - ./prisma:/app/prisma
+      - ./tsconfig.docker.json:/app/tsconfig.json:ro
+      - ./package.docker.json:/app/package.json:ro
 
-  # Clip Worker - Main job processing (Node.js)
   clip-worker:
     build:
       context: .
       dockerfile: ./backend/workers/clip-worker/Dockerfile
     environment:
       - REDIS_HOST=redis
-      # - NODE_ENV=production
     depends_on:
       - redis
-    # command: ["node", "dist/index.js"]
-    entrypoint: ["/bin/bash", "./start.sh"]
+    entrypoint: ["/bin/sh", "./start.sh"]
     env_file:
       - .env
     restart: unless-stopped
     networks:
       - app-network
+    volumes:
+      - ./backend/workers/clip-worker:/app
+      - ./shared:/app/shared
+      - ./prisma:/app/prisma
+      - ./tsconfig.docker.json:/app/tsconfig.json:ro
+      - ./package.docker.json:/app/package.json:ro
   
   clip-metadata-worker:
     build:
       context: .
-      dockerfile: ./backend/workers/clip-worker/clip-metadata-worker.Dockerfile
-    # command: ["node", "dist/workers/clip-worker/generate/generateMetadataWorker.js"]
-    # command: ["node", "dist/index.js"]
+      dockerfile: ./backend/workers/clip-worker/Dockerfile
     entrypoint: ["/bin/bash", "./start.sh"]
     environment:
       - REDIS_HOST=redis
-      # - NODE_ENV=production
     depends_on:
       - redis
       - db
@@ -79,6 +84,12 @@ services:
       - .env
     networks:
       - app-network
+    volumes:
+      - ./backend/workers/clip-metadata-worker:/app
+      - ./shared:/app/shared
+      - ./prisma:/app/prisma
+      - ./tsconfig.docker.json:/app/tsconfig.json:ro
+      - ./package.docker.json:/app/package.json:ro
 
   video-download-worker:
     build:
@@ -86,17 +97,21 @@ services:
       dockerfile: ./backend/workers/video-download-worker/Dockerfile
     environment:
       - REDIS_HOST=redis
-      # - NODE_ENV=production
     depends_on:
       - redis
       - db
-    # command: ["node", "dist/index.js"]
-    entrypoint: ["/bin/bash", "./start.sh"]
+    entrypoint: ["/bin/sh", "./start.sh"]
     env_file:
       - .env
     restart: unless-stopped
     networks:
       - app-network
+    volumes:
+      - ./backend/workers/video-download-worker:/app
+      - ./shared:/app/shared
+      - ./prisma:/app/prisma
+      - ./tsconfig.docker.json:/app/tsconfig.json:ro
+      - ./package.docker.json:/app/package.json:ro
   
   transcription-worker:
     build:
@@ -104,17 +119,43 @@ services:
       dockerfile: ./backend/workers/transcription-worker/Dockerfile
     environment:
       - REDIS_HOST=redis
-      # - NODE_ENV=production
     depends_on:
       - redis
       - db
-    # command: ["node", "dist/index.js"]
+    entrypoint: ["/bin/sh", "./start.sh"]
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - app-network
+    volumes:
+      - ./backend/workers/transcription-worker:/app
+      - ./shared:/app/shared
+      - ./prisma:/app/prisma
+      - ./tsconfig.docker.json:/app/tsconfig.json:ro
+      - ./package.docker.json:/app/package.json:ro
+
+  poller-worker:
+    build:
+      context: .
+      dockerfile: ./backend/workers/poller-worker/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+      - db
     entrypoint: ["/bin/bash", "./start.sh"]
     env_file:
       - .env
     restart: unless-stopped
     networks:
       - app-network
+    volumes:
+      - ./backend/workers/poller-worker:/app
+      - ./shared:/app/shared
+      - ./prisma:/app/prisma
+      - ./tsconfig.docker.json:/app/tsconfig.json:ro
+      - ./package.docker.json:/app/package.json:ro
 
 
   # Faster Whisper for transcription
@@ -143,53 +184,11 @@ services:
       - ./backend/workers/ollama-worker/scripts/start-ollama.sh:/start.sh
       - ollama-data:/root/.ollama
     entrypoint: ["/bin/bash", "/start.sh"]
-    # command: ["/start.sh"]
     ports:
       - "11434:11434"
     restart: unless-stopped
     networks:
       - app-network
-
-  poller-worker:
-    build:
-      context: .
-      dockerfile: ./backend/workers/poller-worker/Dockerfile
-    environment:
-      - REDIS_HOST=redis
-      # - NODE_ENV=production
-    depends_on:
-      - redis
-      - db
-    # command: ["node", "dist/index.js"]
-    entrypoint: ["/bin/bash", "./start.sh"]
-    env_file:
-      - .env
-    restart: unless-stopped
-    networks:
-      - app-network
-  
-  # poller-worker:
-  #   build:
-  #     context: .
-  #     # dockerfile: ./workers/workers.Dockerfile
-  #     dockerfile: ./backend/workers/poller-worker/Dockerfile
-  #   entrypoint: ["/bin/bash", "./start.sh"]
-  #   # command: ["./start.sh"]
-  #   volumes:
-  #     - ./backend/workers/poller-worker:/app
-  #     - ./shared:/app/shared  # ⬅️ needed for prisma and shared code
-  #     - ./prisma:/app/prisma
-  #   depends_on:
-  #     - db
-  #     # - backend
-  #     - redis
-  #   # environment:
-  #     # - NODE_ENV=production
-  #   env_file:
-  #     - .env
-  #   restart: unless-stopped
-  #   networks:
-  #     - app-network
 
 volumes:
   ollama-data:

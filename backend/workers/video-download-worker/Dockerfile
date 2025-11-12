@@ -7,12 +7,16 @@ RUN apt-get update && apt-get install -y python3 python3-pip curl && \
 
 WORKDIR /app
 
+COPY ./backend/workers/video-download-worker/package*.json ./
+
+RUN npm install
+
 COPY ./backend/workers/video-download-worker .
 COPY ./shared ./shared
 COPY ./prisma/ ./prisma/
 COPY tsconfig.docker.json tsconfig.json
 
-RUN npm install
+# RUN npm install --save-dev nodemon tsconfig-paths
 
 RUN npx prisma generate --schema=./prisma/schema.prisma
 RUN npm run build

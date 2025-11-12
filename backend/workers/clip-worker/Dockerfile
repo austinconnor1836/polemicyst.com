@@ -14,11 +14,10 @@ RUN pip install --upgrade pip && \
 # Node setup
 WORKDIR /app
 
-COPY ./backend/workers/clip-worker/package.json .
+COPY ./backend/workers/clip-worker/package*.json ./
 
 RUN npm install
-RUN npm uninstall node-fetch && npm install node-fetch@2.6.7
-# COPY ./clip-worker/package*.json ./clip-worker/
+
 COPY ./backend/workers/clip-worker .
 COPY ./shared ./shared
 COPY ./prisma/ ./prisma/

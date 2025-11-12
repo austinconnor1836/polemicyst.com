@@ -40,10 +40,15 @@ new Worker(
             userId,
           },
         });
+        // Update lastVideoId in VideoFeed after successful download/upload
+        await prisma.videoFeed.update({
+          where: { id: feedId },
+          data: { lastVideoId: latestVideo.id },
+        });
         await queueTranscriptionJob({
           feedVideoId: feedVideo.id,
         });
-        console.log(`✅ Downloaded, stored, and queued transcription for video ${latestVideo.id} for feed ${feedId}`);
+        console.log(`✅ Downloaded, stored, updated lastVideoId, and queued transcription for video ${latestVideo.id} for feed ${feedId}`);
       }
     } catch (err) {
       console.error(`❌ Failed to download/store video for ${feedId}:`, err);

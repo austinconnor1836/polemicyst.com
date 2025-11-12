@@ -2,7 +2,6 @@ import { prisma } from '@shared/lib/prisma';
 import { queueTranscriptionJob, queueVideoDownloadJob } from '@shared/queues';
 import { pollYouTubeFeed } from '@shared/util/youtube';
 import { pollCspanFeed } from '@shared/util/cspan';
-import { downloadAndUploadToS3 } from '@shared/util/downloadAndUploadToS3'; // your streaming S3 uploader
 
 export async function pollFeeds() {
   const now = new Date();
@@ -39,33 +38,12 @@ export async function pollFeeds() {
 
       if (!newVideo) {
         console.log(`No new video found for ${feed.name}`);
-        continue;
+        return;
       }
 
-      // Upload video directly to S3
-      const s3Url = await downloadAndUploadToS3(newVideo.url, newVideo.id);
-
-      // Store in FeedVideo table
-      await prisma.feedVideo.create({
-        data: {
-          feedId: feed.id,
-          videoId: newVideo.id,
-          title: newVideo.title,
-          s3Url,
-          userId: feed.userId
-        }
-      });
-
-      // Update last seen video ID
-      const updatedFeed = await prisma.videoFeed.update({
-        where: { id: feed.id },
-        data: { lastVideoId: newVideo.id },
-      });
-
-      // Queue transcription
-      await queueVideoDownloadJob(updatedFeed);
-
-      console.log(`Queued transcription and stored video: ${newVideo.title}`);
+  // Queue video download job (lastVideoId will be updated after successful download)
+  await queueVideoDownloadJob(feed);
+  console.log(`Queued video download for: ${newVideo.title}`);
 
     } catch (err) {
       console.error(`Error polling feed ${feed.name}:`, err);
