@@ -1,4 +1,4 @@
-import { VideoFeed } from '@prisma/client';
+// import { VideoFeed } from '@prisma/client';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
@@ -14,14 +14,16 @@ export const transcriptionQueue = new Queue('transcription', {
   connection: redis,
 });
 
-// export function queueVideoDownloadJob(data: {
-//   feedId: string;
-//   videoId: string;
-//   sourceUrl: string;
-//   userId: string;
-//   title: string;
-// }) {
-export function queueVideoDownloadJob(data: VideoFeed) {
+
+export interface DownloadJob {
+  feedId: string;
+  videoId: string;
+  sourceUrl: string;
+  userId: string;
+  title: string;
+}
+
+export function queueVideoDownloadJob(data: DownloadJob) {
   return videoDownloadQueue.add('download', data, {
     removeOnComplete: true,
     removeOnFail: true,

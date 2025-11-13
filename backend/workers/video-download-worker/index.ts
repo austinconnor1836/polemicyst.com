@@ -25,17 +25,15 @@ interface DownloadJob {
 new Worker(
   'video-download',
   async (job) => {
-    const { id: feedId, sourceUrl, userId } = job.data as VideoFeed;
+    const { feedId, videoId, sourceUrl, userId, title } = job.data as DownloadJob;
     try {
-      const latestVideo: NewVideo = await getLatestVideoFromYoutubeFeed(feedId);
-
-      const s3Url = await downloadAndUploadToS3(sourceUrl, latestVideo?.id ?? null);
+      const s3Url = await downloadAndUploadToS3(sourceUrl, videoId);
       if (s3Url) {
         const feedVideo = await prisma.feedVideo.create({
           data: {
             feedId,
-            videoId: latestVideo.id,
-            title: latestVideo.title,
+            videoId,
+            title,
             s3Url,
             userId,
           },
@@ -43,12 +41,12 @@ new Worker(
         // Update lastVideoId in VideoFeed after successful download/upload
         await prisma.videoFeed.update({
           where: { id: feedId },
-          data: { lastVideoId: latestVideo.id },
+          data: { lastVideoId: videoId },
         });
         await queueTranscriptionJob({
           feedVideoId: feedVideo.id,
         });
-        console.log(`✅ Downloaded, stored, updated lastVideoId, and queued transcription for video ${latestVideo.id} for feed ${feedId}`);
+        console.log(`✅ Downloaded, stored, updated lastVideoId, and queued transcription for video ${videoId} for feed ${feedId}`);
       }
     } catch (err) {
       console.error(`❌ Failed to download/store video for ${feedId}:`, err);

@@ -36,14 +36,27 @@ export async function pollFeeds() {
         data: { lastCheckedAt: now },
       });
 
+
       if (!newVideo) {
         console.log(`No new video found for ${feed.name}`);
-        return;
+        continue;
       }
 
-  // Queue video download job (lastVideoId will be updated after successful download)
-  await queueVideoDownloadJob(feed);
-  console.log(`Queued video download for: ${newVideo.title}`);
+      // Only queue if new video is different from last processed
+      if (feed.lastVideoId === newVideo.id) {
+        console.log(`Latest video (${newVideo.id}) already processed for ${feed.name}`);
+        continue;
+      }
+
+      // Pass new video info to the queue job
+      await queueVideoDownloadJob({
+        feedId: feed.id,
+        videoId: newVideo.id,
+        sourceUrl: newVideo.url,
+        userId: feed.userId,
+        title: newVideo.title,
+      });
+      console.log(`Queued video download for: ${newVideo.title}`);
 
     } catch (err) {
       console.error(`Error polling feed ${feed.name}:`, err);
