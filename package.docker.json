@@ -18,8 +18,10 @@
     "node-fetch": "2.6.7"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.18",
     "@types/node": "^20.0.0",
     "@types/node-fetch": "^2.6.13",
+    "@types/express": "^5.0.1",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
