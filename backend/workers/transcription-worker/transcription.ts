@@ -27,8 +27,7 @@ export async function transcribeFeedVideo(feedVideoId: string): Promise<{ transc
   }
 
 
-  const pythonProcess = spawn('python3', ['scripts/transcribe.py', '-'], {
-    cwd: __dirname + '/../',
+  const pythonProcess = spawn('python3', ['/app/scripts/transcribe.py', '-'], {
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
