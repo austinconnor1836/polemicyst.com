@@ -26,15 +26,50 @@ export async function transcribeFeedVideo(feedVideoId: string): Promise<{ transc
     throw new Error('Failed to fetch video stream from S3');
   }
 
+
   const pythonProcess = spawn('python3', ['scripts/transcribe.py', '-'], {
     cwd: __dirname + '/../',
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
-  videoRes.body.pipe(pythonProcess.stdin!);
-
+  // Robust error handling for EPIPE and stream errors
   let output = '';
   let error = '';
+  let streamEnded = false;
+  let processClosed = false;
+
+  // Handle errors on the video stream
+  videoRes.body.on('error', (err) => {
+    console.error('Error reading video stream:', err);
+    pythonProcess.stdin?.destroy(err);
+  });
+
+  // Handle errors on the python process stdin
+  pythonProcess.stdin?.on('error', (err) => {
+    // Type guard for 'code' property
+    const errorWithCode = err as NodeJS.ErrnoException;
+    if (errorWithCode.code === 'EPIPE') {
+      console.error('EPIPE: Python process closed stdin early.');
+    } else {
+      console.error('Error writing to python stdin:', err);
+    }
+  });
+
+  // If the process closes before the stream ends, unpipe/destroy
+  pythonProcess.on('close', (code) => {
+    processClosed = true;
+    if (!streamEnded) {
+      videoRes.body.unpipe(pythonProcess.stdin!);
+      pythonProcess.stdin?.destroy();
+    }
+  });
+
+  // Track when the stream ends
+  videoRes.body.on('end', () => {
+    streamEnded = true;
+  });
+
+  videoRes.body.pipe(pythonProcess.stdin!);
 
   pythonProcess.stdout.on('data', d => output += d.toString());
   pythonProcess.stderr.on('data', d => error += d.toString());
@@ -44,6 +79,7 @@ export async function transcribeFeedVideo(feedVideoId: string): Promise<{ transc
   );
 
   if (exitCode !== 0) {
+    console.error('Python stderr:', error);
     throw new Error(`Transcription failed: ${error}`);
   }
 
