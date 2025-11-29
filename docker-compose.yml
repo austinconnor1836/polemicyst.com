@@ -190,6 +190,36 @@ services:
     networks:
       - app-network
 
+  provocativeness-scorer:
+    build:
+      context: .
+      dockerfile: ./backend/workers/llm-worker/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - OLLAMA_HOST=http://ollama:11434
+      - SCORING_TYPE=PROVOCATIVENESS
+      - MODEL_NAME=llama3
+    depends_on:
+      - redis
+      - ollama
+    networks:
+      - app-network
+
+  comedic-scorer:
+    build:
+      context: .
+      dockerfile: ./backend/workers/llm-worker/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - OLLAMA_HOST=http://ollama:11434
+      - SCORING_TYPE=COMEDIC
+      - MODEL_NAME=llama3
+    depends_on:
+      - redis
+      - ollama
+    networks:
+      - app-network
+
 volumes:
   ollama-data:
   faster-whisper-data:
