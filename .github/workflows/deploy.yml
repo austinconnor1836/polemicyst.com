@@ -1,0 +1,75 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set Environment Variables
+      run: |
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "ENVIRONMENT=prod" >> $GITHUB_ENV
+        else
+          echo "ENVIRONMENT=dev" >> $GITHUB_ENV
+        fi
+
+    - name: Set Resource Names
+      run: |
+        echo "ECR_REPOSITORY_LLM=polemicyst-${{ env.ENVIRONMENT }}-llm-worker" >> $GITHUB_ENV
+        echo "ECR_REPOSITORY_CLIP=polemicyst-${{ env.ENVIRONMENT }}-clip-worker" >> $GITHUB_ENV
+        echo "ECS_CLUSTER=polemicyst-${{ env.ENVIRONMENT }}-cluster" >> $GITHUB_ENV
+        echo "ECS_SERVICE_PROVOCATIVENESS=provocativeness-scorer" >> $GITHUB_ENV
+        echo "ECS_SERVICE_COMEDIC=comedic-scorer" >> $GITHUB_ENV
+        echo "ECS_SERVICE_CLIP=clip-worker" >> $GITHUB_ENV
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build and Push LLM Worker
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # Build LLM Worker
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG -f backend/workers/llm-worker/Dockerfile .
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_LLM:latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY_LLM:latest
+
+    - name: Build and Push Clip Worker
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # Build Clip Worker (Native Linux/AMD64 build - FAST!)
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG -f backend/workers/clip-worker/Dockerfile .
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:latest
+
+    - name: Update ECS Services
+      run: |
+        aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_PROVOCATIVENESS --force-new-deployment
+        aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_COMEDIC --force-new-deployment
+        aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_CLIP --force-new-deployment

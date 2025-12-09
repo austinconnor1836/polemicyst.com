@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../auth'; // adjust path if needed
+import { queueVideoDownloadJob } from '@shared/queues';
 
 export async function GET() {
   const feeds = await prisma.videoFeed.findMany({
@@ -42,6 +43,17 @@ export async function POST(req: Request) {
       userId: user.id, // ✅ required
     },
   });
+
+  // Enqueue a video download job with just the feed info
+  // await queueVideoDownloadJob({
+  //   feedId: newFeed.id,
+  //   sourceUrl: newFeed.sourceUrl,
+  //   userId: newFeed.userId,
+  //   sourceType: newFeed.sourceType,
+  //   // Add any other fields your worker expects
+  // });
+
+  await queueVideoDownloadJob(newFeed);
 
   return NextResponse.json(newFeed);
 }
