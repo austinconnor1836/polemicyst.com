@@ -26,6 +26,7 @@ clip-worker/node_modules
 # misc
 .DS_Store
 *.pem
+test_output.json
 
 # debug
 npm-debug.log*
@@ -48,4 +49,17 @@ next-env.d.ts
 /data
 
 /.terraform/
-certificatesig-state-*.json
+*.tfstate
+*.tfstate.*
+crash.log
+
+# build artifacts (tsc output during local dev)
+backend/**/*.js
+backend/**/*.js.map
+shared/**/*.js
+
+# local certificates (dev)
+certificates/
+
+# local dev scripts output
+ig-state-*.json
