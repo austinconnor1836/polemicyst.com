@@ -23,7 +23,7 @@
       }
     ],
     "target": "ES2017",
-    "types": ["react", "react-dom"],
+    "types": ["react", "react-dom", "node"],
     "paths": {
       "@shared/*": ["shared/*"],
       "@backend/*": ["backend/*"]

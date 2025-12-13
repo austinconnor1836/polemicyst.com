@@ -17,15 +17,16 @@ export async function transcribeVideo(feedVideoId: string): Promise<any[]> {
   const videoPath = `/tmp/${feedVideoId}.mp4`;
   const videoRes = await fetch(feedVideo.s3Url);
 
-  if (!videoRes.ok || !videoRes.body) {
+  const videoBody = videoRes.body;
+  if (!videoRes.ok || !videoBody) {
     throw new Error('Failed to download video');
   }
 
   // Save video to disk
   await new Promise<void>((resolve, reject) => {
     const out = createWriteStream(videoPath);
-    videoRes.body.pipe(out);
-    videoRes.body.on('error', reject);
+    videoBody.pipe(out);
+    videoBody.on('error', reject);
     out.on('finish', resolve);
   });
 
@@ -83,14 +84,15 @@ export async function generateViralClips(feedVideoId: string, aspectRatio: strin
   await fs.mkdir(clipsDir, { recursive: true });
 
   const videoRes = await fetch(feedVideo.s3Url);
-  if (!videoRes.ok || !videoRes.body) {
+  const videoBody = videoRes.body;
+  if (!videoRes.ok || !videoBody) {
     throw new Error('Failed to fetch video');
   }
 
   await new Promise<void>((resolve, reject) => {
     const out = createWriteStream(videoPath);
-    videoRes.body.pipe(out);
-    videoRes.body.on('error', reject);
+    videoBody.pipe(out);
+    videoBody.on('error', reject);
     out.on('finish', resolve);
   });
 

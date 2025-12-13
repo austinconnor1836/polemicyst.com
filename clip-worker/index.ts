@@ -8,24 +8,26 @@ const redis = new Redis({
   maxRetriesPerRequest: null,
 });
 
+const backendBaseUrl = (process.env.BACKEND_BASE_URL || 'http://backend:3001').replace(/\/+$/, '');
+
 // Non-blocking worker
 new Worker(
   'clip-generation',
   async (job) => {
     const { feedVideoId, userId, aspectRatio } = job.data;
-    console.log(`📥 Enqueuing clip-generation for ${feedVideoId}`);
+    console.log(`📥 Processing clip-generation job (candidates) for ${feedVideoId}`);
 
     // Fire-and-forget
-    fetch('http://backend:3001/api/clip-generation', {
+    fetch(`${backendBaseUrl}/api/clip-candidates`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ feedVideoId, userId, aspectRatio }),
     })
       .then(() => {
-        console.log(`🚀 Triggered backend clip-generation for ${feedVideoId}`);
+        console.log(`🚀 Triggered backend clip-candidates for ${feedVideoId}`);
       })
       .catch((err) => {
-        console.error(`❌ Failed to trigger backend clip-generation: ${err.message}`);
+        console.error(`❌ Failed to trigger backend clip-candidates: ${err.message}`);
       });
 
     // Don't wait for fetch to complete — exit immediately
