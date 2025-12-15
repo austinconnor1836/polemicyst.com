@@ -8,10 +8,15 @@ export type GeminiScoreResult = {
   score: number; // 0..10 overall
   rationale: string;
   hookScore?: number; // 0..10
+  contextScore?: number; // 0..10 (self-contained / coherent)
+  captionabilityScore?: number; // 0..10 (strong headline/caption without distortion)
   comedicScore?: number; // 0..10
   provocativeScore?: number; // 0..10
   visualEnergyScore?: number; // 0..10
   audioEnergyScore?: number; // 0..10
+  riskScore?: number; // 0..10 (higher = riskier)
+  riskFlags?: string[]; // e.g. ["misinformation", "defamation", "graphic"]
+  hasViralMoment?: boolean; // model’s best-guess boolean, not authoritative
   confidence?: number; // 0..1
 };
 
@@ -137,6 +142,9 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
   tEndS: number;
   framesJpegBase64: string[];
   audioMp3Base64?: string | null;
+  targetPlatform?: 'all' | 'reels' | 'shorts' | 'youtube';
+  contentStyle?: 'politics' | 'comedy' | 'education' | 'podcast' | 'gaming' | 'vlog' | 'other';
+  saferClips?: boolean;
 }): Promise<GeminiScoreResult> {
   const {
     apiKey,
@@ -147,6 +155,9 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
     tEndS,
     framesJpegBase64,
     audioMp3Base64,
+    targetPlatform = 'all',
+    contentStyle,
+    saferClips = false,
   } = params;
 
   const baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
@@ -177,17 +188,25 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
   const chosenModel = modelName || (await pickDefaultModel());
 
   const prompt = [
-    `You are a ruthless short-form video editor optimizing for virality.`,
+    `You are a ruthless short-form video editor optimizing for virality on ${targetPlatform}.`,
+    contentStyle ? `Content style: ${contentStyle}.` : ``,
+    saferClips
+      ? `Safety mode: ON. Downrank risky segments. Prefer accurate, context-complete clips that minimize defamation/misinformation risk.`
+      : `Safety mode: OFF. Focus purely on virality.`,
     `Score this candidate clip window using BOTH the transcript and the provided frames (and audio if present).`,
     ``,
     `Window: start=${tStartS.toFixed(2)}s end=${tEndS.toFixed(2)}s`,
     `Transcript: """${transcriptText}"""`,
     ``,
     `Return ONLY valid JSON with this shape:`,
-    `{"score":0-10,"hookScore":0-10,"comedicScore":0-10,"provocativeScore":0-10,"visualEnergyScore":0-10,"audioEnergyScore":0-10,"confidence":0-1,"rationale":"..."}`,
+    `{"score":0-10,"hookScore":0-10,"contextScore":0-10,"captionabilityScore":0-10,"comedicScore":0-10,"provocativeScore":0-10,"visualEnergyScore":0-10,"audioEnergyScore":0-10,"riskScore":0-10,"riskFlags":["..."],"hasViralMoment":true/false,"confidence":0-1,"rationale":"..."}`,
     ``,
     `Rules:`,
     `- score must be a number 0..10`,
+    `- hookScore/contextScore/captionabilityScore must be numbers 0..10`,
+    `- riskScore must be a number 0..10 (higher = riskier)`,
+    `- riskFlags must be a JSON array of strings (empty array if none)`,
+    `- hasViralMoment must be a boolean`,
     `- confidence must be 0..1`,
     `- rationale must be <= 2 sentences, high-signal`,
   ].join('\n');
@@ -241,10 +260,15 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
   return {
     score: clamp(Number(parsed.score), 0, 10),
     hookScore: parsed.hookScore != null ? clamp(Number(parsed.hookScore), 0, 10) : undefined,
+    contextScore: parsed.contextScore != null ? clamp(Number(parsed.contextScore), 0, 10) : undefined,
+    captionabilityScore: parsed.captionabilityScore != null ? clamp(Number(parsed.captionabilityScore), 0, 10) : undefined,
     comedicScore: parsed.comedicScore != null ? clamp(Number(parsed.comedicScore), 0, 10) : undefined,
     provocativeScore: parsed.provocativeScore != null ? clamp(Number(parsed.provocativeScore), 0, 10) : undefined,
     visualEnergyScore: parsed.visualEnergyScore != null ? clamp(Number(parsed.visualEnergyScore), 0, 10) : undefined,
     audioEnergyScore: parsed.audioEnergyScore != null ? clamp(Number(parsed.audioEnergyScore), 0, 10) : undefined,
+    riskScore: parsed.riskScore != null ? clamp(Number(parsed.riskScore), 0, 10) : undefined,
+    riskFlags: Array.isArray(parsed.riskFlags) ? parsed.riskFlags.map((x: any) => String(x)).slice(0, 12) : undefined,
+    hasViralMoment: typeof parsed.hasViralMoment === 'boolean' ? parsed.hasViralMoment : undefined,
     confidence: parsed.confidence != null ? clamp(Number(parsed.confidence), 0, 1) : undefined,
     rationale: String(parsed.rationale || '').slice(0, 400),
   };

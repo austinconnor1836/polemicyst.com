@@ -13,6 +13,8 @@ export type ClipCandidate = {
 };
 
 export type ScoringMode = 'heuristic' | 'gemini' | 'hybrid';
+export type TargetPlatform = 'all' | 'reels' | 'shorts' | 'youtube';
+export type ContentStyle = 'politics' | 'comedy' | 'education' | 'podcast' | 'gaming' | 'vlog' | 'other';
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -223,6 +225,9 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
   prefilterMultiplier?: number; // how many to keep before Gemini pass
   includeAudio?: boolean;
   modelName?: string;
+  targetPlatform?: TargetPlatform;
+  contentStyle?: ContentStyle;
+  saferClips?: boolean;
 }): Promise<ClipCandidate[]> {
   const {
     s3Url,
@@ -231,6 +236,9 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
     prefilterMultiplier = 3,
     includeAudio = true,
     modelName,
+    targetPlatform = 'all',
+    contentStyle,
+    saferClips = false,
   } = params;
 
   const apiKey = process.env.GOOGLE_API_KEY;
@@ -278,21 +286,48 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
       tEndS: c.tEndS,
       framesJpegBase64: frames,
       audioMp3Base64: audio,
+      targetPlatform,
+      contentStyle,
+      saferClips,
     });
+
+    const hook = llm.hookScore ?? llm.score;
+    const risk = llm.riskScore ?? 0;
+    const context = llm.contextScore ?? llm.score;
+    const captionability = llm.captionabilityScore ?? llm.score;
+    const viralPenalty = llm.hasViralMoment === false ? 1.25 : 0;
+
+    const platformBoost =
+      targetPlatform === 'reels' || targetPlatform === 'shorts'
+        ? 0.50 * llm.score + 0.25 * hook + 0.15 * captionability + 0.10 * context
+        : targetPlatform === 'youtube'
+          ? 0.55 * llm.score + 0.25 * context + 0.10 * captionability + 0.10 * hook
+          : 0.60 * llm.score + 0.20 * hook + 0.10 * captionability + 0.10 * context;
+
+    const safetyPenalty = saferClips ? 0.35 * risk : 0;
+    const finalScore = clamp(platformBoost - safetyPenalty - viralPenalty, 0, 10);
 
     scored.push({
       tStartS: c.tStartS,
       tEndS: c.tEndS,
       text: c.text,
-      score: clamp(llm.score, 0, 10),
+      score: finalScore,
       features: {
         provider: 'gemini',
         rationale: llm.rationale,
         hookScore: llm.hookScore,
+        contextScore: llm.contextScore,
+        captionabilityScore: llm.captionabilityScore,
         comedicScore: llm.comedicScore,
         provocativeScore: llm.provocativeScore,
         visualEnergyScore: llm.visualEnergyScore,
         audioEnergyScore: llm.audioEnergyScore,
+        riskScore: llm.riskScore,
+        riskFlags: llm.riskFlags,
+        hasViralMoment: llm.hasViralMoment,
+        saferClips,
+        targetPlatform,
+        contentStyle,
         confidence: llm.confidence,
         durationS: Math.max(0, c.tEndS - c.tStartS),
       },

@@ -9,6 +9,7 @@ import {
   TranscriptWordSegment,
   ScoringMode,
 } from '../lib/viral-scoring';
+import { detectContentStyle } from '../lib/content-style';
 
 const router = express.Router();
 
@@ -19,6 +20,9 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     windowSeconds,
     scoringMode,
     includeAudio,
+    saferClips,
+    targetPlatform,
+    contentStyle,
     // dynamic selection controls
     minCandidates,
     maxCandidates,
@@ -33,6 +37,9 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     windowSeconds?: number;
     scoringMode?: ScoringMode;
     includeAudio?: boolean;
+    saferClips?: boolean;
+    targetPlatform?: 'all' | 'reels' | 'shorts' | 'youtube';
+    contentStyle?: 'auto' | 'politics' | 'comedy' | 'education' | 'podcast' | 'gaming' | 'vlog' | 'other';
     minCandidates?: number;
     maxCandidates?: number;
     minScore?: number;
@@ -55,8 +62,26 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     }
 
     const transcriptSegments = feedVideo.transcriptJson as TranscriptWordSegment[];
+
+    const fullTranscriptText = transcriptSegments.map((s) => s.text).join(' ').replace(/\s+/g, ' ').trim();
+    const styleDetected = detectContentStyle({ transcriptText: fullTranscriptText, title: feedVideo.title });
+    const styleUsed =
+      contentStyle && contentStyle !== 'auto'
+        ? contentStyle
+        : styleDetected.style;
+    const platformUsed = targetPlatform ?? 'all';
+    const safer = saferClips ?? true;
+
+    const windowPreset =
+      platformUsed === 'youtube'
+        ? { windowSeconds: 60, maxWindowSeconds: 120 }
+        : platformUsed === 'reels' || platformUsed === 'shorts'
+          ? { windowSeconds: 26, maxWindowSeconds: 48 }
+          : { windowSeconds: 28, maxWindowSeconds: 55 };
+
     const candidates = buildCandidatesFromTranscript(transcriptSegments, {
-      windowSeconds: typeof windowSeconds === 'number' ? windowSeconds : 28,
+      windowSeconds: typeof windowSeconds === 'number' ? windowSeconds : windowPreset.windowSeconds,
+      maxWindowSeconds: windowPreset.maxWindowSeconds,
     });
     const mode: ScoringMode = scoringMode || 'heuristic';
 
@@ -71,10 +96,11 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
       });
     }
 
+    const safetyMinScoreBump = safer ? 0.25 : 0;
     const selectionOpts = {
       minCandidates,
       maxCandidates,
-      minScore,
+      minScore: typeof minScore === 'number' ? minScore + safetyMinScoreBump : undefined,
       percentile,
       strictMinScore,
     };
@@ -100,6 +126,9 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
             topN: geminiInput.length || 1,
             prefilterMultiplier: 1,
             includeAudio: includeAudio ?? true,
+            targetPlatform: platformUsed,
+            contentStyle: styleUsed,
+            saferClips: safer,
           })
         : heuristicAll;
 
@@ -155,6 +184,10 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
             text: seg.text,
             feedVideoId,
             scoringMode: mode,
+            targetPlatform: platformUsed,
+            contentStyle: styleUsed,
+            contentStyleDetected: styleDetected,
+            saferClips: safer,
           },
         },
       });

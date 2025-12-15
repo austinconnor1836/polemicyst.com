@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import ViralitySettings, { getStrictnessConfig, ScoringMode, StrictnessPreset, type ContentStyle, type TargetPlatform } from "@/components/ViralitySettings";
 import AspectRatioSelect, { type AspectRatio } from "@/components/AspectRatioSelect";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { FeedsHeroAnimation } from "@/app/feeds/_components/FeedsHeroAnimation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Toaster, toast } from "react-hot-toast";
+
+function formatRelativeTime(iso?: string | null) {
+  if (!iso) return null;
+  const date = new Date(iso);
+  const seconds = Math.round((date.getTime() - Date.now()) / 1000);
+  const absSeconds = Math.abs(seconds);
+
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
+  if (absSeconds < 60) return rtf.format(seconds, "second");
+  const minutes = Math.round(seconds / 60);
+  if (Math.abs(minutes) < 60) return rtf.format(minutes, "minute");
+  const hours = Math.round(minutes / 60);
+  if (Math.abs(hours) < 24) return rtf.format(hours, "hour");
+  const days = Math.round(hours / 24);
+  return rtf.format(days, "day");
+}
 
 type VideoFeed = {
   id: string;
@@ -26,7 +44,7 @@ type VideoFeed = {
 
 type FeedVideo = {
   id: string;
-  feedId?: string;
+  feedId: string;
   title: string;
   s3Url: string;
   createdAt?: string;
@@ -36,6 +54,8 @@ type FeedVideo = {
 };
 
 export default function FeedsPage() {
+  const videosHeaderRef = useRef<HTMLDivElement | null>(null);
+
   const [feeds, setFeeds] = useState<VideoFeed[]>([]);
   const [videos, setVideos] = useState<FeedVideo[]>([]);
   const [form, setForm] = useState({ name: '', sourceUrl: '', pollingInterval: 60 });
@@ -50,6 +70,7 @@ export default function FeedsPage() {
 
   const [videoQuery, setVideoQuery] = useState("");
   const [videoFeedFilter, setVideoFeedFilter] = useState<string>("all");
+  const [videoSort, setVideoSort] = useState<"newest" | "oldest" | "title">("newest");
 
   const [selectedVideo, setSelectedVideo] = useState<FeedVideo | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -83,6 +104,7 @@ export default function FeedsPage() {
     } catch (err) {
       console.error(err);
       setPageError("Couldn’t load feeds. Try refreshing.");
+      toast.error("Couldn’t load feeds");
     } finally {
       setIsLoadingFeeds(false);
     }
@@ -99,6 +121,7 @@ export default function FeedsPage() {
     } catch (err) {
       console.error(err);
       setPageError("Couldn’t load feed videos. Try refreshing.");
+      toast.error("Couldn’t load feed videos");
     } finally {
       setIsLoadingVideos(false);
     }
@@ -116,9 +139,11 @@ export default function FeedsPage() {
       if (!res.ok) throw new Error("Failed to create feed");
       setForm({ name: '', sourceUrl: '', pollingInterval: 60 });
       await fetchFeeds();
+      toast.success("Feed added");
     } catch (err) {
       console.error(err);
       setPageError("Couldn’t add feed. Check the URL and try again.");
+      toast.error("Couldn’t add feed");
     } finally {
       setIsCreatingFeed(false);
     }
@@ -147,10 +172,10 @@ export default function FeedsPage() {
 
       const data = await res.json();
       console.log('✅ Job enqueued:', data);
-      alert(`Clip job enqueued for "${video.title}"`);
+      toast.success("Clip job enqueued");
     } catch (err) {
       console.error(err);
-      alert('Failed to trigger clip job');
+      toast.error("Failed to trigger clip job");
     }
   };
 
@@ -162,9 +187,11 @@ export default function FeedsPage() {
       const res = await fetch(`/api/feeds/${feedId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error("Failed to delete feed");
       await Promise.all([fetchFeeds(), fetchVideos()]);
+      toast.success("Feed deleted");
     } catch (err) {
       console.error(err);
       setPageError("Failed to delete feed. Try again.");
+      toast.error("Failed to delete feed");
     } finally {
       setDeletingFeedId(null);
     }
@@ -178,9 +205,11 @@ export default function FeedsPage() {
       const res = await fetch(`/api/feedVideos/${video.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete video");
       setVideos((prev) => prev.filter((v) => v.id !== video.id));
+      toast.success("Video deleted");
     } catch (err) {
       console.error(err);
       setPageError("Failed to delete video. Try again.");
+      toast.error("Failed to delete video");
     } finally {
       setDeletingVideoId(null);
     }
@@ -191,18 +220,41 @@ export default function FeedsPage() {
     fetchVideos();
   }, []);
 
+  const videoCountsByFeed = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const v of videos) {
+      map.set(v.feedId, (map.get(v.feedId) || 0) + 1);
+    }
+    return map;
+  }, [videos]);
+
   const filteredVideos = useMemo(() => {
     const q = videoQuery.trim().toLowerCase();
-    return videos.filter((v) => {
-      const matchesFeed = videoFeedFilter === "all" || v.feedId === videoFeedFilter || v.feed?.name === feeds.find((f) => f.id === videoFeedFilter)?.name;
+    const selectedFeedName = videoFeedFilter === "all" ? null : feeds.find((f) => f.id === videoFeedFilter)?.name;
+    const filtered = videos.filter((v) => {
+      const matchesFeed =
+        videoFeedFilter === "all" ||
+        v.feedId === videoFeedFilter ||
+        (!!selectedFeedName && v.feed?.name === selectedFeedName);
       if (!matchesFeed) return false;
       if (!q) return true;
       return (v.title || "").toLowerCase().includes(q) || (v.feed?.name || "").toLowerCase().includes(q);
     });
-  }, [feeds, videoFeedFilter, videoQuery, videos]);
+
+    const sorted = [...filtered];
+    sorted.sort((a, b) => {
+      if (videoSort === "title") return (a.title || "").localeCompare(b.title || "");
+      const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return videoSort === "newest" ? bT - aT : aT - bT;
+    });
+
+    return sorted;
+  }, [feeds, videoFeedFilter, videoQuery, videoSort, videos]);
 
   return (
     <div className="mx-auto w-full max-w-screen-xl px-4 py-6 sm:px-6 lg:px-8">
+      <Toaster position="top-right" />
       <div className="mb-6">
         <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-b from-background to-background/60">
           <FeedsHeroAnimation className="absolute inset-0 opacity-90" />
@@ -213,18 +265,6 @@ export default function FeedsPage() {
                 <div className="mt-1 text-sm text-muted-foreground">
                   Create a feed, let it ingest videos, then generate clips with your scoring settings.
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="secondary"
-                  onClick={async () => {
-                    await Promise.all([fetchFeeds(), fetchVideos()]);
-                  }}
-                  disabled={isLoadingFeeds || isLoadingVideos}
-                >
-                  <RefreshCw className={cn("mr-2 h-4 w-4", (isLoadingFeeds || isLoadingVideos) && "animate-spin")} />
-                  Refresh
-                </Button>
               </div>
             </div>
           </div>
@@ -314,9 +354,22 @@ export default function FeedsPage() {
                   {feeds.map((feed) => (
                     <div
                       key={feed.id}
-                      className="group flex items-start justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-gray-50 dark:hover:bg-zinc-900/40"
+                      className={cn(
+                        "group flex items-start justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-gray-50 dark:hover:bg-zinc-900/40",
+                        videoFeedFilter === feed.id && "border-gray-400 bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900/40"
+                      )}
                     >
-                      <div className="min-w-0">
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => {
+                          setVideoFeedFilter((cur) => (cur === feed.id ? "all" : feed.id));
+                          window.setTimeout(() => {
+                            videosHeaderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }, 0);
+                        }}
+                        title="Filter videos by this feed"
+                      >
                         <div className="flex items-center gap-2">
                           <div className="truncate font-semibold">{feed.name}</div>
                           {feed.sourceType && (
@@ -324,17 +377,14 @@ export default function FeedsPage() {
                               {feed.sourceType}
                             </Badge>
                           )}
+                          {videoFeedFilter === feed.id ? <Badge>Selected</Badge> : null}
+                          <Badge variant="secondary">{videoCountsByFeed.get(feed.id) || 0}</Badge>
                         </div>
                         <div className="mt-1 truncate text-xs text-muted-foreground">
                           {feed.sourceUrl} • every {feed.pollingInterval} min
-                          {feed.lastCheckedAt ? (
-                            <>
-                              {" "}
-                              • last checked {new Date(feed.lastCheckedAt).toLocaleString()}
-                            </>
-                          ) : null}
+                          {feed.lastCheckedAt ? <> • checked {formatRelativeTime(feed.lastCheckedAt)}</> : null}
                         </div>
-                      </div>
+                      </button>
 
                       <Button
                         variant="ghost"
@@ -356,7 +406,7 @@ export default function FeedsPage() {
 
         {/* Right: feed videos */}
         <div className="space-y-4 lg:col-span-8">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div ref={videosHeaderRef} className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between scroll-mt-24">
             <div>
               <h2 className="text-xl font-semibold tracking-tight">Feed videos</h2>
               <div className="text-sm text-muted-foreground">Click any video to configure scoring and generate a clip.</div>
@@ -374,8 +424,19 @@ export default function FeedsPage() {
                 value={videoQuery}
                 onChange={(e) => setVideoQuery(e.target.value)}
                 placeholder="Search titles or feed…"
-                className="pl-9"
+                className="pl-9 pr-9"
               />
+              {videoQuery.trim().length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
+                  onClick={() => setVideoQuery("")}
+                  title="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
             </div>
 
             <div className="flex w-full items-center gap-2 sm:w-auto">
@@ -392,6 +453,31 @@ export default function FeedsPage() {
                   ))}
                 </SelectContent>
               </Select>
+
+              <Select value={videoSort} onValueChange={(v) => setVideoSort(v as "newest" | "oldest" | "title")}>
+                <SelectTrigger className="w-full sm:w-[160px]">
+                  <SelectValue placeholder="Sort" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="newest">Newest</SelectItem>
+                  <SelectItem value="oldest">Oldest</SelectItem>
+                  <SelectItem value="title">Title</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {(videoFeedFilter !== "all" || videoQuery.trim().length > 0) && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setVideoQuery("");
+                    setVideoFeedFilter("all");
+                  }}
+                  className="shrink-0"
+                  title="Clear filters"
+                >
+                  Clear
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={fetchVideos}
@@ -455,6 +541,11 @@ export default function FeedsPage() {
                         className="aspect-video w-full bg-black/5 object-cover"
                       />
                       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-60 transition-opacity group-hover:opacity-80" />
+                      <div className="pointer-events-none absolute bottom-2 left-2 opacity-0 transition-opacity group-hover:opacity-100">
+                        <div className="rounded-full bg-black/55 px-2 py-1 text-[11px] font-medium text-white backdrop-blur">
+                          Generate clip
+                        </div>
+                      </div>
 
                       <Button
                         variant="secondary"
@@ -475,7 +566,7 @@ export default function FeedsPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         {video.feed?.name ? <Badge variant="secondary">{video.feed.name}</Badge> : null}
                         {video.createdAt ? (
-                          <span className="text-xs text-muted-foreground">{new Date(video.createdAt).toLocaleDateString()}</span>
+                          <span className="text-xs text-muted-foreground">{formatRelativeTime(video.createdAt)}</span>
                         ) : null}
                       </div>
                     </div>
@@ -494,6 +585,10 @@ export default function FeedsPage() {
             <DialogHeader>
               <DialogTitle className="leading-snug">{selectedVideo.title}</DialogTitle>
               <DialogDescription>Configure clip generation settings.</DialogDescription>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {selectedVideo.feed?.name ? <Badge variant="secondary">{selectedVideo.feed.name}</Badge> : null}
+                {selectedVideo.createdAt ? <Badge variant="outline">Added {formatRelativeTime(selectedVideo.createdAt)}</Badge> : null}
+              </div>
             </DialogHeader>
 
             <video
