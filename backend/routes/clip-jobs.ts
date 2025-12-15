@@ -14,6 +14,9 @@ router.post('/enqueue', async (req: Request, res: Response): Promise<any> => {
     aspectRatio,
     scoringMode,
     includeAudio,
+    saferClips,
+    targetPlatform,
+    contentStyle,
     minCandidates,
     maxCandidates,
     minScore,
@@ -25,6 +28,9 @@ router.post('/enqueue', async (req: Request, res: Response): Promise<any> => {
     aspectRatio?: string;
     scoringMode?: 'heuristic' | 'gemini' | 'hybrid';
     includeAudio?: boolean;
+    saferClips?: boolean;
+    targetPlatform?: 'all' | 'reels' | 'shorts' | 'youtube';
+    contentStyle?: 'auto' | 'politics' | 'comedy' | 'education' | 'podcast' | 'gaming' | 'vlog' | 'other';
     minCandidates?: number;
     maxCandidates?: number;
     minScore?: number;
@@ -45,6 +51,9 @@ router.post('/enqueue', async (req: Request, res: Response): Promise<any> => {
         aspectRatio: aspectRatio || '9:16',
         scoringMode,
         includeAudio,
+        saferClips,
+        targetPlatform,
+        contentStyle,
         minCandidates,
         maxCandidates,
         minScore,

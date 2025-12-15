@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils"
 
 export type ScoringMode = "hybrid" | "gemini" | "heuristic"
 export type StrictnessPreset = "strict" | "balanced" | "loose"
+export type TargetPlatform = "all" | "reels" | "shorts" | "youtube"
+export type ContentStyle = "auto" | "politics" | "comedy" | "education" | "podcast" | "gaming" | "vlog" | "other"
 
 export type StrictnessConfig = {
   minCandidates: number
@@ -34,6 +36,9 @@ export type ViralitySettingsValue = {
   scoringMode: ScoringMode
   strictnessPreset: StrictnessPreset
   includeAudio: boolean
+  saferClips: boolean
+  targetPlatform: TargetPlatform
+  contentStyle: ContentStyle
   showAdvanced: boolean
 }
 
@@ -48,6 +53,54 @@ export default function ViralitySettings({ value, onChange, className }: Viralit
 
   return (
     <div className={cn("space-y-4", className)}>
+      <div className="space-y-2">
+        <Label>Target platform</Label>
+        <Select
+          value={value.targetPlatform}
+          onValueChange={(v) => onChange({ ...value, targetPlatform: v as TargetPlatform })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select a platform target" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All (general)</SelectItem>
+            <SelectItem value="reels">IG/FB Reels</SelectItem>
+            <SelectItem value="shorts">YouTube Shorts</SelectItem>
+            <SelectItem value="youtube">YouTube (longer clips)</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="text-xs text-gray-500">
+          The scorer will optimize different hooks/lengths for each platform.
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Content style</Label>
+        <Select
+          value={value.contentStyle}
+          onValueChange={(v) => onChange({ ...value, contentStyle: v as ContentStyle })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select a content style" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="auto">Auto-detect (recommended)</SelectItem>
+            <SelectItem value="politics">News/Politics</SelectItem>
+            <SelectItem value="comedy">Comedy/Entertainment</SelectItem>
+            <SelectItem value="education">Education/Explainers</SelectItem>
+            <SelectItem value="podcast">Podcast/Interview</SelectItem>
+            <SelectItem value="gaming">Gaming</SelectItem>
+            <SelectItem value="vlog">Vlog/Lifestyle</SelectItem>
+            <SelectItem value="other">Other</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="text-xs text-gray-500">
+          {value.contentStyle === "auto"
+            ? "We’ll auto-detect style from the transcript during scoring."
+            : "Overrides auto-detection and tunes scoring for this style."}
+        </div>
+      </div>
+
       <div className="space-y-2">
         <Label>Scoring</Label>
         <Select value={value.scoringMode} onValueChange={(v) => onChange({ ...value, scoringMode: v as ScoringMode })}>
@@ -90,6 +143,17 @@ export default function ViralitySettings({ value, onChange, className }: Viralit
         <Switch
           checked={value.includeAudio}
           onCheckedChange={(checked) => onChange({ ...value, includeAudio: !!checked })}
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="space-y-0.5">
+          <Label>Safer clips</Label>
+          <div className="text-xs text-gray-500">Downranks high-risk segments and favors context-complete moments</div>
+        </div>
+        <Switch
+          checked={value.saferClips}
+          onCheckedChange={(checked) => onChange({ ...value, saferClips: !!checked })}
         />
       </div>
 
