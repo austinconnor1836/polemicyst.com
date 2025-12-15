@@ -63,6 +63,7 @@ export default function FeedsPage() {
   const [isLoadingFeeds, setIsLoadingFeeds] = useState(false);
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [isCreatingFeed, setIsCreatingFeed] = useState(false);
+  const [isAddFeedOpen, setIsAddFeedOpen] = useState(false);
   const [deletingFeedId, setDeletingFeedId] = useState<string | null>(null);
   const [deletingVideoId, setDeletingVideoId] = useState<string | null>(null);
   const [isGeneratingClip, setIsGeneratingClip] = useState(false);
@@ -140,6 +141,7 @@ export default function FeedsPage() {
       setForm({ name: '', sourceUrl: '', pollingInterval: 60 });
       await fetchFeeds();
       toast.success("Feed added");
+      setIsAddFeedOpen(false);
     } catch (err) {
       console.error(err);
       setPageError("Couldn’t add feed. Check the URL and try again.");
@@ -283,47 +285,6 @@ export default function FeedsPage() {
       <div className="grid gap-6 lg:grid-cols-12">
         {/* Left: feed management */}
         <div className="space-y-6 lg:col-span-4">
-          {/* Form */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Add feed</CardTitle>
-              <CardDescription>Polling runs in the background.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-1">
-                <Label>Name</Label>
-                <Input
-                  placeholder="My YouTube channel"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Source URL</Label>
-                <Input
-                  placeholder="https://..."
-                  value={form.sourceUrl}
-                  onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Polling interval (min)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={String(form.pollingInterval)}
-                  onChange={(e) => setForm({ ...form, pollingInterval: +e.target.value })}
-                />
-              </div>
-              <div className="flex justify-end">
-                <Button onClick={addFeed} disabled={!form.name || !form.sourceUrl || isCreatingFeed}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  {isCreatingFeed ? "Adding..." : "Add feed"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Feed List */}
           <Card>
             <CardHeader className="pb-3">
@@ -332,7 +293,13 @@ export default function FeedsPage() {
                   <CardTitle className="text-base">Feeds</CardTitle>
                   <CardDescription>Your ingested sources.</CardDescription>
                 </div>
-                <Badge variant="secondary">{feeds.length}</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">{feeds.length}</Badge>
+                  <Button variant="secondary" size="sm" onClick={() => setIsAddFeedOpen(true)} title="Add a feed">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -347,7 +314,14 @@ export default function FeedsPage() {
                 </div>
               ) : feeds.length === 0 ? (
                 <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                  No feeds yet. Add a YouTube/RSS source URL above to start ingesting videos.
+                  <div className="font-medium text-foreground">No feeds yet</div>
+                  <div className="mt-1">Add a YouTube or C‑SPAN source URL to start ingesting videos.</div>
+                  <div className="mt-3">
+                    <Button variant="secondary" size="sm" onClick={() => setIsAddFeedOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add your first feed
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -624,6 +598,68 @@ export default function FeedsPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Add Feed Modal */}
+      <Dialog
+        open={isAddFeedOpen}
+        onOpenChange={(open) => {
+          if (isCreatingFeed) return;
+          if (open) {
+            // Start with a clean form each time the modal opens.
+            setForm({ name: "", sourceUrl: "", pollingInterval: 60 });
+          }
+          setIsAddFeedOpen(open);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add a feed</DialogTitle>
+            <DialogDescription>Provide a source URL. The poller will ingest new videos over time.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>Name</Label>
+              <Input
+                placeholder="My YouTube channel"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Source URL</Label>
+              <Input
+                placeholder="https://..."
+                value={form.sourceUrl}
+                onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Polling interval (min)</Label>
+              <Input
+                type="number"
+                min={1}
+                value={String(form.pollingInterval)}
+                onChange={(e) => {
+                  const next = Math.max(1, Number(e.target.value || 1));
+                  setForm({ ...form, pollingInterval: Number.isFinite(next) ? next : 60 });
+                }}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setIsAddFeedOpen(false)} disabled={isCreatingFeed}>
+              Cancel
+            </Button>
+            <Button onClick={addFeed} disabled={!form.name || !form.sourceUrl || isCreatingFeed}>
+              <Plus className="mr-2 h-4 w-4" />
+              {isCreatingFeed ? "Adding..." : "Add feed"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

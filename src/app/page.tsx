@@ -3,13 +3,14 @@
 import Link from 'next/link'
 import React from 'react'
 import Particles from './_components/particles'
+import HomeHeroBackground from './_components/HomeHeroBackground'
 import { lusitana } from './ui/fonts'
 
 const navigation = [{ name: 'Blog', href: '/posts' }]
 
 export default function Home() {
   return (
-    <div className="flex flex-col items-center justify-center w-screen h-screen overflow-hidden bg-gradient-to-tl from-black via-zinc-600/20 to-black">
+    <div className="relative flex flex-col items-center justify-center w-screen h-screen overflow-hidden bg-gradient-to-tl from-black via-zinc-600/20 to-black">
       <nav className="my-16 animate-fade-in">
         <ul className="flex items-center justify-center gap-4">
           {navigation.map((item) => (
@@ -24,9 +25,10 @@ export default function Home() {
         </ul>
       </nav>
       <div className="hidden w-screen h-px animate-glow md:block animate-fade-left bg-gradient-to-r from-zinc-300/0 via-zinc-300/50 to-zinc-300/0" />
+      <HomeHeroBackground className="pointer-events-none absolute inset-0 -z-20" />
       <Particles
         className="absolute inset-0 -z-10 animate-fade-in"
-        quantity={100}
+        quantity={120}
       />
       <h1
         className={`${lusitana} py-3.5 px-0.5 z-10 text-4xl text-transparent duration-1000 bg-white cursor-default text-edge-outline animate-title font-display sm:text-6xl md:text-9xl whitespace-nowrap bg-clip-text`}
