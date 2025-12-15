@@ -3,6 +3,7 @@ import { prisma } from '../../shared/lib/prisma';
 import { transcribeFeedVideo } from '../lib/transcription';
 import {
   buildCandidatesFromTranscript,
+  decideVideoHasViralMoments,
   scoreAndRankCandidates,
   scoreAndRankCandidatesGeminiMultimodal,
   selectCandidatesDynamically,
@@ -134,6 +135,12 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
 
     // Step 3: dynamic selection on the final score distribution (Gemini or heuristic)
     const selectedFinal = selectCandidatesDynamically(scored, selectionOpts);
+    const decision = decideVideoHasViralMoments({
+      scored: scored as any,
+      selection: selectionOpts,
+      targetPlatform: platformUsed,
+      saferClips: safer,
+    });
 
     // Attach segments to a Video row so we can use the existing Segment/Clip schema.
     // We reuse a "source" Video if one already exists for this user's feed video's s3Url.
@@ -196,6 +203,17 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
 
     return res.json({
       sourceVideoId: sourceVideo.id,
+      decision: {
+        hasViralMoments: decision.hasViralMoments,
+        reason: decision.reason,
+        diagnostics: decision.diagnostics,
+        recommendation: decision.recommendation,
+        targetPlatform: platformUsed,
+        contentStyle: styleUsed,
+        contentStyleDetected: styleDetected,
+        saferClips: safer,
+        scoringMode: mode,
+      },
       candidates: created.map((s) => ({
         id: s.id,
         tStartS: s.tStartS,

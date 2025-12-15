@@ -49,6 +49,137 @@ export type DynamicSelectionOptions = {
   strictMinScore?: boolean;
 };
 
+export type SelectionDiagnostics = {
+  total: number;
+  topScore: number;
+  top3Avg: number;
+  top5Avg: number;
+  cutoff: number;
+  minScore: number;
+  percentile: number;
+  strictMinScore: boolean;
+  aboveCutoff: number;
+};
+
+export function computeSelectionDiagnostics<T extends { score: number }>(
+  scored: T[],
+  opts: DynamicSelectionOptions = {}
+): SelectionDiagnostics {
+  const minScore = opts.minScore ?? 6.0;
+  const percentile = opts.percentile ?? 0.85;
+  const strictMinScore = opts.strictMinScore ?? true;
+
+  const sorted = [...scored].sort((a, b) => b.score - a.score);
+  const topScore = sorted[0]?.score ?? 0;
+  const top3 = sorted.slice(0, 3);
+  const top5 = sorted.slice(0, 5);
+  const top3Avg = top3.length ? top3.reduce((a, b) => a + b.score, 0) / top3.length : 0;
+  const top5Avg = top5.length ? top5.reduce((a, b) => a + b.score, 0) / top5.length : 0;
+  const cutoff = Math.max(minScore, percentileOf(sorted.map((s) => s.score), percentile));
+  const aboveCutoff = sorted.filter((s) => s.score >= cutoff).length;
+
+  return {
+    total: sorted.length,
+    topScore,
+    top3Avg,
+    top5Avg,
+    cutoff,
+    minScore,
+    percentile,
+    strictMinScore,
+    aboveCutoff,
+  };
+}
+
+export type VideoViralityDecision = {
+  hasViralMoments: boolean;
+  reason: 'no_candidates' | 'below_cutoff' | 'failed_quality_gate' | 'selected';
+  diagnostics: SelectionDiagnostics;
+  recommendation?: string;
+};
+
+export function decideVideoHasViralMoments<T extends { score: number; features?: Record<string, any> }>(params: {
+  scored: T[];
+  selection: DynamicSelectionOptions;
+  targetPlatform?: TargetPlatform;
+  saferClips?: boolean;
+}): VideoViralityDecision {
+  const { scored, selection, targetPlatform = 'all', saferClips = false } = params;
+
+  const diagnostics = computeSelectionDiagnostics(scored, selection);
+  if (!diagnostics.total) {
+    return { hasViralMoments: false, reason: 'no_candidates', diagnostics };
+  }
+
+  const selected = selectCandidatesDynamically(scored, selection);
+  if (!selected.length) {
+    const close = diagnostics.topScore >= diagnostics.cutoff - 0.3;
+    return {
+      hasViralMoments: false,
+      reason: 'below_cutoff',
+      diagnostics,
+      recommendation: close ? 'Try Loose strictness or lower minScore/percentile.' : 'Try Hybrid/Gemini scoring or enable audio.',
+    };
+  }
+
+  // Extra guard: if the model explicitly marked *all selected* as non-viral, treat as no-viral.
+  // (This should be rare because we already penalize those candidates’ scores.)
+  const selectedWithSignal = selected.filter((c) => c.features?.hasViralMoment !== false);
+  if (!selectedWithSignal.length) {
+    return {
+      hasViralMoments: false,
+      reason: 'failed_quality_gate',
+      diagnostics,
+      recommendation: 'No strong moments detected. Try Loose strictness, different platform target, or Hybrid/Gemini.',
+    };
+  }
+
+  // Platform-aware “quality gates”: require at least one strong hook/context/captionability signal,
+  // so we don’t accept mediocre clips just because they passed a percentile cutoff.
+  const maxHook = Math.max(...selected.map((c) => Number(c.features?.hookScore ?? 0)));
+  const maxContext = Math.max(...selected.map((c) => Number(c.features?.contextScore ?? 0)));
+  const maxCaption = Math.max(...selected.map((c) => Number(c.features?.captionabilityScore ?? 0)));
+  const minRisk = Math.min(...selected.map((c) => Number(c.features?.riskScore ?? 0) || 0));
+
+  const topIsStrong = diagnostics.topScore >= Math.max(7.0, diagnostics.cutoff + 0.4);
+  const hookOk = maxHook >= 6.4;
+  const contextOk = maxContext >= 6.4;
+  const captionOk = maxCaption >= 6.0;
+
+  let passes = true;
+  let why = '';
+  if (targetPlatform === 'reels' || targetPlatform === 'shorts') {
+    passes = topIsStrong || (hookOk && (captionOk || diagnostics.topScore >= 7.5));
+    why = 'needs stronger hook/captionability for Reels/Shorts';
+  } else if (targetPlatform === 'youtube') {
+    passes = topIsStrong || contextOk;
+    why = 'needs more self-contained context for YouTube';
+  } else {
+    passes = topIsStrong || hookOk || contextOk;
+    why = 'needs a stronger hook or clearer context';
+  }
+
+  // Safety guard: if safer clips is on and all selected are extremely risky, reject.
+  if (passes && saferClips) {
+    const tooRisky = minRisk >= 8.5 && diagnostics.topScore < 9.2;
+    if (tooRisky) {
+      passes = false;
+      why = 'segments are too risky under safer-clips policy';
+    }
+  }
+
+  if (!passes) {
+    return {
+      hasViralMoments: false,
+      reason: 'failed_quality_gate',
+      diagnostics,
+      recommendation: `No high-quality viral moments (${why}). Try Loose strictness, enable audio, or switch platform target.`,
+    };
+  }
+
+  return { hasViralMoments: true, reason: 'selected', diagnostics };
+}
+
 /**
  * Choose a variable number of candidates based on score distribution, with sane caps.
  * This is how we avoid "always returning N" even if a video has few (or many) viral moments.

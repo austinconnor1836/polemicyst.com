@@ -8,6 +8,7 @@ import { SideNavItem } from '../ui/types'
 import Link from 'next/link'
 import HomeIcon from '@mui/icons-material/Home'
 import DescriptionIcon from '@mui/icons-material/Description'
+import MovieIcon from '@mui/icons-material/Movie'
 
 interface SidePanelProps {
   onSelectItem?: (item: string) => void
@@ -15,6 +16,7 @@ interface SidePanelProps {
 
 const sideNavItems: SideNavItem[] = [
   { label: 'Home', element: <HomeIcon />, href: '/' },
+  { label: 'Clips', element: <MovieIcon />, href: '/clips' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
   // Add other items as needed
 ]

@@ -11,6 +11,7 @@ If you change how scoring works, how candidates are selected, which models are c
 - **Cheap scoring (heuristic)**: deterministic 0..10 heuristic score for all candidates (fast + offline)
 - **Multimodal scoring (Gemini)**: optional/capped rerank using frames + optional audio + transcript
 - **Dynamic selection**: select a variable number of candidates based on score distribution (can return fewer, including 0)
+- **Video-level decision**: explicit `hasViralMoments` decision computed from the scored distribution + selection opts
 
 ### Council-style scoring (single-call)
 Instead of calling many models per candidate, we use a **single multimodal Gemini call** that returns multiple specialist subscores:
@@ -54,6 +55,8 @@ In the Feeds modal, users can set:
 - Added transcript-based **auto content style detection**.
 - Added **platform-tuned window sizing** and safety-aware threshold bump.
 - Upgraded Gemini scoring to return council-style subscores (`contextScore`, `captionabilityScore`, `hasViralMoment`, `riskScore`), and added deterministic aggregation.
+- Added a **video-level virality decision** returned from `/api/clip-candidates` (`hasViralMoments`, reason, cutoff/top-score diagnostics).
+- Improved the video-level decision with **platform-aware quality gates** (hook/context/captionability) and an optional `recommendation` string for what to try next when no moments are found.
 - Dialog UX: made `DialogContent` scrollable by default and constrained tall media previews (feeds modal).
 
 

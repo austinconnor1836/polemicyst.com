@@ -24,6 +24,11 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
   console.log('clip-generation hit with aspectRatio:', aspectRatio);
 
   try {
+    const feedVideo = await prisma.feedVideo.findUnique({ where: { id: feedVideoId } });
+    if (!feedVideo) {
+      return res.status(404).json({ error: "Feed video not found" });
+    }
+
     // Step 1: Transcribe the video
     try {
       console.log('🔍 Checking for existing transcript...');
@@ -36,6 +41,36 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
         details: transcriptionError.message || 'Unknown transcription error'
       });
     }
+
+    // Ensure we have a stable "source video" row so clips can reference it via `sourceVideoId`.
+    // This keeps the UI queryable and aligns with the `Video.generatedClips` schema relation.
+    const existingSourceVideo = await prisma.video.findFirst({
+      where: {
+        userId,
+        s3Url: feedVideo.s3Url ?? undefined,
+        sourceVideoId: null,
+      },
+    });
+
+    const sourceVideo =
+      existingSourceVideo ??
+      (await prisma.video.create({
+        data: {
+          userId,
+          videoTitle: feedVideo.title ?? "Feed video",
+          s3Url: feedVideo.s3Url ?? "",
+          s3Key: "",
+          transcript: feedVideo.transcript ?? "",
+          approvedForSplicing: false,
+          fileName: "",
+          sharedDescription: "",
+          facebookTemplate: "",
+          instagramTemplate: "",
+          youtubeTemplate: "",
+          blueskyTemplate: "",
+          twitterTemplate: "",
+        },
+      }));
 
     // Step 2: Generate clips with subtitles and aspect ratio
     const clipResults = await generateViralClips(feedVideoId, aspectRatio);
@@ -50,6 +85,7 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
       const created = await prisma.video.create({
         data: {
           userId,
+          sourceVideoId: sourceVideo.id,
           videoTitle: '',
           s3Url: videoUpload.url,
           s3Key: videoUpload.key,
