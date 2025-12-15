@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { usePlatformContext } from './PlatformContext';
 import TemplateModal from './TemplateModal';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface Video {
   id: string;
@@ -77,36 +79,33 @@ const VideoGrid = () => {
 
   return (
     <>
-      <button
-        className="mt-4 bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
-        onClick={() => setShowTemplateModal(true)}
-      >
-        Edit Post Templates
-      </button>
+      <div className="mt-4">
+        <Button variant="secondary" onClick={() => setShowTemplateModal(true)}>
+          Edit Post Templates
+        </Button>
+      </div>
       {showTemplateModal && (
         <TemplateModal />
       )}
       {uploadedVideos.length === 0 ? <p className="text-center text-gray-500 mt-8">No videos uploaded yet.</p> : <div className="mt-10">
         <div className="flex justify-between mb-2">
-          <button onClick={handleSelectAll} className="text-sm text-blue-600 hover:underline">
+          <Button variant="ghost" size="sm" onClick={handleSelectAll} className="px-0 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
             {selectedVideoIds.size === uploadedVideos.length ? 'Deselect All' : 'Select All'}
-          </button>
+          </Button>
 
-          <button
+          <Button
             onClick={handleDeleteSelected}
             disabled={selectedVideoIds.size === 0 || isDeleting}
-            className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 disabled:bg-gray-400"
+            variant="destructive"
+            size="sm"
           >
             {isDeleting ? 'Deleting...' : 'Delete Selected'}
-          </button>
+          </Button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
           {uploadedVideos.map((video) => (
-            <div
-              key={video.id}
-              className="relative border rounded-lg p-4 shadow-sm bg-white dark:bg-gray-800"
-            >
+            <Card key={video.id} className="relative shadow-sm dark:bg-gray-800">
               {/* Checkbox */}
               <input
                 type="checkbox"
@@ -117,8 +116,8 @@ const VideoGrid = () => {
               />
 
               {/* Clickable area */}
-              <div onClick={() => setActiveVideo(video)} className="cursor-pointer">
-                <h3 className="font-semibold text-sm truncate mb-2">{video.videoTitle}</h3>
+              <CardContent onClick={() => setActiveVideo(video)} className="cursor-pointer p-4">
+                <h3 className="mb-2 truncate text-sm font-semibold">{video.videoTitle}</h3>
 
                 {/* ✅ Actual video preview */}
                 <video
@@ -130,8 +129,8 @@ const VideoGrid = () => {
                 <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 line-clamp-3">
                   {video.sharedDescription}
                 </p>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       </div>}

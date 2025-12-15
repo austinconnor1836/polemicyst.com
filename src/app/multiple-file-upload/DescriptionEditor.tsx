@@ -3,6 +3,11 @@
 import React, { useState } from "react";
 import { usePlatformContext } from "./PlatformContext";
 import toast from "react-hot-toast";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 const DescriptionEditor = () => {
   const {
@@ -24,24 +29,30 @@ const DescriptionEditor = () => {
 
       {/* Modal for editing */}
       {activeVideoIndex !== null && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-900 p-6 rounded-md shadow-lg max-w-2xl w-full overflow-y-auto max-h-[90vh]">
-            <h2 className="text-lg font-semibold mb-2">Editing Video {activeVideoIndex + 1}</h2>
+        <Dialog open={true} onOpenChange={(open) => { if (!open) setActiveVideoIndex(null) }}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Editing Video {activeVideoIndex + 1}</DialogTitle>
+            </DialogHeader>
 
-            <label className="block mt-4 mb-2 text-sm font-medium">Video Title</label>
-            <input
-              type="text"
-              value={selectedVideos[activeVideoIndex].title}
-              onChange={(e) => handleInputChange(activeVideoIndex, "title", e.target.value)}
-              className="w-full p-2 border rounded dark:text-black"
-            />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Video Title</Label>
+                <Input
+                  type="text"
+                  value={selectedVideos[activeVideoIndex].title}
+                  onChange={(e) => handleInputChange(activeVideoIndex, "title", e.target.value)}
+                />
+              </div>
 
-            <label className="block mt-4 mb-2 text-sm font-medium">General Description</label>
-            <textarea
-              value={selectedVideos[activeVideoIndex].sharedDescription}
-              onChange={(e) => handleInputChange(activeVideoIndex, "sharedDescription", e.target.value)}
-              className="w-full p-2 border rounded h-32 resize-none dark:text-black"
-            />
+              <div className="space-y-2">
+                <Label>General Description</Label>
+                <Textarea
+                  value={selectedVideos[activeVideoIndex].sharedDescription}
+                  onChange={(e) => handleInputChange(activeVideoIndex, "sharedDescription", e.target.value)}
+                  className="h-32 resize-none"
+                />
+              </div>
 
             {([
               "facebookTemplate",
@@ -50,9 +61,9 @@ const DescriptionEditor = () => {
               "blueskyTemplate",
               "twitterTemplate"
             ] as const).map((key) => (
-              <div key={key} className="mt-4">
-                <label className="block mb-2 text-sm font-medium capitalize">{key.replace("Template", "")}</label>
-                <textarea
+              <div key={key} className="space-y-2">
+                <Label className="capitalize">{key.replace("Template", "")}</Label>
+                <Textarea
                   value={selectedVideos[activeVideoIndex][key]}
                   onChange={(e) =>
                     handleInputChange(
@@ -61,28 +72,25 @@ const DescriptionEditor = () => {
                       e.target.value
                     )
                   }
-                  className="w-full p-2 border rounded h-24 resize-none dark:text-black"
+                  className="h-24 resize-none"
                 />
               </div>
             ))}
+            </div>
 
-            <div className="flex justify-end gap-4 mt-6">
-              <button
-                className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
-                onClick={() => setActiveVideoIndex(null)}
-              >
+            <DialogFooter className="pt-4">
+              <Button variant="secondary" onClick={() => setActiveVideoIndex(null)}>
                 Cancel
-              </button>
-              <button
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              </Button>
+              <Button
                 onClick={() => generateDescription(activeVideoIndex)}
                 disabled={selectedVideos[activeVideoIndex].isGenerating}
               >
                 {selectedVideos[activeVideoIndex].isGenerating ? "Generating..." : "Regenerate AI Description"}
-              </button>
-            </div>
-          </div>
-        </div>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

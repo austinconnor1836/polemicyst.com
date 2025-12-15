@@ -6,6 +6,7 @@ import { usePlatformContext } from "./PlatformContext";
 import { FaFacebook, FaTwitter, FaInstagram, FaYoutube } from "react-icons/fa";
 import { SiBluesky } from "react-icons/si";
 import { CheckCircle, RadioButtonUnchecked } from "@mui/icons-material";
+import { Button } from "@/components/ui/button";
 
 const platforms = [
   { name: "Bluesky", icon: <SiBluesky className="text-blue-500 text-xl" />, provider: "bluesky" },
@@ -87,19 +88,23 @@ const PlatformList = () => {
 
               <div className="flex items-center gap-2">
                 {authStatus ? (
-                  <button
+                  <Button
                     onClick={(e) => handleLogout(e, provider)}
-                    className="text-sm text-red-500 hover:underline"
+                    variant="link"
+                    size="sm"
+                    className="h-auto py-0 text-sm text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
                   >
                     Logout
-                  </button>
+                  </Button>
                 ) : name !== "Instagram" ? (
-                  <button
+                  <Button
                     onClick={(e) => handleAuthenticate(e, provider)}
-                    className="text-sm text-blue-500 hover:underline"
+                    variant="link"
+                    size="sm"
+                    className="h-auto py-0 text-sm"
                   >
                     Connect
-                  </button>
+                  </Button>
                 ) : null}
                 {isSelected ? <CheckCircle className="text-blue-500" /> : <RadioButtonUnchecked className="text-gray-400" />}
               </div>

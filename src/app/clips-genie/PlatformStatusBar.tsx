@@ -6,6 +6,7 @@ import { SiBluesky } from 'react-icons/si';
 import { CheckCircle, Cancel, RadioButtonUnchecked } from '@mui/icons-material';
 import { useSession, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
 
 const icons: Record<string, React.ReactNode> = {
   facebook: <FaFacebook className="text-blue-600" />,
@@ -70,17 +71,17 @@ const PlatformStatusBar = () => {
               <Cancel className="text-gray-400" />
             )}
 
-            <button
+            <Button
               onClick={(e) => {
                 e.stopPropagation();
                 handleAuthToggle(provider);
               }}
-              className={`text-xs underline ${
-                isAuth ? 'text-red-500' : 'text-blue-500'
-              }`}
+              variant="link"
+              size="sm"
+              className={`h-auto py-0 text-xs ${isAuth ? 'text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300' : ''}`}
             >
               {isAuth ? 'Logout' : 'Connect'}
-            </button>
+            </Button>
 
             {isSelected ? (
               <RadioButtonUnchecked className="text-blue-500" />

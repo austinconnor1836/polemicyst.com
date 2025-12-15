@@ -4,7 +4,10 @@ import { useState, useEffect } from 'react';
 import ViralitySettings, { getStrictnessConfig, ScoringMode, StrictnessPreset } from "@/components/ViralitySettings";
 import AspectRatioSelect, { type AspectRatio } from "@/components/AspectRatioSelect";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent } from "@/components/ui/card";
 
 type FeedVideo = {
   id: string;
@@ -101,96 +104,119 @@ export default function FeedsPage() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Video Feeds</h1>
-
-      {/* Form */}
       <div className="mb-6">
-        <input
-          placeholder="Name"
-          className="border p-2 mr-2"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-        />
-        <input
-          placeholder="Source URL"
-          className="border p-2 mr-2"
-          value={form.sourceUrl}
-          onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
-        />
-        <input
-          type="number"
-          placeholder="Polling Interval"
-          className="border p-2 mr-2"
-          value={form.pollingInterval}
-          onChange={(e) => setForm({ ...form, pollingInterval: +e.target.value })}
-        />
-        <button onClick={addFeed} className="bg-blue-600 text-white p-2 rounded">
-          Add Feed
-        </button>
+        <h1 className="text-2xl font-bold">Video Feeds</h1>
+        <div className="text-sm text-gray-500">Create a feed, then generate clips from any ingested video.</div>
       </div>
 
+      {/* Form */}
+      <Card className="mb-8 max-w-3xl">
+        <CardContent className="p-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1">
+              <Label>Name</Label>
+              <Input
+                placeholder="My YouTube channel"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <Label>Source URL</Label>
+              <Input
+                placeholder="https://..."
+                value={form.sourceUrl}
+                onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Polling interval (min)</Label>
+              <Input
+                type="number"
+                value={String(form.pollingInterval)}
+                onChange={(e) => setForm({ ...form, pollingInterval: +e.target.value })}
+              />
+            </div>
+            <div className="flex items-end">
+              <Button onClick={addFeed}>Add Feed</Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Feed List */}
-      <ul className="mb-10 max-w-3xl mx-auto w-full">
-        {feeds.map((feed: any) => (
-          <li
-            key={feed.id}
-            className="mb-2 flex items-center justify-between p-2 rounded hover:bg-gray-600 transition-colors"
-          >
-            <span>
-              <strong>{feed.name}</strong> — {feed.sourceUrl} — every {feed.pollingInterval} min
-            </span>
-            <button
-              onClick={() => deleteFeed(feed.id)}
-              className="text-red-600 hover:text-red-800 ml-2"
-              title="Delete feed"
-            >
-              <TrashIcon className="h-5 w-5" />
-            </button>
-          </li>
-        ))}
-      </ul>
+      <div className="mb-10 max-w-3xl">
+        <div className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">Feeds</div>
+        <div className="space-y-2">
+          {feeds.map((feed: any) => (
+            <Card key={feed.id}>
+              <CardContent className="flex items-center justify-between gap-3 p-3">
+                <div className="min-w-0">
+                  <div className="truncate font-semibold">{feed.name}</div>
+                  <div className="truncate text-xs text-gray-500">
+                    {feed.sourceUrl} • every {feed.pollingInterval} min
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                  onClick={() => deleteFeed(feed.id)}
+                  title="Delete feed"
+                >
+                  <TrashIcon className="h-5 w-5" />
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
 
       {/* Video Grid */}
       <h2 className="text-xl font-semibold mb-4">Feed Videos</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
   {videos.map((video) => (
-          <div
+          <Card
             key={video.id}
-            className="border p-2 rounded shadow cursor-pointer"
+            className="cursor-pointer shadow-sm"
             onClick={() => { setSelectedVideo(video); setIsModalOpen(true); }}
           >
-            <video
-              src={video.s3Url}
-              controls
-              className="w-full h-auto rounded pointer-events-auto"
-              onClick={(e) => e.stopPropagation()}
-            />
-            <div className="mt-2">
-              <div className="font-semibold">{video.title}</div>
-              <div className="text-xs text-gray-500">Feed: {video.feed?.name}</div>
-              <button
-                className="mt-2 text-red-600 hover:text-red-800 flex items-center"
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  if (confirm(`Delete video '${video.title}'?`)) {
-                    const res = await fetch('/api/feedVideos/delete', {
-                      method: 'DELETE',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ id: video.id })
-                    });
-                    if (res.ok) {
-                      setVideos(videos.filter((v: any) => v.id !== video.id));
-                    } else {
-                      alert('Failed to delete video');
+          >
+            <CardContent className="p-2">
+              <video
+                src={video.s3Url}
+                controls
+                className="w-full h-auto rounded pointer-events-auto"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div className="mt-2">
+                <div className="font-semibold">{video.title}</div>
+                <div className="text-xs text-gray-500">Feed: {video.feed?.name}</div>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="mt-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (confirm(`Delete video '${video.title}'?`)) {
+                      const res = await fetch('/api/feedVideos/delete', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: video.id })
+                      });
+                      if (res.ok) {
+                        setVideos(videos.filter((v: any) => v.id !== video.id));
+                      } else {
+                        alert('Failed to delete video');
+                      }
                     }
-                  }
-                }}
-                title="Delete video"
-              >
-                <TrashIcon className="h-4 w-4 mr-1" /> Delete
-              </button>
-            </div>
-          </div>
+                  }}
+                  title="Delete video"
+                >
+                  <TrashIcon className="h-4 w-4 mr-1" /> Delete
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
         ))}
       </div>
@@ -209,7 +235,7 @@ export default function FeedsPage() {
             <AspectRatioSelect value={aspectRatio} onChange={setAspectRatio} className="mb-4" />
             <ViralitySettings value={viralitySettings} onChange={setViralitySettings} />
 
-            <div className="mt-4 flex flex-col gap-2">
+            <DialogFooter className="pt-4 sm:flex-col sm:space-x-0 sm:space-y-2">
               <Button
                 onClick={async () => {
                   await triggerClip({ ...selectedVideo, aspectRatio });
@@ -221,7 +247,7 @@ export default function FeedsPage() {
               <Button variant="outline" onClick={() => setIsModalOpen(false)}>
                 Cancel
               </Button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}

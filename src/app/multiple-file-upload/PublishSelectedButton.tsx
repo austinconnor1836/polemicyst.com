@@ -5,6 +5,7 @@ import { usePlatformContext } from "./PlatformContext";
 import { useSession } from "next-auth/react";
 import axios from "axios";
 import toast from "react-hot-toast";
+import { Button } from "@/components/ui/button";
 
 const PublishSelectedButton = () => {
   const {
@@ -104,13 +105,15 @@ const PublishSelectedButton = () => {
   };
 
   return (
-    <button
-      onClick={handlePublish}
-      disabled={isPublishing}
-      className="mt-8 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
-    >
-      {isPublishing ? "Publishing..." : "Publish Selected"}
-    </button>
+    <div className="mt-8">
+      <Button
+        onClick={handlePublish}
+        disabled={isPublishing}
+        className="bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 dark:bg-green-600 dark:text-white dark:hover:bg-green-700"
+      >
+        {isPublishing ? "Publishing..." : "Publish Selected"}
+      </Button>
+    </div>
   );
 };
 

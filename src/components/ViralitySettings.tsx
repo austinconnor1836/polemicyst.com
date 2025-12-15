@@ -4,6 +4,7 @@ import React from "react"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 export type ScoringMode = "hybrid" | "gemini" | "heuristic"
@@ -92,17 +93,19 @@ export default function ViralitySettings({ value, onChange, className }: Viralit
         />
       </div>
 
-      <button
+      <Button
         type="button"
-        className="text-xs text-blue-600 underline"
+        variant="link"
+        size="sm"
+        className="h-auto py-0 text-xs"
         onClick={() => onChange({ ...value, showAdvanced: !value.showAdvanced })}
       >
         {value.showAdvanced ? "Hide advanced" : "Show advanced"}
-      </button>
+      </Button>
 
       {value.showAdvanced && (
-        <div className="border rounded p-3 bg-gray-50">
-          <div className="text-xs text-gray-700 mb-2">
+        <div className="rounded border border-gray-200 bg-gray-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/40">
+          <div className="mb-2 text-xs text-gray-700 dark:text-gray-300">
             Advanced knobs are cost controls. Gemini calls are capped by <code>maxGeminiCandidates</code>.
           </div>
           <div className="grid grid-cols-2 gap-2 text-sm">
