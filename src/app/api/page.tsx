@@ -1,5 +1,11 @@
- 'use client' 
-  import { useState } from 'react';
+ 'use client'
+
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 
 export default function Home() {
   const [to, setTo] = useState('');
@@ -23,43 +29,32 @@ export default function Home() {
   };
 
   return (
-    <div>
-      <h1>Send Email</h1>
+    <div className="mx-auto max-w-2xl p-6">
+      <h1 className="mb-4 text-2xl font-bold">Send Email</h1>
       <form onSubmit={handleSubmit}>
-        <div>
-          <label>To:</label>
-          <input
-            type="email"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <label>Subject:</label>
-          <input
-            type="text"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <label>Text:</label>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <label>HTML:</label>
-          <textarea
-            value={html}
-            onChange={(e) => setHtml(e.target.value)}
-          />
-        </div>
-        <button type="submit">Send Email</button>
+        <Card>
+          <CardContent className="space-y-4 p-6">
+            <div className="space-y-2">
+              <Label>To</Label>
+              <Input type="email" value={to} onChange={(e) => setTo(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label>Subject</Label>
+              <Input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label>Text</Label>
+              <Textarea value={text} onChange={(e) => setText(e.target.value)} required className="h-32" />
+            </div>
+            <div className="space-y-2">
+              <Label>HTML</Label>
+              <Textarea value={html} onChange={(e) => setHtml(e.target.value)} className="h-32" />
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit">Send Email</Button>
+            </div>
+          </CardContent>
+        </Card>
       </form>
     </div>
   );

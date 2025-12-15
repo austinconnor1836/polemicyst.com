@@ -3,6 +3,10 @@
 import { Suspense, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const SignIn = () => {
   const searchParams = useSearchParams();
@@ -33,7 +37,8 @@ const SignIn = () => {
   return (
     <Suspense fallback={<div className="text-center mt-10">Loading sign-in...</div>}>
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
-        <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-6 w-96">
+        <Card className="w-96 shadow-lg">
+          <CardContent className="p-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white text-center mb-4">
             Sign in
           </h1>
@@ -41,18 +46,18 @@ const SignIn = () => {
           {/* Show OAuth buttons if no provider is selected */}
           {!provider && (
             <div className="flex flex-col space-y-3">
-              <button
+              <Button
                 onClick={() => signIn("google", { callbackUrl })}
-                className="bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600 transition"
+                className="bg-red-500 text-white hover:bg-red-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-600"
               >
                 Sign in with Google
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => signIn("facebook", { callbackUrl })}
-                className="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition"
+                className="bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600 dark:text-white dark:hover:bg-blue-700"
               >
                 Sign in with Facebook
-              </button>
+              </Button>
             </div>
           )}
 
@@ -66,31 +71,32 @@ const SignIn = () => {
                 <p className="text-sm text-red-500 text-center">{error}</p>
               )}
               <div className="space-y-3">
-                <input
-                  type="text"
-                  placeholder="Bluesky Identifier"
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  className="block w-80 mx-auto p-2 border border-gray-300 dark:border-gray-700 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                />
-                <input
-                  type="password"
-                  placeholder="App Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="block w-80 mx-auto p-2 border border-gray-300 dark:border-gray-700 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                />
-                <button
-                  onClick={handleBlueskyLogin}
-                  disabled={loading}
-                  className="w-80 mx-auto bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition"
-                >
+                <div className="space-y-2">
+                  <Label>Bluesky Identifier</Label>
+                  <Input
+                    type="text"
+                    placeholder="handle.bsky.social"
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>App Password</Label>
+                  <Input
+                    type="password"
+                    placeholder="xxxx-xxxx-xxxx-xxxx"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+                <Button onClick={handleBlueskyLogin} disabled={loading} className="w-full">
                   {loading ? "Connecting..." : "Connect with Bluesky"}
-                </button>
+                </Button>
               </div>
             </div>
           )}
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </Suspense>
   );

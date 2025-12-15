@@ -11,7 +11,7 @@ const SharedLayout: React.FC<{ children: React.ReactNode }> = ({
     <>
       <Navbar />
       <SidePanel />
-      <main>{children}</main>
+      <main className="pt-[var(--navbar-height)]">{children}</main>
     </>
   )
 }

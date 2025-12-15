@@ -2,6 +2,9 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 
 interface ChatBotProps {
   id: number;
@@ -20,36 +23,35 @@ const ChatBot: React.FC<ChatBotProps> = ({ id, onClose }) => {
   };
 
   return (
-    <div className="fixed bottom-0 right-0 m-4 w-80 bg-white shadow-lg border border-gray-300 rounded-lg">
-      <div className="flex justify-between items-center bg-blue-600 text-white p-2 rounded-t-lg">
+    <Card className="fixed bottom-0 right-0 m-4 w-80 shadow-lg">
+      <div className="flex items-center justify-between rounded-t-lg bg-blue-600 p-2 text-white">
         <h3 className="text-lg font-semibold">ChatBot #{id}</h3>
-        <button onClick={() => onClose(id)} className="text-sm">
+        <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 hover:text-white" onClick={() => onClose(id)}>
           Close
-        </button>
+        </Button>
       </div>
-      <div className="p-4 h-64 overflow-y-auto">
+      <CardContent className="h-64 overflow-y-auto p-4">
         {messages.map((msg, index) => (
           <div key={index} className="mb-2 p-2 bg-gray-100 rounded-lg">
             {msg}
           </div>
         ))}
-      </div>
-      <div className="flex items-center p-2 border-t">
-        <input
+      </CardContent>
+      <div className="flex items-center gap-2 border-t border-gray-200 p-2 dark:border-zinc-800">
+        <Input
           type="text"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder="Type a message..."
-          className="flex-1 px-2 py-1 border rounded-lg"
         />
-        <button
+        <Button
           onClick={handleSendMessage}
-          className="ml-2 px-4 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+          className="bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-500 dark:text-white dark:hover:bg-blue-600"
         >
           Send
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 };
 

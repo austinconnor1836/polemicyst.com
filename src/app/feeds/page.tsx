@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { FeedsHeroAnimation } from "@/app/feeds/_components/FeedsHeroAnimation";
 
 type FeedVideo = {
   id: string;
@@ -104,9 +105,17 @@ export default function FeedsPage() {
 
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Video Feeds</h1>
-        <div className="text-sm text-gray-500">Create a feed, then generate clips from any ingested video.</div>
+      <div className="mb-8">
+        <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-b from-background to-background/60">
+          <FeedsHeroAnimation className="absolute inset-0 opacity-90" />
+          <div className="relative p-6 sm:p-8">
+            <h1 className="text-2xl font-bold">Video Feeds</h1>
+            <div className="mt-1 text-sm text-muted-foreground">
+              Create a feed, then generate clips from any ingested video.
+            </div>
+          </div>
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/85 via-background/20 to-transparent" />
+        </div>
       </div>
 
       {/* Form */}
@@ -180,7 +189,6 @@ export default function FeedsPage() {
             className="cursor-pointer shadow-sm"
             onClick={() => { setSelectedVideo(video); setIsModalOpen(true); }}
           >
-          >
             <CardContent className="p-2">
               <video
                 src={video.s3Url}
@@ -230,7 +238,11 @@ export default function FeedsPage() {
               <DialogDescription>Configure clip generation settings.</DialogDescription>
             </DialogHeader>
 
-            <video src={selectedVideo.s3Url} controls className="w-full rounded mb-4" />
+            <video
+              src={selectedVideo.s3Url}
+              controls
+              className="mb-4 max-h-[35vh] w-full rounded object-contain"
+            />
 
             <AspectRatioSelect value={aspectRatio} onChange={setAspectRatio} className="mb-4" />
             <ViralitySettings value={viralitySettings} onChange={setViralitySettings} />
