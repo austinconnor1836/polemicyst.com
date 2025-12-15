@@ -12,7 +12,18 @@ const clipGenerationQueue = new Queue('clip-generation', { connection: redis });
 
 export async function POST(req: NextRequest) {
   try {
-    const { feedVideoId, userId, aspectRatio } = await req.json();
+    const {
+      feedVideoId,
+      userId,
+      aspectRatio,
+      scoringMode,
+      includeAudio,
+      minCandidates,
+      maxCandidates,
+      minScore,
+      percentile,
+      maxGeminiCandidates,
+    } = await req.json();
 
     if (!feedVideoId || !userId) {
       return NextResponse.json({ error: 'Missing feedVideoId or userId' }, { status: 400 });
@@ -20,7 +31,18 @@ export async function POST(req: NextRequest) {
 
     const job = await clipGenerationQueue.add(
       'clip-generation',
-      { feedVideoId, userId, aspectRatio }, // include aspectRatio
+      {
+        feedVideoId,
+        userId,
+        aspectRatio,
+        scoringMode,
+        includeAudio,
+        minCandidates,
+        maxCandidates,
+        minScore,
+        percentile,
+        maxGeminiCandidates,
+      },
       { jobId: feedVideoId }
     );
 

@@ -1,0 +1,272 @@
+import fetch from 'node-fetch';
+import fs from 'fs/promises';
+import path from 'path';
+import { createWriteStream } from 'fs';
+import { spawn } from 'child_process';
+
+export type GeminiScoreResult = {
+  score: number; // 0..10 overall
+  rationale: string;
+  hookScore?: number; // 0..10
+  comedicScore?: number; // 0..10
+  provocativeScore?: number; // 0..10
+  visualEnergyScore?: number; // 0..10
+  audioEnergyScore?: number; // 0..10
+  confidence?: number; // 0..1
+};
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+async function downloadToTmp(url: string, outPath: string): Promise<void> {
+  const res = await fetch(url);
+  const body = res.body;
+  if (!res.ok || !body) throw new Error(`Failed to download media (${res.status})`);
+
+  await fs.mkdir(path.dirname(outPath), { recursive: true });
+
+  await new Promise<void>((resolve, reject) => {
+    const out = createWriteStream(outPath);
+    body.pipe(out);
+    body.on('error', reject);
+    out.on('finish', resolve);
+  });
+}
+
+async function runFfmpeg(args: string[]): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const ffmpeg = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let err = '';
+    ffmpeg.stderr.on('data', (d) => (err += d.toString()));
+    ffmpeg.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg failed (${code}): ${err}`));
+    });
+  });
+}
+
+async function fileToBase64(filePath: string): Promise<string> {
+  const buf = await fs.readFile(filePath);
+  return buf.toString('base64');
+}
+
+export async function extractJpegFramesBase64(params: {
+  videoPath: string;
+  tStartS: number;
+  tEndS: number;
+  maxFrames?: number;
+}): Promise<string[]> {
+  const { videoPath, tStartS, tEndS, maxFrames = 4 } = params;
+  const duration = Math.max(1, tEndS - tStartS);
+  const fps = clamp(maxFrames / duration, 0.2, 1.0); // 0.2..1 fps
+
+  const outDir = path.join('/tmp', `gemini-frames-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  await fs.mkdir(outDir, { recursive: true });
+  const outPattern = path.join(outDir, 'frame-%03d.jpg');
+
+  await runFfmpeg([
+    '-y',
+    '-ss',
+    `${tStartS}`,
+    '-t',
+    `${duration}`,
+    '-i',
+    videoPath,
+    '-vf',
+    `fps=${fps},scale=640:-1`,
+    '-q:v',
+    '4',
+    outPattern,
+  ]);
+
+  const files = (await fs.readdir(outDir))
+    .filter((f) => f.endsWith('.jpg'))
+    .sort()
+    .slice(0, maxFrames)
+    .map((f) => path.join(outDir, f));
+
+  const b64s = [];
+  for (const f of files) b64s.push(await fileToBase64(f));
+
+  // best-effort cleanup
+  await fs.rm(outDir, { recursive: true, force: true }).catch(() => {});
+
+  return b64s;
+}
+
+export async function extractAudioMp3Base64(params: {
+  videoPath: string;
+  tStartS: number;
+  tEndS: number;
+  maxSeconds?: number;
+}): Promise<string | null> {
+  const { videoPath, tStartS, tEndS, maxSeconds = 18 } = params;
+  const duration = Math.max(1, Math.min(maxSeconds, tEndS - tStartS));
+  const outPath = path.join('/tmp', `gemini-audio-${Date.now()}-${Math.random().toString(16).slice(2)}.mp3`);
+
+  // Extract mono audio to keep size low
+  await runFfmpeg([
+    '-y',
+    '-ss',
+    `${tStartS}`,
+    '-t',
+    `${duration}`,
+    '-i',
+    videoPath,
+    '-vn',
+    '-ac',
+    '1',
+    '-ar',
+    '16000',
+    '-b:a',
+    '48k',
+    outPath,
+  ]);
+
+  const b64 = await fileToBase64(outPath);
+  await fs.unlink(outPath).catch(() => {});
+  return b64 || null;
+}
+
+export async function scoreSegmentWithGeminiMultimodal(params: {
+  apiKey: string;
+  modelName?: string;
+  transcriptText: string;
+  tStartS: number;
+  tEndS: number;
+  framesJpegBase64: string[];
+  audioMp3Base64?: string | null;
+}): Promise<GeminiScoreResult> {
+  const {
+    apiKey,
+    // Model IDs change over time; we can auto-discover a working model from the API if not provided.
+    modelName = process.env.GEMINI_MODEL,
+    transcriptText,
+    tStartS,
+    tEndS,
+    framesJpegBase64,
+    audioMp3Base64,
+  } = params;
+
+  const baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
+
+  async function listModels(): Promise<Array<{ name: string; supportedGenerationMethods?: string[] }>> {
+    const res = await fetch(`${baseUrl}/models?key=${encodeURIComponent(apiKey)}`);
+    const json = await res.json();
+    if (!res.ok) {
+      throw new Error(`ListModels failed (${res.status}): ${JSON.stringify(json)}`);
+    }
+    return (json.models || []) as Array<{ name: string; supportedGenerationMethods?: string[] }>;
+  }
+
+  async function pickDefaultModel(): Promise<string> {
+    const models = await listModels();
+    const supportsGenerate = models.filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'));
+
+    // Prefer Pro, then Flash, else first supported.
+    const pro = supportsGenerate.find((m) => /gemini/i.test(m.name) && /pro/i.test(m.name));
+    if (pro) return pro.name;
+    const flash = supportsGenerate.find((m) => /gemini/i.test(m.name) && /flash/i.test(m.name));
+    if (flash) return flash.name;
+    const first = supportsGenerate[0];
+    if (!first) throw new Error('No models available that support generateContent');
+    return first.name;
+  }
+
+  const chosenModel = modelName || (await pickDefaultModel());
+
+  const prompt = [
+    `You are a ruthless short-form video editor optimizing for virality.`,
+    `Score this candidate clip window using BOTH the transcript and the provided frames (and audio if present).`,
+    ``,
+    `Window: start=${tStartS.toFixed(2)}s end=${tEndS.toFixed(2)}s`,
+    `Transcript: """${transcriptText}"""`,
+    ``,
+    `Return ONLY valid JSON with this shape:`,
+    `{"score":0-10,"hookScore":0-10,"comedicScore":0-10,"provocativeScore":0-10,"visualEnergyScore":0-10,"audioEnergyScore":0-10,"confidence":0-1,"rationale":"..."}`,
+    ``,
+    `Rules:`,
+    `- score must be a number 0..10`,
+    `- confidence must be 0..1`,
+    `- rationale must be <= 2 sentences, high-signal`,
+  ].join('\n');
+
+  const parts: any[] = [{ text: prompt }];
+  for (const b64 of framesJpegBase64) {
+    parts.push({
+      inlineData: {
+        mimeType: 'image/jpeg',
+        data: b64,
+      },
+    });
+  }
+  if (audioMp3Base64) {
+    parts.push({
+      inlineData: {
+        mimeType: 'audio/mpeg',
+        data: audioMp3Base64,
+      },
+    });
+  }
+
+  const body = {
+    contents: [{ role: 'user', parts }],
+    generationConfig: { temperature: 0.2 },
+  };
+
+  const res = await fetch(`${baseUrl}/${chosenModel}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(`Gemini generateContent failed (${res.status}): ${JSON.stringify(json)}`);
+  }
+
+  const text =
+    json?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join('') ??
+    JSON.stringify(json);
+
+  // Best-effort JSON extraction
+  const jsonStart = text.indexOf('{');
+  const jsonEnd = text.lastIndexOf('}');
+  if (jsonStart === -1 || jsonEnd === -1) {
+    throw new Error(`Gemini returned non-JSON: ${text.slice(0, 200)}`);
+  }
+
+  const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+  return {
+    score: clamp(Number(parsed.score), 0, 10),
+    hookScore: parsed.hookScore != null ? clamp(Number(parsed.hookScore), 0, 10) : undefined,
+    comedicScore: parsed.comedicScore != null ? clamp(Number(parsed.comedicScore), 0, 10) : undefined,
+    provocativeScore: parsed.provocativeScore != null ? clamp(Number(parsed.provocativeScore), 0, 10) : undefined,
+    visualEnergyScore: parsed.visualEnergyScore != null ? clamp(Number(parsed.visualEnergyScore), 0, 10) : undefined,
+    audioEnergyScore: parsed.audioEnergyScore != null ? clamp(Number(parsed.audioEnergyScore), 0, 10) : undefined,
+    confidence: parsed.confidence != null ? clamp(Number(parsed.confidence), 0, 1) : undefined,
+    rationale: String(parsed.rationale || '').slice(0, 400),
+  };
+}
+
+/**
+ * Download the full source video once per request (caller should cache per feedVideo).
+ */
+export async function ensureLocalVideoForScoring(params: {
+  s3Url: string;
+  cacheKey: string;
+}): Promise<string> {
+  const { s3Url, cacheKey } = params;
+  const outPath = path.join('/tmp', `gemini-source-${cacheKey}.mp4`);
+  try {
+    await fs.access(outPath);
+    return outPath;
+  } catch {
+    // continue
+  }
+  await downloadToTmp(s3Url, outPath);
+  return outPath;
+}
+
+

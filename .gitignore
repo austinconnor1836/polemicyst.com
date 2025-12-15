@@ -8,6 +8,7 @@
 .yarn/install-state.gz
 faster-whisper-data/
 clip-worker/node_modules
+**/node_modules/
 
 # testing
 /coverage
@@ -17,10 +18,12 @@ clip-worker/node_modules
 # next.js
 /.next/
 /out/
+**/.next/
 
 # production
 /build
 /public/videos
+**/dist/
 
 
 # misc
@@ -49,6 +52,7 @@ next-env.d.ts
 /data
 
 /.terraform/
+**/.terraform/
 *.tfstate
 *.tfstate.*
 crash.log

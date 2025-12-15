@@ -19,6 +19,8 @@ const run = async () => {
     feedVideoId,
     userId,
     aspectRatio: process.env.ASPECT_RATIO || '9:16',
+    scoringMode: process.env.SCORING_MODE || 'hybrid',
+    includeAudio: process.env.INCLUDE_AUDIO ? process.env.INCLUDE_AUDIO === 'true' : true,
   });
 
   console.log('✅ Enqueued clip-generation job (candidates)!');

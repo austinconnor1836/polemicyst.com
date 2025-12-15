@@ -16,7 +16,7 @@ fi
 
 curl -sS -X POST "http://localhost:3001/api/clip-jobs/enqueue" \
   -H "Content-Type: application/json" \
-  -d "{\"feedVideoId\":\"${FEED_VIDEO_ID}\",\"userId\":\"${USER_ID}\",\"aspectRatio\":\"9:16\"}"
+  -d "{\"feedVideoId\":\"${FEED_VIDEO_ID}\",\"userId\":\"${USER_ID}\",\"aspectRatio\":\"9:16\",\"scoringMode\":\"${SCORING_MODE:-hybrid}\",\"includeAudio\":${INCLUDE_AUDIO:-true}}"
 
 echo
 echo "Enqueued. The clip-worker will call /api/clip-candidates and persist top candidates as Segment rows."

@@ -8,10 +8,28 @@ const router = express.Router();
  * This is the clean entrypoint for local end-to-end testing: API -> queue -> worker -> API -> DB.
  */
 router.post('/enqueue', async (req: Request, res: Response): Promise<any> => {
-  const { feedVideoId, userId, aspectRatio } = req.body as {
+  const {
+    feedVideoId,
+    userId,
+    aspectRatio,
+    scoringMode,
+    includeAudio,
+    minCandidates,
+    maxCandidates,
+    minScore,
+    percentile,
+    maxGeminiCandidates,
+  } = req.body as {
     feedVideoId?: string;
     userId?: string;
     aspectRatio?: string;
+    scoringMode?: 'heuristic' | 'gemini' | 'hybrid';
+    includeAudio?: boolean;
+    minCandidates?: number;
+    maxCandidates?: number;
+    minScore?: number;
+    percentile?: number;
+    maxGeminiCandidates?: number;
   };
 
   if (!feedVideoId || !userId) {
@@ -21,7 +39,18 @@ router.post('/enqueue', async (req: Request, res: Response): Promise<any> => {
   try {
     const job = await clipGenerationQueue.add(
       'generate',
-      { feedVideoId, userId, aspectRatio: aspectRatio || '9:16' },
+      {
+        feedVideoId,
+        userId,
+        aspectRatio: aspectRatio || '9:16',
+        scoringMode,
+        includeAudio,
+        minCandidates,
+        maxCandidates,
+        minScore,
+        percentile,
+        maxGeminiCandidates,
+      },
       {
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },

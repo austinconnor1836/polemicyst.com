@@ -1,7 +1,14 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../../shared/lib/prisma';
 import { transcribeFeedVideo } from '../lib/transcription';
-import { buildCandidatesFromTranscript, scoreAndRankCandidates, TranscriptWordSegment } from '../lib/viral-scoring';
+import {
+  buildCandidatesFromTranscript,
+  scoreAndRankCandidates,
+  scoreAndRankCandidatesGeminiMultimodal,
+  selectCandidatesDynamically,
+  TranscriptWordSegment,
+  ScoringMode,
+} from '../lib/viral-scoring';
 
 const router = express.Router();
 
@@ -9,13 +16,29 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
   const {
     feedVideoId,
     userId,
-    topN,
     windowSeconds,
+    scoringMode,
+    includeAudio,
+    // dynamic selection controls
+    minCandidates,
+    maxCandidates,
+    minScore,
+    percentile,
+    // cost cap for gemini calls
+    maxGeminiCandidates,
+    strictMinScore,
   } = req.body as {
     feedVideoId?: string;
     userId?: string;
-    topN?: number;
     windowSeconds?: number;
+    scoringMode?: ScoringMode;
+    includeAudio?: boolean;
+    minCandidates?: number;
+    maxCandidates?: number;
+    minScore?: number;
+    percentile?: number;
+    maxGeminiCandidates?: number;
+    strictMinScore?: boolean;
   };
 
   if (!feedVideoId || !userId) {
@@ -35,7 +58,53 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     const candidates = buildCandidatesFromTranscript(transcriptSegments, {
       windowSeconds: typeof windowSeconds === 'number' ? windowSeconds : 28,
     });
-    const ranked = scoreAndRankCandidates(candidates, typeof topN === 'number' ? topN : 12);
+    const mode: ScoringMode = scoringMode || 'heuristic';
+
+    const wantsGemini = mode === 'gemini' || mode === 'hybrid';
+    const hasGeminiKey = !!process.env.GOOGLE_API_KEY;
+    const canGemini = hasGeminiKey && !!feedVideo.s3Url;
+
+    if (mode === 'gemini' && !canGemini) {
+      return res.status(400).json({
+        error: 'Gemini scoring requested but missing prerequisites',
+        details: !hasGeminiKey ? 'Missing GOOGLE_API_KEY' : 'Missing feedVideo.s3Url',
+      });
+    }
+
+    const selectionOpts = {
+      minCandidates,
+      maxCandidates,
+      minScore,
+      percentile,
+      strictMinScore,
+    };
+
+    // Step 1: cheap heuristic score for everyone
+    const heuristicAll = scoreAndRankCandidates(candidates, candidates.length || 1);
+
+    // Step 2: optional Gemini rerank on a capped subset.
+    // IMPORTANT: For Gemini/hybrid, we prefilter by "top-K heuristic" (not by minScore/percentile),
+    // otherwise we'd often filter everything out before Gemini ever sees it.
+    const geminiCap = Math.max(1, Math.min(maxGeminiCandidates ?? 36, heuristicAll.length || 0));
+    const geminiInput = heuristicAll.slice(0, geminiCap).map((c) => ({
+      tStartS: c.tStartS,
+      tEndS: c.tEndS,
+      text: c.text,
+    }));
+
+    const scored =
+      wantsGemini && canGemini
+        ? await scoreAndRankCandidatesGeminiMultimodal({
+            s3Url: feedVideo.s3Url!,
+            candidates: geminiInput,
+            topN: geminiInput.length || 1,
+            prefilterMultiplier: 1,
+            includeAudio: includeAudio ?? true,
+          })
+        : heuristicAll;
+
+    // Step 3: dynamic selection on the final score distribution (Gemini or heuristic)
+    const selectedFinal = selectCandidatesDynamically(scored, selectionOpts);
 
     // Attach segments to a Video row so we can use the existing Segment/Clip schema.
     // We reuse a "source" Video if one already exists for this user's feed video's s3Url.
@@ -73,18 +142,19 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     await prisma.segment.deleteMany({ where: { videoId: sourceVideo.id } });
 
     const created = [];
-    for (const [idx, seg] of ranked.entries()) {
+    for (const seg of selectedFinal) {
       const row = await prisma.segment.create({
         data: {
           videoId: sourceVideo.id,
           tStartS: seg.tStartS,
           tEndS: seg.tEndS,
           score: seg.score,
-          selected: idx < 5, // mark top 5 as selected by default
+          selected: true,
           features: {
             ...seg.features,
             text: seg.text,
             feedVideoId,
+            scoringMode: mode,
           },
         },
       });

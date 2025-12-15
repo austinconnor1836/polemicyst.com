@@ -1,6 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import ViralitySettings, { getStrictnessConfig, ScoringMode, StrictnessPreset } from "@/components/ViralitySettings";
+import AspectRatioSelect, { type AspectRatio } from "@/components/AspectRatioSelect";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 type FeedVideo = {
   id: string;
@@ -19,7 +23,18 @@ export default function FeedsPage() {
 
   const [selectedVideo, setSelectedVideo] = useState<FeedVideo | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [aspectRatio, setAspectRatio] = useState("9:16");
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
+  const [viralitySettings, setViralitySettings] = useState<{
+    scoringMode: ScoringMode;
+    strictnessPreset: StrictnessPreset;
+    includeAudio: boolean;
+    showAdvanced: boolean;
+  }>({
+    scoringMode: "hybrid",
+    strictnessPreset: "balanced",
+    includeAudio: false,
+    showAdvanced: false,
+  });
 
   const fetchFeeds = async () => {
     const res = await fetch('/api/feeds');
@@ -45,13 +60,17 @@ export default function FeedsPage() {
 
   const triggerClip = async (video: any) => {
     try {
+      const strictnessConfig = getStrictnessConfig(viralitySettings.strictnessPreset);
       const res = await fetch('/api/trigger-clip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           feedVideoId: video.id,
           userId: video.userId,
-          aspectRatio: video.aspectRatio || "9:16"
+          aspectRatio: video.aspectRatio || "9:16",
+          scoringMode: viralitySettings.scoringMode,
+          includeAudio: viralitySettings.includeAudio,
+          ...strictnessConfig,
         }),
       });
 
@@ -177,41 +196,34 @@ export default function FeedsPage() {
       </div>
 
       {/* Modal */}
-  {isModalOpen && selectedVideo && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded shadow-lg w-full max-w-md">
-            <h2 className="text-lg font-semibold mb-2">{selectedVideo.title}</h2>
+  {selectedVideo && (
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{selectedVideo.title}</DialogTitle>
+              <DialogDescription>Configure clip generation settings.</DialogDescription>
+            </DialogHeader>
+
             <video src={selectedVideo.s3Url} controls className="w-full rounded mb-4" />
 
-            <label className="block mb-2 font-medium">Aspect Ratio:</label>
-            <select
-              value={aspectRatio}
-              onChange={(e) => setAspectRatio(e.target.value)}
-              className="w-full p-2 border rounded mb-4"
-            >
-              <option value="9:16">9:16 (Portrait)</option>
-              <option value="16:9">16:9 (Landscape)</option>
-              <option value="1:1">1:1 (Square)</option>
-            </select>
+            <AspectRatioSelect value={aspectRatio} onChange={setAspectRatio} className="mb-4" />
+            <ViralitySettings value={viralitySettings} onChange={setViralitySettings} />
 
-            <button
-              onClick={async () => {
-                await triggerClip({ ...selectedVideo, aspectRatio });
-                setIsModalOpen(false);
-              }}
-              className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 mb-2"
-            >
-              Generate Clip
-            </button>
-
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="w-full text-gray-700 py-2 rounded border border-gray-300"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+            <div className="mt-4 flex flex-col gap-2">
+              <Button
+                onClick={async () => {
+                  await triggerClip({ ...selectedVideo, aspectRatio });
+                  setIsModalOpen(false);
+                }}
+              >
+                Generate Clip
+              </Button>
+              <Button variant="outline" onClick={() => setIsModalOpen(false)}>
+                Cancel
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

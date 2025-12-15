@@ -1,0 +1,26 @@
+# Local environment variables (template)
+#
+# Create two files locally (NOT committed):
+# - .env
+# - .env.local
+#
+# Then paste the needed variables from below and fill in secrets.
+#
+# --- Database (local dev) ---
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/clips-genie
+#
+# --- Redis (local dev) ---
+REDIS_HOST=localhost
+#
+# --- Optional: AWS (only needed for S3 upload/download flows) ---
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+#
+# --- Optional: model APIs (only if using external scoring/models) ---
+GOOGLE_API_KEY=
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+
+
+

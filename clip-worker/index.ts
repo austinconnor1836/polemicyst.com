@@ -14,14 +14,36 @@ const backendBaseUrl = (process.env.BACKEND_BASE_URL || 'http://backend:3001').r
 new Worker(
   'clip-generation',
   async (job) => {
-    const { feedVideoId, userId, aspectRatio } = job.data;
+    const {
+      feedVideoId,
+      userId,
+      aspectRatio,
+      scoringMode,
+      includeAudio,
+      minCandidates,
+      maxCandidates,
+      minScore,
+      percentile,
+      maxGeminiCandidates,
+    } = job.data;
     console.log(`📥 Processing clip-generation job (candidates) for ${feedVideoId}`);
 
     // Fire-and-forget
     fetch(`${backendBaseUrl}/api/clip-candidates`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ feedVideoId, userId, aspectRatio }),
+      body: JSON.stringify({
+        feedVideoId,
+        userId,
+        aspectRatio,
+        scoringMode,
+        includeAudio,
+        minCandidates,
+        maxCandidates,
+        minScore,
+        percentile,
+        maxGeminiCandidates,
+      }),
     })
       .then(() => {
         console.log(`🚀 Triggered backend clip-candidates for ${feedVideoId}`);

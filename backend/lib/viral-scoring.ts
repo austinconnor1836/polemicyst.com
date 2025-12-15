@@ -12,8 +12,72 @@ export type ClipCandidate = {
   features: Record<string, any>;
 };
 
+export type ScoringMode = 'heuristic' | 'gemini' | 'hybrid';
+
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
+}
+
+function percentileOf(values: number[], p: number): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = clamp(Math.floor(p * (sorted.length - 1)), 0, sorted.length - 1);
+  return sorted[idx];
+}
+
+export type DynamicSelectionOptions = {
+  /** minimum number of candidates to return */
+  minCandidates?: number;
+  /** maximum number of candidates to return */
+  maxCandidates?: number;
+  /**
+   * Hard minimum score cutoff. Useful for "only return truly viral" behavior.
+   * Interpreted in the same score scale (0..10).
+   */
+  minScore?: number;
+  /**
+   * Percentile cutoff (0..1). Candidates below this percentile are discarded
+   * unless needed to satisfy minCandidates.
+   */
+  percentile?: number;
+  /**
+   * If true, never include candidates below minScore. This allows returning fewer
+   * than minCandidates when the video simply doesn't have enough "viral" moments.
+   */
+  strictMinScore?: boolean;
+};
+
+/**
+ * Choose a variable number of candidates based on score distribution, with sane caps.
+ * This is how we avoid "always returning N" even if a video has few (or many) viral moments.
+ */
+export function selectCandidatesDynamically<T extends { score: number }>(
+  scored: T[],
+  opts: DynamicSelectionOptions = {}
+): T[] {
+  const minCandidates = opts.minCandidates ?? 1;
+  const maxCandidates = opts.maxCandidates ?? 20;
+  const minScore = opts.minScore ?? 6.0;
+  const percentile = opts.percentile ?? 0.85;
+  const strictMinScore = opts.strictMinScore ?? true;
+
+  const sorted = [...scored].sort((a, b) => b.score - a.score);
+  if (!sorted.length) return [];
+
+  const cutoff = Math.max(minScore, percentileOf(sorted.map((s) => s.score), percentile));
+  let selected = sorted.filter((s) => s.score >= cutoff);
+
+  if (selected.length < minCandidates) {
+    if (strictMinScore) {
+      // do not pad with low-scoring items; allow returning fewer results
+      selected = selected.slice(0, selected.length);
+    } else {
+      selected = sorted.slice(0, Math.min(minCandidates, sorted.length));
+    }
+  }
+  if (selected.length > maxCandidates) selected = selected.slice(0, maxCandidates);
+
+  return selected;
 }
 
 function countMatches(text: string, re: RegExp): number {
@@ -142,6 +206,98 @@ export function scoreAndRankCandidates(
       },
     };
   });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, Math.max(1, topN));
+}
+
+/**
+ * Hybrid scoring strategy:
+ * - Heuristic prefilter to reduce cost
+ * - Gemini multimodal rerank (frames + optional audio)
+ */
+export async function scoreAndRankCandidatesGeminiMultimodal(params: {
+  s3Url: string;
+  candidates: Array<Omit<ClipCandidate, 'score' | 'features'>>;
+  topN: number;
+  prefilterMultiplier?: number; // how many to keep before Gemini pass
+  includeAudio?: boolean;
+  modelName?: string;
+}): Promise<ClipCandidate[]> {
+  const {
+    s3Url,
+    candidates,
+    topN,
+    prefilterMultiplier = 3,
+    includeAudio = true,
+    modelName,
+  } = params;
+
+  const apiKey = process.env.GOOGLE_API_KEY;
+  if (!apiKey) throw new Error('Missing GOOGLE_API_KEY for Gemini scoring');
+
+  const { ensureLocalVideoForScoring, extractAudioMp3Base64, extractJpegFramesBase64, scoreSegmentWithGeminiMultimodal } =
+    await import('./gemini-scoring');
+
+  // Pre-score heuristically to choose which windows are worth Gemini calls
+  const preRanked = candidates
+    .map((c) => {
+      const h = scoreCandidateHeuristic(c.text);
+      return { ...c, hScore: h.score, hFeatures: h.features };
+    })
+    .sort((a, b) => b.hScore - a.hScore)
+    .slice(0, Math.max(topN, topN * prefilterMultiplier));
+
+  // Download source video once
+  const cacheKey = Buffer.from(s3Url).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
+  const localVideoPath = await ensureLocalVideoForScoring({ s3Url, cacheKey });
+
+  // Score sequentially (safe default). We can parallelize later with a small concurrency limit.
+  const scored: ClipCandidate[] = [];
+  for (const c of preRanked) {
+    const frames = await extractJpegFramesBase64({
+      videoPath: localVideoPath,
+      tStartS: c.tStartS,
+      tEndS: c.tEndS,
+      maxFrames: 4,
+    });
+    const audio = includeAudio
+      ? await extractAudioMp3Base64({
+          videoPath: localVideoPath,
+          tStartS: c.tStartS,
+          tEndS: c.tEndS,
+          maxSeconds: 18,
+        })
+      : null;
+
+    const llm = await scoreSegmentWithGeminiMultimodal({
+      apiKey,
+      modelName,
+      transcriptText: c.text,
+      tStartS: c.tStartS,
+      tEndS: c.tEndS,
+      framesJpegBase64: frames,
+      audioMp3Base64: audio,
+    });
+
+    scored.push({
+      tStartS: c.tStartS,
+      tEndS: c.tEndS,
+      text: c.text,
+      score: clamp(llm.score, 0, 10),
+      features: {
+        provider: 'gemini',
+        rationale: llm.rationale,
+        hookScore: llm.hookScore,
+        comedicScore: llm.comedicScore,
+        provocativeScore: llm.provocativeScore,
+        visualEnergyScore: llm.visualEnergyScore,
+        audioEnergyScore: llm.audioEnergyScore,
+        confidence: llm.confidence,
+        durationS: Math.max(0, c.tEndS - c.tStartS),
+      },
+    });
+  }
 
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, Math.max(1, topN));
