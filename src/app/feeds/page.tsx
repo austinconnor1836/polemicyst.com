@@ -15,6 +15,21 @@ import { cn } from "@/lib/utils";
 import { Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
+function youtubeHandleUrlFromName(name: string) {
+  const trimmed = (name || "").trim();
+  if (!trimmed) return "";
+
+  // "Same thing the user is typing", but avoid obviously invalid handle chars like spaces.
+  // Also accept users typing "@handle" or pasting a full youtube handle URL.
+  const extracted =
+    trimmed.match(/youtube\.com\/@([^/?#\s]+)/i)?.[1] ??
+    trimmed.match(/^@([^/?#\s]+)/)?.[1] ??
+    trimmed;
+
+  const handle = extracted.replace(/\s+/g, "");
+  return handle ? `https://www.youtube.com/@${handle}` : "";
+}
+
 function formatRelativeTime(iso?: string | null) {
   if (!iso) return null;
   const date = new Date(iso);
@@ -555,7 +570,7 @@ export default function FeedsPage() {
       {/* Modal */}
       {selectedVideo && (
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle className="leading-snug">{selectedVideo.title}</DialogTitle>
               <DialogDescription>Configure clip generation settings.</DialogDescription>
@@ -565,16 +580,18 @@ export default function FeedsPage() {
               </div>
             </DialogHeader>
 
-            <video
-              src={selectedVideo.s3Url}
-              controls
-              preload="metadata"
-              playsInline
-              className="mb-4 max-h-[35vh] w-full rounded object-contain"
-            />
+            <div className="space-y-4">
+              <video
+                src={selectedVideo.s3Url}
+                controls
+                preload="metadata"
+                playsInline
+                className="max-h-[35vh] w-full rounded object-contain"
+              />
 
-            <AspectRatioSelect value={aspectRatio} onChange={setAspectRatio} className="mb-4" />
-            <ViralitySettings value={viralitySettings} onChange={setViralitySettings} />
+              <AspectRatioSelect value={aspectRatio} onChange={setAspectRatio} />
+              <ViralitySettings value={viralitySettings} onChange={setViralitySettings} />
+            </div>
 
             <DialogFooter className="pt-4 gap-2 sm:gap-2">
               <Button
@@ -623,7 +640,22 @@ export default function FeedsPage() {
               <Input
                 placeholder="My YouTube channel"
                 value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                onChange={(e) => {
+                  const nextName = e.target.value;
+                  const currentAutoUrl = youtubeHandleUrlFromName(form.name);
+                  const nextAutoUrl = youtubeHandleUrlFromName(nextName);
+
+                  // Keep Source URL in sync while it's blank OR still equals the auto-generated value.
+                  // If the user manually edits Source URL to something else, we stop overwriting it.
+                  const shouldSyncSourceUrl =
+                    !form.sourceUrl || form.sourceUrl.trim() === currentAutoUrl;
+
+                  setForm({
+                    ...form,
+                    name: nextName,
+                    ...(shouldSyncSourceUrl ? { sourceUrl: nextAutoUrl } : null),
+                  });
+                }}
                 autoFocus
               />
             </div>
@@ -649,7 +681,7 @@ export default function FeedsPage() {
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-2">
+          <DialogFooter className="pt-4 gap-2 sm:gap-2">
             <Button variant="outline" onClick={() => setIsAddFeedOpen(false)} disabled={isCreatingFeed}>
               Cancel
             </Button>

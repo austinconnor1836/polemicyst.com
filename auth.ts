@@ -18,9 +18,68 @@ interface ExtendedJWT extends JWT {
 
 const prisma = new PrismaClient();
 
+const NEXTAUTH_DEBUG_ENABLED = process.env.NEXTAUTH_DEBUG === "true";
+
+function redactSecrets(input: unknown): unknown {
+  const seen = new WeakSet<object>();
+
+  const isSensitiveKey = (key: string) =>
+    /(secret|token|password|authorization|cookie|pkce|state|clientsecret|refresh_token|access_token|id_token)/i.test(
+      key,
+    );
+
+  const walk = (value: unknown): unknown => {
+    if (value === null || value === undefined) return value;
+    if (typeof value !== "object") return value;
+
+    // Dates / Errors / Buffers etc: return as-is (avoid mangling)
+    if (value instanceof Date || value instanceof Error) return value;
+
+    if (seen.has(value as object)) return "[REDACTED_CYCLE]";
+    seen.add(value as object);
+
+    if (Array.isArray(value)) {
+      return value.map(walk);
+    }
+
+    const obj = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+
+    for (const [k, v] of Object.entries(obj)) {
+      // Common shape in NextAuth debug logs: cookies: [{ name, value, ... }]
+      const shouldRedactCookieValue =
+        k === "value" && typeof obj.name === "string" && /next-auth/i.test(obj.name);
+
+      if (isSensitiveKey(k) || shouldRedactCookieValue) {
+        out[k] = "[REDACTED]";
+      } else {
+        out[k] = walk(v);
+      }
+    }
+
+    return out;
+  };
+
+  return walk(input);
+}
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma), // PostgreSQL persistence
-  debug: true,
+  // Never log OAuth tokens / secrets unless explicitly enabled.
+  debug: NEXTAUTH_DEBUG_ENABLED,
+  logger: {
+    error(code, metadata) {
+      console.error(`[next-auth][error][${code}]`, redactSecrets(metadata));
+    },
+    warn(code) {
+      console.warn(`[next-auth][warn][${code}]`);
+    },
+    debug(code, metadata) {
+      // NextAuth should only call this when debug=true, but keep it safe anyway.
+      if (!NEXTAUTH_DEBUG_ENABLED) return;
+      console.debug(`[next-auth][debug][${code}]`, redactSecrets(metadata));
+    },
+  },
   providers: [
     FacebookProvider({
       clientId: process.env.AUTH_FACEBOOK_ID!,

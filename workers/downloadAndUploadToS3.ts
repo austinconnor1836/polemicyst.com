@@ -3,7 +3,7 @@ import { PassThrough } from 'stream';
 import AWS from 'aws-sdk';
 
 const S3_BUCKET = 'clips-genie-uploads';
-const S3_REGION = process.env.S3_REGION;
+const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
 
 const s3 = new AWS.S3({
   region: S3_REGION,
@@ -14,6 +14,15 @@ const s3 = new AWS.S3({
 
 export async function downloadAndUploadToS3(videoUrl: string, videoId: string): Promise<string> {
   return new Promise((resolve, reject) => {
+    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+      reject(
+        new Error(
+          'Missing AWS credentials (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY). Feed polling found a new video, but cannot upload to S3.'
+        )
+      );
+      return;
+    }
+
     const s3Key = `feeds/${videoId}.mp4`; // 👈 feeds folder inside the bucket
     const passThrough = new PassThrough();
 

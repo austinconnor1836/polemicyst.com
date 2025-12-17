@@ -14,6 +14,8 @@ REDIS_HOST=localhost
 #
 # --- Optional: AWS (only needed for S3 upload/download flows) ---
 AWS_REGION=us-east-1
+# Some parts of the codebase read S3_REGION (fallbacks vary), so set both for consistency.
+S3_REGION=us-east-1
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 #
@@ -22,5 +24,8 @@ GOOGLE_API_KEY=
 ANTHROPIC_API_KEY=
 OPENAI_API_KEY=
 
+# --- Optional: auth debug logging (DANGER: may log OAuth tokens if enabled) ---
+# Default is off. Only set this temporarily for local debugging and avoid sharing logs.
+NEXTAUTH_DEBUG=false
 
 

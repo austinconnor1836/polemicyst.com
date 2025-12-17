@@ -18,6 +18,19 @@ const Navbar: React.FC = () => {
 
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const getSystemIsDark = () => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+  };
+
+  const applyTheme = (mode: 'light' | 'dark' | 'system') => {
+    // Tailwind uses the presence of the `dark` class (see tailwind.config.ts darkMode: "class")
+    // so we only ever toggle that one.
+    const isDark = mode === "dark" || (mode === "system" && getSystemIsDark());
+    document.documentElement.classList.toggle("dark", isDark);
+    localStorage.setItem(STORAGE_KEY, mode);
+  };
+
   // Load theme from localStorage
   useEffect(() => {
     const savedTheme = localStorage.getItem(STORAGE_KEY) as 'light' | 'dark' | 'system' | null;
@@ -25,12 +38,27 @@ const Navbar: React.FC = () => {
     applyTheme(savedTheme || 'system');
   }, []);
 
-  // Apply theme changes
-  const applyTheme = (mode: 'light' | 'dark' | 'system') => {
-    document.documentElement.classList.remove('light', 'dark');
-    if (mode !== 'system') document.documentElement.classList.add(mode);
-    localStorage.setItem(STORAGE_KEY, mode);
-  };
+  // Keep system theme in sync when `Theme: System` is selected.
+  useEffect(() => {
+    if (theme !== "system") return;
+    const mql = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!mql) return;
+
+    const handler = () => applyTheme("system");
+
+    // Safari < 14 uses addListener/removeListener
+    // eslint-disable-next-line deprecation/deprecation
+    if (typeof mql.addEventListener === "function") mql.addEventListener("change", handler);
+    // eslint-disable-next-line deprecation/deprecation
+    else mql.addListener(handler);
+
+    return () => {
+      // eslint-disable-next-line deprecation/deprecation
+      if (typeof mql.removeEventListener === "function") mql.removeEventListener("change", handler);
+      // eslint-disable-next-line deprecation/deprecation
+      else mql.removeListener(handler);
+    };
+  }, [theme]);
 
   // Cycle through theme modes
   const toggleTheme = () => {

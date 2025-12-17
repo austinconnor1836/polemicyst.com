@@ -289,7 +289,7 @@ export default function ClipsPage() {
 
       {selectedClip && (
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle className="leading-snug">
                 {selectedClip.videoTitle?.trim()
@@ -309,25 +309,27 @@ export default function ClipsPage() {
               </div>
             </DialogHeader>
 
-            <video
-              src={selectedClip.s3Url || undefined}
-              controls
-              preload="metadata"
-              playsInline
-              className="mb-4 max-h-[45vh] w-full rounded object-contain"
-            />
+            <div className="space-y-4">
+              <video
+                src={selectedClip.s3Url || undefined}
+                controls
+                preload="metadata"
+                playsInline
+                className="max-h-[45vh] w-full rounded object-contain"
+              />
 
-            {selectedClip.sharedDescription?.trim() ? (
-              <Card className="mb-4">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Description</CardTitle>
-                  <CardDescription>Generated metadata (if available).</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm whitespace-pre-wrap">
-                  {selectedClip.sharedDescription}
-                </CardContent>
-              </Card>
-            ) : null}
+              {selectedClip.sharedDescription?.trim() ? (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Description</CardTitle>
+                    <CardDescription>Generated metadata (if available).</CardDescription>
+                  </CardHeader>
+                  <CardContent className="text-sm whitespace-pre-wrap">
+                    {selectedClip.sharedDescription}
+                  </CardContent>
+                </Card>
+              ) : null}
+            </div>
 
             <DialogFooter className="gap-2 sm:gap-2">
               {selectedClip.s3Url ? (

@@ -110,9 +110,14 @@ services:
       - ./prisma:/app/prisma
     depends_on:
       - backend
+      - db
       - redis
     environment:
       - NODE_ENV=production
+      # IMPORTANT: the poller runs inside Docker, so it must use Docker service DNS
+      # (not localhost, which would point at the container itself).
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
+      - REDIS_HOST=redis
     env_file:
       - .env
     restart: unless-stopped
