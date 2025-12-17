@@ -67,3 +67,6 @@ certificates/
 
 # local dev scripts output
 ig-state-*.json
+
+# specific temporary directory
+tmp/

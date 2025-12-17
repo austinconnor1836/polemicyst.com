@@ -27,5 +27,7 @@ This package contains the **Next.js app**, plus the **backend** and **workers** 
 - **Dialogs/modals**: follow the standard spacing pattern in the repo root `../CLAUDE.md`:
   - `DialogHeader` → body wrapper (`space-y-4` or `space-y-3`) → `DialogFooter` with `pt-4`
   - avoid one-off `mb-*` spacing between header badges and media previews
+- **Section Headers**:
+  - "Add" actions in card/section headers should use `variant="secondary"` to maintain visual hierarchy (primary actions are usually for saving/confirming in modals).
 
 

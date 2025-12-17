@@ -175,17 +175,20 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
     const models = await listModels();
     const supportsGenerate = models.filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'));
 
-    // Prefer Pro, then Flash, else first supported.
-    const pro = supportsGenerate.find((m) => /gemini/i.test(m.name) && /pro/i.test(m.name));
-    if (pro) return pro.name;
+    // Prefer Flash (faster), then Pro, else first supported.
     const flash = supportsGenerate.find((m) => /gemini/i.test(m.name) && /flash/i.test(m.name));
     if (flash) return flash.name;
+    const pro = supportsGenerate.find((m) => /gemini/i.test(m.name) && /pro/i.test(m.name));
+    if (pro) return pro.name;
     const first = supportsGenerate[0];
     if (!first) throw new Error('No models available that support generateContent');
     return first.name;
   }
 
-  const chosenModel = modelName || (await pickDefaultModel());
+  let chosenModel = modelName || (await pickDefaultModel());
+  if (!chosenModel.startsWith('models/')) {
+    chosenModel = `models/${chosenModel}`;
+  }
 
   const prompt = [
     `You are a ruthless short-form video editor optimizing for virality on ${targetPlatform}.`,
@@ -234,13 +237,23 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
     generationConfig: { temperature: 0.2 },
   };
 
+  console.log(`📡 Calling Gemini API (${chosenModel}) for segment ${tStartS}-${tEndS}...`);
   const res = await fetch(`${baseUrl}/${chosenModel}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  console.log(`📨 Received response from Gemini (${res.status})`);
 
-  const json = await res.json();
+  const responseText = await res.text();
+  let json;
+  try {
+    json = JSON.parse(responseText);
+  } catch (e) {
+    // If not JSON, it's likely a plaintext error from Google Frontends
+    throw new Error(`Gemini API returned ${res.status} (Non-JSON): ${responseText}`);
+  }
+
   if (!res.ok) {
     throw new Error(`Gemini generateContent failed (${res.status}): ${JSON.stringify(json)}`);
   }

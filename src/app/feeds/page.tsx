@@ -468,27 +468,13 @@ export default function FeedsPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary">{feeds.length}</Badge>
-                  <Button variant="outline" size="sm" onClick={() => setIsAddVideoOpen(true)} disabled={isUploading} className="gap-2">
-                    <Upload className="h-4 w-4" />
-                    Add Video
-                  </Button>
                   <Button variant="secondary" size="sm" onClick={() => setIsAddFeedOpen(true)} title="Add a source">
                     <Plus className="mr-2 h-4 w-4" />
                     Add
                   </Button>
                 </div>
               </div>
-              {isUploading && (
-                <div className="mt-2 text-xs text-muted-foreground">
-                    <div className="mb-1 flex justify-between">
-                        <span>Uploading...</span>
-                        <span>{uploadProgress}%</span>
-                    </div>
-                    <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-zinc-800">
-                        <div className="h-full rounded-full bg-black transition-all dark:bg-white" style={{ width: `${uploadProgress}%` }} />
-                    </div>
-                </div>
-              )}
+
             </CardHeader>
             <CardContent className="space-y-2">
               {isLoadingFeeds ? (
@@ -582,175 +568,197 @@ export default function FeedsPage() {
 
         {/* Right: feed videos */}
         <div className="space-y-4 lg:col-span-8">
-          <div ref={videosHeaderRef} className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between scroll-mt-24">
-            <div>
-              <h2 className="text-xl font-semibold tracking-tight">Ingested Videos</h2>
-              <div className="text-sm text-muted-foreground">Click any video to configure scoring and generate a clip.</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary">{filteredVideos.length} shown</Badge>
-              <Badge variant="outline">{videos.length} ingested</Badge>
-            </div>
-          </div>
+          <Card className="h-full border-muted/60 shadow-sm">
+            <CardHeader className="space-y-4 pb-4" ref={videosHeaderRef}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between scroll-mt-24">
+                <div>
+                    <CardTitle className="text-xl">Ingested Videos</CardTitle>
+                    <CardDescription>Click any video to configure scoring and generate a clip.</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">{filteredVideos.length} shown</Badge>
+                  <Badge variant="outline">{videos.length} ingested</Badge>
+                  <Button variant="secondary" size="sm" onClick={() => setIsAddVideoOpen(true)} disabled={isUploading} className="gap-2 ml-2">
+                    <Upload className="h-4 w-4" />
+                    Add Video
+                  </Button>
+                </div>
+              </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative w-full sm:max-w-md">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={videoQuery}
-                onChange={(e) => setVideoQuery(e.target.value)}
-                placeholder="Search titles or source…"
-                className="pl-9 pr-9"
-              />
-              {videoQuery.trim().length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
-                  onClick={() => setVideoQuery("")}
-                  title="Clear search"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="relative w-full sm:max-w-md">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={videoQuery}
+                    onChange={(e) => setVideoQuery(e.target.value)}
+                    placeholder="Search titles or source…"
+                    className="pl-9 pr-9"
+                  />
+                  {videoQuery.trim().length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
+                      onClick={() => setVideoQuery("")}
+                      title="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
 
-            <div className="flex w-full items-center gap-2 sm:w-auto">
-              <Select value={videoFeedFilter} onValueChange={setVideoFeedFilter}>
-                <SelectTrigger className="w-full sm:w-[220px]">
-                  <SelectValue placeholder="Filter by source" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All sources</SelectItem>
-                  {feeds.map((f) => (
-                    <SelectItem key={f.id} value={f.id}>
-                      {f.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <div className="flex w-full items-center gap-2 sm:w-auto">
+                  <Select value={videoFeedFilter} onValueChange={setVideoFeedFilter}>
+                    <SelectTrigger className="w-full sm:w-[220px]">
+                      <SelectValue placeholder="Filter by source" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All sources</SelectItem>
+                      {feeds.map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-              <Select value={videoSort} onValueChange={(v) => setVideoSort(v as "newest" | "oldest" | "title")}>
-                <SelectTrigger className="w-full sm:w-[160px]">
-                  <SelectValue placeholder="Sort" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="newest">Newest</SelectItem>
-                  <SelectItem value="oldest">Oldest</SelectItem>
-                  <SelectItem value="title">Title</SelectItem>
-                </SelectContent>
-              </Select>
+                  <Select value={videoSort} onValueChange={(v) => setVideoSort(v as "newest" | "oldest" | "title")}>
+                    <SelectTrigger className="w-full sm:w-[160px]">
+                      <SelectValue placeholder="Sort" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">Newest</SelectItem>
+                      <SelectItem value="oldest">Oldest</SelectItem>
+                      <SelectItem value="title">Title</SelectItem>
+                    </SelectContent>
+                  </Select>
 
-              {(videoFeedFilter !== "all" || videoQuery.trim().length > 0) && (
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setVideoQuery("");
-                    setVideoFeedFilter("all");
-                  }}
-                  className="shrink-0"
-                  title="Clear filters"
-                >
-                  Clear
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                onClick={fetchVideos}
-                disabled={isLoadingVideos}
-                className="shrink-0"
-                title="Refresh videos"
-              >
-                <RefreshCw className={cn("h-4 w-4", isLoadingVideos && "animate-spin")} />
-              </Button>
-            </div>
-          </div>
-
-          {isLoadingVideos ? (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, idx) => (
-                <Card key={idx} className="overflow-hidden">
-                  <CardContent className="p-0">
-                    <div className="aspect-video w-full animate-pulse bg-gray-100 dark:bg-zinc-900/40" />
-                    <div className="space-y-2 p-4">
-                      <div className="h-4 w-4/5 animate-pulse rounded bg-gray-100 dark:bg-zinc-900/40" />
-                      <div className="h-3 w-2/5 animate-pulse rounded bg-gray-100 dark:bg-zinc-900/40" />
+                  {(videoFeedFilter !== "all" || videoQuery.trim().length > 0) && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setVideoQuery("");
+                        setVideoFeedFilter("all");
+                      }}
+                      className="shrink-0"
+                      title="Clear filters"
+                    >
+                      Clear
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={fetchVideos}
+                    disabled={isLoadingVideos}
+                    className="shrink-0"
+                    title="Refresh videos"
+                  >
+                    <RefreshCw className={cn("h-4 w-4", isLoadingVideos && "animate-spin")} />
+                  </Button>
+                </div>
+              </div>
+              {isUploading && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                    <div className="mb-1 flex justify-between">
+                        <span>Uploading...</span>
+                        <span>{uploadProgress}%</span>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : videos.length === 0 ? (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">No videos ingested yet</CardTitle>
-                <CardDescription>Once a source is added and polled, videos will appear here for clip generation.</CardDescription>
-              </CardHeader>
-            </Card>
-          ) : filteredVideos.length === 0 ? (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">No matches</CardTitle>
-                <CardDescription>Try a different search or clear the source filter.</CardDescription>
-              </CardHeader>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              {filteredVideos.map((video) => (
-                <Card
-                  key={video.id}
-                  className="group cursor-pointer overflow-hidden shadow-sm transition-shadow hover:shadow-md"
-                  onClick={() => {
-                    setAspectRatio((video.aspectRatio as AspectRatio) || "9:16");
-                    setSelectedVideo(video);
-                    setIsModalOpen(true);
-                  }}
-                >
-                  <CardContent className="p-0">
-                    <div className="relative">
-                      <video
-                        src={video.s3Url}
-                        preload="metadata"
-                        muted
-                        playsInline
-                        tabIndex={-1}
-                        className="aspect-video w-full bg-black/5 object-cover"
-                      />
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-60 transition-opacity group-hover:opacity-80" />
-                      <div className="pointer-events-none absolute bottom-2 left-2 opacity-0 transition-opacity group-hover:opacity-100">
-                        <div className="rounded-full bg-black/55 px-2 py-1 text-[11px] font-medium text-white backdrop-blur">
-                          Generate clip
+                    <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-zinc-800">
+                        <div className="h-full rounded-full bg-black transition-all dark:bg-white" style={{ width: `${uploadProgress}%` }} />
+                    </div>
+                </div>
+              )}
+            </CardHeader>
+            <CardContent>
+              {isLoadingVideos ? (
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <Card key={idx} className="overflow-hidden border-dashed shadow-none">
+                      <CardContent className="p-0">
+                        <div className="aspect-video w-full animate-pulse bg-gray-100 dark:bg-zinc-900/40" />
+                        <div className="space-y-2 p-4">
+                          <div className="h-4 w-4/5 animate-pulse rounded bg-gray-100 dark:bg-zinc-900/40" />
+                          <div className="h-3 w-2/5 animate-pulse rounded bg-gray-100 dark:bg-zinc-900/40" />
                         </div>
-                      </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : videos.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="rounded-full bg-gray-100 p-3 dark:bg-zinc-900">
+                     <Upload className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <h3 className="mt-4 text-lg font-semibold">No videos ingested yet</h3>
+                  <p className="mt-2 text-sm text-muted-foreground max-w-sm">
+                    Once a source is added and polled, videos will appear here. You can also import specific videos manually.
+                  </p>
+                </div>
+              ) : filteredVideos.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <Search className="h-8 w-8 text-muted-foreground/50" />
+                    <h3 className="mt-4 text-lg font-semibold">No matches found</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Try adjusting your filters or search terms.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                  {filteredVideos.map((video) => (
+                    <Card
+                      key={video.id}
+                      className="group cursor-pointer overflow-hidden shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20"
+                      onClick={() => {
+                        setAspectRatio((video.aspectRatio as AspectRatio) || "9:16");
+                        setSelectedVideo(video);
+                        setIsModalOpen(true);
+                      }}
+                    >
+                      <CardContent className="p-0">
+                        <div className="relative">
+                          <video
+                            src={video.s3Url}
+                            preload="metadata"
+                            muted
+                            playsInline
+                            tabIndex={-1}
+                            className="aspect-video w-full bg-black/5 object-cover"
+                          />
+                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-60 transition-opacity group-hover:opacity-80" />
+                          <div className="pointer-events-none absolute bottom-2 left-2 opacity-0 transition-opacity group-hover:opacity-100">
+                            <div className="rounded-full bg-black/55 px-2 py-1 text-[11px] font-medium text-white backdrop-blur">
+                              Generate clip
+                            </div>
+                          </div>
 
-                      <Button
-                        variant="secondary"
-                        size="icon"
-                        className="absolute right-2 top-2 h-8 w-8 rounded-full bg-white/85 text-gray-900 opacity-0 backdrop-blur transition-opacity hover:bg-white group-hover:opacity-100 dark:bg-zinc-900/80 dark:text-zinc-100 dark:hover:bg-zinc-900"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          await deleteVideo(video);
-                        }}
-                        disabled={deletingVideoId === video.id}
-                        title="Delete video"
-                      >
-                        <Trash2 className={cn("h-4 w-4", deletingVideoId === video.id && "animate-pulse")} />
-                      </Button>
-                    </div>
-                    <div className="space-y-2 p-4">
-                      <div className="line-clamp-2 font-semibold leading-snug">{video.title}</div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {video.feed?.name ? <Badge variant="secondary">{video.feed.name}</Badge> : null}
-                        {video.createdAt ? (
-                          <span className="text-xs text-muted-foreground">{formatRelativeTime(video.createdAt)}</span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+                          <Button
+                            variant="secondary"
+                            size="icon"
+                            className="absolute right-2 top-2 h-8 w-8 rounded-full bg-white/85 text-gray-900 opacity-0 backdrop-blur transition-opacity hover:bg-white group-hover:opacity-100 dark:bg-zinc-900/80 dark:text-zinc-100 dark:hover:bg-zinc-900"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await deleteVideo(video);
+                            }}
+                            disabled={deletingVideoId === video.id}
+                            title="Delete video"
+                          >
+                            <Trash2 className={cn("h-4 w-4", deletingVideoId === video.id && "animate-pulse")} />
+                          </Button>
+                        </div>
+                        <div className="space-y-2 p-4">
+                          <div className="line-clamp-2 font-semibold leading-snug">{video.title}</div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {video.feed?.name ? <Badge variant="secondary">{video.feed.name}</Badge> : null}
+                            {video.createdAt ? (
+                              <span className="text-xs text-muted-foreground">{formatRelativeTime(video.createdAt)}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
 

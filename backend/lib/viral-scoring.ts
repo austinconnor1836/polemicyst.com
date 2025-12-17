@@ -359,6 +359,7 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
   targetPlatform?: TargetPlatform;
   contentStyle?: ContentStyle;
   saferClips?: boolean;
+  localVideoPath?: string;
 }): Promise<ClipCandidate[]> {
   const {
     s3Url,
@@ -370,6 +371,7 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
     targetPlatform = 'all',
     contentStyle,
     saferClips = false,
+    localVideoPath: providedPath,
   } = params;
 
   const apiKey = process.env.GOOGLE_API_KEY;
@@ -387,9 +389,12 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
     .sort((a, b) => b.hScore - a.hScore)
     .slice(0, Math.max(topN, topN * prefilterMultiplier));
 
-  // Download source video once
-  const cacheKey = Buffer.from(s3Url).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
-  const localVideoPath = await ensureLocalVideoForScoring({ s3Url, cacheKey });
+  // Use provided path or download (fallback)
+  let localVideoPath = providedPath;
+  if (!localVideoPath) {
+     const cacheKey = Buffer.from(s3Url).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
+     localVideoPath = await ensureLocalVideoForScoring({ s3Url, cacheKey });
+  }
 
   // Score sequentially (safe default). We can parallelize later with a small concurrency limit.
   const scored: ClipCandidate[] = [];

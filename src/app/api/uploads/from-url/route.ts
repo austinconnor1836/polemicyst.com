@@ -7,8 +7,9 @@ import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import { getStrictnessConfig, type ViralitySettingsValue } from '@/components/ViralitySettings';
 
+const redisHost = process.env.REDIS_HOST === 'redis' ? 'localhost' : (process.env.REDIS_HOST || 'localhost');
 const redis = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
+  host: redisHost,
   port: 6379,
   maxRetriesPerRequest: null,
 });
