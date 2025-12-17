@@ -76,6 +76,8 @@ model VideoFeed {
   pollingInterval Int
   lastCheckedAt   DateTime?
   lastVideoId     String?
+  autoGenerateClips Boolean   @default(false)
+  viralitySettings  Json?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

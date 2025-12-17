@@ -52,7 +52,7 @@ export async function POST(req: Request) {
   }
 
   const data = await req.json();
-  const { name, sourceUrl, pollingInterval } = data;
+  const { name, sourceUrl, pollingInterval, autoGenerateClips, viralitySettings } = data;
 
   if (!name || !String(name).trim()) {
     return NextResponse.json({ error: 'Name is required' }, { status: 400 });
@@ -84,6 +84,8 @@ export async function POST(req: Request) {
       pollingInterval: safePollingInterval,
       sourceType,
       userId: user.id, // ✅ required
+      autoGenerateClips: !!autoGenerateClips,
+      viralitySettings: viralitySettings ?? undefined,
     },
   });
 

@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, useEffect } from 'react';
 import ViralitySettings, { getStrictnessConfig, ScoringMode, StrictnessPreset, type ContentStyle, type TargetPlatform } from "@/components/ViralitySettings";
 import AspectRatioSelect, { type AspectRatio } from "@/components/AspectRatioSelect";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { FeedsHeroAnimation } from "@/app/feeds/_components/FeedsHeroAnimation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Plus, RefreshCw, Search, Trash2, X, Upload, Settings } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
 function youtubeHandleUrlFromName(name: string) {
@@ -55,6 +56,8 @@ type VideoFeed = {
   pollingInterval: number;
   lastCheckedAt?: string | null;
   createdAt?: string;
+  autoGenerateClips?: boolean;
+  viralitySettings?: any;
 };
 
 type FeedVideo = {
@@ -70,6 +73,7 @@ type FeedVideo = {
 
 export default function FeedsPage() {
   const videosHeaderRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [feeds, setFeeds] = useState<VideoFeed[]>([]);
   const [videos, setVideos] = useState<FeedVideo[]>([]);
@@ -79,17 +83,26 @@ export default function FeedsPage() {
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [isCreatingFeed, setIsCreatingFeed] = useState(false);
   const [isAddFeedOpen, setIsAddFeedOpen] = useState(false);
+  const [isAddVideoOpen, setIsAddVideoOpen] = useState(false);
+  const [activeVideoTab, setActiveVideoTab] = useState<'file' | 'url'>('file');
+  const [importUrl, setImportUrl] = useState('');
   const [deletingFeedId, setDeletingFeedId] = useState<string | null>(null);
   const [deletingVideoId, setDeletingVideoId] = useState<string | null>(null);
   const [isGeneratingClip, setIsGeneratingClip] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+
+  // Upload state
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const [videoQuery, setVideoQuery] = useState("");
   const [videoFeedFilter, setVideoFeedFilter] = useState<string>("all");
   const [videoSort, setVideoSort] = useState<"newest" | "oldest" | "title">("newest");
 
   const [selectedVideo, setSelectedVideo] = useState<FeedVideo | null>(null);
+  const [selectedFeedSettings, setSelectedFeedSettings] = useState<VideoFeed | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isFeedSettingsOpen, setIsFeedSettingsOpen] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   const [viralitySettings, setViralitySettings] = useState<{
     scoringMode: ScoringMode;
@@ -166,6 +179,125 @@ export default function FeedsPage() {
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('video/')) {
+        toast.error("Please upload a video file");
+        return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(0);
+    const toastId = toast.loading("Starting upload...");
+
+    try {
+        // 1. Get presigned URL
+        const presignedRes = await fetch('/api/uploads/presigned', {
+            method: 'POST',
+            body: JSON.stringify({ 
+                filename: file.name,
+                contentType: file.type 
+            }),
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (!presignedRes.ok) throw new Error("Failed to get upload URL");
+        const { url, key } = await presignedRes.json();
+
+        // 2. Upload to S3 (XHR for progress)
+        await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', url, true);
+            xhr.setRequestHeader('Content-Type', file.type);
+            
+            xhr.upload.onprogress = (ev) => {
+                if (ev.lengthComputable) {
+                    const percentComplete = (ev.loaded / ev.total) * 100;
+                    setUploadProgress(Math.round(percentComplete));
+                    if (percentComplete < 100) {
+                        toast.loading(`Uploading: ${Math.round(percentComplete)}%`, { id: toastId });
+                    }
+                }
+            };
+
+            xhr.onload = () => {
+                if (xhr.status === 200) resolve();
+                else reject(new Error('Upload failed'));
+            };
+
+            xhr.onerror = () => reject(new Error('Network error'));
+            xhr.send(file);
+        });
+
+        toast.loading("Registering video...", { id: toastId });
+
+        // 3. Register upload
+        const completeRes = await fetch('/api/uploads/complete', {
+            method: 'POST',
+            body: JSON.stringify({ key, filename: file.name }),
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!completeRes.ok) throw new Error("Failed to register upload");
+
+        toast.success("Upload complete!", { id: toastId });
+        
+        // Refresh everything
+        await Promise.all([fetchFeeds(), fetchVideos()]);
+        
+        // Switch filter to Manual Uploads slightly after to help user find it
+        setTimeout(() => {
+           setVideoFeedFilter("all");
+        }, 500);
+
+    } catch (err) {
+        console.error(err);
+        toast.error("Upload failed", { id: toastId });
+    } finally {
+        setIsUploading(false);
+        setUploadProgress(0);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleUrlImport = async () => {
+    if (!importUrl) return;
+    
+    setIsUploading(true);
+    const toastId = toast.loading("Importing from URL...");
+    
+    try {
+        const res = await fetch('/api/uploads/from-url', {
+            method: 'POST',
+            body: JSON.stringify({ url: importUrl }),
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!res.ok) {
+             const err = await res.json(); 
+             throw new Error(err.error || "Failed to import");
+        }
+
+        toast.success("Imported successfully!", { id: toastId });
+        await Promise.all([fetchFeeds(), fetchVideos()]);
+        setImportUrl('');
+        setIsAddVideoOpen(false);
+        
+        // Switch filter to Manual Uploads
+        setTimeout(() => {
+           setVideoFeedFilter("all");
+        }, 500);
+
+    } catch (err: any) {
+        console.error(err);
+        toast.error(err.message || "Import failed", { id: toastId });
+    } finally {
+        setIsUploading(false);
+    }
+  };
+
   const triggerClip = async (video: any) => {
     try {
       const strictnessConfig = getStrictnessConfig(viralitySettings.strictnessPreset);
@@ -211,6 +343,23 @@ export default function FeedsPage() {
       toast.error("Failed to delete feed");
     } finally {
       setDeletingFeedId(null);
+    }
+  };
+
+  const updateFeedSettings = async (feedId: string, updates: any) => {
+    try {
+        const res = await fetch(`/api/feeds/${feedId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(updates),
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (!res.ok) throw new Error("Failed to update feed");
+        await fetchFeeds();
+        toast.success("Settings saved");
+        setIsFeedSettingsOpen(false);
+    } catch (err) {
+        console.error(err);
+        toast.error("Failed to update settings");
     }
   };
 
@@ -278,9 +427,9 @@ export default function FeedsPage() {
           <div className="relative p-6 sm:p-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h1 className="text-3xl font-semibold tracking-tight">Video Feeds</h1>
+                <h1 className="text-3xl font-semibold tracking-tight">Content Monitor</h1>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  Create a feed, let it ingest videos, then generate clips with your scoring settings.
+                  Connect sources (channels, uploads), ingest videos, and generate clips automatically.
                 </div>
               </div>
             </div>
@@ -297,6 +446,15 @@ export default function FeedsPage() {
         </div>
       )}
 
+      {/* Hidden file input for uploads */}
+      <input 
+        type="file" 
+        accept="video/*" 
+        className="hidden" 
+        ref={fileInputRef} 
+        onChange={handleFileUpload}
+      />
+
       <div className="grid gap-6 lg:grid-cols-12">
         {/* Left: feed management */}
         <div className="space-y-6 lg:col-span-4">
@@ -305,17 +463,32 @@ export default function FeedsPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <CardTitle className="text-base">Feeds</CardTitle>
-                  <CardDescription>Your ingested sources.</CardDescription>
+                  <CardTitle className="text-base">Sources</CardTitle>
+                  <CardDescription>Your monitored channels.</CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary">{feeds.length}</Badge>
-                  <Button variant="secondary" size="sm" onClick={() => setIsAddFeedOpen(true)} title="Add a feed">
+                  <Button variant="outline" size="sm" onClick={() => setIsAddVideoOpen(true)} disabled={isUploading} className="gap-2">
+                    <Upload className="h-4 w-4" />
+                    Add Video
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => setIsAddFeedOpen(true)} title="Add a source">
                     <Plus className="mr-2 h-4 w-4" />
                     Add
                   </Button>
                 </div>
               </div>
+              {isUploading && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                    <div className="mb-1 flex justify-between">
+                        <span>Uploading...</span>
+                        <span>{uploadProgress}%</span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-zinc-800">
+                        <div className="h-full rounded-full bg-black transition-all dark:bg-white" style={{ width: `${uploadProgress}%` }} />
+                    </div>
+                </div>
+              )}
             </CardHeader>
             <CardContent className="space-y-2">
               {isLoadingFeeds ? (
@@ -329,12 +502,12 @@ export default function FeedsPage() {
                 </div>
               ) : feeds.length === 0 ? (
                 <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                  <div className="font-medium text-foreground">No feeds yet</div>
+                  <div className="font-medium text-foreground">No sources yet</div>
                   <div className="mt-1">Add a YouTube or C‑SPAN source URL to start ingesting videos.</div>
                   <div className="mt-3">
                     <Button variant="secondary" size="sm" onClick={() => setIsAddFeedOpen(true)}>
                       <Plus className="mr-2 h-4 w-4" />
-                      Add your first feed
+                      Add your first source
                     </Button>
                   </div>
                 </div>
@@ -357,7 +530,7 @@ export default function FeedsPage() {
                             videosHeaderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
                           }, 0);
                         }}
-                        title="Filter videos by this feed"
+                        title="Filter videos by this source"
                       >
                         <div className="flex items-center gap-2">
                           <div className="truncate font-semibold">{feed.name}</div>
@@ -372,8 +545,22 @@ export default function FeedsPage() {
                         <div className="mt-1 truncate text-xs text-muted-foreground">
                           {feed.sourceUrl} • every {feed.pollingInterval} min
                           {feed.lastCheckedAt ? <> • checked {formatRelativeTime(feed.lastCheckedAt)}</> : null}
+                          {feed.autoGenerateClips && <span className="ml-2 text-green-600 dark:text-green-400 font-medium whitespace-nowrap">Auto-Gen On</span>}
                         </div>
                       </button>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                            setSelectedFeedSettings(feed);
+                            setIsFeedSettingsOpen(true);
+                        }}
+                        title="Source Settings"
+                      >
+                        <Settings className="h-4 w-4" />
+                      </Button>
 
                       <Button
                         variant="ghost"
@@ -381,7 +568,7 @@ export default function FeedsPage() {
                         className="h-9 w-9 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                         onClick={() => deleteFeed(feed.id)}
                         disabled={deletingFeedId === feed.id}
-                        title="Delete feed"
+                        title="Delete source"
                       >
                         <Trash2 className={cn("h-4 w-4", deletingFeedId === feed.id && "animate-pulse")} />
                       </Button>
@@ -397,7 +584,7 @@ export default function FeedsPage() {
         <div className="space-y-4 lg:col-span-8">
           <div ref={videosHeaderRef} className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between scroll-mt-24">
             <div>
-              <h2 className="text-xl font-semibold tracking-tight">Feed videos</h2>
+              <h2 className="text-xl font-semibold tracking-tight">Ingested Videos</h2>
               <div className="text-sm text-muted-foreground">Click any video to configure scoring and generate a clip.</div>
             </div>
             <div className="flex items-center gap-2">
@@ -412,7 +599,7 @@ export default function FeedsPage() {
               <Input
                 value={videoQuery}
                 onChange={(e) => setVideoQuery(e.target.value)}
-                placeholder="Search titles or feed…"
+                placeholder="Search titles or source…"
                 className="pl-9 pr-9"
               />
               {videoQuery.trim().length > 0 && (
@@ -431,10 +618,10 @@ export default function FeedsPage() {
             <div className="flex w-full items-center gap-2 sm:w-auto">
               <Select value={videoFeedFilter} onValueChange={setVideoFeedFilter}>
                 <SelectTrigger className="w-full sm:w-[220px]">
-                  <SelectValue placeholder="Filter by feed" />
+                  <SelectValue placeholder="Filter by source" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All feeds</SelectItem>
+                  <SelectItem value="all">All sources</SelectItem>
                   {feeds.map((f) => (
                     <SelectItem key={f.id} value={f.id}>
                       {f.name}
@@ -497,14 +684,14 @@ export default function FeedsPage() {
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">No videos ingested yet</CardTitle>
-                <CardDescription>Once a feed is added and polled, videos will appear here for clip generation.</CardDescription>
+                <CardDescription>Once a source is added and polled, videos will appear here for clip generation.</CardDescription>
               </CardHeader>
             </Card>
           ) : filteredVideos.length === 0 ? (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">No matches</CardTitle>
-                <CardDescription>Try a different search or clear the feed filter.</CardDescription>
+                <CardDescription>Try a different search or clear the source filter.</CardDescription>
               </CardHeader>
             </Card>
           ) : (
@@ -630,7 +817,7 @@ export default function FeedsPage() {
       >
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add a feed</DialogTitle>
+            <DialogTitle>Add a source</DialogTitle>
             <DialogDescription>Provide a source URL. The poller will ingest new videos over time.</DialogDescription>
           </DialogHeader>
 
@@ -687,11 +874,156 @@ export default function FeedsPage() {
             </Button>
             <Button onClick={addFeed} disabled={!form.name || !form.sourceUrl || isCreatingFeed}>
               <Plus className="mr-2 h-4 w-4" />
-              {isCreatingFeed ? "Adding..." : "Add feed"}
+              {isCreatingFeed ? "Adding..." : "Add source"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      {/* Add Video Dialog (Upload / Import) */}
+      <Dialog open={isAddVideoOpen} onOpenChange={setIsAddVideoOpen}>
+        <DialogContent className="max-w-md p-6">
+            <DialogHeader className="mb-4">
+                <DialogTitle>Add Video</DialogTitle>
+                <DialogDescription>Upload a file from your device or import from a URL.</DialogDescription>
+            </DialogHeader>
+
+            <div className="flex w-full items-center justify-center gap-2 rounded-lg bg-muted p-1">
+                <Button 
+                    variant={activeVideoTab === 'file' ? 'default' : 'ghost'} 
+                    onClick={() => setActiveVideoTab('file')}
+                    className={cn("flex-1", activeVideoTab === 'file' ? "bg-background text-foreground shadow-sm" : "")}
+                    size="sm"
+                >
+                    File Upload
+                </Button>
+                <Button 
+                    variant={activeVideoTab === 'url' ? 'default' : 'ghost'} 
+                    onClick={() => setActiveVideoTab('url')}
+                    className={cn("flex-1", activeVideoTab === 'url' ? "bg-background text-foreground shadow-sm" : "")}
+                    size="sm"
+                >
+                    Import URL
+                </Button>
+            </div>
+
+            <div className="mt-4">
+                {activeVideoTab === 'file' ? (
+                    <div className="space-y-4">
+                        <div 
+                            className="flex h-40 w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed bg-gray-50 transition-colors hover:border-gray-400 hover:bg-gray-100 dark:border-zinc-800 dark:bg-zinc-900/50 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            <div className="rounded-full bg-background p-3 shadow-sm">
+                                <Upload className="h-6 w-6 text-muted-foreground" />
+                            </div>
+                            <div className="text-center">
+                                <div className="text-sm font-medium">Click to select video</div>
+                                <div className="text-xs text-muted-foreground">MP4, MOV supported</div>
+                            </div>
+                        </div>
+                        
+                        {isUploading && uploadProgress > 0 && (
+                            <div className="w-full space-y-2 rounded-md border p-3">
+                                <div className="flex justify-between text-xs font-medium">
+                                    <span>Uploading...</span>
+                                    <span>{uploadProgress}%</span>
+                                </div>
+                                <div className="h-2 w-full rounded-full bg-secondary">
+                                    <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-2">
+                            <Label>Video URL</Label>
+                            <Input 
+                                placeholder="https://example.com/video.mp4" 
+                                value={importUrl}
+                                onChange={(e) => setImportUrl(e.target.value)}
+                                className="font-mono text-sm"
+                            />
+                            <p className="text-[13px] text-muted-foreground">
+                                Provide a direct link to a video file (MP4) or a supported platform URL.
+                            </p>
+                        </div>
+                        <div className="pt-2">
+                            <Button onClick={handleUrlImport} disabled={!importUrl || isUploading} className="w-full">
+                                {isUploading ? "Importing..." : "Import Video"}
+                            </Button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Feed Settings Modal */}
+      {selectedFeedSettings && (
+        <Dialog open={isFeedSettingsOpen} onOpenChange={setIsFeedSettingsOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Source Settings</DialogTitle>
+              <DialogDescription>Configure automation for <strong>{selectedFeedSettings.name}</strong>.</DialogDescription>
+            </DialogHeader>
+            <FeedSettingsForm feed={selectedFeedSettings} onSave={(updates) => updateFeedSettings(selectedFeedSettings.id, updates)} />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
+
+function FeedSettingsForm({ feed, onSave }: { feed: VideoFeed; onSave: (updates: any) => void }) {
+    const [autoGen, setAutoGen] = useState(feed.autoGenerateClips || false);
+    const [settings, setSettings] = useState(feed.viralitySettings as any || {
+        scoringMode: "hybrid",
+        strictnessPreset: "balanced",
+        includeAudio: false,
+        saferClips: true,
+        targetPlatform: "reels",
+        contentStyle: "auto",
+        showAdvanced: false,
+    });
+    const [isSaving, setIsSaving] = useState(false);
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between gap-4 rounded-lg border p-4 bg-gray-50 dark:bg-zinc-900/50">
+                <div className="space-y-0.5">
+                    <Label className="text-base">Auto-generate clips</Label>
+                    <div className="text-sm text-muted-foreground">
+                        Automatically score and generate clips when new videos appear in this source.
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className={cn("text-xs font-medium", autoGen ? "text-green-600" : "text-muted-foreground")}>
+                        {autoGen ? "On" : "Off"}
+                    </span>
+                    <Switch
+                        checked={autoGen}
+                        onCheckedChange={setAutoGen}
+                    />
+                </div>
+            </div>
+
+            <div className={cn("space-y-4 transition-opacity", !autoGen && "opacity-50 pointer-events-none")}>
+                <div className="text-sm font-medium">Virality Settings</div>
+                <ViralitySettings value={settings} onChange={setSettings} />
+            </div>
+
+            <DialogFooter>
+                <Button onClick={async () => {
+                    setIsSaving(true);
+                    await onSave({ autoGenerateClips: autoGen, viralitySettings: settings });
+                    setIsSaving(false);
+                }} disabled={isSaving}>
+                    {isSaving ? "Saving..." : "Save Changes"}
+                </Button>
+            </DialogFooter>
+        </div>
+    );
+}
+
