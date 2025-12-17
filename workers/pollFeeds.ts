@@ -33,7 +33,7 @@ export async function pollFeeds() {
 
     try {
       console.log(`[${now.toISOString()}] Polling feed: ${feed.name}`);
-      let newVideo: { id: string; title: string; url: string } | null = null;
+      let newVideo: { id: string; title: string; url: string; thumbnailUrl?: string | null } | null = null;
 
       const inferred = inferSourceTypeFromUrl(feed.sourceUrl);
       const effectiveSourceType =
@@ -86,6 +86,7 @@ export async function pollFeeds() {
           feedId: feed.id,
           videoId: newVideo.id,
           title: newVideo.title,
+          thumbnailUrl: newVideo.thumbnailUrl,
           s3Url,
           userId: feed.userId
         }

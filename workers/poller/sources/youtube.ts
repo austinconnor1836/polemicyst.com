@@ -9,11 +9,14 @@ const UPLOADS_DIR = '/app/uploads';
 interface NewVideo {
   id: string;
   title: string;
+  thumbnailUrl?: string | null;
   url: string;
 }
 
 export async function pollYouTubeFeed(feed: VideoFeed): Promise<NewVideo | null> {
-  const listCommand = `yt-dlp --flat-playlist --print "%(id)s %(title)s" "${feed.sourceUrl}"`;
+  // Use a custom delimiter to robustly parse fields (handling spaces in titles)
+  const delimiter = '|||';
+  const listCommand = `yt-dlp --flat-playlist --print "%(id)s${delimiter}%(title)s${delimiter}%(thumbnail)s" "${feed.sourceUrl}"`;
   const { stdout } = await execPromise(listCommand);
   
   const lines = stdout.trim().split('\n');
@@ -24,8 +27,16 @@ export async function pollYouTubeFeed(feed: VideoFeed): Promise<NewVideo | null>
   }
 
   const [firstLine] = lines;
-  const [id, ...titleParts] = firstLine.split(' ');
-  const title = titleParts.join(' ');
+  const parts = firstLine.split(delimiter);
+  
+  if (parts.length < 2) { 
+       console.log(`[YouTube Poller] Unexpected output format: ${firstLine}`);
+       return null;
+  }
+
+  const id = parts[0];
+  const title = parts[1];
+  const thumbnailUrl = parts[2] || null;
 
   if (feed.lastVideoId === id) {
     console.log(`[YouTube Poller] No new video for ${feed.name}`);
@@ -35,6 +46,7 @@ export async function pollYouTubeFeed(feed: VideoFeed): Promise<NewVideo | null>
   return {
     id,
     title,
+    thumbnailUrl,
     url: `https://www.youtube.com/watch?v=${id}`,
   };
 }

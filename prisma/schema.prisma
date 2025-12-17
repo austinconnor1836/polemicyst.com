@@ -93,6 +93,7 @@ model FeedVideo {
   feed           VideoFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
   videoId        String
   title          String
+  thumbnailUrl   String?
   s3Url          String
   transcript     String?
   transcriptJson Json?

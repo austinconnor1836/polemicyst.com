@@ -64,6 +64,7 @@ type FeedVideo = {
   id: string;
   feedId: string;
   title: string;
+  thumbnailUrl?: string | null;
   s3Url: string;
   createdAt?: string;
   feed?: { name: string };
@@ -714,14 +715,43 @@ export default function FeedsPage() {
                     >
                       <CardContent className="p-0">
                         <div className="relative">
-                          <video
-                            src={video.s3Url}
-                            preload="metadata"
-                            muted
-                            playsInline
-                            tabIndex={-1}
-                            className="aspect-video w-full bg-black/5 object-cover"
-                          />
+                          {(() => {
+                            const isYouTube = video.s3Url.includes("youtube.com") || video.s3Url.includes("youtu.be");
+                            const thumb = video.thumbnailUrl || (isYouTube ? `https://img.youtube.com/vi/${video.s3Url.match(/[?&]v=([^&]+)/)?.[1]}/hqdefault.jpg` : null);
+
+                            if (isYouTube) {
+                                return (
+                                    <div className="relative aspect-video w-full bg-black/5">
+                                        {thumb ? (
+                                            <img 
+                                                src={thumb} 
+                                                alt={video.title}
+                                                className="h-full w-full object-cover"
+                                            />
+                                        ) : (
+                                            <div className="flex h-full items-center justify-center bg-gray-100 text-gray-400">
+                                                <span className="text-xs">No preview</span>
+                                            </div>
+                                        )}
+                                        <div className="absolute right-2 bottom-2 rounded bg-black/70 px-1 py-0.5 text-[10px] font-bold text-white">
+                                            YouTube
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <video
+                                    src={video.s3Url}
+                                    poster={video.thumbnailUrl || undefined}
+                                    preload="metadata" // Only load partial metadata to be light
+                                    muted
+                                    playsInline
+                                    tabIndex={-1}
+                                    className="aspect-video w-full bg-black/5 object-cover"
+                                />
+                            );
+                          })()}
                           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-60 transition-opacity group-hover:opacity-80" />
                           <div className="pointer-events-none absolute bottom-2 left-2 opacity-0 transition-opacity group-hover:opacity-100">
                             <div className="rounded-full bg-black/55 px-2 py-1 text-[11px] font-medium text-white backdrop-blur">
@@ -776,13 +806,41 @@ export default function FeedsPage() {
             </DialogHeader>
 
             <div className="space-y-4">
-              <video
-                src={selectedVideo.s3Url}
-                controls
-                preload="metadata"
-                playsInline
-                className="max-h-[35vh] w-full rounded object-contain"
-              />
+              {(() => {
+                const isYouTube = selectedVideo.s3Url.includes("youtube.com") || selectedVideo.s3Url.includes("youtu.be");
+                const thumb = selectedVideo.thumbnailUrl || (isYouTube ? `https://img.youtube.com/vi/${selectedVideo.s3Url.match(/[?&]v=([^&]+)/)?.[1]}/hqdefault.jpg` : null);
+
+                if (isYouTube) {
+                    return (
+                        <div className="flex aspect-video w-full flex-col items-center justify-center rounded bg-black/5 p-4">
+                            {thumb ? (
+                                <img 
+                                    src={thumb} 
+                                    alt={selectedVideo.title}
+                                    className="max-h-[35vh] w-full rounded object-contain"
+                                />
+                            ) : (
+                                <div className="flex h-40 w-full items-center justify-center bg-gray-100 text-gray-400">
+                                    <span className="text-sm">No preview available</span>
+                                </div>
+                            )}
+                            <div className="mt-2 text-xs text-muted-foreground">
+                                Preview not available for YouTube sources. Using thumbnail.
+                            </div>
+                        </div>
+                    );
+                }
+
+                return (
+                    <video
+                        src={selectedVideo.s3Url}
+                        controls
+                        preload="metadata"
+                        playsInline
+                        className="max-h-[35vh] w-full rounded object-contain"
+                    />
+                );
+              })()}
 
               <AspectRatioSelect value={aspectRatio} onChange={setAspectRatio} />
               <ViralitySettings value={viralitySettings} onChange={setViralitySettings} />
