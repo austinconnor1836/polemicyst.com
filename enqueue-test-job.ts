@@ -32,6 +32,12 @@ const run = async () => {
   });
 
   console.log('✅ Enqueued clip-generation job (candidates)!');
+  await queue.close();
 };
 
-run();
+run()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

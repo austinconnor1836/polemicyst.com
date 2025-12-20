@@ -5,7 +5,8 @@ import fetch from 'node-fetch';
 import { S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 
-const s3 = new S3Client({ region: 'us-east-1' });
+const s3 = new S3Client({ region: 'us-east-2' });
+const CLIPS_BUCKET = 'clips-genie-uploads';
 
 function parseTimeToSeconds(t: string): number {
   const [hh, mm, ss] = t.split(':').map(parseFloat);
@@ -39,7 +40,7 @@ export async function generateClipFromS3(inputPath: string, start: string, end: 
   const parallelUploads3 = new Upload({
     client: s3,
     params: {
-      Bucket: process.env.S3_BUCKET!,
+      Bucket: CLIPS_BUCKET,
       Key: key,
       Body: outputStream,
       ContentType: 'video/mp4',
@@ -50,6 +51,6 @@ export async function generateClipFromS3(inputPath: string, start: string, end: 
 
   return {
     s3Key: key,
-    s3Url: `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${key}`,
+    s3Url: `https://${CLIPS_BUCKET}.s3.amazonaws.com/${key}`,
   };
 }

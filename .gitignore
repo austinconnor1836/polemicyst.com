@@ -12,6 +12,7 @@ clip-worker/node_modules
 
 # testing
 /coverage
+/test-files
 
 .copilot/
 

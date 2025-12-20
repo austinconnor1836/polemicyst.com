@@ -6,6 +6,10 @@ import { randomUUID } from 'crypto';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import { getStrictnessConfig, type ViralitySettingsValue } from '@/components/ViralitySettings';
+import { uploadToS3 } from '@backend/lib/s3';
+import { downloadFeedVideoToTemp } from '@backend/utils/download';
+import path from 'path';
+import { promises as fs } from 'fs';
 
 const redisHost = process.env.REDIS_HOST === 'redis' ? 'localhost' : (process.env.REDIS_HOST || 'localhost');
 const redis = new Redis({
@@ -34,7 +38,7 @@ export async function POST(req: NextRequest) {
     const { url, filename } = await req.json();
 
     if (!url || !String(url).startsWith('http')) {
-        return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
     }
 
     // 1. Find or create the "Manual Uploads" feed
@@ -57,18 +61,50 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 2. Create the FeedVideo record
+    let tempPath: string | null = null;
+    let uploadUrl: string | null = null;
+
+    try {
+      // 2. Download remotely hosted file (supports direct mp4 + yt-dlp fallback)
+      tempPath = await downloadFeedVideoToTemp(url);
+
+      const derivedExt =
+        (filename && path.extname(filename)) ||
+        (() => {
+          try {
+            const remotePath = new URL(url).pathname;
+            return path.extname(remotePath);
+          } catch {
+            return '';
+          }
+        })() ||
+        '.mp4';
+
+      const key = `uploads/${user.id}/${randomUUID()}${derivedExt}`;
+      const upload = await uploadToS3(tempPath, key);
+      uploadUrl = upload.url;
+    } finally {
+      if (tempPath) {
+        await fs.unlink(tempPath).catch(() => {});
+      }
+    }
+
+    if (!uploadUrl) {
+      throw new Error('Failed to upload video to S3');
+    }
+
+    // 3. Create the FeedVideo record pointing at our S3 object
     const newVideo = await prisma.feedVideo.create({
       data: {
         feedId: manualFeed.id,
         userId: user.id,
         videoId: randomUUID(), // Internal ID
         title: filename || url.split('/').pop() || 'Imported Video',
-        s3Url: url, // Storing external URL directly
+        s3Url: uploadUrl,
       },
     });
 
-    // 3. Auto-trigger clip generation if enabled
+    // 4. Auto-trigger clip generation if enabled
     if (manualFeed.autoGenerateClips && manualFeed.viralitySettings) {
       try {
         const settings = manualFeed.viralitySettings as unknown as ViralitySettingsValue;

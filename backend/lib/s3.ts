@@ -13,7 +13,8 @@ import { readFile } from 'fs/promises';
 import path from 'path';
 import dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: true });
 
 const S3_BUCKET_NAME = 'clips-genie-uploads';
 const AWS_REGION = 'us-east-2';

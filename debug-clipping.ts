@@ -1,4 +1,4 @@
-
+import 'dotenv/config';
 import { generateClipFromS3 } from './backend/utils/ffmpegUtils';
 import path from 'path';
 

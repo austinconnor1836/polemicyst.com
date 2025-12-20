@@ -1,4 +1,8 @@
-import { Worker } from 'bullmq';
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env' });
+dotenv.config({ path: '.env.local', override: true });
+
+import { Worker, Job } from 'bullmq';
 import { redisConnection } from '../workers/queues/redisConnection';
 import { prisma } from '../shared/lib/prisma';
 import { transcribeFeedVideo } from '../backend/lib/transcription';
@@ -54,7 +58,22 @@ new Worker(
 
             // 3. Transcribe (using local file)
             console.log('🎤 Ensuring transcript...');
-            const { transcript, segments: transcriptSegments } = await transcribeFeedVideo(feedVideoId, localVideoPath);
+            let transcript: string;
+            let transcriptSegments: any[];
+            try {
+                const result = await transcribeFeedVideo(feedVideoId, localVideoPath);
+                transcript = result.transcript;
+                transcriptSegments = result.segments;
+            } catch (transcribeErr) {
+                if (
+                    transcribeErr instanceof Error &&
+                    /No audio stream found/i.test(transcribeErr.message)
+                ) {
+                    console.error(`⚠️ Skipping job ${feedVideoId}: ${transcribeErr.message}`);
+                    return;
+                }
+                throw transcribeErr;
+            }
 
             // 4. Create a parent Video record 
             console.log('📼 Creating parent Video record...');
