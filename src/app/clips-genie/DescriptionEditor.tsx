@@ -1,47 +1,64 @@
-"use client";
+'use client';
 
-import React, { useState } from "react";
-import { usePlatformContext } from "./PlatformContext";
-import axios from "axios";
-import toast from "react-hot-toast";
-import { useSession } from "next-auth/react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import React, { useState } from 'react';
+import { usePlatformContext } from './PlatformContext';
+import axios from 'axios';
+import toast from 'react-hot-toast';
+import { useSession } from 'next-auth/react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 const DescriptionEditor = () => {
   const { data: session } = useSession();
   const {
-    sharedDescription, setSharedDescription,
-    facebookTemplate, setFacebookTemplate,
-    instagramTemplate, setInstagramTemplate,
-    youtubeTemplate, setYoutubeTemplate,
-    blueskyTemplate, setBlueskyTemplate,
-    twitterTemplate, setTwitterTemplate,
+    sharedDescription,
+    setSharedDescription,
+    facebookTemplate,
+    setFacebookTemplate,
+    instagramTemplate,
+    setInstagramTemplate,
+    youtubeTemplate,
+    setYoutubeTemplate,
+    blueskyTemplate,
+    setBlueskyTemplate,
+    twitterTemplate,
+    setTwitterTemplate,
     selectedPlatforms,
     selectedFile,
     videoTitle,
-    setVideoTitle
+    setVideoTitle,
   } = usePlatformContext();
 
   const [isPosting, setIsPosting] = useState(false);
-  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState('');
   const [showYouTubeModal, setShowYouTubeModal] = useState(false);
 
   const handlePostToSelectedPlatforms = async () => {
     if (!selectedFile) {
-      toast.error("No video file selected.");
+      toast.error('No video file selected.');
       return;
     }
 
     if (!selectedPlatforms || selectedPlatforms.length === 0) {
-      toast.error("No platforms selected.");
+      toast.error('No platforms selected.');
       return;
     }
 
-    if (selectedPlatforms.includes("bluesky") && !selectedPlatforms.includes("google") && !youtubeUrl) {
+    if (
+      selectedPlatforms.includes('bluesky') &&
+      !selectedPlatforms.includes('google') &&
+      !youtubeUrl
+    ) {
       setShowYouTubeModal(true);
       return;
     }
@@ -58,33 +75,37 @@ const DescriptionEditor = () => {
     };
 
     const endpointMap: Record<string, string> = {
-      bluesky: "/api/bluesky/post",
-      facebook: "/api/meta/upload/facebook",
-      instagram: "/api/meta/upload/instagram",
-      google: "/api/youtube/upload",
-      twitter: "/api/twitter/post",
+      bluesky: '/api/bluesky/post',
+      facebook: '/api/meta/upload/facebook',
+      instagram: '/api/meta/upload/instagram',
+      google: '/api/youtube/upload',
+      twitter: '/api/twitter/post',
     };
 
     let uploadedYouTubeUrl = youtubeUrl;
 
     // ✅ Upload to YouTube first if selected
-    if (selectedPlatforms.includes("google")) {
+    if (selectedPlatforms.includes('google')) {
       try {
         const ytForm = new FormData();
-        ytForm.append("file", selectedFile);
-        ytForm.append("title", videoTitle);
-        ytForm.append("description", descriptions.google);
-        ytForm.append("userId", session?.user.id!);
+        ytForm.append('file', selectedFile);
+        ytForm.append('title', videoTitle);
+        ytForm.append('description', descriptions.google);
+        ytForm.append('userId', session?.user.id!);
 
         const ytRes = await axios.post(endpointMap.google, ytForm, {
-          headers: { "Content-Type": "multipart/form-data" },
+          headers: { 'Content-Type': 'multipart/form-data' },
         });
 
         uploadedYouTubeUrl = ytRes.data.youtubeLink;
-        results.push({ platform: "youtube", success: true });
+        results.push({ platform: 'youtube', success: true });
       } catch (err: any) {
-        results.push({ platform: "youtube", success: false, error: err.response?.data || err.message });
-        toast.error("YouTube upload failed. Skipping Bluesky.");
+        results.push({
+          platform: 'youtube',
+          success: false,
+          error: err.response?.data || err.message,
+        });
+        toast.error('YouTube upload failed. Skipping Bluesky.');
         // Remove Bluesky from selectedPlatforms if YouTube failed
         return setIsPosting(false);
       }
@@ -92,23 +113,23 @@ const DescriptionEditor = () => {
 
     // ✅ Post to other platforms
     for (const platform of selectedPlatforms) {
-      if (platform === "google") continue;
+      if (platform === 'google') continue;
 
       try {
         if (!endpointMap[platform]) {
-          results.push({ platform, success: false, error: "Unknown platform" });
+          results.push({ platform, success: false, error: 'Unknown platform' });
           continue;
         }
 
-        if (platform === "facebook" || platform === "instagram") {
+        if (platform === 'facebook' || platform === 'instagram') {
           const form = new FormData();
-          form.append("file", selectedFile);
-          form.append("description", descriptions[platform]);
+          form.append('file', selectedFile);
+          form.append('description', descriptions[platform]);
           // form.append("accessToken", session?.user.facebookAccessToken || "");
-          form.append("userId", session?.user.id!);
+          form.append('userId', session?.user.id!);
 
           await axios.post(endpointMap[platform], form, {
-            headers: { "Content-Type": "multipart/form-data" },
+            headers: { 'Content-Type': 'multipart/form-data' },
           });
         } else {
           // post to bluesky
@@ -125,12 +146,11 @@ const DescriptionEditor = () => {
       }
     }
 
-    console.log("✅ Post Results:", results);
-    toast.success("Posting completed!");
+    console.log('✅ Post Results:', results);
+    toast.success('Posting completed!');
 
     setIsPosting(false);
   };
-
 
   return (
     <div>
@@ -141,15 +161,19 @@ const DescriptionEditor = () => {
 
       <div className="mt-4 space-y-2">
         <Label>General Description</Label>
-        <Textarea value={sharedDescription} onChange={(e) => setSharedDescription(e.target.value)} className="h-32 resize-none" />
+        <Textarea
+          value={sharedDescription}
+          onChange={(e) => setSharedDescription(e.target.value)}
+          className="h-32 resize-none"
+        />
       </div>
 
       {[
-        { label: "Facebook", state: facebookTemplate, setState: setFacebookTemplate },
-        { label: "Instagram", state: instagramTemplate, setState: setInstagramTemplate },
-        { label: "YouTube", state: youtubeTemplate, setState: setYoutubeTemplate },
-        { label: "Bluesky", state: blueskyTemplate, setState: setBlueskyTemplate },
-        { label: "Twitter", state: twitterTemplate, setState: setTwitterTemplate }
+        { label: 'Facebook', state: facebookTemplate, setState: setFacebookTemplate },
+        { label: 'Instagram', state: instagramTemplate, setState: setInstagramTemplate },
+        { label: 'YouTube', state: youtubeTemplate, setState: setYoutubeTemplate },
+        { label: 'Bluesky', state: blueskyTemplate, setState: setBlueskyTemplate },
+        { label: 'Twitter', state: twitterTemplate, setState: setTwitterTemplate },
       ].map(({ label, state, setState }) => (
         <div key={label} className="mt-4">
           <Label className="mb-2 block">{label}</Label>
@@ -162,20 +186,27 @@ const DescriptionEditor = () => {
       ))}
 
       <div className="flex justify-end items-center gap-4 mt-6">
-        <Button variant="secondary" onClick={() => toast("Editing canceled.")}>
+        <Button variant="secondary" onClick={() => toast('Editing canceled.')}>
           Cancel
         </Button>
         <Button onClick={handlePostToSelectedPlatforms} disabled={isPosting}>
-          {isPosting ? "Posting..." : "Post to Selected Platforms"}
+          {isPosting ? 'Posting...' : 'Post to Selected Platforms'}
         </Button>
       </div>
 
       {showYouTubeModal && (
-        <Dialog open={true} onOpenChange={(open) => { if (!open) setShowYouTubeModal(false) }}>
+        <Dialog
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) setShowYouTubeModal(false);
+          }}
+        >
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>YouTube URL Required</DialogTitle>
-              <DialogDescription>You need to provide a YouTube URL for posting on Bluesky.</DialogDescription>
+              <DialogDescription>
+                You need to provide a YouTube URL for posting on Bluesky.
+              </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-2">

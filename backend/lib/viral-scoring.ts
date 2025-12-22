@@ -1,6 +1,6 @@
 export type TranscriptWordSegment = {
   start: number; // seconds
-  end: number;   // seconds
+  end: number; // seconds
   text: string;
 };
 
@@ -14,7 +14,14 @@ export type ClipCandidate = {
 
 export type ScoringMode = 'heuristic' | 'gemini' | 'hybrid';
 export type TargetPlatform = 'all' | 'reels' | 'shorts' | 'youtube';
-export type ContentStyle = 'politics' | 'comedy' | 'education' | 'podcast' | 'gaming' | 'vlog' | 'other';
+export type ContentStyle =
+  | 'politics'
+  | 'comedy'
+  | 'education'
+  | 'podcast'
+  | 'gaming'
+  | 'vlog'
+  | 'other';
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -75,7 +82,13 @@ export function computeSelectionDiagnostics<T extends { score: number }>(
   const top5 = sorted.slice(0, 5);
   const top3Avg = top3.length ? top3.reduce((a, b) => a + b.score, 0) / top3.length : 0;
   const top5Avg = top5.length ? top5.reduce((a, b) => a + b.score, 0) / top5.length : 0;
-  const cutoff = Math.max(minScore, percentileOf(sorted.map((s) => s.score), percentile));
+  const cutoff = Math.max(
+    minScore,
+    percentileOf(
+      sorted.map((s) => s.score),
+      percentile
+    )
+  );
   const aboveCutoff = sorted.filter((s) => s.score >= cutoff).length;
 
   return {
@@ -98,7 +111,9 @@ export type VideoViralityDecision = {
   recommendation?: string;
 };
 
-export function decideVideoHasViralMoments<T extends { score: number; features?: Record<string, any> }>(params: {
+export function decideVideoHasViralMoments<
+  T extends { score: number; features?: Record<string, any> },
+>(params: {
   scored: T[];
   selection: DynamicSelectionOptions;
   targetPlatform?: TargetPlatform;
@@ -118,7 +133,9 @@ export function decideVideoHasViralMoments<T extends { score: number; features?:
       hasViralMoments: false,
       reason: 'below_cutoff',
       diagnostics,
-      recommendation: close ? 'Try Loose strictness or lower minScore/percentile.' : 'Try Hybrid/Gemini scoring or enable audio.',
+      recommendation: close
+        ? 'Try Loose strictness or lower minScore/percentile.'
+        : 'Try Hybrid/Gemini scoring or enable audio.',
     };
   }
 
@@ -130,7 +147,8 @@ export function decideVideoHasViralMoments<T extends { score: number; features?:
       hasViralMoments: false,
       reason: 'failed_quality_gate',
       diagnostics,
-      recommendation: 'No strong moments detected. Try Loose strictness, different platform target, or Hybrid/Gemini.',
+      recommendation:
+        'No strong moments detected. Try Loose strictness, different platform target, or Hybrid/Gemini.',
     };
   }
 
@@ -197,7 +215,13 @@ export function selectCandidatesDynamically<T extends { score: number }>(
   const sorted = [...scored].sort((a, b) => b.score - a.score);
   if (!sorted.length) return [];
 
-  const cutoff = Math.max(minScore, percentileOf(sorted.map((s) => s.score), percentile));
+  const cutoff = Math.max(
+    minScore,
+    percentileOf(
+      sorted.map((s) => s.score),
+      percentile
+    )
+  );
   let selected = sorted.filter((s) => s.score >= cutoff);
 
   if (selected.length < minCandidates) {
@@ -222,7 +246,10 @@ function countMatches(text: string, re: RegExp): number {
  * Simple, offline scoring heuristic. Produces a 0..10 score.
  * This is intentionally deterministic so local development doesn't depend on Ollama/LLMs.
  */
-export function scoreCandidateHeuristic(text: string): { score: number; features: Record<string, any> } {
+export function scoreCandidateHeuristic(text: string): {
+  score: number;
+  features: Record<string, any>;
+} {
   const normalized = text.trim();
   const wordCount = normalized ? normalized.split(/\s+/).length : 0;
   const exclamations = countMatches(text, /!/g);
@@ -232,17 +259,32 @@ export function scoreCandidateHeuristic(text: string): { score: number; features
 
   // lightweight "spiciness"/emotion dictionary
   const spicyWords = [
-    'insane', 'crazy', 'wild', 'shocking', 'unbelievable', 'secret', 'truth', 'lied', 'exposed',
-    'hate', 'love', 'destroy', 'cancel', 'scam', 'fraud', 'controversial', 'problem', 'why',
+    'insane',
+    'crazy',
+    'wild',
+    'shocking',
+    'unbelievable',
+    'secret',
+    'truth',
+    'lied',
+    'exposed',
+    'hate',
+    'love',
+    'destroy',
+    'cancel',
+    'scam',
+    'fraud',
+    'controversial',
+    'problem',
+    'why',
   ];
-  const spicyHits = spicyWords.reduce((acc, w) => acc + countMatches(text.toLowerCase(), new RegExp(`\\b${w}\\b`, 'g')), 0);
+  const spicyHits = spicyWords.reduce(
+    (acc, w) => acc + countMatches(text.toLowerCase(), new RegExp(`\\b${w}\\b`, 'g')),
+    0
+  );
 
   // Prefer ~15-45s worth of words (very rough: 2.5 w/s => 37-112 words)
-  const lengthScore =
-    wordCount < 25 ? 0.5 :
-    wordCount < 60 ? 2.0 :
-    wordCount < 140 ? 1.5 :
-    0.5;
+  const lengthScore = wordCount < 25 ? 0.5 : wordCount < 60 ? 2.0 : wordCount < 140 ? 1.5 : 0.5;
 
   let score =
     lengthScore +
@@ -282,7 +324,9 @@ export function buildCandidatesFromTranscript(
   }: { windowSeconds?: number; maxWindowSeconds?: number } = {}
 ): Array<Omit<ClipCandidate, 'score' | 'features'> & { rawSegments: TranscriptWordSegment[] }> {
   const sorted = [...segments].sort((a, b) => a.start - b.start);
-  const candidates: Array<Omit<ClipCandidate, 'score' | 'features'> & { rawSegments: TranscriptWordSegment[] }> = [];
+  const candidates: Array<
+    Omit<ClipCandidate, 'score' | 'features'> & { rawSegments: TranscriptWordSegment[] }
+  > = [];
 
   let i = 0;
   while (i < sorted.length) {
@@ -303,7 +347,11 @@ export function buildCandidatesFromTranscript(
       j += 1;
     }
 
-    const text = rawSegments.map(s => s.text).join(' ').replace(/\s+/g, ' ').trim();
+    const text = rawSegments
+      .map((s) => s.text)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
     if (text) {
       candidates.push({
         tStartS: startS,
@@ -323,7 +371,9 @@ export function buildCandidatesFromTranscript(
 }
 
 export function scoreAndRankCandidates(
-  candidates: Array<Omit<ClipCandidate, 'score' | 'features'> & { rawSegments?: TranscriptWordSegment[] }>,
+  candidates: Array<
+    Omit<ClipCandidate, 'score' | 'features'> & { rawSegments?: TranscriptWordSegment[] }
+  >,
   topN: number
 ): ClipCandidate[] {
   const scored = candidates.map((c) => {
@@ -377,8 +427,12 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) throw new Error('Missing GOOGLE_API_KEY for Gemini scoring');
 
-  const { ensureLocalVideoForScoring, extractAudioMp3Base64, extractJpegFramesBase64, scoreSegmentWithGeminiMultimodal } =
-    await import('./gemini-scoring');
+  const {
+    ensureLocalVideoForScoring,
+    extractAudioMp3Base64,
+    extractJpegFramesBase64,
+    scoreSegmentWithGeminiMultimodal,
+  } = await import('./gemini-scoring');
 
   // Pre-score heuristically to choose which windows are worth Gemini calls
   const preRanked = candidates
@@ -392,8 +446,11 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
   // Use provided path or download (fallback)
   let localVideoPath = providedPath;
   if (!localVideoPath) {
-     const cacheKey = Buffer.from(s3Url).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
-     localVideoPath = await ensureLocalVideoForScoring({ s3Url, cacheKey });
+    const cacheKey = Buffer.from(s3Url)
+      .toString('base64')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 24);
+    localVideoPath = await ensureLocalVideoForScoring({ s3Url, cacheKey });
   }
 
   // Score sequentially (safe default). We can parallelize later with a small concurrency limit.
@@ -435,10 +492,10 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
 
     const platformBoost =
       targetPlatform === 'reels' || targetPlatform === 'shorts'
-        ? 0.50 * llm.score + 0.25 * hook + 0.15 * captionability + 0.10 * context
+        ? 0.5 * llm.score + 0.25 * hook + 0.15 * captionability + 0.1 * context
         : targetPlatform === 'youtube'
-          ? 0.55 * llm.score + 0.25 * context + 0.10 * captionability + 0.10 * hook
-          : 0.60 * llm.score + 0.20 * hook + 0.10 * captionability + 0.10 * context;
+          ? 0.55 * llm.score + 0.25 * context + 0.1 * captionability + 0.1 * hook
+          : 0.6 * llm.score + 0.2 * hook + 0.1 * captionability + 0.1 * context;
 
     const safetyPenalty = saferClips ? 0.35 * risk : 0;
     const finalScore = clamp(platformBoost - safetyPenalty - viralPenalty, 0, 10);
@@ -473,5 +530,3 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, Math.max(1, topN));
 }
-
-

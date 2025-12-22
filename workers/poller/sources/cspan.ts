@@ -5,7 +5,7 @@ import { VideoFeed } from '@prisma/client';
 
 const execPromise = promisify(exec);
 
-const UPLOADS_DIR = '/app/uploads';  // Inside Docker
+const UPLOADS_DIR = '/app/uploads'; // Inside Docker
 
 interface NewVideo {
   id: string;

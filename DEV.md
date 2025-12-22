@@ -8,9 +8,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
 Notes:
+
 - `backend` runs `npm run dev` via `ts-node-dev` (hot reload)
 - `clip-worker` runs `npm run dev` via `ts-node-dev` (hot reload)
 - Source directories are bind-mounted so edits are picked up without rebuilding images
-
-
-

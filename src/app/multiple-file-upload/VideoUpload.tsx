@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import React from "react";
-import toast from "react-hot-toast";
-import { usePlatformContext } from "./PlatformContext";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import React from 'react';
+import toast from 'react-hot-toast';
+import { usePlatformContext } from './PlatformContext';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 
 const VideoUpload = () => {
   const { triggerGridRefresh, setFileInCache } = usePlatformContext();
@@ -17,24 +17,24 @@ const VideoUpload = () => {
 
     await Promise.all(
       newFiles.map(async (file) => {
-        let title = file.name.replace(/\.[^/.]+$/, ""); // remove extension
-        title = title.replace(/^#\d+\s*/, ""); // remove "#1 "
-        title = title.replace(/_/g, ":"); // replace _ with :
+        let title = file.name.replace(/\.[^/.]+$/, ''); // remove extension
+        title = title.replace(/^#\d+\s*/, ''); // remove "#1 "
+        title = title.replace(/_/g, ':'); // replace _ with :
 
         try {
           const formData = new FormData();
-          formData.append("file", file);
-          formData.append("fileName", file.name);
-          formData.append("videoTitle", title);
-          formData.append("sharedDescription", "");
-          formData.append("facebookTemplate", "");
-          formData.append("instagramTemplate", "");
-          formData.append("youtubeTemplate", "");
-          formData.append("blueskyTemplate", "");
-          formData.append("twitterTemplate", "");
+          formData.append('file', file);
+          formData.append('fileName', file.name);
+          formData.append('videoTitle', title);
+          formData.append('sharedDescription', '');
+          formData.append('facebookTemplate', '');
+          formData.append('instagramTemplate', '');
+          formData.append('youtubeTemplate', '');
+          formData.append('blueskyTemplate', '');
+          formData.append('twitterTemplate', '');
 
-          const res = await fetch("/api/videos", {
-            method: "POST",
+          const res = await fetch('/api/videos', {
+            method: 'POST',
             body: formData,
           });
 
@@ -44,7 +44,7 @@ const VideoUpload = () => {
           }
 
           const { videoId, s3Url } = await res.json();
-          if (!videoId || !s3Url) throw new Error("Missing video ID or s3Url");
+          if (!videoId || !s3Url) throw new Error('Missing video ID or s3Url');
 
           // Optional: Cache file in memory
           // setFileInCache(videoId, file);

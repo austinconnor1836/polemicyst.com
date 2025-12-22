@@ -1,25 +1,25 @@
 // /src/app/api/transcribe/route.ts
-import { NextRequest } from "next/server";
-import { prisma } from "@shared/lib/prisma";
-import AWS from "aws-sdk";
+import { NextRequest } from 'next/server';
+import { prisma } from '@shared/lib/prisma';
+import AWS from 'aws-sdk';
 
-const S3_BUCKET = "clips-genie-uploads";
+const S3_BUCKET = 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION;
 
 const s3 = new AWS.S3({
   region: S3_REGION,
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  signatureVersion: "v4",
+  signatureVersion: 'v4',
 });
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
-  const file = formData.get("file") as File;
-  const videoId = formData.get("videoId") as string;
+  const file = formData.get('file') as File;
+  const videoId = formData.get('videoId') as string;
 
   if (!file || !videoId) {
-    return new Response("Missing file or videoId", { status: 400 });
+    return new Response('Missing file or videoId', { status: 400 });
   }
 
   try {
@@ -28,28 +28,28 @@ export async function POST(req: NextRequest) {
     const blob = new Blob([buffer], { type: file.type });
 
     const proxyFormData = new FormData();
-    proxyFormData.set("file", blob, file.name);
+    proxyFormData.set('file', blob, file.name);
 
     // Send file to backend for transcription
-    const transcribeRes = await fetch("http://localhost:3001/api/transcribe", {
-      method: "POST",
+    const transcribeRes = await fetch('http://localhost:3001/api/transcribe', {
+      method: 'POST',
       body: proxyFormData,
     });
 
     const text = await transcribeRes.text();
 
     if (!transcribeRes.ok) {
-      console.error("Transcription failed:", text);
-      return new Response("Transcription error", { status: 500 });
+      console.error('Transcription failed:', text);
+      return new Response('Transcription error', { status: 500 });
     }
 
-    let transcript = "";
+    let transcript = '';
     try {
       const json = JSON.parse(text);
       transcript = json.transcript;
     } catch (e) {
-      console.error("Failed to parse transcription response:", text);
-      return new Response("Bad transcription response", { status: 500 });
+      console.error('Failed to parse transcription response:', text);
+      return new Response('Bad transcription response', { status: 500 });
     }
 
     // Save transcript to DB
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
 
     return Response.json({ success: true });
   } catch (err) {
-    console.error("Error transcribing video:", err);
-    return new Response("Failed to transcribe video", { status: 500 });
+    console.error('Error transcribing video:', err);
+    return new Response('Failed to transcribe video', { status: 500 });
   }
 }

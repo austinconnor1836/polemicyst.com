@@ -1,14 +1,14 @@
-"use client";
+'use client';
 
-import React from "react";
-import { PlatformProvider, usePlatformContext } from "./PlatformContext";
-import { Toaster } from "react-hot-toast";
-import PlatformList from "./PlatformList";
-import VideoUpload from "./VideoUpload";
-import DescriptionEditor from "./DescriptionEditor";
-import Header from "./Header";
-import PlatformStatusBar from "./PlatformStatusBar";
-import { Card, CardContent } from "@/components/ui/card";
+import React from 'react';
+import { PlatformProvider, usePlatformContext } from './PlatformContext';
+import { Toaster } from 'react-hot-toast';
+import PlatformList from './PlatformList';
+import VideoUpload from './VideoUpload';
+import DescriptionEditor from './DescriptionEditor';
+import Header from './Header';
+import PlatformStatusBar from './PlatformStatusBar';
+import { Card, CardContent } from '@/components/ui/card';
 
 const ClipsGenie = () => {
   return (

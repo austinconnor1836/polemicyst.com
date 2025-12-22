@@ -1,13 +1,13 @@
-import './ui/global.css'
-import React from 'react'
-import LocalFont from 'next/font/local'
-import { Metadata } from 'next'
-import { Analytics } from './_components/analytics'
-import { HamburgerProvider } from './context/HamburgerContext'
-import { inter } from './ui/fonts'
-import StoreProvider from './StoreProvider'
-import SharedLayout from './SharedLayout'
-import SessionProviderWrapper from './_components/SessionProviderWrapper' // ✅ Import the wrapper
+import './ui/global.css';
+import React from 'react';
+import LocalFont from 'next/font/local';
+import { Metadata } from 'next';
+import { Analytics } from './_components/analytics';
+import { HamburgerProvider } from './context/HamburgerContext';
+import { inter } from './ui/fonts';
+import StoreProvider from './StoreProvider';
+import SharedLayout from './SharedLayout';
+import SessionProviderWrapper from './_components/SessionProviderWrapper'; // ✅ Import the wrapper
 
 export const metadata: Metadata = {
   title: {
@@ -41,53 +41,27 @@ export const metadata: Metadata = {
   icons: {
     icon: '/favicon/favicon.png',
   },
-}
+};
 
 const calSans = LocalFont({
   src: '../../public/fonts/CalSans-SemiBold.ttf',
   variable: '--font-calsans',
-})
+});
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={[inter.variable, calSans.variable].join(' ')}>
       <head>
         <Analytics />
-        <link
-          rel="apple-touch-icon"
-          sizes="180x180"
-          href="/favicon/apple-touch-icon.png"
-        />
-        <link
-          rel="icon"
-          type="image/png"
-          sizes="32x32"
-          href="/favicon/favicon-32x32.png"
-        />
-        <link
-          rel="icon"
-          type="image/png"
-          sizes="32x32"
-          href="/favicon/favicon.png"
-        />
-        <link
-          rel="icon"
-          type="image/png"
-          sizes="16x16"
-          href="/favicon/favicon-16x16.png"
-        />
+        <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-touch-icon.png" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon/favicon.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon/favicon-16x16.png" />
         <link rel="manifest" href="/favicon/site.webmanifest" />
-        <link
-          rel="mask-icon"
-          href="/favicon/safari-pinned-tab.svg"
-          color="#000000"
-        />
+        <link rel="mask-icon" href="/favicon/safari-pinned-tab.svg" color="#000000" />
         <link rel="shortcut icon" href="/favicon/favicon.ico" />
         <meta name="msapplication-TileColor" content="#000000" />
-        <meta
-          name="msapplication-config"
-          content="/favicon/browserconfig.xml"
-        />
+        <meta name="msapplication-config" content="/favicon/browserconfig.xml" />
         <meta name="theme-color" content="#000" />
         <link rel="alternate" type="application/rss+xml" href="/feed.xml" />
       </head>
@@ -96,12 +70,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       >
         <StoreProvider>
           <HamburgerProvider>
-            <SessionProviderWrapper> {/* ✅ Wrap with Client Component */}
+            <SessionProviderWrapper>
+              {' '}
+              {/* ✅ Wrap with Client Component */}
               <SharedLayout>{children}</SharedLayout>
             </SessionProviderWrapper>
           </HamburgerProvider>
         </StoreProvider>
       </body>
     </html>
-  )
+  );
 }

@@ -7,6 +7,7 @@ If you change how scoring works, how candidates are selected, which models are c
 ## Current LLM scoring architecture
 
 ### High-level flow
+
 - **Candidate generation**: transcript windows produced server-side from `feedVideo.transcriptJson`
 - **Cheap scoring (heuristic)**: deterministic 0..10 heuristic score for all candidates (fast + offline)
 - **Multimodal scoring (Gemini)**: optional/capped rerank using frames + optional audio + transcript
@@ -14,7 +15,9 @@ If you change how scoring works, how candidates are selected, which models are c
 - **Video-level decision**: explicit `hasViralMoments` decision computed from the scored distribution + selection opts
 
 ### Council-style scoring (single-call)
+
 Instead of calling many models per candidate, we use a **single multimodal Gemini call** that returns multiple specialist subscores:
+
 - `score` (overall)
 - `hookScore`
 - `contextScore`
@@ -28,7 +31,9 @@ The backend then **aggregates** these subscores deterministically into the final
 ## User-facing controls → backend behavior
 
 ### Virality settings (UI)
+
 In the Feeds modal, users can set:
+
 - **Target platform**: `all | reels | shorts | youtube`
 - **Content style**: `auto | politics | comedy | education | podcast | gaming | vlog | other`
 - **Safer clips**: boolean
@@ -37,6 +42,7 @@ In the Feeds modal, users can set:
 - **Include audio**: increases multimodal analysis cost
 
 ### How those map to scoring
+
 - **`targetPlatform`**:
   - tunes transcript window sizing (short for Reels/Shorts, longer for YouTube)
   - tunes aggregation weights (hook vs context vs captionability)
@@ -50,6 +56,7 @@ In the Feeds modal, users can set:
 ## Change log
 
 ### 2025-12-15
+
 - Added **content-style + platform + safety** controls in UI and plumbed through:
   - `saferClips`, `targetPlatform`, `contentStyle` passed via queue → worker → backend scoring
 - Added transcript-based **auto content style detection**.
@@ -58,5 +65,3 @@ In the Feeds modal, users can set:
 - Added a **video-level virality decision** returned from `/api/clip-candidates` (`hasViralMoments`, reason, cutoff/top-score diagnostics).
 - Improved the video-level decision with **platform-aware quality gates** (hook/context/captionability) and an optional `recommendation` string for what to try next when no moments are found.
 - Dialog UX: made `DialogContent` scrollable by default and constrained tall media previews (feeds modal).
-
-

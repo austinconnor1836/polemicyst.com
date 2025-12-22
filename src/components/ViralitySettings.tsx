@@ -1,58 +1,90 @@
-"use client"
+'use client';
 
-import React from "react"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import React from 'react';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
-export type ScoringMode = "hybrid" | "gemini" | "heuristic"
-export type StrictnessPreset = "strict" | "balanced" | "loose"
-export type TargetPlatform = "all" | "reels" | "shorts" | "youtube"
-export type ContentStyle = "auto" | "politics" | "comedy" | "education" | "podcast" | "gaming" | "vlog" | "other"
+export type ScoringMode = 'hybrid' | 'gemini' | 'heuristic';
+export type StrictnessPreset = 'strict' | 'balanced' | 'loose';
+export type TargetPlatform = 'all' | 'reels' | 'shorts' | 'youtube';
+export type ContentStyle =
+  | 'auto'
+  | 'politics'
+  | 'comedy'
+  | 'education'
+  | 'podcast'
+  | 'gaming'
+  | 'vlog'
+  | 'other';
 
 export type StrictnessConfig = {
-  minCandidates: number
-  maxCandidates: number
-  minScore: number
-  percentile: number
-  maxGeminiCandidates: number
-}
+  minCandidates: number;
+  maxCandidates: number;
+  minScore: number;
+  percentile: number;
+  maxGeminiCandidates: number;
+};
 
 export function getStrictnessConfig(preset: StrictnessPreset): StrictnessConfig {
   switch (preset) {
-    case "strict":
-      return { minScore: 7.0, percentile: 0.9, minCandidates: 3, maxCandidates: 12, maxGeminiCandidates: 18 }
-    case "loose":
-      return { minScore: 6.0, percentile: 0.75, minCandidates: 5, maxCandidates: 24, maxGeminiCandidates: 36 }
-    case "balanced":
+    case 'strict':
+      return {
+        minScore: 7.0,
+        percentile: 0.9,
+        minCandidates: 3,
+        maxCandidates: 12,
+        maxGeminiCandidates: 18,
+      };
+    case 'loose':
+      return {
+        minScore: 6.0,
+        percentile: 0.75,
+        minCandidates: 5,
+        maxCandidates: 24,
+        maxGeminiCandidates: 36,
+      };
+    case 'balanced':
     default:
-      return { minScore: 6.5, percentile: 0.85, minCandidates: 3, maxCandidates: 20, maxGeminiCandidates: 24 }
+      return {
+        minScore: 6.5,
+        percentile: 0.85,
+        minCandidates: 3,
+        maxCandidates: 20,
+        maxGeminiCandidates: 24,
+      };
   }
 }
 
 export type ViralitySettingsValue = {
-  scoringMode: ScoringMode
-  strictnessPreset: StrictnessPreset
-  includeAudio: boolean
-  saferClips: boolean
-  targetPlatform: TargetPlatform
-  contentStyle: ContentStyle
-  showAdvanced: boolean
-}
+  scoringMode: ScoringMode;
+  strictnessPreset: StrictnessPreset;
+  includeAudio: boolean;
+  saferClips: boolean;
+  targetPlatform: TargetPlatform;
+  contentStyle: ContentStyle;
+  showAdvanced: boolean;
+};
 
 export type ViralitySettingsProps = {
-  value: ViralitySettingsValue
-  onChange: (next: ViralitySettingsValue) => void
-  className?: string
-}
+  value: ViralitySettingsValue;
+  onChange: (next: ViralitySettingsValue) => void;
+  className?: string;
+};
 
 export default function ViralitySettings({ value, onChange, className }: ViralitySettingsProps) {
-  const strictnessConfig = getStrictnessConfig(value.strictnessPreset)
+  const strictnessConfig = getStrictnessConfig(value.strictnessPreset);
 
   return (
-    <div className={cn("space-y-4", className)}>
+    <div className={cn('space-y-4', className)}>
       <div className="space-y-2">
         <Label>Target platform</Label>
         <Select
@@ -95,15 +127,18 @@ export default function ViralitySettings({ value, onChange, className }: Viralit
           </SelectContent>
         </Select>
         <div className="text-xs text-gray-500">
-          {value.contentStyle === "auto"
-            ? "We’ll auto-detect style from the transcript during scoring."
-            : "Overrides auto-detection and tunes scoring for this style."}
+          {value.contentStyle === 'auto'
+            ? 'We’ll auto-detect style from the transcript during scoring.'
+            : 'Overrides auto-detection and tunes scoring for this style.'}
         </div>
       </div>
 
       <div className="space-y-2">
         <Label>Scoring</Label>
-        <Select value={value.scoringMode} onValueChange={(v) => onChange({ ...value, scoringMode: v as ScoringMode })}>
+        <Select
+          value={value.scoringMode}
+          onValueChange={(v) => onChange({ ...value, scoringMode: v as ScoringMode })}
+        >
           <SelectTrigger>
             <SelectValue placeholder="Select scoring mode" />
           </SelectTrigger>
@@ -131,7 +166,8 @@ export default function ViralitySettings({ value, onChange, className }: Viralit
           </SelectContent>
         </Select>
         <div className="text-xs text-gray-500">
-          Current: minScore {strictnessConfig.minScore}, percentile {strictnessConfig.percentile}, max {strictnessConfig.maxCandidates}
+          Current: minScore {strictnessConfig.minScore}, percentile {strictnessConfig.percentile},
+          max {strictnessConfig.maxCandidates}
         </div>
       </div>
 
@@ -149,7 +185,9 @@ export default function ViralitySettings({ value, onChange, className }: Viralit
       <div className="flex items-center justify-between gap-3">
         <div className="space-y-0.5">
           <Label>Safer clips</Label>
-          <div className="text-xs text-gray-500">Downranks high-risk segments and favors context-complete moments</div>
+          <div className="text-xs text-gray-500">
+            Downranks high-risk segments and favors context-complete moments
+          </div>
         </div>
         <Switch
           checked={value.saferClips}
@@ -164,13 +202,14 @@ export default function ViralitySettings({ value, onChange, className }: Viralit
         className="h-auto py-0 text-xs"
         onClick={() => onChange({ ...value, showAdvanced: !value.showAdvanced })}
       >
-        {value.showAdvanced ? "Hide advanced" : "Show advanced"}
+        {value.showAdvanced ? 'Hide advanced' : 'Show advanced'}
       </Button>
 
       {value.showAdvanced && (
         <div className="rounded border border-gray-200 bg-gray-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/40">
           <div className="mb-2 text-xs text-gray-700 dark:text-gray-300">
-            Advanced knobs are cost controls. Gemini calls are capped by <code>maxGeminiCandidates</code>.
+            Advanced knobs are cost controls. Gemini calls are capped by{' '}
+            <code>maxGeminiCandidates</code>.
           </div>
           <div className="grid grid-cols-2 gap-2 text-sm">
             <div>
@@ -197,8 +236,5 @@ export default function ViralitySettings({ value, onChange, className }: Viralit
         </div>
       )}
     </div>
-  )
+  );
 }
-
-
-

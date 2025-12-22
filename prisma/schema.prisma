@@ -67,6 +67,7 @@ model Video {
 
   // Added relation for pipeline segments
   segments        Segment[]
+  rhetoricLabels  SegmentRhetoricLabel[]
 }
 
 model VideoFeed {
@@ -142,6 +143,7 @@ model Segment {
   score     Float
   selected  Boolean  @default(false)
   clips     Clip[]
+  rhetoricLabels SegmentRhetoricLabel[]
 
   @@index([videoId])
   @@index([score])
@@ -175,4 +177,15 @@ model Metric {
   collectedAt DateTime @default(now())
 
   @@index([clipId])
+}
+
+model SegmentRhetoricLabel {
+  id        String   @id @default(uuid())
+  segmentId String
+  segment   Segment  @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  label     Float
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([segmentId])
 }

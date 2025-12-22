@@ -1,7 +1,7 @@
-import { getServerSession } from "next-auth";
-import { NextResponse } from "next/server";
-import { authOptions } from "../../../../auth";
-import { prisma } from "@shared/lib/prisma";
+import { getServerSession } from 'next-auth';
+import { NextResponse } from 'next/server';
+import { authOptions } from '../../../../auth';
+import { prisma } from '@shared/lib/prisma';
 
 /**
  * Clips are currently stored as `Video` rows.
@@ -11,7 +11,7 @@ import { prisma } from "@shared/lib/prisma";
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const user = await prisma.user.findUnique({
@@ -20,7 +20,7 @@ export async function GET() {
   });
 
   if (!user) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
   const clips = await prisma.video.findMany({
@@ -30,14 +30,11 @@ export async function GET() {
         { sourceVideoId: { not: null } },
         // Legacy heuristic for older clips created before `sourceVideoId` was set.
         {
-          AND: [
-            { s3Key: { endsWith: "-clip.mp4" } },
-            { fileName: "" },
-          ],
+          AND: [{ s3Key: { endsWith: '-clip.mp4' } }, { fileName: '' }],
         },
       ],
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: 'desc' },
     include: {
       sourceVideo: {
         select: { id: true, videoTitle: true, s3Url: true },
@@ -47,5 +44,3 @@ export async function GET() {
 
   return NextResponse.json(clips);
 }
-
-

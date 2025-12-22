@@ -1,13 +1,20 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
-import { Copy, Download, ExternalLink, Play, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
+import { Copy, Download, ExternalLink, Play, RefreshCw, Search, Trash2, X } from 'lucide-react';
 
 function formatRelativeTime(iso?: string | null) {
   if (!iso) return null;
@@ -15,14 +22,14 @@ function formatRelativeTime(iso?: string | null) {
   const seconds = Math.round((date.getTime() - Date.now()) / 1000);
   const absSeconds = Math.abs(seconds);
 
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-  if (absSeconds < 60) return rtf.format(seconds, "second");
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+  if (absSeconds < 60) return rtf.format(seconds, 'second');
   const minutes = Math.round(seconds / 60);
-  if (Math.abs(minutes) < 60) return rtf.format(minutes, "minute");
+  if (Math.abs(minutes) < 60) return rtf.format(minutes, 'minute');
   const hours = Math.round(minutes / 60);
-  if (Math.abs(hours) < 24) return rtf.format(hours, "hour");
+  if (Math.abs(hours) < 24) return rtf.format(hours, 'hour');
   const days = Math.round(hours / 24);
-  return rtf.format(days, "day");
+  return rtf.format(days, 'day');
 }
 
 type ClipVideo = {
@@ -42,7 +49,7 @@ export default function ClipsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
 
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState('');
   const [selectedClip, setSelectedClip] = useState<ClipVideo | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deletingClipId, setDeletingClipId] = useState<string | null>(null);
@@ -52,30 +59,30 @@ export default function ClipsPage() {
     setIsLoading(true);
     setPageError(null);
     try {
-      const res = await fetch("/api/clips");
-      if (!res.ok) throw new Error("Failed to load clips");
+      const res = await fetch('/api/clips');
+      if (!res.ok) throw new Error('Failed to load clips');
       const data = (await res.json()) as ClipVideo[];
       setClips(data);
     } catch (err) {
       console.error(err);
-      setPageError("Couldn’t load clips. Try refreshing.");
+      setPageError('Couldn’t load clips. Try refreshing.');
     } finally {
       setIsLoading(false);
     }
   };
 
   const deleteClip = async (clip: ClipVideo) => {
-    if (!confirm(`Delete clip "${clip.videoTitle || "Untitled clip"}"?`)) return;
+    if (!confirm(`Delete clip "${clip.videoTitle || 'Untitled clip'}"?`)) return;
     setDeletingClipId(clip.id);
     setPageError(null);
     try {
-      const res = await fetch(`/api/clips/${clip.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete clip");
+      const res = await fetch(`/api/clips/${clip.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete clip');
       setClips((prev) => prev.filter((c) => c.id !== clip.id));
       if (selectedClip?.id === clip.id) setIsModalOpen(false);
     } catch (err) {
       console.error(err);
-      setPageError("Failed to delete clip. Try again.");
+      setPageError('Failed to delete clip. Try again.');
     } finally {
       setDeletingClipId(null);
     }
@@ -89,7 +96,7 @@ export default function ClipsPage() {
       window.setTimeout(() => setCopiedClipId((cur) => (cur === clip.id ? null : cur)), 1200);
     } catch (err) {
       console.error(err);
-      alert("Failed to copy link");
+      alert('Failed to copy link');
     }
   };
 
@@ -101,9 +108,9 @@ export default function ClipsPage() {
     const q = query.trim().toLowerCase();
     if (!q) return clips;
     return clips.filter((c) => {
-      const title = (c.videoTitle || "").toLowerCase();
-      const desc = (c.sharedDescription || "").toLowerCase();
-      const sourceTitle = (c.sourceVideo?.videoTitle || "").toLowerCase();
+      const title = (c.videoTitle || '').toLowerCase();
+      const desc = (c.sharedDescription || '').toLowerCase();
+      const sourceTitle = (c.sourceVideo?.videoTitle || '').toLowerCase();
       return title.includes(q) || desc.includes(q) || sourceTitle.includes(q);
     });
   }, [clips, query]);
@@ -139,7 +146,7 @@ export default function ClipsPage() {
                   variant="ghost"
                   size="icon"
                   className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
-                  onClick={() => setQuery("")}
+                  onClick={() => setQuery('')}
                   title="Clear search"
                 >
                   <X className="h-4 w-4" />
@@ -154,7 +161,7 @@ export default function ClipsPage() {
               className="shrink-0"
               title="Refresh clips"
             >
-              <RefreshCw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />
+              <RefreshCw className={cn('mr-2 h-4 w-4', isLoading && 'animate-spin')} />
               Refresh
             </Button>
           </div>
@@ -172,7 +179,7 @@ export default function ClipsPage() {
                 disabled={isLoading}
                 className="w-fit"
               >
-                <RefreshCw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />
+                <RefreshCw className={cn('mr-2 h-4 w-4', isLoading && 'animate-spin')} />
                 Retry
               </Button>
             </CardContent>
@@ -261,7 +268,9 @@ export default function ClipsPage() {
                     disabled={deletingClipId === clip.id}
                     title="Delete clip"
                   >
-                    <Trash2 className={cn("h-4 w-4", deletingClipId === clip.id && "animate-pulse")} />
+                    <Trash2
+                      className={cn('h-4 w-4', deletingClipId === clip.id && 'animate-pulse')}
+                    />
                   </Button>
                 </div>
 
@@ -271,13 +280,15 @@ export default function ClipsPage() {
                       ? clip.videoTitle
                       : clip.sourceVideo?.videoTitle
                         ? `Clip from ${clip.sourceVideo.videoTitle}`
-                        : "Untitled clip"}
+                        : 'Untitled clip'}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">Clip</Badge>
                     {!clip.sourceVideoId ? <Badge variant="outline">Legacy</Badge> : null}
                     {clip.createdAt ? (
-                      <span className="text-xs text-muted-foreground">{formatRelativeTime(clip.createdAt)}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatRelativeTime(clip.createdAt)}
+                      </span>
                     ) : null}
                   </div>
                 </div>
@@ -296,15 +307,19 @@ export default function ClipsPage() {
                   ? selectedClip.videoTitle
                   : selectedClip.sourceVideo?.videoTitle
                     ? `Clip from ${selectedClip.sourceVideo.videoTitle}`
-                    : "Untitled clip"}
+                    : 'Untitled clip'}
               </DialogTitle>
               <DialogDescription>Preview your clip and manage it.</DialogDescription>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Badge variant="outline">Clip</Badge>
                 {!selectedClip.sourceVideoId ? <Badge variant="outline">Legacy</Badge> : null}
-                {selectedClip.sourceVideo?.videoTitle ? <Badge variant="secondary">From: {selectedClip.sourceVideo.videoTitle}</Badge> : null}
+                {selectedClip.sourceVideo?.videoTitle ? (
+                  <Badge variant="secondary">From: {selectedClip.sourceVideo.videoTitle}</Badge>
+                ) : null}
                 {selectedClip.createdAt ? (
-                  <Badge variant="outline">Created {formatRelativeTime(selectedClip.createdAt)}</Badge>
+                  <Badge variant="outline">
+                    Created {formatRelativeTime(selectedClip.createdAt)}
+                  </Badge>
                 ) : null}
               </div>
             </DialogHeader>
@@ -354,7 +369,7 @@ export default function ClipsPage() {
                     title="Copy clip URL"
                   >
                     <Copy className="mr-2 h-4 w-4" />
-                    {copiedClipId === selectedClip.id ? "Copied" : "Copy link"}
+                    {copiedClipId === selectedClip.id ? 'Copied' : 'Copy link'}
                   </Button>
                 </>
               ) : null}
@@ -373,7 +388,7 @@ export default function ClipsPage() {
                 }}
                 disabled={deletingClipId === selectedClip.id}
               >
-                {deletingClipId === selectedClip.id ? "Deleting..." : "Delete clip"}
+                {deletingClipId === selectedClip.id ? 'Deleting...' : 'Delete clip'}
               </Button>
               <Button variant="outline" onClick={() => setIsModalOpen(false)}>
                 Close
@@ -385,5 +400,3 @@ export default function ClipsPage() {
     </div>
   );
 }
-
-

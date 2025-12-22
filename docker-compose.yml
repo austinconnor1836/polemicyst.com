@@ -4,7 +4,7 @@ services:
     image: postgres:15
     container_name: clips-genie-db
     ports:
-      - "5432:5432"
+      - '5432:5432'
     environment:
       POSTGRES_DB: clips-genie
       POSTGRES_USER: postgres
@@ -13,22 +13,22 @@ services:
       - pg-data:/var/lib/postgresql/data
     networks:
       - app-network
-  
+
   # Redis for job queuing
   redis:
     image: redis:alpine
     ports:
-      - "6379:6379"
+      - '6379:6379'
     restart: unless-stopped
     networks:
       - app-network
-  
+
   backend:
     build:
       context: .
       dockerfile: ./backend/Dockerfile
     ports:
-      - "3001:3001"
+      - '3001:3001'
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
       - REDIS_HOST=redis
@@ -48,16 +48,16 @@ services:
       - NODE_ENV=production
     depends_on:
       - redis
-    command: ["node", "index.js"]
+    command: ['node', 'index.js']
     restart: unless-stopped
     networks:
       - app-network
-  
+
   clip-metadata-worker:
     build:
       context: .
       dockerfile: ./clip-worker/Dockerfile
-    command: ["node", "generate/generateMetadataWorker.js"]
+    command: ['node', 'generate/generateMetadataWorker.js']
     environment:
       - REDIS_HOST=redis
       - NODE_ENV=production
@@ -67,7 +67,6 @@ services:
     restart: unless-stopped
     networks:
       - app-network
-
 
   # Faster Whisper for transcription
   faster-whisper:
@@ -94,19 +93,19 @@ services:
     volumes:
       - ./backend/scripts/start-ollama.sh:/start.sh
       - ollama-data:/root/.ollama
-    entrypoint: ["/bin/bash", "/start.sh"]
+    entrypoint: ['/bin/bash', '/start.sh']
     ports:
-      - "11434:11434"
+      - '11434:11434'
     restart: unless-stopped
     networks:
       - app-network
-  
+
   poller:
     build:
       context: .
       dockerfile: ./workers/workers.Dockerfile
     volumes:
-      - ./shared:/app/shared  # ⬅️ needed for prisma and shared code
+      - ./shared:/app/shared # ⬅️ needed for prisma and shared code
       - ./prisma:/app/prisma
     depends_on:
       - backend

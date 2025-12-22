@@ -26,7 +26,7 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
   try {
     const feedVideo = await prisma.feedVideo.findUnique({ where: { id: feedVideoId } });
     if (!feedVideo) {
-      return res.status(404).json({ error: "Feed video not found" });
+      return res.status(404).json({ error: 'Feed video not found' });
     }
 
     // Step 1: Transcribe the video
@@ -38,7 +38,7 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
       console.error('❌ Transcription failed:', transcriptionError);
       return res.status(500).json({
         error: 'Transcription failed',
-        details: transcriptionError.message || 'Unknown transcription error'
+        details: transcriptionError.message || 'Unknown transcription error',
       });
     }
 
@@ -57,18 +57,18 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
       (await prisma.video.create({
         data: {
           userId,
-          videoTitle: feedVideo.title ?? "Feed video",
-          s3Url: feedVideo.s3Url ?? "",
-          s3Key: "",
-          transcript: feedVideo.transcript ?? "",
+          videoTitle: feedVideo.title ?? 'Feed video',
+          s3Url: feedVideo.s3Url ?? '',
+          s3Key: '',
+          transcript: feedVideo.transcript ?? '',
           approvedForSplicing: false,
-          fileName: "",
-          sharedDescription: "",
-          facebookTemplate: "",
-          instagramTemplate: "",
-          youtubeTemplate: "",
-          blueskyTemplate: "",
-          twitterTemplate: "",
+          fileName: '',
+          sharedDescription: '',
+          facebookTemplate: '',
+          instagramTemplate: '',
+          youtubeTemplate: '',
+          blueskyTemplate: '',
+          twitterTemplate: '',
         },
       }));
 
@@ -97,22 +97,26 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
           blueskyTemplate: '',
           twitterTemplate: '',
           sharedDescription: '',
-          fileName: ''
-        }
+          fileName: '',
+        },
       });
 
-      await queue.add('generate', {
-        videoId: created.id,
-        transcript: clip.text
-      }, {
-        attempts: 5,
-        backoff: {
-          type: 'exponential',
-          delay: 1000
+      await queue.add(
+        'generate',
+        {
+          videoId: created.id,
+          transcript: clip.text,
         },
-        removeOnComplete: true,
-        removeOnFail: false,
-      });
+        {
+          attempts: 5,
+          backoff: {
+            type: 'exponential',
+            delay: 1000,
+          },
+          removeOnComplete: true,
+          removeOnFail: false,
+        }
+      );
 
       // Clean up temp files
       await fs.unlink(clip.videoPath).catch(() => {});
@@ -123,7 +127,6 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     }
 
     return res.json({ message: '✅ Clips generated successfully', clips: createdClips });
-
   } catch (err: any) {
     console.error('❌ Clip generation failed:', err);
     return res.status(500).json({ error: 'Clip generation failed', details: err.message });

@@ -1,19 +1,19 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "../../../../../auth";
-import { PrismaClient } from "@prisma/client";
+import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '../../../../../auth';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) {
-    return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
+    return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
   }
 
   const { provider } = await req.json();
   if (!provider) {
-    return NextResponse.json({ message: "Provider is required" }, { status: 400 });
+    return NextResponse.json({ message: 'Provider is required' }, { status: 400 });
   }
 
   try {
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     await prisma.account.deleteMany({
       where: {
         userId: session.user.id,
-        provider: provider === "facebook" ? { in: ["facebook", "instagram"] } : provider,
+        provider: provider === 'facebook' ? { in: ['facebook', 'instagram'] } : provider,
       },
     });
 
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       remainingProviders: remainingProviders.map((acc: any) => acc.provider),
     });
   } catch (error) {
-    console.error("Logout error:", error);
-    return NextResponse.json({ message: "Logout failed" }, { status: 500 });
+    console.error('Logout error:', error);
+    return NextResponse.json({ message: 'Logout failed' }, { status: 500 });
   }
 }

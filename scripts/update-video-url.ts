@@ -1,4 +1,3 @@
-
 import { Prisma } from '@prisma/client';
 import { prisma } from '../shared/lib/prisma';
 
@@ -7,7 +6,7 @@ async function main() {
   const newUrl = process.env.NEW_URL;
 
   if (!feedVideoId || !newUrl) {
-    console.error("Provide FEED_VIDEO_ID and NEW_URL");
+    console.error('Provide FEED_VIDEO_ID and NEW_URL');
     process.exit(1);
   }
 
@@ -19,13 +18,13 @@ async function main() {
       transcriptJson: Prisma.DbNull,
     },
   });
-  
+
   // Also delete any partial Video record to allow retry?
   // No, the worker handles idempotency (or creates duplicates, which is fine for test).
-  
+
   console.log(`Updated ${feedVideoId} to ${newUrl}`);
 }
 
 main()
-  .catch(e => console.error(e))
+  .catch((e) => console.error(e))
   .finally(async () => await prisma.$disconnect());

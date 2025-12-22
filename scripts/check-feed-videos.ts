@@ -1,4 +1,3 @@
-
 import { prisma } from '../shared/lib/prisma';
 
 async function main() {
@@ -10,15 +9,15 @@ async function main() {
       title: true,
       s3Url: true,
       feedId: true,
-      thumbnailUrl: true
-    }
+      thumbnailUrl: true,
+    },
   });
 
   console.log(JSON.stringify(videos, null, 2));
 }
 
 main()
-  .catch(e => {
+  .catch((e) => {
     console.error(e);
     process.exit(1);
   })

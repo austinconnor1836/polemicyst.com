@@ -4,7 +4,11 @@
     "dev": "next dev --experimental-https",
     "build": "npx prisma generate && next build",
     "build:worker": "tsc",
-    "start": "next start"
+    "start": "next start",
+    "lint": "next lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky install"
   },
   "dependencies": {
     "@atproto/api": "^0.14.7",
@@ -71,10 +75,24 @@
     "@types/react": "18.3.20",
     "@types/react-dom": "^18.3.0",
     "@types/xml2js": "^0.4.14",
+    "husky": "^9.1.6",
+    "lint-staged": "^15.2.10",
+    "eslint": "^9.18.0",
+    "eslint-config-next": "^15.2.2",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.2.1",
     "dotenv": "^17.2.3",
     "postcss": "^8.4.38",
     "prisma": "^6.19.1",
+    "prettier": "^3.4.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,mdx,css,scss,html}": "prettier --write"
   }
 }

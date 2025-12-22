@@ -11,7 +11,8 @@ import { downloadFeedVideoToTemp } from '@backend/utils/download';
 import path from 'path';
 import { promises as fs } from 'fs';
 
-const redisHost = process.env.REDIS_HOST === 'redis' ? 'localhost' : (process.env.REDIS_HOST || 'localhost');
+const redisHost =
+  process.env.REDIS_HOST === 'redis' ? 'localhost' : process.env.REDIS_HOST || 'localhost';
 const redis = new Redis({
   host: redisHost,
   port: 6379,
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
           name: 'Manual Uploads',
           sourceType: 'manual',
           sourceUrl: 'manual://uploads',
-          pollingInterval: 0, 
+          pollingInterval: 0,
         },
       });
     }
@@ -109,13 +110,13 @@ export async function POST(req: NextRequest) {
       try {
         const settings = manualFeed.viralitySettings as unknown as ViralitySettingsValue;
         const strictnessConfig = getStrictnessConfig(settings.strictnessPreset || 'balanced');
-        
+
         await clipGenerationQueue.add(
           'clip-generation',
           {
             feedVideoId: newVideo.id,
             userId: user.id,
-            aspectRatio: "9:16",
+            aspectRatio: '9:16',
             scoringMode: settings.scoringMode || 'hybrid',
             includeAudio: settings.includeAudio || false,
             saferClips: settings.saferClips ?? true,

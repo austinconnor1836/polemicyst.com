@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from 'react';
 
-type Quality = "auto" | "low" | "high";
+type Quality = 'auto' | 'low' | 'high';
 
 type HomeHeroBackgroundProps = {
   className?: string;
@@ -12,14 +12,14 @@ type HomeHeroBackgroundProps = {
 function compileShader(
   gl: WebGLRenderingContext | WebGL2RenderingContext,
   type: number,
-  source: string,
+  source: string
 ) {
   const shader = gl.createShader(type);
-  if (!shader) throw new Error("Failed to create shader");
+  if (!shader) throw new Error('Failed to create shader');
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    const info = gl.getShaderInfoLog(shader) || "Unknown shader error";
+    const info = gl.getShaderInfoLog(shader) || 'Unknown shader error';
     gl.deleteShader(shader);
     throw new Error(info);
   }
@@ -29,19 +29,19 @@ function compileShader(
 function createProgram(
   gl: WebGLRenderingContext | WebGL2RenderingContext,
   vsSource: string,
-  fsSource: string,
+  fsSource: string
 ) {
   const vs = compileShader(gl, gl.VERTEX_SHADER, vsSource);
   const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSource);
   const program = gl.createProgram();
-  if (!program) throw new Error("Failed to create program");
+  if (!program) throw new Error('Failed to create program');
   gl.attachShader(program, vs);
   gl.attachShader(program, fs);
   gl.linkProgram(program);
   gl.deleteShader(vs);
   gl.deleteShader(fs);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const info = gl.getProgramInfoLog(program) || "Unknown link error";
+    const info = gl.getProgramInfoLog(program) || 'Unknown link error';
     gl.deleteProgram(program);
     throw new Error(info);
   }
@@ -49,9 +49,9 @@ function createProgram(
 }
 
 function getDpr(quality: Quality) {
-  const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-  if (quality === "low") return Math.min(dpr, 1);
-  if (quality === "high") return Math.min(dpr, 2);
+  const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+  if (quality === 'low') return Math.min(dpr, 1);
+  if (quality === 'high') return Math.min(dpr, 2);
 
   // auto
   const deviceMemory = (navigator as any).deviceMemory as number | undefined;
@@ -61,8 +61,8 @@ function getDpr(quality: Quality) {
 }
 
 export default function HomeHeroBackground({
-  className = "",
-  quality = "auto",
+  className = '',
+  quality = 'auto',
 }: HomeHeroBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pointer = useRef({ x: 0.0, y: 0.0 });
@@ -231,32 +231,29 @@ export default function HomeHeroBackground({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const prefersReducedMotion = window.matchMedia?.(
-      "(prefers-reduced-motion: reduce)",
-    )?.matches;
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
 
     // Try WebGL2 first, then WebGL1.
     const gl =
-      (canvas.getContext("webgl2", {
+      (canvas.getContext('webgl2', {
         alpha: true,
         antialias: false,
         premultipliedAlpha: false,
         preserveDrawingBuffer: false,
-        powerPreference: "high-performance",
+        powerPreference: 'high-performance',
       }) as WebGL2RenderingContext | null) ||
-      (canvas.getContext("webgl", {
+      (canvas.getContext('webgl', {
         alpha: true,
         antialias: false,
         premultipliedAlpha: false,
         preserveDrawingBuffer: false,
-        powerPreference: "high-performance",
+        powerPreference: 'high-performance',
       }) as WebGLRenderingContext | null);
 
     if (!gl) return;
 
     const isWebGL2 =
-      typeof WebGL2RenderingContext !== "undefined" &&
-      gl instanceof WebGL2RenderingContext;
+      typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
 
     let program: WebGLProgram | null = null;
     let aPos = -1;
@@ -277,30 +274,22 @@ export default function HomeHeroBackground({
       program = createProgram(
         gl,
         isWebGL2 ? shaders.vs300 : shaders.vs100,
-        isWebGL2 ? shaders.fs300 : shaders.fs100,
+        isWebGL2 ? shaders.fs300 : shaders.fs100
       );
       gl.useProgram(program);
 
       // Fullscreen triangle positions.
       buffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-      gl.bufferData(
-        gl.ARRAY_BUFFER,
-        new Float32Array([
-          -1, -1,
-          3, -1,
-          -1, 3,
-        ]),
-        gl.STATIC_DRAW,
-      );
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
 
-      aPos = gl.getAttribLocation(program, "a_pos");
+      aPos = gl.getAttribLocation(program, 'a_pos');
       gl.enableVertexAttribArray(aPos);
       gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
 
-      uRes = gl.getUniformLocation(program, "u_res");
-      uTime = gl.getUniformLocation(program, "u_time");
-      uPtr = gl.getUniformLocation(program, "u_ptr");
+      uRes = gl.getUniformLocation(program, 'u_res');
+      uTime = gl.getUniformLocation(program, 'u_time');
+      uPtr = gl.getUniformLocation(program, 'u_ptr');
     } catch (e) {
       // Shader compilation failed (e.g. older GPUs). Bail quietly.
       cleanup();
@@ -342,8 +331,8 @@ export default function HomeHeroBackground({
 
     const ro = new ResizeObserver(() => resize());
     ro.observe(canvas);
-    window.addEventListener("pointermove", onPointerMove, { passive: true });
-    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    document.addEventListener('visibilitychange', onVisibility);
 
     // FPS budget (auto: 60 on strong devices, 30 on lower).
     const deviceMemory = (navigator as any).deviceMemory as number | undefined;
@@ -385,8 +374,8 @@ export default function HomeHeroBackground({
 
     return () => {
       ro.disconnect();
-      window.removeEventListener("pointermove", onPointerMove);
-      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('visibilitychange', onVisibility);
       cleanup();
     };
   }, [quality, shaders.fs100, shaders.fs300, shaders.vs100, shaders.vs300]);
@@ -398,7 +387,7 @@ export default function HomeHeroBackground({
         className="h-full w-full"
         style={{
           // Helps Safari/iOS compositing.
-          transform: "translateZ(0)",
+          transform: 'translateZ(0)',
         }}
       />
       {/* Vignette + subtle highlight to “seat” content */}
@@ -406,19 +395,17 @@ export default function HomeHeroBackground({
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(80% 70% at 50% 35%, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.00) 55%), radial-gradient(120% 120% at 50% 100%, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.95) 55%, rgba(0,0,0,1.0) 100%)",
-          mixBlendMode: "overlay",
+            'radial-gradient(80% 70% at 50% 35%, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.00) 55%), radial-gradient(120% 120% at 50% 100%, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.95) 55%, rgba(0,0,0,1.0) 100%)',
+          mixBlendMode: 'overlay',
         }}
       />
       <div
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(120% 100% at 50% 50%, rgba(0,0,0,0.0) 0%, rgba(0,0,0,0.45) 70%, rgba(0,0,0,0.85) 100%)",
+            'radial-gradient(120% 100% at 50% 50%, rgba(0,0,0,0.0) 0%, rgba(0,0,0,0.45) 70%, rgba(0,0,0,0.85) 100%)',
         }}
       />
     </div>
   );
 }
-
-

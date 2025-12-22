@@ -16,12 +16,8 @@ const icons: Record<string, React.ReactNode> = {
 };
 
 const PlatformStatusBar = () => {
-  const {
-    isAuthenticated,
-    selectedPlatforms,
-    togglePlatform,
-    refreshAuthStatus,
-  } = usePlatformContext();
+  const { isAuthenticated, selectedPlatforms, togglePlatform, refreshAuthStatus } =
+    usePlatformContext();
   const { data: session } = useSession();
   const router = useRouter();
 

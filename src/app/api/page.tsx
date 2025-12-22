@@ -1,4 +1,4 @@
- 'use client'
+'use client';
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -40,11 +40,21 @@ export default function Home() {
             </div>
             <div className="space-y-2">
               <Label>Subject</Label>
-              <Input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} required />
+              <Input
+                type="text"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                required
+              />
             </div>
             <div className="space-y-2">
               <Label>Text</Label>
-              <Textarea value={text} onChange={(e) => setText(e.target.value)} required className="h-32" />
+              <Textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                required
+                className="h-32"
+              />
             </div>
             <div className="space-y-2">
               <Label>HTML</Label>

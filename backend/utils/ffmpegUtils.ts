@@ -1,4 +1,3 @@
-
 import { spawn } from 'child_process';
 import { PassThrough } from 'stream';
 import fetch from 'node-fetch';
@@ -14,18 +13,30 @@ function parseTimeToSeconds(t: string): number {
   return hh * 3600 + mm * 60 + ss;
 }
 
-export async function generateClipFromS3(inputPath: string, start: string, end: string, key: string) {
+export async function generateClipFromS3(
+  inputPath: string,
+  start: string,
+  end: string,
+  key: string
+) {
   const duration = parseTimeToSeconds(end) - parseTimeToSeconds(start);
   const isUrl = inputPath.startsWith('http');
 
   const ffmpegArgs = [
-    '-ss', start,
-    '-i', isUrl ? 'pipe:0' : inputPath,
-    '-t', duration.toString(),
-    '-c:v', 'libx264',
-    '-c:a', 'aac',
-    '-movflags', 'frag_keyframe+empty_moov',
-    '-f', 'mp4',
+    '-ss',
+    start,
+    '-i',
+    isUrl ? 'pipe:0' : inputPath,
+    '-t',
+    duration.toString(),
+    '-c:v',
+    'libx264',
+    '-c:a',
+    'aac',
+    '-movflags',
+    'frag_keyframe+empty_moov',
+    '-f',
+    'mp4',
     'pipe:1',
   ];
 
@@ -37,7 +48,7 @@ export async function generateClipFromS3(inputPath: string, start: string, end: 
   });
 
   if (isUrl) {
-    const inputStream = await fetch(inputPath).then(res => res.body!);
+    const inputStream = await fetch(inputPath).then((res) => res.body!);
     inputStream.pipe(ffmpeg.stdin!);
   }
 

@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     const fileExt = filename.split('.').pop();
     const key = `uploads/${session.user.email}/${randomUUID()}.${fileExt}`;
-    
+
     const presignedUrl = await s3.getSignedUrlPromise('putObject', {
       Bucket: 'clips-genie-uploads', // Hardcoded in existing s3.ts
       Key: key,

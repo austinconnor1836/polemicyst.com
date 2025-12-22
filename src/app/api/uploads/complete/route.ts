@@ -7,7 +7,8 @@ import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import { getStrictnessConfig, type ViralitySettingsValue } from '@/components/ViralitySettings';
 
-const redisHost = process.env.REDIS_HOST === 'redis' ? 'localhost' : (process.env.REDIS_HOST || 'localhost');
+const redisHost =
+  process.env.REDIS_HOST === 'redis' ? 'localhost' : process.env.REDIS_HOST || 'localhost';
 const redis = new Redis({
   host: redisHost,
   port: 6379,
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
     // 2. Create the FeedVideo record
     // We use the S3 URL format consistent with the rest of the app
     const s3Url = `https://clips-genie-uploads.s3.us-east-2.amazonaws.com/${key}`;
-    
+
     const newVideo = await prisma.feedVideo.create({
       data: {
         feedId: manualFeed.id,
@@ -72,13 +73,13 @@ export async function POST(req: NextRequest) {
       try {
         const settings = manualFeed.viralitySettings as unknown as ViralitySettingsValue;
         const strictnessConfig = getStrictnessConfig(settings.strictnessPreset || 'balanced');
-        
+
         await clipGenerationQueue.add(
           'clip-generation',
           {
             feedVideoId: newVideo.id,
             userId: user.id,
-            aspectRatio: "9:16", // Default for auto-gen, or could be stored in settings
+            aspectRatio: '9:16', // Default for auto-gen, or could be stored in settings
             scoringMode: settings.scoringMode || 'hybrid',
             includeAudio: settings.includeAudio || false,
             saferClips: settings.saferClips ?? true,

@@ -19,15 +19,15 @@ const Navbar: React.FC = () => {
   const menuRef = useRef<HTMLDivElement>(null);
 
   const getSystemIsDark = () => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ?? false;
   };
 
   const applyTheme = (mode: 'light' | 'dark' | 'system') => {
     // Tailwind uses the presence of the `dark` class (see tailwind.config.ts darkMode: "class")
     // so we only ever toggle that one.
-    const isDark = mode === "dark" || (mode === "system" && getSystemIsDark());
-    document.documentElement.classList.toggle("dark", isDark);
+    const isDark = mode === 'dark' || (mode === 'system' && getSystemIsDark());
+    document.documentElement.classList.toggle('dark', isDark);
     localStorage.setItem(STORAGE_KEY, mode);
   };
 
@@ -40,21 +40,21 @@ const Navbar: React.FC = () => {
 
   // Keep system theme in sync when `Theme: System` is selected.
   useEffect(() => {
-    if (theme !== "system") return;
-    const mql = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (theme !== 'system') return;
+    const mql = window.matchMedia?.('(prefers-color-scheme: dark)');
     if (!mql) return;
 
-    const handler = () => applyTheme("system");
+    const handler = () => applyTheme('system');
 
     // Safari < 14 uses addListener/removeListener
     // eslint-disable-next-line deprecation/deprecation
-    if (typeof mql.addEventListener === "function") mql.addEventListener("change", handler);
+    if (typeof mql.addEventListener === 'function') mql.addEventListener('change', handler);
     // eslint-disable-next-line deprecation/deprecation
     else mql.addListener(handler);
 
     return () => {
       // eslint-disable-next-line deprecation/deprecation
-      if (typeof mql.removeEventListener === "function") mql.removeEventListener("change", handler);
+      if (typeof mql.removeEventListener === 'function') mql.removeEventListener('change', handler);
       // eslint-disable-next-line deprecation/deprecation
       else mql.removeListener(handler);
     };
@@ -96,7 +96,11 @@ const Navbar: React.FC = () => {
             onClick={() => setMenuOpen(!menuOpen)}
           >
             {user ? (
-              <img src={user.image || '/default-avatar.png'} alt="User Avatar" className="w-8 h-8 rounded-full" />
+              <img
+                src={user.image || '/default-avatar.png'}
+                alt="User Avatar"
+                className="w-8 h-8 rounded-full"
+              />
             ) : (
               <div className="w-8 h-8 rounded-full bg-gray-400 flex items-center justify-center text-white">
                 ?
@@ -138,7 +142,13 @@ const Navbar: React.FC = () => {
                 onClick={toggleTheme}
               >
                 <span>Theme: {theme.charAt(0).toUpperCase() + theme.slice(1)}</span>
-                {theme === 'light' ? <WbSunnyIcon /> : theme === 'dark' ? <NightsStayIcon /> : <Brightness4Icon />}
+                {theme === 'light' ? (
+                  <WbSunnyIcon />
+                ) : theme === 'dark' ? (
+                  <NightsStayIcon />
+                ) : (
+                  <Brightness4Icon />
+                )}
               </Button>
             </div>
           )}

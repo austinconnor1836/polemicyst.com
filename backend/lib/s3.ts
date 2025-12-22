@@ -3,10 +3,12 @@
  * @param s3Key - S3 object key to delete
  */
 export async function deleteFromS3(s3Key: string): Promise<void> {
-  await s3.deleteObject({
-    Bucket: S3_BUCKET_NAME,
-    Key: s3Key,
-  }).promise();
+  await s3
+    .deleteObject({
+      Bucket: S3_BUCKET_NAME,
+      Key: s3Key,
+    })
+    .promise();
 }
 import { S3 } from 'aws-sdk';
 import { readFile } from 'fs/promises';

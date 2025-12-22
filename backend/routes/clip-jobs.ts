@@ -30,7 +30,15 @@ router.post('/enqueue', async (req: Request, res: Response): Promise<any> => {
     includeAudio?: boolean;
     saferClips?: boolean;
     targetPlatform?: 'all' | 'reels' | 'shorts' | 'youtube';
-    contentStyle?: 'auto' | 'politics' | 'comedy' | 'education' | 'podcast' | 'gaming' | 'vlog' | 'other';
+    contentStyle?:
+      | 'auto'
+      | 'politics'
+      | 'comedy'
+      | 'education'
+      | 'podcast'
+      | 'gaming'
+      | 'vlog'
+      | 'other';
     minCandidates?: number;
     maxCandidates?: number;
     minScore?: number;
@@ -76,5 +84,3 @@ router.post('/enqueue', async (req: Request, res: Response): Promise<any> => {
 });
 
 export default router;
-
-

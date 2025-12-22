@@ -75,7 +75,9 @@ export async function POST(req: Request) {
   }
 
   const intervalNum = Number(pollingInterval);
-  const safePollingInterval = Number.isFinite(intervalNum) ? Math.max(1, Math.floor(intervalNum)) : 60;
+  const safePollingInterval = Number.isFinite(intervalNum)
+    ? Math.max(1, Math.floor(intervalNum))
+    : 60;
 
   const newFeed = await prisma.videoFeed.create({
     data: {

@@ -1,13 +1,13 @@
-import NextAuth, { NextAuthOptions } from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
-import FacebookProvider from "next-auth/providers/facebook";
-import GoogleProvider from "next-auth/providers/google";
-import TwitterProvider from "next-auth/providers/twitter";
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import { PrismaClient } from "@prisma/client";
-import { BskyAgent } from "@atproto/api";
-import { JWT } from "next-auth/jwt";
-import axios from "axios";
+import NextAuth, { NextAuthOptions } from 'next-auth';
+import CredentialsProvider from 'next-auth/providers/credentials';
+import FacebookProvider from 'next-auth/providers/facebook';
+import GoogleProvider from 'next-auth/providers/google';
+import TwitterProvider from 'next-auth/providers/twitter';
+import { PrismaAdapter } from '@next-auth/prisma-adapter';
+import { PrismaClient } from '@prisma/client';
+import { BskyAgent } from '@atproto/api';
+import { JWT } from 'next-auth/jwt';
+import axios from 'axios';
 
 interface ExtendedJWT extends JWT {
   googleAccessToken?: string;
@@ -18,24 +18,24 @@ interface ExtendedJWT extends JWT {
 
 const prisma = new PrismaClient();
 
-const NEXTAUTH_DEBUG_ENABLED = process.env.NEXTAUTH_DEBUG === "true";
+const NEXTAUTH_DEBUG_ENABLED = process.env.NEXTAUTH_DEBUG === 'true';
 
 function redactSecrets(input: unknown): unknown {
   const seen = new WeakSet<object>();
 
   const isSensitiveKey = (key: string) =>
     /(secret|token|password|authorization|cookie|pkce|state|clientsecret|refresh_token|access_token|id_token)/i.test(
-      key,
+      key
     );
 
   const walk = (value: unknown): unknown => {
     if (value === null || value === undefined) return value;
-    if (typeof value !== "object") return value;
+    if (typeof value !== 'object') return value;
 
     // Dates / Errors / Buffers etc: return as-is (avoid mangling)
     if (value instanceof Date || value instanceof Error) return value;
 
-    if (seen.has(value as object)) return "[REDACTED_CYCLE]";
+    if (seen.has(value as object)) return '[REDACTED_CYCLE]';
     seen.add(value as object);
 
     if (Array.isArray(value)) {
@@ -48,10 +48,10 @@ function redactSecrets(input: unknown): unknown {
     for (const [k, v] of Object.entries(obj)) {
       // Common shape in NextAuth debug logs: cookies: [{ name, value, ... }]
       const shouldRedactCookieValue =
-        k === "value" && typeof obj.name === "string" && /next-auth/i.test(obj.name);
+        k === 'value' && typeof obj.name === 'string' && /next-auth/i.test(obj.name);
 
       if (isSensitiveKey(k) || shouldRedactCookieValue) {
-        out[k] = "[REDACTED]";
+        out[k] = '[REDACTED]';
       } else {
         out[k] = walk(v);
       }
@@ -86,7 +86,8 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.AUTH_FACEBOOK_SECRET!,
       authorization: {
         params: {
-          scope: "public_profile,email,pages_show_list,pages_manage_posts,instagram_basic,instagram_content_publish,publish_video",
+          scope:
+            'public_profile,email,pages_show_list,pages_manage_posts,instagram_basic,instagram_content_publish,publish_video',
         },
       },
     }),
@@ -95,25 +96,25 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: "openid email profile https://www.googleapis.com/auth/youtube.upload",
-          access_type: "offline",
-          prompt: "consent",
+          scope: 'openid email profile https://www.googleapis.com/auth/youtube.upload',
+          access_type: 'offline',
+          prompt: 'consent',
         },
       },
     }),
     CredentialsProvider({
-      name: "Bluesky",
+      name: 'Bluesky',
       credentials: {
-        username: { label: "Bluesky Handle or Email", type: "text" },
-        password: { label: "App Password", type: "password" },
+        username: { label: 'Bluesky Handle or Email', type: 'text' },
+        password: { label: 'App Password', type: 'password' },
       },
       async authorize(credentials) {
         if (!credentials?.username || !credentials?.password) {
-          throw new Error("Missing Bluesky credentials.");
+          throw new Error('Missing Bluesky credentials.');
         }
 
         try {
-          const agent = new BskyAgent({ service: "https://bsky.social" });
+          const agent = new BskyAgent({ service: 'https://bsky.social' });
           const session = await agent.login({
             identifier: credentials.username,
             password: credentials.password,
@@ -137,7 +138,7 @@ export const authOptions: NextAuthOptions = {
           await prisma.account.upsert({
             where: {
               provider_providerAccountId: {
-                provider: "bluesky",
+                provider: 'bluesky',
                 providerAccountId: credentials.username,
               },
             },
@@ -149,40 +150,40 @@ export const authOptions: NextAuthOptions = {
             },
             create: {
               userId: user.id,
-              provider: "bluesky",
+              provider: 'bluesky',
               providerAccountId: credentials.username,
               access_token: session.data.accessJwt,
               refresh_token: session.data.refreshJwt,
               expires_at: Math.floor(Date.now() / 1000) + 86400,
-              type: "credentials",
+              type: 'credentials',
               scope: session.data.did, // ✅ Store DID here
             },
           });
 
           return user;
         } catch (error) {
-          console.error("Bluesky authentication error:", error);
-          throw new Error("Invalid Bluesky credentials.");
+          console.error('Bluesky authentication error:', error);
+          throw new Error('Invalid Bluesky credentials.');
         }
       },
     }),
     TwitterProvider({
       clientId: process.env.TWITTER_CONSUMER_KEY!,
       clientSecret: process.env.TWITTER_CONSUMER_SECRET!,
-      version: "2.0",
+      version: '2.0',
       authorization: {
-        url: "https://twitter.com/i/oauth2/authorize",
+        url: 'https://twitter.com/i/oauth2/authorize',
         params: {
-          scope: "tweet.read tweet.write users.read offline.access",
+          scope: 'tweet.read tweet.write users.read offline.access',
         },
       },
     }),
   ],
   session: {
-    strategy: "jwt",
+    strategy: 'jwt',
   },
   pages: {
-    signIn: '/auth/signin'
+    signIn: '/auth/signin',
   },
   callbacks: {
     async jwt({ token, user, account }) {
@@ -190,7 +191,7 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
       }
 
-      if (account?.provider === "google") {
+      if (account?.provider === 'google') {
         return {
           ...token,
           googleAccessToken: account.access_token,
@@ -203,14 +204,14 @@ export const authOptions: NextAuthOptions = {
       //   token.googleAccessToken = account.access_token as string;
       // }
 
-      if (account?.provider === "facebook" && account.access_token) {
+      if (account?.provider === 'facebook' && account.access_token) {
         token.facebookAccessToken = account.access_token as string;
       }
 
       // Return token if access token is still valid
       if (
         token.googleAccessToken &&
-        typeof token.accessTokenExpires === "number" &&
+        typeof token.accessTokenExpires === 'number' &&
         Date.now() < token.accessTokenExpires
       ) {
         return token;
@@ -279,8 +280,8 @@ export const authOptions: NextAuthOptions = {
 
       let providers = accounts.map((acc: any) => acc.provider);
 
-      if (providers.includes("facebook") && !providers.includes("instagram")) {
-        providers.push("instagram");
+      if (providers.includes('facebook') && !providers.includes('instagram')) {
+        providers.push('instagram');
       }
 
       session.user.providers = providers;
@@ -292,19 +293,17 @@ export const authOptions: NextAuthOptions = {
 const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };
 
-
-
 async function refreshAccessToken(token: ExtendedJWT): Promise<ExtendedJWT> {
   try {
     const params = new URLSearchParams();
-    params.append("client_id", process.env.GOOGLE_CLIENT_ID!);
-    params.append("client_secret", process.env.GOOGLE_CLIENT_SECRET!);
-    params.append("grant_type", "refresh_token");
-    params.append("refresh_token", token.googleRefreshToken!); // Now safe
+    params.append('client_id', process.env.GOOGLE_CLIENT_ID!);
+    params.append('client_secret', process.env.GOOGLE_CLIENT_SECRET!);
+    params.append('grant_type', 'refresh_token');
+    params.append('refresh_token', token.googleRefreshToken!); // Now safe
 
-    const response = await axios.post("https://oauth2.googleapis.com/token", params, {
+    const response = await axios.post('https://oauth2.googleapis.com/token', params, {
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
+        'Content-Type': 'application/x-www-form-urlencoded',
       },
     });
 
@@ -316,7 +315,7 @@ async function refreshAccessToken(token: ExtendedJWT): Promise<ExtendedJWT> {
 
     await prisma.account.updateMany({
       where: {
-        provider: "google",
+        provider: 'google',
         userId: token.sub,
       },
       data: {
@@ -333,10 +332,7 @@ async function refreshAccessToken(token: ExtendedJWT): Promise<ExtendedJWT> {
       accessTokenExpires: newExpiresAt,
     };
   } catch (error: any) {
-    console.error("Error refreshing Google access token", error.response?.data || error.message);
-    return { ...token, error: "RefreshAccessTokenError" };
+    console.error('Error refreshing Google access token', error.response?.data || error.message);
+    return { ...token, error: 'RefreshAccessTokenError' };
   }
 }
-
-
-

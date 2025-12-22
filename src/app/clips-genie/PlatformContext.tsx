@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { useSession } from "next-auth/react";
-import React, { createContext, useState, useContext, useEffect } from "react";
+import { useSession } from 'next-auth/react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 
@@ -45,9 +45,9 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { data: session, status } = useSession();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
-  const [description, setDescription] = useState("");
-  const [sharedDescription, setSharedDescription] = useState("");
-  const [videoTitle, setVideoTitle] = useState("");
+  const [description, setDescription] = useState('');
+  const [sharedDescription, setSharedDescription] = useState('');
+  const [videoTitle, setVideoTitle] = useState('');
   const [facebookTemplate, setFacebookTemplate] = useState(
     `For more from Polemicyst:\n
 Youtube: https://www.youtube.com/@Polemicyst
@@ -73,8 +73,8 @@ Facebook: https://www.facebook.com/profile.php?id=61573192766929
 Bluesky: https://bsky.app/profile/polemicyst.bsky.social
 Threads: https://www.threads.net/@polemicyst`
   );
-  const [blueskyTemplate, setBlueskyTemplate] = useState("");
-  const [twitterTemplate, setTwitterTemplate] = useState("");
+  const [blueskyTemplate, setBlueskyTemplate] = useState('');
+  const [twitterTemplate, setTwitterTemplate] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState<Record<string, boolean>>({
     facebook: false,
@@ -96,13 +96,13 @@ Threads: https://www.threads.net/@polemicyst`
 
       setIsAuthenticated(data.isAuthenticated || {});
     } catch (error) {
-      console.error("Error fetching authentication status:", error);
+      console.error('Error fetching authentication status:', error);
     }
   };
 
   // Refresh authentication status when the session updates
   useEffect(() => {
-    if (status === "authenticated") {
+    if (status === 'authenticated') {
       fetchAuthenticationStatus();
     }
   }, [session, status]);
@@ -124,58 +124,60 @@ Threads: https://www.threads.net/@polemicyst`
 
   const generateDescription = async (file: File) => {
     setIsGenerating(true);
-    setSharedDescription("Generating description...");
-    setVideoTitle("Generating video title...");
+    setSharedDescription('Generating description...');
+    setVideoTitle('Generating video title...');
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append('file', file);
 
-      const response = await axios.post("/api/generateDescription", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+      const response = await axios.post('/api/generateDescription', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
       const { description, hashtags, title } = response.data;
 
       if (description && hashtags) {
         const fixedHashtags = [
-          "#Polemicyst",
-          "#news",
-          "#politics",
-          "#youtube",
-          "#trump",
-          "#left",
-          "#progressive",
-          "#viral",
-          "#maga",
+          '#Polemicyst',
+          '#news',
+          '#politics',
+          '#youtube',
+          '#trump',
+          '#left',
+          '#progressive',
+          '#viral',
+          '#maga',
         ];
 
         const allHashtags = [...fixedHashtags, ...hashtags];
-        const hashtagsString = allHashtags.join(", ");
-        const patreonLink = "\n\nSupport me on Patreon: https://www.patreon.com/c/Polemicyst";
+        const hashtagsString = allHashtags.join(', ');
+        const patreonLink = '\n\nSupport me on Patreon: https://www.patreon.com/c/Polemicyst';
         const finalDescription = `${description}\n\n${hashtagsString}${patreonLink}`;
 
         setSharedDescription(finalDescription);
         setVideoTitle(title);
 
         const maxLength = 300;
-        const trimmedDescription = `${description} ${hashtagsString}`.substring(0, maxLength).trim();
+        const trimmedDescription = `${description} ${hashtagsString}`
+          .substring(0, maxLength)
+          .trim();
 
         setBlueskyTemplate(trimmedDescription);
         setTwitterTemplate(trimmedDescription);
       } else {
-        setSharedDescription("Failed to generate description.");
-        setVideoTitle("Failed to generate title.");
-        setBlueskyTemplate("Failed to generate description.");
-        setTwitterTemplate("Failed to generate description.");
+        setSharedDescription('Failed to generate description.');
+        setVideoTitle('Failed to generate title.');
+        setBlueskyTemplate('Failed to generate description.');
+        setTwitterTemplate('Failed to generate description.');
       }
     } catch (error) {
-      console.error("Error generating description:", error);
-      toast.error("Failed to generate description.");
-      setSharedDescription("Failed to generate description.");
-      setVideoTitle("Failed to generate title.");
-      setBlueskyTemplate("Failed to generate description.");
-      setTwitterTemplate("Failed to generate description.");
+      console.error('Error generating description:', error);
+      toast.error('Failed to generate description.');
+      setSharedDescription('Failed to generate description.');
+      setVideoTitle('Failed to generate title.');
+      setBlueskyTemplate('Failed to generate description.');
+      setTwitterTemplate('Failed to generate description.');
     } finally {
       setIsGenerating(false);
     }
@@ -214,7 +216,7 @@ Threads: https://www.threads.net/@polemicyst`
         setVideoTitle,
         isGenerating,
         setIsGenerating,
-        generateDescription
+        generateDescription,
       }}
     >
       {children}
@@ -225,7 +227,7 @@ Threads: https://www.threads.net/@polemicyst`
 export const usePlatformContext = () => {
   const context = useContext(PlatformContext);
   if (!context) {
-    throw new Error("usePlatformContext must be used within a PlatformProvider");
+    throw new Error('usePlatformContext must be used within a PlatformProvider');
   }
   return context;
 };

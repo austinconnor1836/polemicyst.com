@@ -26,7 +26,12 @@ const ChatBot: React.FC<ChatBotProps> = ({ id, onClose }) => {
     <Card className="fixed bottom-0 right-0 m-4 w-80 shadow-lg">
       <div className="flex items-center justify-between rounded-t-lg bg-blue-600 p-2 text-white">
         <h3 className="text-lg font-semibold">ChatBot #{id}</h3>
-        <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 hover:text-white" onClick={() => onClose(id)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-white hover:bg-white/10 hover:text-white"
+          onClick={() => onClose(id)}
+        >
           Close
         </Button>
       </div>

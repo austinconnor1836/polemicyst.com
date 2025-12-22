@@ -1,30 +1,39 @@
-"use client";
+'use client';
 
-import { useRouter } from "next/navigation";
-import { signIn, signOut, useSession } from "next-auth/react";
-import { usePlatformContext } from "./PlatformContext";
-import { FaFacebook, FaTwitter, FaInstagram, FaYoutube } from "react-icons/fa";
-import { SiBluesky } from "react-icons/si";
-import { CheckCircle, RadioButtonUnchecked } from "@mui/icons-material";
-import { Button } from "@/components/ui/button";
+import { useRouter } from 'next/navigation';
+import { signIn, signOut, useSession } from 'next-auth/react';
+import { usePlatformContext } from './PlatformContext';
+import { FaFacebook, FaTwitter, FaInstagram, FaYoutube } from 'react-icons/fa';
+import { SiBluesky } from 'react-icons/si';
+import { CheckCircle, RadioButtonUnchecked } from '@mui/icons-material';
+import { Button } from '@/components/ui/button';
 
 const platforms = [
-  { name: "Bluesky", icon: <SiBluesky className="text-blue-500 text-xl" />, provider: "bluesky" },
-  { name: "Facebook", icon: <FaFacebook className="text-blue-600 text-xl" />, provider: "facebook" },
-  { name: "Instagram", icon: <FaInstagram className="text-pink-500 text-xl" />, provider: "instagram" },
-  { name: "YouTube", icon: <FaYoutube className="text-red-600 text-xl" />, provider: "google" },
+  { name: 'Bluesky', icon: <SiBluesky className="text-blue-500 text-xl" />, provider: 'bluesky' },
+  {
+    name: 'Facebook',
+    icon: <FaFacebook className="text-blue-600 text-xl" />,
+    provider: 'facebook',
+  },
+  {
+    name: 'Instagram',
+    icon: <FaInstagram className="text-pink-500 text-xl" />,
+    provider: 'instagram',
+  },
+  { name: 'YouTube', icon: <FaYoutube className="text-red-600 text-xl" />, provider: 'google' },
   // { name: "Twitter", icon: <FaTwitter className="text-blue-400 text-xl" />, provider: "twitter" },
 ];
 
 const PlatformList = () => {
   const router = useRouter();
-  const { selectedPlatforms, togglePlatform, isAuthenticated, refreshAuthStatus } = usePlatformContext();
+  const { selectedPlatforms, togglePlatform, isAuthenticated, refreshAuthStatus } =
+    usePlatformContext();
   const { data: session } = useSession();
 
   const handleAuthenticate = async (e: React.MouseEvent, provider: string) => {
     e.stopPropagation(); // Prevent toggling selection when clicking "Connect"
 
-    if (provider === "bluesky") {
+    if (provider === 'bluesky') {
       router.push(`/auth/signin?provider=bluesky`); // Redirect to custom Bluesky sign-in page
     } else {
       await signIn(provider, { callbackUrl: '/clips-genie' });
@@ -39,13 +48,12 @@ const PlatformList = () => {
   const handleLogout = async (e: React.MouseEvent, provider: string) => {
     e.stopPropagation();
 
-
     // If user logs out from Instagram, treat it as Facebook
-    const effectiveProvider = provider === "instagram" ? "facebook" : provider;
+    const effectiveProvider = provider === 'instagram' ? 'facebook' : provider;
 
     const response = await fetch(`/api/auth/logout`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ provider: effectiveProvider }), // ✅ Ensure provider is sent
     });
 
@@ -53,12 +61,9 @@ const PlatformList = () => {
       console.log(`✅ Successfully logged out from ${effectiveProvider}`);
       refreshAuthStatus();
     } else {
-      console.error("❌ Logout failed:", await response.json());
+      console.error('❌ Logout failed:', await response.json());
     }
   };
-
-
-
 
   return (
     <div className="md:w-1/4 bg-gray-100 dark:bg-[#1e1e1e] p-4 rounded-lg">
@@ -68,7 +73,7 @@ const PlatformList = () => {
           let authStatus = session && isAuthenticated[provider];
 
           // ✅ Automatically authenticate Instagram if Facebook is authenticated
-          if (provider === "instagram" && isAuthenticated["facebook"]) {
+          if (provider === 'instagram' && isAuthenticated['facebook']) {
             authStatus = true;
           }
 
@@ -77,8 +82,11 @@ const PlatformList = () => {
           return (
             <li
               key={provider}
-              className={`flex items-center justify-between p-2 cursor-pointer rounded-md transition ${isSelected ? "bg-blue-200 dark:bg-blue-700" : "hover:bg-gray-200 dark:hover:bg-[#292c35]"
-                }`}
+              className={`flex items-center justify-between p-2 cursor-pointer rounded-md transition ${
+                isSelected
+                  ? 'bg-blue-200 dark:bg-blue-700'
+                  : 'hover:bg-gray-200 dark:hover:bg-[#292c35]'
+              }`}
               onClick={() => togglePlatform(provider)}
             >
               <span className="flex items-center gap-2">
@@ -96,7 +104,7 @@ const PlatformList = () => {
                   >
                     Logout
                   </Button>
-                ) : name !== "Instagram" ? (
+                ) : name !== 'Instagram' ? (
                   <Button
                     onClick={(e) => handleAuthenticate(e, provider)}
                     variant="link"
@@ -106,7 +114,11 @@ const PlatformList = () => {
                     Connect
                   </Button>
                 ) : null}
-                {isSelected ? <CheckCircle className="text-blue-500" /> : <RadioButtonUnchecked className="text-gray-400" />}
+                {isSelected ? (
+                  <CheckCircle className="text-blue-500" />
+                ) : (
+                  <RadioButtonUnchecked className="text-gray-400" />
+                )}
               </div>
             </li>
           );

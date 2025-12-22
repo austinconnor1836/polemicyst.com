@@ -1,62 +1,62 @@
-import { NextResponse } from "next/server";
-import { google } from "googleapis";
-import { PrismaClient } from "@prisma/client";
-import AWS from "aws-sdk";
+import { NextResponse } from 'next/server';
+import { google } from 'googleapis';
+import { PrismaClient } from '@prisma/client';
+import AWS from 'aws-sdk';
 
 const prisma = new PrismaClient();
 
-const S3_BUCKET = "clips-genie-uploads";
+const S3_BUCKET = 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION!;
 
 const s3 = new AWS.S3({
   region: S3_REGION,
   accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  signatureVersion: "v4",
+  signatureVersion: 'v4',
 });
 
 export async function POST(req: Request) {
-  if (!req.headers.get("content-type")?.includes("application/json")) {
-    return NextResponse.json({ error: "Only JSON requests are supported" }, { status: 400 });
+  if (!req.headers.get('content-type')?.includes('application/json')) {
+    return NextResponse.json({ error: 'Only JSON requests are supported' }, { status: 400 });
   }
 
   try {
     const { videoId, title, description, userId } = await req.json();
 
     if (!videoId || !title || !description || !userId) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     const video = await prisma.video.findUnique({ where: { id: videoId } });
     if (!video?.s3Key) {
-      return NextResponse.json({ error: "Video not found or missing s3Key" }, { status: 404 });
+      return NextResponse.json({ error: 'Video not found or missing s3Key' }, { status: 404 });
     }
 
     const account = await prisma.account.findFirst({
-      where: { userId, provider: "google" },
+      where: { userId, provider: 'google' },
     });
 
     if (!account?.access_token) {
-      return NextResponse.json({ error: "Google account not connected" }, { status: 403 });
+      return NextResponse.json({ error: 'Google account not connected' }, { status: 403 });
     }
 
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: account.access_token });
 
-    const youtube = google.youtube({ version: "v3", auth });
+    const youtube = google.youtube({ version: 'v3', auth });
 
     const s3Stream = s3.getObject({ Bucket: S3_BUCKET, Key: video.s3Key }).createReadStream();
 
     const uploadRes = await youtube.videos.insert({
-      part: ["snippet", "status"],
+      part: ['snippet', 'status'],
       requestBody: {
         snippet: {
           title,
           description,
-          categoryId: "25",
+          categoryId: '25',
         },
         status: {
-          privacyStatus: "public",
+          privacyStatus: 'public',
           selfDeclaredMadeForKids: false,
         },
       },
@@ -69,9 +69,8 @@ export async function POST(req: Request) {
     const youtubeLink = `https://youtu.be/${youtubeId}`;
 
     return NextResponse.json({ youtubeLink }, { status: 200 });
-
   } catch (err: any) {
-    console.error("YouTube upload error:", err.response?.data || err.message || err);
-    return NextResponse.json({ error: "Failed to upload to YouTube" }, { status: 500 });
+    console.error('YouTube upload error:', err.response?.data || err.message || err);
+    return NextResponse.json({ error: 'Failed to upload to YouTube' }, { status: 500 });
   }
 }

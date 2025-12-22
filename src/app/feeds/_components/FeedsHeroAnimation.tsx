@@ -1,12 +1,10 @@
-import React from "react";
+import React from 'react';
 
 type FeedsHeroAnimationProps = {
   className?: string;
 };
 
-export function FeedsHeroAnimation({
-  className,
-}: FeedsHeroAnimationProps) {
+export function FeedsHeroAnimation({ className }: FeedsHeroAnimationProps) {
   return (
     <div className={className} aria-hidden="true">
       <svg
@@ -16,7 +14,14 @@ export function FeedsHeroAnimation({
         preserveAspectRatio="xMidYMid slice"
       >
         <defs>
-          <linearGradient id="fh-lane" x1="0" y1="0" x2="1200" y2="0" gradientUnits="userSpaceOnUse">
+          <linearGradient
+            id="fh-lane"
+            x1="0"
+            y1="0"
+            x2="1200"
+            y2="0"
+            gradientUnits="userSpaceOnUse"
+          >
             <stop offset="0%" stopColor="#22c55e" stopOpacity="0.0" />
             <stop offset="20%" stopColor="#22c55e" stopOpacity="0.7" />
             <stop offset="50%" stopColor="#06b6d4" stopOpacity="0.8" />
@@ -56,7 +61,12 @@ export function FeedsHeroAnimation({
           </filter>
 
           <pattern id="fh-grid" width="48" height="48" patternUnits="userSpaceOnUse">
-            <path d="M 48 0 L 0 0 0 48" fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="1" />
+            <path
+              d="M 48 0 L 0 0 0 48"
+              fill="none"
+              stroke="rgba(255,255,255,0.09)"
+              strokeWidth="1"
+            />
           </pattern>
         </defs>
 
@@ -136,7 +146,7 @@ export function FeedsHeroAnimation({
         </g>
 
         {/* scan highlight */}
-        <g className="fh-scan" style={{ mixBlendMode: "overlay" }}>
+        <g className="fh-scan" style={{ mixBlendMode: 'overlay' }}>
           <rect x="-280" y="0" width="280" height="240" fill="url(#fh-scan)" />
         </g>
       </svg>
@@ -185,5 +195,3 @@ export function FeedsHeroAnimation({
     </div>
   );
 }
-
-

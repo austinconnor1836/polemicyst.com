@@ -66,7 +66,10 @@ export async function extractJpegFramesBase64(params: {
   const duration = Math.max(1, tEndS - tStartS);
   const fps = clamp(maxFrames / duration, 0.2, 1.0); // 0.2..1 fps
 
-  const outDir = path.join('/tmp', `gemini-frames-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const outDir = path.join(
+    '/tmp',
+    `gemini-frames-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  );
   await fs.mkdir(outDir, { recursive: true });
   const outPattern = path.join(outDir, 'frame-%03d.jpg');
 
@@ -108,7 +111,10 @@ export async function extractAudioMp3Base64(params: {
 }): Promise<string | null> {
   const { videoPath, tStartS, tEndS, maxSeconds = 18 } = params;
   const duration = Math.max(1, Math.min(maxSeconds, tEndS - tStartS));
-  const outPath = path.join('/tmp', `gemini-audio-${Date.now()}-${Math.random().toString(16).slice(2)}.mp3`);
+  const outPath = path.join(
+    '/tmp',
+    `gemini-audio-${Date.now()}-${Math.random().toString(16).slice(2)}.mp3`
+  );
 
   // Extract mono audio to keep size low
   await runFfmpeg([
@@ -162,7 +168,9 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
 
   const baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
 
-  async function listModels(): Promise<Array<{ name: string; supportedGenerationMethods?: string[] }>> {
+  async function listModels(): Promise<
+    Array<{ name: string; supportedGenerationMethods?: string[] }>
+  > {
     const res = await fetch(`${baseUrl}/models?key=${encodeURIComponent(apiKey)}`);
     const json = await res.json();
     if (!res.ok) {
@@ -173,7 +181,9 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
 
   async function pickDefaultModel(): Promise<string> {
     const models = await listModels();
-    const supportsGenerate = models.filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'));
+    const supportsGenerate = models.filter((m) =>
+      (m.supportedGenerationMethods || []).includes('generateContent')
+    );
 
     // Prefer Flash (faster), then Pro, else first supported.
     const flash = supportsGenerate.find((m) => /gemini/i.test(m.name) && /flash/i.test(m.name));
@@ -238,11 +248,14 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
   };
 
   console.log(`📡 Calling Gemini API (${chosenModel}) for segment ${tStartS}-${tEndS}...`);
-  const res = await fetch(`${baseUrl}/${chosenModel}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const res = await fetch(
+    `${baseUrl}/${chosenModel}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  );
   console.log(`📨 Received response from Gemini (${res.status})`);
 
   const responseText = await res.text();
@@ -259,8 +272,10 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
   }
 
   const text =
-    json?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join('') ??
-    JSON.stringify(json);
+    json?.candidates?.[0]?.content?.parts
+      ?.map((p: any) => p.text)
+      .filter(Boolean)
+      .join('') ?? JSON.stringify(json);
 
   // Best-effort JSON extraction
   const jsonStart = text.indexOf('{');
@@ -273,14 +288,24 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
   return {
     score: clamp(Number(parsed.score), 0, 10),
     hookScore: parsed.hookScore != null ? clamp(Number(parsed.hookScore), 0, 10) : undefined,
-    contextScore: parsed.contextScore != null ? clamp(Number(parsed.contextScore), 0, 10) : undefined,
-    captionabilityScore: parsed.captionabilityScore != null ? clamp(Number(parsed.captionabilityScore), 0, 10) : undefined,
-    comedicScore: parsed.comedicScore != null ? clamp(Number(parsed.comedicScore), 0, 10) : undefined,
-    provocativeScore: parsed.provocativeScore != null ? clamp(Number(parsed.provocativeScore), 0, 10) : undefined,
-    visualEnergyScore: parsed.visualEnergyScore != null ? clamp(Number(parsed.visualEnergyScore), 0, 10) : undefined,
-    audioEnergyScore: parsed.audioEnergyScore != null ? clamp(Number(parsed.audioEnergyScore), 0, 10) : undefined,
+    contextScore:
+      parsed.contextScore != null ? clamp(Number(parsed.contextScore), 0, 10) : undefined,
+    captionabilityScore:
+      parsed.captionabilityScore != null
+        ? clamp(Number(parsed.captionabilityScore), 0, 10)
+        : undefined,
+    comedicScore:
+      parsed.comedicScore != null ? clamp(Number(parsed.comedicScore), 0, 10) : undefined,
+    provocativeScore:
+      parsed.provocativeScore != null ? clamp(Number(parsed.provocativeScore), 0, 10) : undefined,
+    visualEnergyScore:
+      parsed.visualEnergyScore != null ? clamp(Number(parsed.visualEnergyScore), 0, 10) : undefined,
+    audioEnergyScore:
+      parsed.audioEnergyScore != null ? clamp(Number(parsed.audioEnergyScore), 0, 10) : undefined,
     riskScore: parsed.riskScore != null ? clamp(Number(parsed.riskScore), 0, 10) : undefined,
-    riskFlags: Array.isArray(parsed.riskFlags) ? parsed.riskFlags.map((x: any) => String(x)).slice(0, 12) : undefined,
+    riskFlags: Array.isArray(parsed.riskFlags)
+      ? parsed.riskFlags.map((x: any) => String(x)).slice(0, 12)
+      : undefined,
     hasViralMoment: typeof parsed.hasViralMoment === 'boolean' ? parsed.hasViralMoment : undefined,
     confidence: parsed.confidence != null ? clamp(Number(parsed.confidence), 0, 1) : undefined,
     rationale: String(parsed.rationale || '').slice(0, 400),
@@ -305,5 +330,3 @@ export async function ensureLocalVideoForScoring(params: {
   await downloadToTmp(s3Url, outPath);
   return outPath;
 }
-
-

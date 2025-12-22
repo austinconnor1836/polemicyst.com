@@ -31,7 +31,10 @@ function countAny(text: string, words: string[]): number {
  * Lightweight transcript-based style detection.
  * This is intentionally simple + cheap; it’s only used to pick scoring defaults and prompt tuning.
  */
-export function detectContentStyle(params: { transcriptText: string; title?: string | null }): ContentStyleDetection {
+export function detectContentStyle(params: {
+  transcriptText: string;
+  title?: string | null;
+}): ContentStyleDetection {
   const combined = `${params.title ?? ''}\n${params.transcriptText ?? ''}`.toLowerCase();
 
   const politics = countAny(combined, [
@@ -67,11 +70,54 @@ export function detectContentStyle(params: { transcriptText: string; title?: str
     'cnn',
     'fox',
   ]);
-  const comedy = countAny(combined, ['funny', 'hilarious', 'joke', 'standup', 'comedian', 'lol', 'roast', 'skit']);
-  const education = countAny(combined, ['how to', 'explain', 'explained', 'tutorial', 'lesson', 'here’s why', 'step', 'guide']);
-  const podcast = countAny(combined, ['podcast', 'episode', 'host', 'guest', 'subscribe', 'today we', 'welcome to']);
-  const gaming = countAny(combined, ['gameplay', 'level', 'boss', 'ranked', 'fps', 'fortnite', 'minecraft', 'call of duty', 'valorant']);
-  const vlog = countAny(combined, ['vlog', 'day in the life', 'travel', 'morning routine', 'today i', 'we went']);
+  const comedy = countAny(combined, [
+    'funny',
+    'hilarious',
+    'joke',
+    'standup',
+    'comedian',
+    'lol',
+    'roast',
+    'skit',
+  ]);
+  const education = countAny(combined, [
+    'how to',
+    'explain',
+    'explained',
+    'tutorial',
+    'lesson',
+    'here’s why',
+    'step',
+    'guide',
+  ]);
+  const podcast = countAny(combined, [
+    'podcast',
+    'episode',
+    'host',
+    'guest',
+    'subscribe',
+    'today we',
+    'welcome to',
+  ]);
+  const gaming = countAny(combined, [
+    'gameplay',
+    'level',
+    'boss',
+    'ranked',
+    'fps',
+    'fortnite',
+    'minecraft',
+    'call of duty',
+    'valorant',
+  ]);
+  const vlog = countAny(combined, [
+    'vlog',
+    'day in the life',
+    'travel',
+    'morning routine',
+    'today i',
+    'we went',
+  ]);
 
   const scores: Array<{ style: ContentStyle; score: number; signals: string[] }> = [
     { style: 'politics', score: politics, signals: politics ? ['politics_keywords'] : [] },
@@ -93,8 +139,10 @@ export function detectContentStyle(params: { transcriptText: string; title?: str
   }
 
   // Confidence: higher when top is large and separated from runner up.
-  const confidence = clamp(0.35 + Math.min(0.5, topScore / 20) + Math.min(0.25, (topScore - runnerScore) / 10), 0, 1);
+  const confidence = clamp(
+    0.35 + Math.min(0.5, topScore / 20) + Math.min(0.25, (topScore - runnerScore) / 10),
+    0,
+    1
+  );
   return { style: top.style, confidence, signals: top.signals };
 }
-
-

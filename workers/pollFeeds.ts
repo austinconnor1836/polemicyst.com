@@ -33,7 +33,12 @@ export async function pollFeeds() {
 
     try {
       console.log(`[${now.toISOString()}] Polling feed: ${feed.name}`);
-      let newVideo: { id: string; title: string; url: string; thumbnailUrl?: string | null } | null = null;
+      let newVideo: {
+        id: string;
+        title: string;
+        url: string;
+        thumbnailUrl?: string | null;
+      } | null = null;
 
       const inferred = inferSourceTypeFromUrl(feed.sourceUrl);
       const effectiveSourceType =
@@ -88,8 +93,8 @@ export async function pollFeeds() {
           title: newVideo.title,
           thumbnailUrl: newVideo.thumbnailUrl,
           s3Url,
-          userId: feed.userId
-        }
+          userId: feed.userId,
+        },
       });
 
       // Update last seen video ID
@@ -106,7 +111,6 @@ export async function pollFeeds() {
       });
 
       console.log(`Queued transcription and stored video: ${newVideo.title}`);
-
     } catch (err) {
       console.error(`Error polling feed ${feed.name}:`, err);
     }

@@ -28,7 +28,9 @@ const run = async () => {
     maxCandidates: process.env.MAX_CANDIDATES ? Number(process.env.MAX_CANDIDATES) : 20,
     minScore: process.env.MIN_SCORE ? Number(process.env.MIN_SCORE) : 6.5,
     percentile: process.env.PERCENTILE ? Number(process.env.PERCENTILE) : 0.85,
-    maxGeminiCandidates: process.env.MAX_GEMINI_CANDIDATES ? Number(process.env.MAX_GEMINI_CANDIDATES) : 24,
+    maxGeminiCandidates: process.env.MAX_GEMINI_CANDIDATES
+      ? Number(process.env.MAX_GEMINI_CANDIDATES)
+      : 24,
   });
 
   console.log('✅ Enqueued clip-generation job (candidates)!');

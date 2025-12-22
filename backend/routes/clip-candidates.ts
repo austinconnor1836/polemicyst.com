@@ -40,7 +40,15 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     includeAudio?: boolean;
     saferClips?: boolean;
     targetPlatform?: 'all' | 'reels' | 'shorts' | 'youtube';
-    contentStyle?: 'auto' | 'politics' | 'comedy' | 'education' | 'podcast' | 'gaming' | 'vlog' | 'other';
+    contentStyle?:
+      | 'auto'
+      | 'politics'
+      | 'comedy'
+      | 'education'
+      | 'podcast'
+      | 'gaming'
+      | 'vlog'
+      | 'other';
     minCandidates?: number;
     maxCandidates?: number;
     minScore?: number;
@@ -64,12 +72,16 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
 
     const transcriptSegments = feedVideo.transcriptJson as TranscriptWordSegment[];
 
-    const fullTranscriptText = transcriptSegments.map((s) => s.text).join(' ').replace(/\s+/g, ' ').trim();
-    const styleDetected = detectContentStyle({ transcriptText: fullTranscriptText, title: feedVideo.title });
-    const styleUsed =
-      contentStyle && contentStyle !== 'auto'
-        ? contentStyle
-        : styleDetected.style;
+    const fullTranscriptText = transcriptSegments
+      .map((s) => s.text)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const styleDetected = detectContentStyle({
+      transcriptText: fullTranscriptText,
+      title: feedVideo.title,
+    });
+    const styleUsed = contentStyle && contentStyle !== 'auto' ? contentStyle : styleDetected.style;
     const platformUsed = targetPlatform ?? 'all';
     const safer = saferClips ?? true;
 
@@ -230,5 +242,3 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
 });
 
 export default router;
-
-

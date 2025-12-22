@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
-const redisHost = process.env.REDIS_HOST === 'redis' ? 'localhost' : (process.env.REDIS_HOST || 'localhost');
+const redisHost =
+  process.env.REDIS_HOST === 'redis' ? 'localhost' : process.env.REDIS_HOST || 'localhost';
 const redis = new Redis({
   host: redisHost,
   port: 6379,
@@ -59,4 +60,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Enqueue failed' }, { status: 500 });
   }
 }
-

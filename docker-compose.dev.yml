@@ -9,7 +9,7 @@ services:
       - ./prisma:/app/prisma
       # keep container-installed deps even when bind-mounting source
       - backend-node-modules:/app/backend/node_modules
-    command: ["npm", "run", "dev"]
+    command: ['npm', 'run', 'dev']
 
   clip-worker:
     environment:
@@ -22,10 +22,8 @@ services:
       - ./prisma:/app/prisma
       # keep container-installed deps even when bind-mounting source
       - clip-worker-node-modules:/app/clip-worker/node_modules
-    command: ["npm", "run", "dev"]
+    command: ['npm', 'run', 'dev']
 
 volumes:
   backend-node-modules:
   clip-worker-node-modules:
-
-

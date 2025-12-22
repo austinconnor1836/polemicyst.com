@@ -18,7 +18,7 @@ export async function pollYouTubeFeed(feed: VideoFeed): Promise<NewVideo | null>
   const delimiter = '|||';
   const listCommand = `yt-dlp --flat-playlist --print "%(id)s${delimiter}%(title)s${delimiter}%(thumbnail)s" "${feed.sourceUrl}"`;
   const { stdout } = await execPromise(listCommand);
-  
+
   const lines = stdout.trim().split('\n');
 
   if (lines.length === 0) {
@@ -28,10 +28,10 @@ export async function pollYouTubeFeed(feed: VideoFeed): Promise<NewVideo | null>
 
   const [firstLine] = lines;
   const parts = firstLine.split(delimiter);
-  
-  if (parts.length < 2) { 
-       console.log(`[YouTube Poller] Unexpected output format: ${firstLine}`);
-       return null;
+
+  if (parts.length < 2) {
+    console.log(`[YouTube Poller] Unexpected output format: ${firstLine}`);
+    return null;
   }
 
   const id = parts[0];

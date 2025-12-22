@@ -1,23 +1,23 @@
-"use client"
+'use client';
 
-import * as React from "react"
-import { Loader2 } from "lucide-react"
+import * as React from 'react';
+import { Loader2 } from 'lucide-react';
 
-import { Button } from "@/components/ui/button"
+import { Button } from '@/components/ui/button';
 
 type ActionHeaderProps = {
-  title: string
-  actionLabel: string
-  loadingLabel?: string
-  onAction: () => void
-  disabled?: boolean
-  loading?: boolean
-}
+  title: string;
+  actionLabel: string;
+  loadingLabel?: string;
+  onAction: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+};
 
 export function ActionHeader({
   title,
   actionLabel,
-  loadingLabel = "Working…",
+  loadingLabel = 'Working…',
   onAction,
   disabled,
   loading,
@@ -36,7 +36,5 @@ export function ActionHeader({
         )}
       </Button>
     </div>
-  )
+  );
 }
-
-
