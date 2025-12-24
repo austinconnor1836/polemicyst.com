@@ -23,7 +23,8 @@
     "paths": {
       "@/*": ["src/*"],
       "@shared/*": ["shared/*"],
-      "@backend/*": ["backend/*"]
+      "@backend/*": ["backend/*"],
+      "@workers/*": ["workers/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

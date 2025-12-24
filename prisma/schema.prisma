@@ -67,7 +67,7 @@ model Video {
 
   // Added relation for pipeline segments
   segments        Segment[]
-  rhetoricLabels  SegmentRhetoricLabel[]
+  feedVideo       FeedVideo? @relation("FeedVideoClipSource")
 }
 
 model VideoFeed {
@@ -94,6 +94,8 @@ model FeedVideo {
   feedId         String
   feed           VideoFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
   videoId        String
+  clipSourceVideoId String? @unique
+  clipSourceVideo   Video?    @relation("FeedVideoClipSource", fields: [clipSourceVideoId], references: [id], onDelete: SetNull)
   title          String
   thumbnailUrl   String?
   s3Url          String

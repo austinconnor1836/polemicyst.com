@@ -34,6 +34,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing feedVideoId or userId' }, { status: 400 });
     }
 
+    const existingJob = await clipGenerationQueue.getJob(feedVideoId);
+    if (existingJob) {
+      await existingJob.remove();
+    }
+
     const job = await clipGenerationQueue.add(
       'clip-generation',
       {

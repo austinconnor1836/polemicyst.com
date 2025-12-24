@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { Copy, Download, ExternalLink, Play, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { Copy, Download, ExternalLink, Loader2, Play, RefreshCw, Search, Trash2, X } from 'lucide-react';
 
 function formatRelativeTime(iso?: string | null) {
   if (!iso) return null;
@@ -32,6 +33,19 @@ function formatRelativeTime(iso?: string | null) {
   return rtf.format(days, 'day');
 }
 
+function formatJobState(state: string) {
+  switch (state) {
+    case 'active':
+      return 'Generating clips now';
+    case 'waiting':
+      return 'Queued for processing';
+    case 'delayed':
+      return 'Retry scheduled';
+    default:
+      return 'Status unknown';
+  }
+}
+
 type ClipVideo = {
   id: string;
   s3Url?: string | null;
@@ -44,10 +58,23 @@ type ClipVideo = {
   sourceVideo?: { id: string; videoTitle?: string | null; s3Url?: string | null } | null;
 };
 
+type ClipJob = {
+  jobId: string | number;
+  feedVideoId: string;
+  state: string;
+  enqueuedAt: number | null;
+  startedAt: number | null;
+  feedName: string | null;
+  title: string;
+  clipSourceVideoId: string | null;
+};
+
 export default function ClipsPage() {
   const [clips, setClips] = useState<ClipVideo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [clipJobs, setClipJobs] = useState<ClipJob[]>([]);
+  const [isLoadingJobs, setIsLoadingJobs] = useState(false);
 
   const [query, setQuery] = useState('');
   const [selectedClip, setSelectedClip] = useState<ClipVideo | null>(null);
@@ -55,7 +82,7 @@ export default function ClipsPage() {
   const [deletingClipId, setDeletingClipId] = useState<string | null>(null);
   const [copiedClipId, setCopiedClipId] = useState<string | null>(null);
 
-  const fetchClips = async () => {
+  const fetchClips = useCallback(async () => {
     setIsLoading(true);
     setPageError(null);
     try {
@@ -69,7 +96,21 @@ export default function ClipsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  const fetchClipJobs = useCallback(async () => {
+    setIsLoadingJobs(true);
+    try {
+      const res = await fetch('/api/clip-jobs');
+      if (!res.ok) throw new Error('Failed to load clip jobs');
+      const data = (await res.json()) as ClipJob[];
+      setClipJobs(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoadingJobs(false);
+    }
+  }, []);
 
   const deleteClip = async (clip: ClipVideo) => {
     if (!confirm(`Delete clip "${clip.videoTitle || 'Untitled clip'}"?`)) return;
@@ -102,7 +143,13 @@ export default function ClipsPage() {
 
   useEffect(() => {
     fetchClips();
-  }, []);
+  }, [fetchClips]);
+
+  useEffect(() => {
+    fetchClipJobs();
+    const interval = window.setInterval(fetchClipJobs, 15000);
+    return () => window.clearInterval(interval);
+  }, [fetchClipJobs]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -165,8 +212,57 @@ export default function ClipsPage() {
               Refresh
             </Button>
           </div>
-        </div>
       </div>
+    </div>
+
+      {clipJobs.length > 0 && (
+        <div className="mb-6">
+          <Card className="border-dashed border-muted/70 bg-muted/20 shadow-none">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Loader2 className={cn('h-4 w-4', isLoadingJobs ? 'animate-spin' : 'text-muted-foreground')} />
+                Clip generation in progress
+              </CardTitle>
+              <CardDescription>
+                These videos are currently being scored. Click to view their status and finished clips.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {clipJobs.map((job) => (
+                  <Card key={job.feedVideoId} className="border shadow-sm">
+                    <CardContent className="flex flex-col gap-3 p-4">
+                      <div>
+                        <div className="text-sm font-semibold leading-snug line-clamp-2">
+                          {job.title}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {job.feedName ? `${job.feedName} • ` : null}
+                          {formatJobState(job.state)}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          {job.state === 'active' ? 'Generating' : 'Queued'}
+                        </div>
+                        {job.enqueuedAt ? (
+                          <span>
+                            since {new Date(job.enqueuedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        ) : null}
+                      </div>
+                      <Button asChild size="sm">
+                        <Link href={`/clips/${job.feedVideoId}`}>View details</Link>
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {pageError && (
         <div className="mb-6">

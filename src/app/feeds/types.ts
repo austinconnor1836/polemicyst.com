@@ -20,4 +20,16 @@ export type FeedVideo = {
   feed?: { name: string };
   userId?: string;
   aspectRatio?: string;
+  clipSourceVideoId?: string | null;
+  clipSourceVideo?: {
+    id: string;
+    videoTitle?: string | null;
+    s3Url?: string | null;
+    generatedClips?: Array<{
+      id: string;
+      videoTitle?: string | null;
+      s3Url?: string | null;
+      createdAt?: string | null;
+    }>;
+  } | null;
 };

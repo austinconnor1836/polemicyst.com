@@ -93,6 +93,11 @@ new Worker(
         },
       });
 
+      await prisma.feedVideo.update({
+        where: { id: feedVideoId },
+        data: { clipSourceVideoId: video.id },
+      });
+
       // 5. Build Candidates
       console.log('🧠 Building candidates...');
       const rawCandidates = buildCandidatesFromTranscript(transcriptSegments);
@@ -112,22 +117,23 @@ new Worker(
         localVideoPath: localVideoPath,
       });
 
-      const philosophyWeightedCandidates = topCandidates.map((candidate) => {
+      const philosophyWeightedCandidates: ClipCandidate[] = topCandidates.map((candidate) => {
         const philosophy = scorePhilosophicalRhetoric({
           transcript: candidate.text,
           candidate,
         });
         const baseScore = candidate.score ?? 0;
         const combined = baseScore * 0.7 + philosophy.score * 0.3;
+        const enrichedFeatures = {
+          ...(candidate.features ?? {}),
+          baseGeminiScore: baseScore,
+          philosophyScore: philosophy.score,
+          philosophyEvidence: philosophy.evidence,
+        } as Record<string, any>;
         return {
           ...candidate,
           score: combined,
-          features: {
-            ...candidate.features,
-            baseGeminiScore: baseScore,
-            philosophyScore: philosophy.score,
-            philosophyEvidence: philosophy.evidence,
-          },
+          features: enrichedFeatures,
         };
       });
 
@@ -179,7 +185,7 @@ new Worker(
             variant: 'default',
             s3Key: s3Key,
             title: `Viral Clip ${c.score.toFixed(1)}`,
-            description: c.features.rationale || '',
+            description: (c.features as Record<string, any>)?.rationale || '',
           },
         });
 
@@ -192,7 +198,7 @@ new Worker(
             s3Key: s3Key,
             sourceVideoId: video.id, // Link to parent
             fileName: `${segment.id}.mp4`,
-            sharedDescription: c.features.rationale || '',
+            sharedDescription: (c.features as Record<string, any>)?.rationale || '',
             facebookTemplate: '',
             instagramTemplate: '',
             youtubeTemplate: '',
@@ -205,9 +211,20 @@ new Worker(
       }
 
       console.log(`🏁 Job complete for ${feedVideoId}`);
-    } catch (error) {
-      console.error('❌ Error processing job:', error);
-      throw error;
+    } catch (err: unknown) {
+      const maybePrismaError = err as { code?: string; meta?: Record<string, any> } | null;
+      const isSegmentFkError =
+        maybePrismaError?.code === 'P2003' &&
+        (maybePrismaError.meta?.constraint === 'Segment_videoId_fkey' ||
+          maybePrismaError.meta?.modelName === 'Segment');
+      if (isSegmentFkError) {
+        console.error(
+          `⚠️ Skipping job ${feedVideoId} due to missing parent video for segment: ${maybePrismaError?.meta?.constraint}`
+        );
+        return;
+      }
+      console.error('❌ Error processing job:', err);
+      throw err;
     } finally {
       // Cleanup local video
       if (localVideoPath) {
