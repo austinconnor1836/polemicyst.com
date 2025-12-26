@@ -6,10 +6,7 @@ import { redisConnection } from '@workers/queues/redisConnection';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(
-  _request: Request,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_request: Request, { params }: { params: { id: string } }) {
   const feedVideo = await prisma.feedVideo.findUnique({
     where: { id: params.id },
     select: {
@@ -48,8 +45,11 @@ export async function GET(
 
   const queue = new Queue('clip-generation', { connection: redisConnection });
   let jobState: string | null = null;
-  let jobMeta: { enqueuedAt: number | null; startedAt: number | null; finishedAt: number | null } | null =
-    null;
+  let jobMeta: {
+    enqueuedAt: number | null;
+    startedAt: number | null;
+    finishedAt: number | null;
+  } | null = null;
 
   try {
     const job = await queue.getJob(params.id);

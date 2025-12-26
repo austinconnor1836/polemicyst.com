@@ -23,9 +23,12 @@ AWS_SECRET_ACCESS_KEY=
 GOOGLE_API_KEY=
 ANTHROPIC_API_KEY=
 OPENAI_API_KEY=
+LLM_PROVIDER=gemini
+# Acts as the fallback default provider; users can set their own preference in-app.
+GEMINI_MODEL=
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=llama3
 
 # --- Optional: auth debug logging (DANGER: may log OAuth tokens if enabled) ---
 # Default is off. Only set this temporarily for local debugging and avoid sharing logs.
 NEXTAUTH_DEBUG=false
-
-

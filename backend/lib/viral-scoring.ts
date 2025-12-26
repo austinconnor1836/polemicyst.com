@@ -1,3 +1,5 @@
+import type { LLMScoreResult } from './llm-types';
+
 export type TranscriptWordSegment = {
   start: number; // seconds
   end: number; // seconds
@@ -397,9 +399,9 @@ export function scoreAndRankCandidates(
 /**
  * Hybrid scoring strategy:
  * - Heuristic prefilter to reduce cost
- * - Gemini multimodal rerank (frames + optional audio)
+ * - LLM rerank (Gemini multimodal or Ollama text-only)
  */
-export async function scoreAndRankCandidatesGeminiMultimodal(params: {
+export async function scoreAndRankCandidatesLLM(params: {
   s3Url: string;
   candidates: Array<Omit<ClipCandidate, 'score' | 'features'>>;
   topN: number;
@@ -410,6 +412,7 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
   contentStyle?: ContentStyle;
   saferClips?: boolean;
   localVideoPath?: string;
+  providerOverride?: string;
 }): Promise<ClipCandidate[]> {
   const {
     s3Url,
@@ -422,17 +425,25 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
     contentStyle,
     saferClips = false,
     localVideoPath: providedPath,
+    providerOverride,
   } = params;
 
-  const apiKey = process.env.GOOGLE_API_KEY;
-  if (!apiKey) throw new Error('Missing GOOGLE_API_KEY for Gemini scoring');
+  const provider = (providerOverride || process.env.LLM_PROVIDER || 'gemini').toLowerCase();
+  let cachedLocalVideoPath = providedPath;
 
-  const {
-    ensureLocalVideoForScoring,
-    extractAudioMp3Base64,
-    extractJpegFramesBase64,
-    scoreSegmentWithGeminiMultimodal,
-  } = await import('./gemini-scoring');
+  async function ensureLocalVideo(): Promise<string> {
+    if (cachedLocalVideoPath) return cachedLocalVideoPath;
+    if (!s3Url) {
+      throw new Error('Missing s3Url for downloading video');
+    }
+    const cacheKey = Buffer.from(s3Url)
+      .toString('base64')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 24);
+    const { ensureLocalVideoForScoring } = await import('./gemini-scoring');
+    cachedLocalVideoPath = await ensureLocalVideoForScoring({ s3Url, cacheKey });
+    return cachedLocalVideoPath;
+  }
 
   // Pre-score heuristically to choose which windows are worth Gemini calls
   const preRanked = candidates
@@ -443,47 +454,11 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
     .sort((a, b) => b.hScore - a.hScore)
     .slice(0, Math.max(topN, topN * prefilterMultiplier));
 
-  // Use provided path or download (fallback)
-  let localVideoPath = providedPath;
-  if (!localVideoPath) {
-    const cacheKey = Buffer.from(s3Url)
-      .toString('base64')
-      .replace(/[^a-zA-Z0-9]/g, '')
-      .slice(0, 24);
-    localVideoPath = await ensureLocalVideoForScoring({ s3Url, cacheKey });
-  }
-
-  // Score sequentially (safe default). We can parallelize later with a small concurrency limit.
-  const scored: ClipCandidate[] = [];
-  for (const c of preRanked) {
-    const frames = await extractJpegFramesBase64({
-      videoPath: localVideoPath,
-      tStartS: c.tStartS,
-      tEndS: c.tEndS,
-      maxFrames: 4,
-    });
-    const audio = includeAudio
-      ? await extractAudioMp3Base64({
-          videoPath: localVideoPath,
-          tStartS: c.tStartS,
-          tEndS: c.tEndS,
-          maxSeconds: 18,
-        })
-      : null;
-
-    const llm = await scoreSegmentWithGeminiMultimodal({
-      apiKey,
-      modelName,
-      transcriptText: c.text,
-      tStartS: c.tStartS,
-      tEndS: c.tEndS,
-      framesJpegBase64: frames,
-      audioMp3Base64: audio,
-      targetPlatform,
-      contentStyle,
-      saferClips,
-    });
-
+  function buildCandidate(
+    llm: LLMScoreResult,
+    c: (typeof preRanked)[number],
+    providerLabel: string
+  ) {
     const hook = llm.hookScore ?? llm.score;
     const risk = llm.riskScore ?? 0;
     const context = llm.contextScore ?? llm.score;
@@ -500,13 +475,13 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
     const safetyPenalty = saferClips ? 0.35 * risk : 0;
     const finalScore = clamp(platformBoost - safetyPenalty - viralPenalty, 0, 10);
 
-    scored.push({
+    return {
       tStartS: c.tStartS,
       tEndS: c.tEndS,
       text: c.text,
       score: finalScore,
       features: {
-        provider: 'gemini',
+        provider: providerLabel,
         rationale: llm.rationale,
         hookScore: llm.hookScore,
         contextScore: llm.contextScore,
@@ -523,8 +498,87 @@ export async function scoreAndRankCandidatesGeminiMultimodal(params: {
         contentStyle,
         confidence: llm.confidence,
         durationS: Math.max(0, c.tEndS - c.tStartS),
+        hScore: c.hScore,
+        hFeatures: c.hFeatures,
       },
-    });
+    } as ClipCandidate;
+  }
+
+  const scored: ClipCandidate[] = [];
+
+  if (provider === 'ollama') {
+    const { scoreSegmentWithOllama, summarizeSegmentMedia } = await import('./ollama-scoring');
+    let localVideoPath: string | null = null;
+    if (s3Url) {
+      try {
+        localVideoPath = await ensureLocalVideo();
+      } catch (err) {
+        console.warn('Unable to cache video for Ollama scoring:', err instanceof Error ? err.message : err);
+      }
+    }
+
+    for (const c of preRanked) {
+      const mediaSummary =
+        localVideoPath
+          ? await summarizeSegmentMedia({
+              videoPath: localVideoPath,
+              tStartS: c.tStartS,
+              tEndS: c.tEndS,
+              includeAudio,
+            })
+          : null;
+
+      const llm = await scoreSegmentWithOllama({
+        transcriptText: c.text,
+        tStartS: c.tStartS,
+        tEndS: c.tEndS,
+        targetPlatform,
+        contentStyle,
+        saferClips,
+        mediaSummary,
+      });
+      scored.push(buildCandidate(llm, c, 'ollama'));
+    }
+  } else {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) throw new Error('Missing GOOGLE_API_KEY for Gemini scoring');
+
+    const { extractAudioMp3Base64, extractJpegFramesBase64, scoreSegmentWithGeminiMultimodal } =
+      await import('./gemini-scoring');
+
+    const localVideoPath = await ensureLocalVideo();
+
+    for (const c of preRanked) {
+      const frames = await extractJpegFramesBase64({
+        videoPath: localVideoPath,
+        tStartS: c.tStartS,
+        tEndS: c.tEndS,
+        maxFrames: 4,
+      });
+      const audio = includeAudio
+        ? await extractAudioMp3Base64({
+            videoPath: localVideoPath,
+            tStartS: c.tStartS,
+            tEndS: c.tEndS,
+            maxSeconds: 18,
+          })
+        : null;
+
+      const llm = await scoreSegmentWithGeminiMultimodal({
+        apiKey,
+        modelName,
+        transcriptText: c.text,
+        tStartS: c.tStartS,
+        tEndS: c.tEndS,
+        framesJpegBase64: frames,
+        audioMp3Base64: audio,
+        targetPlatform,
+        contentStyle,
+        saferClips,
+      });
+
+      scored.push(buildCandidate(llm, c, 'gemini'));
+    }
   }
 
   scored.sort((a, b) => b.score - a.score);

@@ -24,6 +24,10 @@ const run = async () => {
     saferClips: process.env.SAFER_CLIPS ? process.env.SAFER_CLIPS === 'true' : true,
     targetPlatform: process.env.TARGET_PLATFORM || 'reels',
     contentStyle: process.env.CONTENT_STYLE || 'auto',
+    llmProvider:
+      process.env.LLM_PROVIDER && process.env.LLM_PROVIDER.toLowerCase() === 'ollama'
+        ? 'ollama'
+        : 'gemini',
     minCandidates: process.env.MIN_CANDIDATES ? Number(process.env.MIN_CANDIDATES) : 3,
     maxCandidates: process.env.MAX_CANDIDATES ? Number(process.env.MAX_CANDIDATES) : 20,
     minScore: process.env.MIN_SCORE ? Number(process.env.MIN_SCORE) : 6.5,

@@ -5,7 +5,11 @@ import { prisma } from '@shared/lib/prisma';
 import { randomUUID } from 'crypto';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
-import { getStrictnessConfig, type ViralitySettingsValue } from '@/components/ViralitySettings';
+import {
+  getStrictnessConfig,
+  mergeViralitySettings,
+  type ViralitySettingsValue,
+} from '@shared/virality';
 import { uploadToS3 } from '@backend/lib/s3';
 import { downloadFeedVideoToTemp } from '@backend/utils/download';
 import path from 'path';
@@ -108,8 +112,9 @@ export async function POST(req: NextRequest) {
     // 4. Auto-trigger clip generation if enabled
     if (manualFeed.autoGenerateClips && manualFeed.viralitySettings) {
       try {
-        const settings = manualFeed.viralitySettings as unknown as ViralitySettingsValue;
-        const strictnessConfig = getStrictnessConfig(settings.strictnessPreset || 'balanced');
+        const rawSettings = manualFeed.viralitySettings as Partial<ViralitySettingsValue>;
+        const settings = mergeViralitySettings(rawSettings);
+        const strictnessConfig = getStrictnessConfig(settings.strictnessPreset);
 
         await clipGenerationQueue.add(
           'clip-generation',
@@ -122,6 +127,7 @@ export async function POST(req: NextRequest) {
             saferClips: settings.saferClips ?? true,
             targetPlatform: settings.targetPlatform || 'reels',
             contentStyle: settings.contentStyle || 'auto',
+            llmProvider: settings.llmProvider,
             ...strictnessConfig,
           },
           { jobId: newVideo.id }

@@ -15,7 +15,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { Copy, Download, ExternalLink, Loader2, Play, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import {
+  Copy,
+  Download,
+  ExternalLink,
+  Loader2,
+  Play,
+  RefreshCw,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react';
 
 function formatRelativeTime(iso?: string | null) {
   if (!iso) return null;
@@ -212,19 +222,25 @@ export default function ClipsPage() {
               Refresh
             </Button>
           </div>
+        </div>
       </div>
-    </div>
 
       {clipJobs.length > 0 && (
         <div className="mb-6">
           <Card className="border-dashed border-muted/70 bg-muted/20 shadow-none">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
-                <Loader2 className={cn('h-4 w-4', isLoadingJobs ? 'animate-spin' : 'text-muted-foreground')} />
+                <Loader2
+                  className={cn(
+                    'h-4 w-4',
+                    isLoadingJobs ? 'animate-spin' : 'text-muted-foreground'
+                  )}
+                />
                 Clip generation in progress
               </CardTitle>
               <CardDescription>
-                These videos are currently being scored. Click to view their status and finished clips.
+                These videos are currently being scored. Click to view their status and finished
+                clips.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -248,7 +264,11 @@ export default function ClipsPage() {
                         </div>
                         {job.enqueuedAt ? (
                           <span>
-                            since {new Date(job.enqueuedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            since{' '}
+                            {new Date(job.enqueuedAt).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
                           </span>
                         ) : null}
                       </div>

@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
       minScore,
       percentile,
       maxGeminiCandidates,
+      llmProvider,
     } = await req.json();
 
     if (!feedVideoId || !userId) {
@@ -38,6 +39,9 @@ export async function POST(req: NextRequest) {
     if (existingJob) {
       await existingJob.remove();
     }
+
+    const resolvedProvider =
+      typeof llmProvider === 'string' && llmProvider.toLowerCase() === 'ollama' ? 'ollama' : 'gemini';
 
     const job = await clipGenerationQueue.add(
       'clip-generation',
@@ -55,6 +59,7 @@ export async function POST(req: NextRequest) {
         minScore,
         percentile,
         maxGeminiCandidates,
+        llmProvider: resolvedProvider,
       },
       { jobId: feedVideoId }
     );

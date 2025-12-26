@@ -24,7 +24,8 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import AspectRatioSelect, { type AspectRatio } from '@/components/AspectRatioSelect';
-import ViralitySettings, { type ViralitySettingsValue } from '@/components/ViralitySettings';
+import ViralitySettings from '@/components/ViralitySettings';
+import { DEFAULT_VIRALITY_SETTINGS, type ViralitySettingsValue } from '@shared/virality';
 import { ActionHeader } from '@/components/ActionHeader';
 import { cn } from '@/lib/utils';
 
@@ -71,13 +72,7 @@ export default function DesignSystemPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16');
   const [viralitySettings, setViralitySettings] = useState<ViralitySettingsValue>({
-    scoringMode: 'hybrid',
-    strictnessPreset: 'balanced',
-    includeAudio: false,
-    saferClips: true,
-    targetPlatform: 'reels',
-    contentStyle: 'auto',
-    showAdvanced: false,
+    ...DEFAULT_VIRALITY_SETTINGS,
   });
   const [notifications, setNotifications] = useState(true);
 

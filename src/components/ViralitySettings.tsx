@@ -12,75 +12,33 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-
-export type ScoringMode = 'hybrid' | 'gemini' | 'heuristic';
-export type StrictnessPreset = 'strict' | 'balanced' | 'loose';
-export type TargetPlatform = 'all' | 'reels' | 'shorts' | 'youtube';
-export type ContentStyle =
-  | 'auto'
-  | 'politics'
-  | 'comedy'
-  | 'education'
-  | 'podcast'
-  | 'gaming'
-  | 'vlog'
-  | 'other';
-
-export type StrictnessConfig = {
-  minCandidates: number;
-  maxCandidates: number;
-  minScore: number;
-  percentile: number;
-  maxGeminiCandidates: number;
-};
-
-export function getStrictnessConfig(preset: StrictnessPreset): StrictnessConfig {
-  switch (preset) {
-    case 'strict':
-      return {
-        minScore: 7.0,
-        percentile: 0.9,
-        minCandidates: 3,
-        maxCandidates: 12,
-        maxGeminiCandidates: 18,
-      };
-    case 'loose':
-      return {
-        minScore: 6.0,
-        percentile: 0.75,
-        minCandidates: 5,
-        maxCandidates: 24,
-        maxGeminiCandidates: 36,
-      };
-    case 'balanced':
-    default:
-      return {
-        minScore: 6.5,
-        percentile: 0.85,
-        minCandidates: 3,
-        maxCandidates: 20,
-        maxGeminiCandidates: 24,
-      };
-  }
-}
-
-export type ViralitySettingsValue = {
-  scoringMode: ScoringMode;
-  strictnessPreset: StrictnessPreset;
-  includeAudio: boolean;
-  saferClips: boolean;
-  targetPlatform: TargetPlatform;
-  contentStyle: ContentStyle;
-  showAdvanced: boolean;
-};
+import {
+  type ContentStyle,
+  type LLMProvider,
+  type ScoringMode,
+  type StrictnessPreset,
+  type TargetPlatform,
+  type ViralitySettingsValue,
+  getStrictnessConfig,
+} from '@shared/virality';
 
 export type ViralitySettingsProps = {
   value: ViralitySettingsValue;
   onChange: (next: ViralitySettingsValue) => void;
   className?: string;
+  defaultLLMProvider?: LLMProvider;
+  onPersistLLMProvider?: (provider: LLMProvider) => void | Promise<void>;
+  isPersistingLLMProvider?: boolean;
 };
 
-export default function ViralitySettings({ value, onChange, className }: ViralitySettingsProps) {
+export default function ViralitySettings({
+  value,
+  onChange,
+  className,
+  defaultLLMProvider = 'gemini',
+  onPersistLLMProvider,
+  isPersistingLLMProvider = false,
+}: ViralitySettingsProps) {
   const strictnessConfig = getStrictnessConfig(value.strictnessPreset);
 
   return (
@@ -144,10 +102,40 @@ export default function ViralitySettings({ value, onChange, className }: Viralit
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="hybrid">Hybrid (cheap + smart)</SelectItem>
-            <SelectItem value="gemini">Gemini only (highest quality, highest cost)</SelectItem>
+            <SelectItem value="gemini">LLM only (quality depends on provider)</SelectItem>
             <SelectItem value="heuristic">Heuristic only (fastest, cheapest)</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label>LLM provider</Label>
+        <Select
+          value={value.llmProvider}
+          onValueChange={(v) => onChange({ ...value, llmProvider: v as LLMProvider })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select provider" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="gemini">Gemini (multimodal, hosted)</SelectItem>
+            <SelectItem value="ollama">Ollama (local, transcript + media stats)</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+          <span>Default: {defaultLLMProvider}</span>
+          {onPersistLLMProvider ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => onPersistLLMProvider(value.llmProvider)}
+              disabled={isPersistingLLMProvider}
+            >
+              {isPersistingLLMProvider ? 'Saving…' : 'Save as default'}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -208,7 +196,7 @@ export default function ViralitySettings({ value, onChange, className }: Viralit
       {value.showAdvanced && (
         <div className="rounded border border-gray-200 bg-gray-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/40">
           <div className="mb-2 text-xs text-gray-700 dark:text-gray-300">
-            Advanced knobs are cost controls. Gemini calls are capped by{' '}
+            Advanced knobs are cost controls. LLM calls (Gemini/Ollama) are capped by{' '}
             <code>maxGeminiCandidates</code>.
           </div>
           <div className="grid grid-cols-2 gap-2 text-sm">

@@ -3,22 +3,9 @@ import fs from 'fs/promises';
 import path from 'path';
 import { createWriteStream } from 'fs';
 import { spawn } from 'child_process';
+import type { LLMScoreResult } from './llm-types';
 
-export type GeminiScoreResult = {
-  score: number; // 0..10 overall
-  rationale: string;
-  hookScore?: number; // 0..10
-  contextScore?: number; // 0..10 (self-contained / coherent)
-  captionabilityScore?: number; // 0..10 (strong headline/caption without distortion)
-  comedicScore?: number; // 0..10
-  provocativeScore?: number; // 0..10
-  visualEnergyScore?: number; // 0..10
-  audioEnergyScore?: number; // 0..10
-  riskScore?: number; // 0..10 (higher = riskier)
-  riskFlags?: string[]; // e.g. ["misinformation", "defamation", "graphic"]
-  hasViralMoment?: boolean; // model’s best-guess boolean, not authoritative
-  confidence?: number; // 0..1
-};
+export type GeminiScoreResult = LLMScoreResult;
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));

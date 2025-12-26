@@ -8,7 +8,7 @@ import { prisma } from '../shared/lib/prisma';
 import { transcribeFeedVideo } from '../backend/lib/transcription';
 import {
   buildCandidatesFromTranscript,
-  scoreAndRankCandidatesGeminiMultimodal,
+  scoreAndRankCandidatesLLM,
   ClipCandidate,
 } from '../backend/lib/viral-scoring';
 import { generateClipFromS3 } from '../backend/utils/ffmpegUtils';
@@ -37,6 +37,7 @@ new Worker(
       minScore,
       percentile,
       maxGeminiCandidates,
+      llmProvider,
     } = job.data;
 
     console.log(`📥 Processing clip-generation job for FeedVideo: ${feedVideoId}`);
@@ -103,11 +104,13 @@ new Worker(
       const rawCandidates = buildCandidatesFromTranscript(transcriptSegments);
 
       // 6. Score Candidates (using local file)
-      console.log(`🤖 Scoring with mode: ${scoringMode || 'hybrid'}...`);
+      console.log(
+        `🤖 Scoring with mode: ${scoringMode || 'hybrid'} using ${llmProvider || process.env.LLM_PROVIDER || 'gemini'}...`
+      );
       let topCandidates: ClipCandidate[] = [];
 
       // Both branches now use localVideoPath
-      topCandidates = await scoreAndRankCandidatesGeminiMultimodal({
+      topCandidates = await scoreAndRankCandidatesLLM({
         s3Url: feedVideo.s3Url,
         candidates: rawCandidates,
         topN: maxCandidates || 5,
@@ -115,6 +118,7 @@ new Worker(
         contentStyle,
         saferClips,
         localVideoPath: localVideoPath,
+        providerOverride: llmProvider,
       });
 
       const philosophyWeightedCandidates: ClipCandidate[] = topCandidates.map((candidate) => {
@@ -126,7 +130,7 @@ new Worker(
         const combined = baseScore * 0.7 + philosophy.score * 0.3;
         const enrichedFeatures = {
           ...(candidate.features ?? {}),
-          baseGeminiScore: baseScore,
+          baseLLMScore: baseScore,
           philosophyScore: philosophy.score,
           philosophyEvidence: philosophy.evidence,
         } as Record<string, any>;

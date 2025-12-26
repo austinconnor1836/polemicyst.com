@@ -36,7 +36,11 @@ type FeedVideoSummary = {
     } | null;
   };
   jobState: string | null;
-  jobMeta: { enqueuedAt: number | null; startedAt: number | null; finishedAt: number | null } | null;
+  jobMeta: {
+    enqueuedAt: number | null;
+    startedAt: number | null;
+    finishedAt: number | null;
+  } | null;
   clips: ClipRecord[];
 };
 
@@ -146,12 +150,7 @@ export default function ClipGroupPage() {
         <Card className="border-red-200 bg-red-50/70 dark:border-red-900/50 dark:bg-red-950/20">
           <CardContent className="flex flex-col gap-3 p-5 text-sm text-red-800 dark:text-red-200">
             <div>{pageError}</div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => fetchSummary()}
-              className="w-fit"
-            >
+            <Button variant="secondary" size="sm" onClick={() => fetchSummary()} className="w-fit">
               Retry
             </Button>
           </CardContent>

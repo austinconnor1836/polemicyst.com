@@ -1,7 +1,7 @@
 'use client';
 
 import AspectRatioSelect, { type AspectRatio } from '@/components/AspectRatioSelect';
-import ViralitySettings, { type ViralitySettingsValue } from '@/components/ViralitySettings';
+import ViralitySettings from '@/components/ViralitySettings';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { FeedVideo } from '@/app/feeds/types';
 import { formatRelativeTime } from '@/app/feeds/util/time';
+import type { LLMProvider, ViralitySettingsValue } from '@shared/virality';
 
 export type SelectedVideoModalProps = {
   video: FeedVideo | null;
@@ -25,6 +26,9 @@ export type SelectedVideoModalProps = {
   onViralitySettingsChange: (value: ViralitySettingsValue) => void;
   onGenerateClip: () => Promise<void>;
   isGeneratingClip: boolean;
+  defaultLLMProvider?: LLMProvider;
+  onPersistDefaultLLM?: (provider: LLMProvider) => Promise<void> | void;
+  isPersistingDefaultLLM?: boolean;
 };
 
 export default function SelectedVideoModal({
@@ -37,6 +41,9 @@ export default function SelectedVideoModal({
   onViralitySettingsChange,
   onGenerateClip,
   isGeneratingClip,
+  defaultLLMProvider = 'gemini',
+  onPersistDefaultLLM,
+  isPersistingDefaultLLM = false,
 }: SelectedVideoModalProps) {
   if (!video) return null;
 
@@ -98,7 +105,13 @@ export default function SelectedVideoModal({
           )}
 
           <AspectRatioSelect value={aspectRatio} onChange={onAspectRatioChange} />
-          <ViralitySettings value={viralitySettings} onChange={onViralitySettingsChange} />
+          <ViralitySettings
+            value={viralitySettings}
+            onChange={onViralitySettingsChange}
+            defaultLLMProvider={defaultLLMProvider}
+            onPersistLLMProvider={onPersistDefaultLLM}
+            isPersistingLLMProvider={isPersistingDefaultLLM}
+          />
         </div>
 
         <DialogFooter className="gap-2 pt-4 sm:gap-2">

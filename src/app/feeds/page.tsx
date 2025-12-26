@@ -1,10 +1,14 @@
 'use client';
 
 import { useMemo, useRef, useState, useEffect } from 'react';
-import ViralitySettings, {
+import ViralitySettings from '@/components/ViralitySettings';
+import {
+  DEFAULT_VIRALITY_SETTINGS,
   getStrictnessConfig,
+  mergeViralitySettings,
+  type LLMProvider,
   type ViralitySettingsValue,
-} from '@/components/ViralitySettings';
+} from '@shared/virality';
 import type { AspectRatio } from '@/components/AspectRatioSelect';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -87,14 +91,61 @@ export default function FeedsPage() {
   const [isFeedSettingsOpen, setIsFeedSettingsOpen] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16');
   const [viralitySettings, setViralitySettings] = useState<ViralitySettingsValue>({
-    scoringMode: 'hybrid',
-    strictnessPreset: 'balanced',
-    includeAudio: false,
-    saferClips: true,
-    targetPlatform: 'reels',
-    contentStyle: 'auto',
-    showAdvanced: false,
+    ...DEFAULT_VIRALITY_SETTINGS,
   });
+  const [defaultLLMProvider, setDefaultLLMProvider] = useState<LLMProvider>(
+    DEFAULT_VIRALITY_SETTINGS.llmProvider
+  );
+  const [isPersistingDefaultLLM, setIsPersistingDefaultLLM] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchDefaultProvider = async () => {
+      try {
+        const res = await fetch('/api/user/llm-provider');
+        if (!res.ok) return;
+        const data = await res.json();
+        const provider: LLMProvider = data?.llmProvider === 'ollama' ? 'ollama' : 'gemini';
+        if (cancelled) return;
+        setDefaultLLMProvider(provider);
+        setViralitySettings((prev) => {
+          if (prev.llmProvider !== DEFAULT_VIRALITY_SETTINGS.llmProvider) return prev;
+          if (prev.llmProvider === provider) return prev;
+          return { ...prev, llmProvider: provider };
+        });
+      } catch (err) {
+        console.warn('Failed to load default LLM provider', err);
+      }
+    };
+    fetchDefaultProvider();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const persistDefaultLLMProvider = async (provider: LLMProvider) => {
+    if (!provider || provider === defaultLLMProvider) {
+      return;
+    }
+    setIsPersistingDefaultLLM(true);
+    try {
+      const res = await fetch('/api/user/llm-provider', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ llmProvider: provider }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to update default');
+      }
+      setDefaultLLMProvider(provider);
+      toast.success('Default LLM provider updated');
+    } catch (err) {
+      console.error(err);
+      toast.error('Unable to update default provider');
+    } finally {
+      setIsPersistingDefaultLLM(false);
+    }
+  };
 
   const fetchFeeds = async () => {
     setIsLoadingFeeds(true);
@@ -278,17 +329,18 @@ export default function FeedsPage() {
       const res = await fetch('/api/trigger-clip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          feedVideoId: video.id,
-          userId: video.userId,
-          aspectRatio: video.aspectRatio || '9:16',
-          scoringMode: viralitySettings.scoringMode,
-          includeAudio: viralitySettings.includeAudio,
-          saferClips: viralitySettings.saferClips,
-          targetPlatform: viralitySettings.targetPlatform,
-          contentStyle: viralitySettings.contentStyle,
-          ...strictnessConfig,
-        }),
+    body: JSON.stringify({
+      feedVideoId: video.id,
+      userId: video.userId,
+      aspectRatio: video.aspectRatio || '9:16',
+      scoringMode: viralitySettings.scoringMode,
+      includeAudio: viralitySettings.includeAudio,
+      saferClips: viralitySettings.saferClips,
+      targetPlatform: viralitySettings.targetPlatform,
+      contentStyle: viralitySettings.contentStyle,
+      llmProvider: viralitySettings.llmProvider,
+      ...strictnessConfig,
+    }),
       });
 
       if (!res.ok) throw new Error('Failed to trigger clip');
@@ -894,6 +946,9 @@ export default function FeedsPage() {
         onViralitySettingsChange={setViralitySettings}
         onGenerateClip={handleGenerateClip}
         isGeneratingClip={isGeneratingClip}
+        defaultLLMProvider={defaultLLMProvider}
+        onPersistDefaultLLM={persistDefaultLLMProvider}
+        isPersistingDefaultLLM={isPersistingDefaultLLM}
       />
 
       {/* Add Feed Modal */}
@@ -1105,6 +1160,7 @@ export default function FeedsPage() {
             </DialogHeader>
             <FeedSettingsForm
               feed={selectedFeedSettings}
+              defaultLLMProvider={defaultLLMProvider}
               onSave={(updates) => updateFeedSettings(selectedFeedSettings.id, updates)}
             />
           </DialogContent>
@@ -1114,20 +1170,33 @@ export default function FeedsPage() {
   );
 }
 
-function FeedSettingsForm({ feed, onSave }: { feed: VideoFeed; onSave: (updates: any) => void }) {
+function FeedSettingsForm({
+  feed,
+  onSave,
+  defaultLLMProvider,
+}: {
+  feed: VideoFeed;
+  onSave: (updates: any) => void;
+  defaultLLMProvider: LLMProvider;
+}) {
   const [autoGen, setAutoGen] = useState(feed.autoGenerateClips || false);
-  const [settings, setSettings] = useState(
-    (feed.viralitySettings as any) || {
-      scoringMode: 'hybrid',
-      strictnessPreset: 'balanced',
-      includeAudio: false,
-      saferClips: true,
-      targetPlatform: 'reels',
-      contentStyle: 'auto',
-      showAdvanced: false,
-    }
+  const [settings, setSettings] = useState<ViralitySettingsValue>(() =>
+    mergeViralitySettings(
+      (feed.viralitySettings as Partial<ViralitySettingsValue> | null) ?? undefined,
+      defaultLLMProvider
+    )
   );
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setAutoGen(feed.autoGenerateClips || false);
+    setSettings(
+      mergeViralitySettings(
+        (feed.viralitySettings as Partial<ViralitySettingsValue> | null) ?? undefined,
+        defaultLLMProvider
+      )
+    );
+  }, [feed.id, feed.autoGenerateClips, feed.viralitySettings, defaultLLMProvider]);
 
   return (
     <div className="space-y-6">
@@ -1155,7 +1224,11 @@ function FeedSettingsForm({ feed, onSave }: { feed: VideoFeed; onSave: (updates:
         className={cn('space-y-4 transition-opacity', !autoGen && 'opacity-50 pointer-events-none')}
       >
         <div className="text-sm font-medium">Virality Settings</div>
-        <ViralitySettings value={settings} onChange={setSettings} />
+        <ViralitySettings
+          value={settings}
+          onChange={setSettings}
+          defaultLLMProvider={defaultLLMProvider}
+        />
       </div>
 
       <DialogFooter>

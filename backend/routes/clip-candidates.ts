@@ -5,7 +5,7 @@ import {
   buildCandidatesFromTranscript,
   decideVideoHasViralMoments,
   scoreAndRankCandidates,
-  scoreAndRankCandidatesGeminiMultimodal,
+  scoreAndRankCandidatesLLM,
   selectCandidatesDynamically,
   TranscriptWordSegment,
   ScoringMode,
@@ -55,6 +55,7 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     percentile?: number;
     maxGeminiCandidates?: number;
     strictMinScore?: boolean;
+    llmProvider?: string;
   };
 
   if (!feedVideoId || !userId) {
@@ -99,13 +100,23 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     const mode: ScoringMode = scoringMode || 'heuristic';
 
     const wantsGemini = mode === 'gemini' || mode === 'hybrid';
+    const provider =
+      (typeof (req.body as any)?.llmProvider === 'string'
+        ? (req.body as any).llmProvider.toLowerCase()
+        : '') || (process.env.LLM_PROVIDER || 'gemini').toLowerCase();
     const hasGeminiKey = !!process.env.GOOGLE_API_KEY;
-    const canGemini = hasGeminiKey && !!feedVideo.s3Url;
+    const needsGeminiKey = provider !== 'ollama';
+    const needsVideoAsset = provider !== 'ollama';
+    const canLLM =
+      (!needsGeminiKey || hasGeminiKey) && (!needsVideoAsset || !!feedVideo.s3Url);
 
-    if (mode === 'gemini' && !canGemini) {
+    if (mode === 'gemini' && !canLLM) {
       return res.status(400).json({
-        error: 'Gemini scoring requested but missing prerequisites',
-        details: !hasGeminiKey ? 'Missing GOOGLE_API_KEY' : 'Missing feedVideo.s3Url',
+        error: 'LLM scoring requested but missing prerequisites',
+        details:
+          needsGeminiKey && !hasGeminiKey
+            ? 'Missing GOOGLE_API_KEY'
+            : 'Missing feedVideo.s3Url for multimodal scoring',
       });
     }
 
@@ -121,9 +132,9 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     // Step 1: cheap heuristic score for everyone
     const heuristicAll = scoreAndRankCandidates(candidates, candidates.length || 1);
 
-    // Step 2: optional Gemini rerank on a capped subset.
-    // IMPORTANT: For Gemini/hybrid, we prefilter by "top-K heuristic" (not by minScore/percentile),
-    // otherwise we'd often filter everything out before Gemini ever sees it.
+    // Step 2: optional LLM rerank on a capped subset.
+    // IMPORTANT: For hybrid mode, we prefilter by "top-K heuristic" (not by minScore/percentile),
+    // otherwise we'd often filter everything out before the LLM ever sees it.
     const geminiCap = Math.max(1, Math.min(maxGeminiCandidates ?? 36, heuristicAll.length || 0));
     const geminiInput = heuristicAll.slice(0, geminiCap).map((c) => ({
       tStartS: c.tStartS,
@@ -132,9 +143,9 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     }));
 
     const scored =
-      wantsGemini && canGemini
-        ? await scoreAndRankCandidatesGeminiMultimodal({
-            s3Url: feedVideo.s3Url!,
+      wantsGemini && canLLM
+        ? await scoreAndRankCandidatesLLM({
+            s3Url: feedVideo.s3Url || '',
             candidates: geminiInput,
             topN: geminiInput.length || 1,
             prefilterMultiplier: 1,
@@ -142,10 +153,11 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
             targetPlatform: platformUsed,
             contentStyle: styleUsed,
             saferClips: safer,
+            providerOverride: provider,
           })
         : heuristicAll;
 
-    // Step 3: dynamic selection on the final score distribution (Gemini or heuristic)
+    // Step 3: dynamic selection on the final score distribution (LLM or heuristic)
     const selectedFinal = selectCandidatesDynamically(scored, selectionOpts);
     const decision = decideVideoHasViralMoments({
       scored: scored as any,

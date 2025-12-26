@@ -23,6 +23,7 @@ model User {
   stripeCustomerId    String?
   subscriptionPlan    String               @default("free") // 'free', 'pro', etc.
   image               String?
+  defaultLLMProvider  String               @default("gemini")
   accounts            Account[]
   sessions            Session[]
   videos              Video[]

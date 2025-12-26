@@ -2,6 +2,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --experimental-https",
+    "dev:clip-worker": "tsx watch clip-worker/index.ts",
     "build": "npx prisma generate && next build",
     "build:worker": "tsc",
     "start": "next start",
@@ -86,7 +87,8 @@
     "prisma": "^6.19.1",
     "prettier": "^3.4.2",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "tsx": "^4.19.2"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [

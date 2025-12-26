@@ -10,13 +10,13 @@ If you change how scoring works, how candidates are selected, which models are c
 
 - **Candidate generation**: transcript windows produced server-side from `feedVideo.transcriptJson`
 - **Cheap scoring (heuristic)**: deterministic 0..10 heuristic score for all candidates (fast + offline)
-- **Multimodal scoring (Gemini)**: optional/capped rerank using frames + optional audio + transcript
+- **LLM rerank**: optional/capped rerank using frames + optional audio + transcript when Gemini is selected, or transcript + derived audio/visual stats when Ollama is selected (configurable via `LLM_PROVIDER`)
 - **Dynamic selection**: select a variable number of candidates based on score distribution (can return fewer, including 0)
 - **Video-level decision**: explicit `hasViralMoments` decision computed from the scored distribution + selection opts
 
 ### Council-style scoring (single-call)
 
-Instead of calling many models per candidate, we use a **single multimodal Gemini call** that returns multiple specialist subscores:
+Instead of calling many models per candidate, we use a **single LLM call** (Gemini multimodal or Ollama text-only) that returns multiple specialist subscores:
 
 - `score` (overall)
 - `hookScore`
@@ -48,9 +48,9 @@ In the Feeds modal, users can set:
   - tunes aggregation weights (hook vs context vs captionability)
 - **`contentStyle`**:
   - when `auto`, backend detects style from transcript keywords
-  - style is included in Gemini prompt (guidance), and stored in segment features
+  - style is included in the LLM prompt (guidance), and stored in segment features
 - **`saferClips`**:
-  - requests `riskScore/riskFlags` in Gemini JSON
+  - requests `riskScore/riskFlags` in the LLM JSON response
   - applies a risk penalty to final score and bumps minimum thresholds slightly
 
 ## Change log
@@ -61,7 +61,7 @@ In the Feeds modal, users can set:
   - `saferClips`, `targetPlatform`, `contentStyle` passed via queue → worker → backend scoring
 - Added transcript-based **auto content style detection**.
 - Added **platform-tuned window sizing** and safety-aware threshold bump.
-- Upgraded Gemini scoring to return council-style subscores (`contextScore`, `captionabilityScore`, `hasViralMoment`, `riskScore`), and added deterministic aggregation.
+- Upgraded the LLM scoring layer to return council-style subscores (`contextScore`, `captionabilityScore`, `hasViralMoment`, `riskScore`), and added deterministic aggregation.
 - Added a **video-level virality decision** returned from `/api/clip-candidates` (`hasViralMoments`, reason, cutoff/top-score diagnostics).
 - Improved the video-level decision with **platform-aware quality gates** (hook/context/captionability) and an optional `recommendation` string for what to try next when no moments are found.
 - Dialog UX: made `DialogContent` scrollable by default and constrained tall media previews (feeds modal).
