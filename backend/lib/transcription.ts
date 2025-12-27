@@ -90,10 +90,14 @@ export async function transcribeFeedVideo(
     pythonProcess.stdout.on('data', (d) => (output += d.toString()));
     pythonProcess.stderr.on('data', (d) => (error += d.toString()));
 
-    const exitCode: number = await new Promise((resolve) => pythonProcess.on('close', resolve));
+    const exitCode: number = await new Promise((resolve, reject) => {
+      pythonProcess.on('error', reject);
+      pythonProcess.on('close', (code) => resolve(code ?? 1));
+    });
 
     if (exitCode !== 0) {
-      throw new Error(`Transcription failed: ${error}`);
+      const msg = error?.trim() || output?.trim() || 'Unknown transcription error';
+      throw new Error(`Transcription failed (exit ${exitCode}): ${msg}`);
     }
 
     let parsed: { transcript: string; segments: any[] };

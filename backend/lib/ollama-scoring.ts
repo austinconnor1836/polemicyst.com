@@ -3,14 +3,7 @@ import { spawn } from 'child_process';
 import type { LLMScoreResult } from './llm-types';
 
 type TargetPlatform = 'all' | 'reels' | 'shorts' | 'youtube';
-type ContentStyle =
-  | 'politics'
-  | 'comedy'
-  | 'education'
-  | 'podcast'
-  | 'gaming'
-  | 'vlog'
-  | 'other';
+type ContentStyle = 'politics' | 'comedy' | 'education' | 'podcast' | 'gaming' | 'vlog' | 'other';
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -31,9 +24,7 @@ function coerceBool(value: unknown, fallback: boolean): boolean {
 
 function coerceArray(value: unknown): string[] {
   if (Array.isArray(value)) {
-    return value
-      .map((v) => (typeof v === 'string' ? v : String(v)))
-      .filter((v) => v.length);
+    return value.map((v) => (typeof v === 'string' ? v : String(v))).filter((v) => v.length);
   }
   return [];
 }
@@ -137,8 +128,9 @@ async function computeVisualStats(params: {
     });
     const avgBrightness =
       brightnessValues.length > 0
-        ? brightnessValues.filter((n): n is number => Number.isFinite(n)).reduce((a, b) => a + b, 0) /
-          brightnessValues.length
+        ? brightnessValues
+            .filter((n): n is number => Number.isFinite(n))
+            .reduce((a, b) => a + b, 0) / brightnessValues.length
         : null;
 
     const sceneLog = await runFfmpegAndCapture([
@@ -150,7 +142,7 @@ async function computeVisualStats(params: {
       '-i',
       videoPath,
       '-vf',
-      "select=gt(scene\\,0.3),metadata=print",
+      'select=gt(scene\\,0.3),metadata=print',
       '-an',
       '-f',
       'null',
@@ -216,7 +208,16 @@ export async function scoreSegmentWithOllama(params: {
     mediaSummary,
   } = params;
 
-  const baseUrl = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
+  // Keep prompts small for local models. Default to 4000 chars; override with OLLAMA_MAX_TRANSCRIPT_CHARS.
+  const maxTranscriptChars = Number(process.env.OLLAMA_MAX_TRANSCRIPT_CHARS) || 4000;
+  const trimmedTranscript =
+    transcriptText.length > maxTranscriptChars
+      ? `${transcriptText.slice(0, maxTranscriptChars)}...`
+      : transcriptText;
+
+  // Default to the docker service name so containers resolve correctly even if
+  // OLLAMA_BASE_URL is not provided via env.
+  const baseUrl = process.env.OLLAMA_BASE_URL || 'http://ollama:11434';
   const model = process.env.OLLAMA_MODEL || 'llama3';
 
   const prompt = [
@@ -227,7 +228,7 @@ export async function scoreSegmentWithOllama(params: {
       : `Safety mode: OFF. Focus purely on virality.`,
     mediaSummary ? `Approximate media cues (derived offline): ${mediaSummary}` : '',
     `Window: start=${tStartS.toFixed(2)}s end=${tEndS.toFixed(2)}s`,
-    `Transcript: """${transcriptText}"""`,
+    `Transcript (may be truncated): """${trimmedTranscript}"""`,
     '',
     `Return ONLY valid JSON with this shape:`,
     `{"score":0-10,"hookScore":0-10,"contextScore":0-10,"captionabilityScore":0-10,"comedicScore":0-10,"provocativeScore":0-10,"visualEnergyScore":0-10,"audioEnergyScore":0-10,"riskScore":0-10,"riskFlags":["..."],"hasViralMoment":true/false,"confidence":0-1,"rationale":"..."}`,
@@ -240,19 +241,39 @@ export async function scoreSegmentWithOllama(params: {
     .filter(Boolean)
     .join('\n');
 
-  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      prompt,
-      stream: false,
-      options: { temperature: 0.2 },
-    }),
-  });
+  const startedAt = Date.now();
+  const heartbeat = setInterval(() => {
+    const elapsed = Date.now() - startedAt;
+    console.log(`[ollama] still scoring model=${model} elapsedMs=${elapsed}`);
+  }, 15_000);
+  console.log(
+    `[ollama] scoring start model=${model} window=${tStartS.toFixed(2)}-${tEndS.toFixed(
+      2
+    )} transcriptChars=${trimmedTranscript.length}`
+  );
+  let res;
+  try {
+    res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        prompt,
+        stream: false,
+        options: { temperature: 0.2 },
+      }),
+    });
+  } finally {
+    clearInterval(heartbeat);
+  }
 
   const data = await res.json();
   if (!res.ok) {
+    console.error(
+      `[ollama] scoring error status=${res.status} durationMs=${Date.now() - startedAt} body=${JSON.stringify(
+        data
+      )}`
+    );
     throw new Error(
       `Ollama scoring error (${res.status}): ${typeof data === 'string' ? data : JSON.stringify(data)}`
     );
@@ -269,12 +290,15 @@ export async function scoreSegmentWithOllama(params: {
   try {
     parsed = JSON.parse(rawText.slice(start, end + 1));
   } catch (err) {
+    console.error(
+      `[ollama] scoring parse error durationMs=${Date.now() - startedAt} raw=${rawText.slice(0, 200)}`
+    );
     throw new Error(`Failed to parse Ollama JSON: ${(err as Error).message}`);
   }
 
   const score = coerceScore(parsed.score, 0);
 
-  return {
+  const result = {
     score,
     rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
     hookScore: coerceScore(parsed.hookScore, score),
@@ -289,4 +313,10 @@ export async function scoreSegmentWithOllama(params: {
     hasViralMoment: coerceBool(parsed.hasViralMoment, score >= 6),
     confidence: clamp(Number(parsed.confidence) || 0, 0, 1),
   };
+
+  console.log(
+    `[ollama] scoring success model=${model} durationMs=${Date.now() - startedAt} score=${result.score} hook=${result.hookScore} ctx=${result.contextScore}`
+  );
+
+  return result;
 }

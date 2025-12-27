@@ -11,7 +11,8 @@ async function main() {
       localFile,
       '00:00:10', // Start at 10s
       '00:00:20', // End at 20s
-      'debug-clip-test.mp4'
+      'debug-clip-test.mp4',
+      '9:16'
     );
     console.log('✅ Success:', result);
   } catch (e) {

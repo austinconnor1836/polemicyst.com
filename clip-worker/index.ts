@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env' });
-dotenv.config({ path: '.env.local', override: true });
+// For containers, respect already-set env (e.g., DATABASE_URL pointing at service DNS)
+dotenv.config({ path: '.env.local', override: false });
 
 import { Worker, Job } from 'bullmq';
 import { redisConnection } from '../workers/queues/redisConnection';
@@ -179,7 +180,8 @@ new Worker(
           localVideoPath, // Use local path!
           formatTime(c.tStartS),
           formatTime(c.tEndS),
-          s3Key
+          s3Key,
+          aspectRatio || '9:16'
         );
 
         // Create Clip (New Schema)

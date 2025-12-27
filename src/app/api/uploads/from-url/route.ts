@@ -5,18 +5,9 @@ import { prisma } from '@shared/lib/prisma';
 import { randomUUID } from 'crypto';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
-import {
-  getStrictnessConfig,
-  mergeViralitySettings,
-  type ViralitySettingsValue,
-} from '@shared/virality';
-import { uploadToS3 } from '@backend/lib/s3';
-import { downloadFeedVideoToTemp } from '@backend/utils/download';
-import path from 'path';
-import { promises as fs } from 'fs';
+import { getStrictnessConfig, mergeViralitySettings, type ViralitySettingsValue } from '@shared/virality';
 
-const redisHost =
-  process.env.REDIS_HOST === 'redis' ? 'localhost' : process.env.REDIS_HOST || 'localhost';
+const redisHost = process.env.REDIS_HOST || 'localhost';
 const redis = new Redis({
   host: redisHost,
   port: 6379,
@@ -24,6 +15,7 @@ const redis = new Redis({
 });
 
 const clipGenerationQueue = new Queue('clip-generation', { connection: redis });
+const downloadQueue = new Queue('feed-download', { connection: redis });
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -66,77 +58,26 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    let tempPath: string | null = null;
-    let uploadUrl: string | null = null;
-
-    try {
-      // 2. Download remotely hosted file (supports direct mp4 + yt-dlp fallback)
-      tempPath = await downloadFeedVideoToTemp(url);
-
-      const derivedExt =
-        (filename && path.extname(filename)) ||
-        (() => {
-          try {
-            const remotePath = new URL(url).pathname;
-            return path.extname(remotePath);
-          } catch {
-            return '';
-          }
-        })() ||
-        '.mp4';
-
-      const key = `uploads/${user.id}/${randomUUID()}${derivedExt}`;
-      const upload = await uploadToS3(tempPath, key);
-      uploadUrl = upload.url;
-    } finally {
-      if (tempPath) {
-        await fs.unlink(tempPath).catch(() => {});
-      }
-    }
-
-    if (!uploadUrl) {
-      throw new Error('Failed to upload video to S3');
-    }
-
-    // 3. Create the FeedVideo record pointing at our S3 object
+    // 2. Create the FeedVideo record as "pending" and enqueue download
     const newVideo = await prisma.feedVideo.create({
       data: {
         feedId: manualFeed.id,
         userId: user.id,
         videoId: randomUUID(), // Internal ID
         title: filename || url.split('/').pop() || 'Imported Video',
-        s3Url: uploadUrl,
+        s3Url: url, // temporary; will be replaced after download
+        status: 'pending',
       },
     });
 
-    // 4. Auto-trigger clip generation if enabled
-    if (manualFeed.autoGenerateClips && manualFeed.viralitySettings) {
-      try {
-        const rawSettings = manualFeed.viralitySettings as Partial<ViralitySettingsValue>;
-        const settings = mergeViralitySettings(rawSettings);
-        const strictnessConfig = getStrictnessConfig(settings.strictnessPreset);
-
-        await clipGenerationQueue.add(
-          'clip-generation',
-          {
-            feedVideoId: newVideo.id,
-            userId: user.id,
-            aspectRatio: '9:16',
-            scoringMode: settings.scoringMode || 'hybrid',
-            includeAudio: settings.includeAudio || false,
-            saferClips: settings.saferClips ?? true,
-            targetPlatform: settings.targetPlatform || 'reels',
-            contentStyle: settings.contentStyle || 'auto',
-            llmProvider: settings.llmProvider,
-            ...strictnessConfig,
-          },
-          { jobId: newVideo.id }
-        );
-        console.log(`[Auto-Gen] Enqueued job for imported video ${newVideo.id}`);
-      } catch (err) {
-        console.error('[Auto-Gen] Failed to enqueue job:', err);
-      }
-    }
+    // 3. Enqueue download job
+    await downloadQueue.add('download', {
+      feedVideoId: newVideo.id,
+      url,
+      title: newVideo.title,
+      feedId: manualFeed.id,
+      userId: user.id,
+    });
 
     return NextResponse.json(newVideo);
   } catch (error) {

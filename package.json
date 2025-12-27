@@ -3,6 +3,7 @@
   "scripts": {
     "dev": "next dev --experimental-https",
     "dev:clip-worker": "tsx watch clip-worker/index.ts",
+    "dev:download-worker": "tsx watch workers/downloadWorker.ts",
     "build": "npx prisma generate && next build",
     "build:worker": "tsc",
     "start": "next start",

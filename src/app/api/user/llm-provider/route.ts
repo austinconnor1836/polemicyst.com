@@ -47,7 +47,8 @@ async function handleUpdate(req: NextRequest) {
   }
 
   const requested = typeof body?.llmProvider === 'string' ? body.llmProvider.toLowerCase() : '';
-  const provider = requested === 'ollama' || requested === 'gemini' ? (requested as LLMProvider) : null;
+  const provider =
+    requested === 'ollama' || requested === 'gemini' ? (requested as LLMProvider) : null;
   if (!provider) {
     return NextResponse.json({ error: 'Invalid provider' }, { status: 400 });
   }

@@ -513,20 +513,22 @@ export async function scoreAndRankCandidatesLLM(params: {
       try {
         localVideoPath = await ensureLocalVideo();
       } catch (err) {
-        console.warn('Unable to cache video for Ollama scoring:', err instanceof Error ? err.message : err);
+        console.warn(
+          'Unable to cache video for Ollama scoring:',
+          err instanceof Error ? err.message : err
+        );
       }
     }
 
     for (const c of preRanked) {
-      const mediaSummary =
-        localVideoPath
-          ? await summarizeSegmentMedia({
-              videoPath: localVideoPath,
-              tStartS: c.tStartS,
-              tEndS: c.tEndS,
-              includeAudio,
-            })
-          : null;
+      const mediaSummary = localVideoPath
+        ? await summarizeSegmentMedia({
+            videoPath: localVideoPath,
+            tStartS: c.tStartS,
+            tEndS: c.tEndS,
+            includeAudio,
+          })
+        : null;
 
       const llm = await scoreSegmentWithOllama({
         transcriptText: c.text,

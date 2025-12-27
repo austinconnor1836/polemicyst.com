@@ -20,6 +20,9 @@ RUN npm install
 WORKDIR /app
 COPY . .
 
+# Ensure we don't have duplicate node_modules at /app/node_modules (we only need backend deps)
+RUN rm -rf /app/node_modules
+
 # Generate Prisma client (output goes to backend/node_modules/.prisma)
 WORKDIR /app/backend
 RUN npx prisma generate --schema=../prisma/schema.prisma

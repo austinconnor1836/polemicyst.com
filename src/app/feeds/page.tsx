@@ -35,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { getFeedVideoThumbnail } from '@/app/feeds/util/thumbnails';
 import { cn } from '@/lib/utils';
 import { Plus, RefreshCw, Search, Trash2, X, Upload, Settings, Loader2 } from 'lucide-react';
 import { Toaster, toast } from 'react-hot-toast';
@@ -329,18 +330,18 @@ export default function FeedsPage() {
       const res = await fetch('/api/trigger-clip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      feedVideoId: video.id,
-      userId: video.userId,
-      aspectRatio: video.aspectRatio || '9:16',
-      scoringMode: viralitySettings.scoringMode,
-      includeAudio: viralitySettings.includeAudio,
-      saferClips: viralitySettings.saferClips,
-      targetPlatform: viralitySettings.targetPlatform,
-      contentStyle: viralitySettings.contentStyle,
-      llmProvider: viralitySettings.llmProvider,
-      ...strictnessConfig,
-    }),
+        body: JSON.stringify({
+          feedVideoId: video.id,
+          userId: video.userId,
+          aspectRatio: video.aspectRatio || '9:16',
+          scoringMode: viralitySettings.scoringMode,
+          includeAudio: viralitySettings.includeAudio,
+          saferClips: viralitySettings.saferClips,
+          targetPlatform: viralitySettings.targetPlatform,
+          contentStyle: viralitySettings.contentStyle,
+          llmProvider: viralitySettings.llmProvider,
+          ...strictnessConfig,
+        }),
       });
 
       if (!res.ok) throw new Error('Failed to trigger clip');
@@ -459,6 +460,7 @@ export default function FeedsPage() {
       sorted.unshift({
         id: 'pending-import',
         feedId: 'pending',
+        videoId: 'pending-import',
         title: 'Importing video…',
         s3Url: pendingImport.url,
         thumbnailUrl: null,
@@ -794,6 +796,8 @@ export default function FeedsPage() {
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
                   {filteredVideos.map((video) => {
                     const isPending = video.id === 'pending-import';
+                    const { thumbnailUrl, youtubeId } = getFeedVideoThumbnail(video);
+                    const isYouTube = Boolean(youtubeId);
                     return (
                       <Card
                         key={video.id}
@@ -823,21 +827,12 @@ export default function FeedsPage() {
                               </div>
                             ) : (
                               (() => {
-                                const isYouTube =
-                                  video.s3Url.includes('youtube.com') ||
-                                  video.s3Url.includes('youtu.be');
-                                const thumb =
-                                  video.thumbnailUrl ||
-                                  (isYouTube
-                                    ? `https://img.youtube.com/vi/${video.s3Url.match(/[?&]v=([^&]+)/)?.[1]}/hqdefault.jpg`
-                                    : null);
-
                                 if (isYouTube) {
                                   return (
                                     <div className="relative aspect-video w-full bg-black/5">
-                                      {thumb ? (
+                                      {thumbnailUrl ? (
                                         <img
-                                          src={thumb}
+                                          src={thumbnailUrl}
                                           alt={video.title}
                                           className="h-full w-full object-cover"
                                         />
@@ -856,7 +851,7 @@ export default function FeedsPage() {
                                 return (
                                   <video
                                     src={video.s3Url}
-                                    poster={video.thumbnailUrl || undefined}
+                                    poster={thumbnailUrl || undefined}
                                     preload="metadata" // Only load partial metadata to be light
                                     muted
                                     playsInline

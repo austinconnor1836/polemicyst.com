@@ -100,6 +100,7 @@ model FeedVideo {
   title          String
   thumbnailUrl   String?
   s3Url          String
+  status         String    @default("ready") // pending | ready | failed
   transcript     String?
   transcriptJson Json?
   createdAt      DateTime  @default(now())

@@ -11,6 +11,58 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+function stripCodeFences(text: string): string {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced && fenced[1]) return fenced[1];
+  return text;
+}
+
+function tryParseJsonLoose(text: string): any | null {
+  const cleaned = stripCodeFences(text);
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start === -1 || end === -1) return null;
+
+  const fragment = cleaned.slice(start, end + 1);
+  const attempts = [
+    fragment,
+    // Quote bare keys
+    fragment.replace(/(?<=^|{|,)\s*([A-Za-z0-9_]+)\s*:/g, '"$1":'),
+  ].map((f) => f.replace(/,(\s*[}\]])/g, '$1')); // drop trailing commas
+
+  for (const attempt of attempts) {
+    try {
+      return JSON.parse(attempt);
+    } catch {
+      // try next
+    }
+  }
+  return null;
+}
+
+function parseKeyValueFallback(text: string): Record<string, any> | null {
+  const fields = [
+    'score',
+    'hookScore',
+    'contextScore',
+    'captionabilityScore',
+    'comedicScore',
+    'provocativeScore',
+    'visualEnergyScore',
+    'audioEnergyScore',
+    'riskScore',
+    'confidence',
+  ];
+  const parsed: Record<string, any> = {};
+  for (const f of fields) {
+    const m = text.match(new RegExp(`${f}\\s*[:=]\\s*([-\\d\\.]+)`, 'i'));
+    if (m) parsed[f] = Number(m[1]);
+  }
+  const rationaleMatch = text.match(/rationale\s*[:=]\s*(.+)/i);
+  if (rationaleMatch) parsed.rationale = rationaleMatch[1].trim();
+  return Object.keys(parsed).length ? parsed : null;
+}
+
 async function downloadToTmp(url: string, outPath: string): Promise<void> {
   const res = await fetch(url);
   const body = res.body;
@@ -264,14 +316,18 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
       .filter(Boolean)
       .join('') ?? JSON.stringify(json);
 
-  // Best-effort JSON extraction
-  const jsonStart = text.indexOf('{');
-  const jsonEnd = text.lastIndexOf('}');
-  if (jsonStart === -1 || jsonEnd === -1) {
-    throw new Error(`Gemini returned non-JSON: ${text.slice(0, 200)}`);
+  const parsedJson = tryParseJsonLoose(text);
+  const parsedKv = parsedJson ? null : parseKeyValueFallback(text);
+  if (!parsedJson && parsedKv) {
+    console.warn('⚠️ Gemini returned unstructured text; parsed via fallback KV extraction.');
   }
+  const parsed =
+    parsedJson ??
+    parsedKv ??
+    (() => {
+      throw new Error(`Gemini returned non-JSON: ${text.slice(0, 200)}`);
+    })();
 
-  const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
   return {
     score: clamp(Number(parsed.score), 0, 10),
     hookScore: parsed.hookScore != null ? clamp(Number(parsed.hookScore), 0, 10) : undefined,

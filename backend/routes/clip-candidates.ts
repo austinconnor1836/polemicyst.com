@@ -107,8 +107,7 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     const hasGeminiKey = !!process.env.GOOGLE_API_KEY;
     const needsGeminiKey = provider !== 'ollama';
     const needsVideoAsset = provider !== 'ollama';
-    const canLLM =
-      (!needsGeminiKey || hasGeminiKey) && (!needsVideoAsset || !!feedVideo.s3Url);
+    const canLLM = (!needsGeminiKey || hasGeminiKey) && (!needsVideoAsset || !!feedVideo.s3Url);
 
     if (mode === 'gemini' && !canLLM) {
       return res.status(400).json({

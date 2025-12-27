@@ -13,11 +13,13 @@ export type VideoFeed = {
 export type FeedVideo = {
   id: string;
   feedId: string;
+  videoId: string;
   title: string;
   thumbnailUrl?: string | null;
   s3Url: string;
+  status?: string;
   createdAt?: string;
-  feed?: { name: string };
+  feed?: { name: string; sourceType?: string };
   userId?: string;
   aspectRatio?: string;
   clipSourceVideoId?: string | null;

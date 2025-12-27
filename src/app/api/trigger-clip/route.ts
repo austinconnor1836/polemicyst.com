@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
-const redisHost =
-  process.env.REDIS_HOST === 'redis' ? 'localhost' : process.env.REDIS_HOST || 'localhost';
+const redisHost = process.env.REDIS_HOST || 'localhost';
 const redis = new Redis({
   host: redisHost,
   port: 6379,
@@ -41,7 +40,9 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedProvider =
-      typeof llmProvider === 'string' && llmProvider.toLowerCase() === 'ollama' ? 'ollama' : 'gemini';
+      typeof llmProvider === 'string' && llmProvider.toLowerCase() === 'ollama'
+        ? 'ollama'
+        : 'gemini';
 
     const job = await clipGenerationQueue.add(
       'clip-generation',

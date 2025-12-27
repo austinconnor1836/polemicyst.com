@@ -13,14 +13,36 @@ function parseTimeToSeconds(t: string): number {
   return hh * 3600 + mm * 60 + ss;
 }
 
+type AspectRatio = '9:16' | '16:9' | '1:1';
+
+function getAspectRatioFilter(aspectRatio: AspectRatio = '9:16') {
+  const targets: Record<AspectRatio, { w: number; h: number }> = {
+    '9:16': { w: 720, h: 1280 },
+    '16:9': { w: 1280, h: 720 },
+    '1:1': { w: 720, h: 720 },
+  };
+
+  const { w, h } = targets[aspectRatio] ?? targets['9:16'];
+
+  // Use "increase" (supported in ffmpeg 5.x) to cover-fit, then center crop to exact output dims.
+  return `scale=${w}:${h}:force_original_aspect_ratio=increase,setsar=1,crop=${w}:${h}:(iw-${w})/2:(ih-${h})/2`;
+}
+
+function normalizeAspectRatio(aspectRatio?: string): AspectRatio {
+  const allowed: AspectRatio[] = ['9:16', '16:9', '1:1'];
+  return allowed.includes(aspectRatio as AspectRatio) ? (aspectRatio as AspectRatio) : '9:16';
+}
+
 export async function generateClipFromS3(
   inputPath: string,
   start: string,
   end: string,
-  key: string
+  key: string,
+  aspectRatio?: string
 ) {
   const duration = parseTimeToSeconds(end) - parseTimeToSeconds(start);
   const isUrl = inputPath.startsWith('http');
+  const aspectRatioFilter = getAspectRatioFilter(normalizeAspectRatio(aspectRatio));
 
   const ffmpegArgs = [
     '-ss',
@@ -29,6 +51,8 @@ export async function generateClipFromS3(
     isUrl ? 'pipe:0' : inputPath,
     '-t',
     duration.toString(),
+    '-vf',
+    aspectRatioFilter,
     '-c:v',
     'libx264',
     '-c:a',

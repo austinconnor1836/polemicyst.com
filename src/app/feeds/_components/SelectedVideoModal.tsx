@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { FeedVideo } from '@/app/feeds/types';
 import { formatRelativeTime } from '@/app/feeds/util/time';
+import { getFeedVideoThumbnail } from '@/app/feeds/util/thumbnails';
 import type { LLMProvider, ViralitySettingsValue } from '@shared/virality';
 
 export type SelectedVideoModalProps = {
@@ -47,13 +48,10 @@ export default function SelectedVideoModal({
 }: SelectedVideoModalProps) {
   if (!video) return null;
 
-  const isYouTube = video.s3Url.includes('youtube.com') || video.s3Url.includes('youtu.be');
-  const thumb =
-    video.thumbnailUrl ||
-    (isYouTube
-      ? `https://img.youtube.com/vi/${video.s3Url.match(/[?&]v=([^&]+)/)?.[1]}/hqdefault.jpg`
-      : null);
+  const { thumbnailUrl, youtubeId } = getFeedVideoThumbnail(video);
+  const isYouTube = Boolean(youtubeId);
   const addedTime = video.createdAt ? formatRelativeTime(video.createdAt) : null;
+  const isPendingDownload = video.status === 'pending';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -79,9 +77,9 @@ export default function SelectedVideoModal({
 
           {isYouTube ? (
             <div className="flex aspect-video w-full flex-col items-center justify-center rounded bg-black/5 p-4">
-              {thumb ? (
+              {thumbnailUrl ? (
                 <img
-                  src={thumb}
+                  src={thumbnailUrl}
                   alt={video.title}
                   className="max-h-[35vh] w-full rounded object-contain"
                 />
@@ -100,6 +98,7 @@ export default function SelectedVideoModal({
               controls
               preload="metadata"
               playsInline
+              poster={thumbnailUrl || undefined}
               className="max-h-[35vh] w-full rounded object-contain"
             />
           )}
@@ -115,8 +114,12 @@ export default function SelectedVideoModal({
         </div>
 
         <DialogFooter className="gap-2 pt-4 sm:gap-2">
-          <Button onClick={onGenerateClip} disabled={isGeneratingClip}>
-            {isGeneratingClip ? 'Generating...' : 'Generate clip'}
+          <Button onClick={onGenerateClip} disabled={isGeneratingClip || isPendingDownload}>
+            {isPendingDownload
+              ? 'Download in progress'
+              : isGeneratingClip
+                ? 'Generating...'
+                : 'Generate clip'}
           </Button>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel

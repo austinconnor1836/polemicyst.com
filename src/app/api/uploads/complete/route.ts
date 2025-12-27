@@ -11,8 +11,7 @@ import {
   type ViralitySettingsValue,
 } from '@shared/virality';
 
-const redisHost =
-  process.env.REDIS_HOST === 'redis' ? 'localhost' : process.env.REDIS_HOST || 'localhost';
+const redisHost = process.env.REDIS_HOST || 'localhost';
 const redis = new Redis({
   host: redisHost,
   port: 6379,
