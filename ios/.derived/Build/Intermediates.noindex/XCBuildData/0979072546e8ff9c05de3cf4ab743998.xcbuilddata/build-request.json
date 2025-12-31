@@ -1,0 +1,70 @@
+{
+  "buildCommand": {
+    "command": "build",
+    "skipDependencies": false,
+    "style": "buildOnly"
+  },
+  "configuredTargets": [
+    {
+      "guid": "PACKAGE-PRODUCT:PolemicystApp"
+    }
+  ],
+  "containerPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios",
+  "continueBuildingAfterErrors": false,
+  "dependencyScope": "workspace",
+  "enableIndexBuildArena": false,
+  "hideShellScriptEnvironment": false,
+  "parameters": {
+    "action": "build",
+    "activeArchitecture": "arm64",
+    "activeRunDestination": {
+      "disableOnlyActiveArch": false,
+      "platform": "iphonesimulator",
+      "sdk": "iphonesimulator17.5",
+      "sdkVariant": "iphonesimulator",
+      "supportedArchitectures": ["arm64", "x86_64"],
+      "targetArchitecture": "arm64"
+    },
+    "arenaInfo": {
+      "buildIntermediatesPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/Intermediates.noindex",
+      "buildProductsPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/Products",
+      "derivedDataPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived",
+      "indexDataStoreFolderPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Index.noindex/DataStore",
+      "indexEnableDataStore": true,
+      "indexPCHPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Index.noindex/PrecompiledHeaders",
+      "pchPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/Intermediates.noindex/PrecompiledHeaders"
+    },
+    "configurationName": "Debug",
+    "overrides": {
+      "commandLine": {
+        "table": {
+          "SDKROOT": "iphonesimulator17.5"
+        }
+      },
+      "synthesized": {
+        "table": {
+          "ACTION": "build",
+          "ASSETCATALOG_FILTER_FOR_DEVICE_MODEL": "iPhone15,4",
+          "ASSETCATALOG_FILTER_FOR_DEVICE_OS_VERSION": "17.5",
+          "ASSETCATALOG_FILTER_FOR_THINNING_DEVICE_CONFIGURATION": "iPhone15,4",
+          "BUILD_ACTIVE_RESOURCES_ONLY": "YES",
+          "CLANG_COVERAGE_MAPPING": "YES",
+          "CLANG_PROFILE_DATA_DIRECTORY": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/ProfileData",
+          "ENABLE_PREVIEWS": "NO",
+          "ENABLE_XOJIT_PREVIEWS": "NO",
+          "ONLY_ACTIVE_ARCH": "YES",
+          "TARGET_DEVICE_IDENTIFIER": "CC520E35-A2A2-47EB-8F9B-8370CE4BD706",
+          "TARGET_DEVICE_MODEL": "iPhone15,4",
+          "TARGET_DEVICE_OS_VERSION": "17.5",
+          "TARGET_DEVICE_PLATFORM_NAME": "iphonesimulator"
+        }
+      }
+    }
+  },
+  "schemeCommand": "launch",
+  "showNonLoggedProgress": true,
+  "useDryRun": false,
+  "useImplicitDependencies": true,
+  "useLegacyBuildLocations": false,
+  "useParallelTargets": true
+}
