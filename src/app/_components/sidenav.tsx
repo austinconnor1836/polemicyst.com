@@ -1,26 +1,28 @@
-'use client'
+'use client';
 
-import React from 'react'
-import cn from 'classnames'
-import { useHamburger } from '../context/HamburgerContext' // Import context
-import { IconButton } from '@mui/material'
-import { SideNavItem } from '../ui/types'
-import Link from 'next/link'
-import HomeIcon from '@mui/icons-material/Home'
-import DescriptionIcon from '@mui/icons-material/Description'
+import React from 'react';
+import cn from 'classnames';
+import { useHamburger } from '../context/HamburgerContext'; // Import context
+import { IconButton } from '@mui/material';
+import { SideNavItem } from '../ui/types';
+import Link from 'next/link';
+import HomeIcon from '@mui/icons-material/Home';
+import DescriptionIcon from '@mui/icons-material/Description';
+import MovieIcon from '@mui/icons-material/Movie';
 
 interface SidePanelProps {
-  onSelectItem?: (item: string) => void
+  onSelectItem?: (item: string) => void;
 }
 
 const sideNavItems: SideNavItem[] = [
   { label: 'Home', element: <HomeIcon />, href: '/' },
+  { label: 'Clips', element: <MovieIcon />, href: '/clips' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
   // Add other items as needed
-]
+];
 
 const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
-  const { isOpen } = useHamburger() // Use the isOpen state from context
+  const { isOpen } = useHamburger(); // Use the isOpen state from context
 
   return (
     <div
@@ -61,7 +63,7 @@ const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
         ))}
       </ul>
     </div>
-  )
-}
+  );
+};
 
-export default SidePanel
+export default SidePanel;

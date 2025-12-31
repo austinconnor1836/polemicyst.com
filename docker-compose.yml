@@ -1,11 +1,10 @@
-  
 version: '3.9'
 services:
   db:
     image: postgres:15
     container_name: clips-genie-db
     ports:
-      - "5432:5432"
+      - '5432:5432'
     environment:
       POSTGRES_DB: clips-genie
       POSTGRES_USER: postgres
@@ -14,149 +13,93 @@ services:
       - pg-data:/var/lib/postgresql/data
     networks:
       - app-network
-  
+
   # Redis for job queuing
   redis:
     image: redis:alpine
     ports:
-      - "6379:6379"
+      - '6379:6379'
     restart: unless-stopped
     networks:
       - app-network
-  
-  api:
+
+  backend:
     build:
       context: .
-      dockerfile: ./backend/api/Dockerfile
-    entrypoint: ["/bin/bash", "./start.sh"]
+      dockerfile: ./backend/Dockerfile
     ports:
-      - "3001:3001"
+      - '3001:3001'
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
       - REDIS_HOST=redis
     depends_on:
       - db
       - redis
-    env_file:
-      - .env
     networks:
       - app-network
-    volumes:
-      - ./backend/api:/app
-      - ./shared:/app/shared
-      - ./prisma:/app/prisma
-      - ./tsconfig.docker.json:/app/tsconfig.json:ro
-      - ./package.docker.json:/app/package.json:ro
 
+  # Clip Worker - Main job processing (Node.js)
   clip-worker:
     build:
       context: .
-      dockerfile: ./backend/workers/clip-worker/Dockerfile
+      dockerfile: ./clip-worker/Dockerfile
     environment:
       - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - NODE_ENV=production
     depends_on:
       - redis
-    entrypoint: ["/bin/sh", "./start.sh"]
-    env_file:
-      - .env
+      - db
+      - ollama
+    command: ['node', 'index.js']
     restart: unless-stopped
     networks:
       - app-network
+
+  # Hot-reload clip worker (dev-only)
+  clip-worker-dev:
+    image: node:18
+    working_dir: /app
+    command:
+      [
+        'sh',
+        '-c',
+        'apt-get update && apt-get install -y ffmpeg && cd /app && npm install && npx tsx watch clip-worker/index.ts',
+      ]
     volumes:
-      - ./backend/workers/clip-worker:/app
-      - ./shared:/app/shared
-      - ./prisma:/app/prisma
-      - ./tsconfig.docker.json:/app/tsconfig.json:ro
-      - ./package.docker.json:/app/package.json:ro
-  
+      - .:/app
+      - /app/node_modules
+    environment:
+      - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3
+      - OLLAMA_OPTIONS={"num_predict":256,"temperature":0.2}
+    env_file:
+      - .env
+      - .env.local
+    depends_on:
+      - redis
+      - db
+      - ollama
+    networks:
+      - app-network
+
   clip-metadata-worker:
     build:
       context: .
-      dockerfile: ./backend/workers/clip-worker/Dockerfile
-    entrypoint: ["/bin/bash", "./start.sh"]
+      dockerfile: ./clip-worker/Dockerfile
+    command: ['node', 'generate/generateMetadataWorker.js']
     environment:
       - REDIS_HOST=redis
+      - NODE_ENV=production
     depends_on:
       - redis
       - db
     restart: unless-stopped
-    env_file:
-      - .env
     networks:
       - app-network
-    volumes:
-      - ./backend/workers/clip-metadata-worker:/app
-      - ./shared:/app/shared
-      - ./prisma:/app/prisma
-      - ./tsconfig.docker.json:/app/tsconfig.json:ro
-      - ./package.docker.json:/app/package.json:ro
-
-  video-download-worker:
-    build:
-      context: .
-      dockerfile: ./backend/workers/video-download-worker/Dockerfile
-    environment:
-      - REDIS_HOST=redis
-    depends_on:
-      - redis
-      - db
-    entrypoint: ["/bin/sh", "./start.sh"]
-    env_file:
-      - .env
-    restart: unless-stopped
-    networks:
-      - app-network
-    volumes:
-      - ./backend/workers/video-download-worker:/app
-      - ./shared:/app/shared
-      - ./prisma:/app/prisma
-      - ./tsconfig.docker.json:/app/tsconfig.json:ro
-      - ./package.docker.json:/app/package.json:ro
-  
-  transcription-worker:
-    build:
-      context: .
-      dockerfile: ./backend/workers/transcription-worker/Dockerfile
-    environment:
-      - REDIS_HOST=redis
-    depends_on:
-      - redis
-      - db
-    entrypoint: ["/bin/sh", "./start.sh"]
-    env_file:
-      - .env
-    restart: unless-stopped
-    networks:
-      - app-network
-    volumes:
-      - ./backend/workers/transcription-worker:/app
-      - ./shared:/app/shared
-      - ./prisma:/app/prisma
-      - ./tsconfig.docker.json:/app/tsconfig.json:ro
-      - ./package.docker.json:/app/package.json:ro
-
-  poller-worker:
-    build:
-      context: .
-      dockerfile: ./backend/workers/poller-worker/Dockerfile
-    environment:
-      - REDIS_HOST=redis
-    depends_on:
-      - redis
-      - db
-    entrypoint: ["/bin/bash", "./start.sh"]
-    env_file:
-      - .env
-    restart: unless-stopped
-    networks:
-      - app-network
-    volumes:
-      - ./backend/workers/poller-worker:/app
-      - ./shared:/app/shared
-      - ./prisma:/app/prisma
-      - ./tsconfig.docker.json:/app/tsconfig.json:ro
-      - ./package.docker.json:/app/package.json:ro
-
 
   # Faster Whisper for transcription
   faster-whisper:
@@ -177,46 +120,61 @@ services:
   # Ollama for language model processing
   ollama:
     build:
-      context: .
-      dockerfile: ./backend/workers/ollama-worker/Dockerfile
+      context: ./backend
+      dockerfile: ollama.Dockerfile
     container_name: ollama
     volumes:
-      - ./backend/workers/ollama-worker/scripts/start-ollama.sh:/start.sh
+      - ./backend/scripts/start-ollama.sh:/start.sh
       - ollama-data:/root/.ollama
-    entrypoint: ["/bin/bash", "/start.sh"]
+    entrypoint: ['/bin/bash', '/start.sh']
     ports:
-      - "11434:11434"
+      - '11434:11434'
     restart: unless-stopped
     networks:
       - app-network
 
-  provocativeness-scorer:
+  poller:
     build:
       context: .
-      dockerfile: ./backend/workers/llm-worker/Dockerfile
-    environment:
-      - REDIS_HOST=redis
-      - OLLAMA_HOST=http://ollama:11434
-      - SCORING_TYPE=PROVOCATIVENESS
-      - MODEL_NAME=llama3
+      dockerfile: ./workers/workers.Dockerfile
+    volumes:
+      - ./shared:/app/shared # ⬅️ needed for prisma and shared code
+      - ./prisma:/app/prisma
     depends_on:
+      - backend
+      - db
       - redis
-      - ollama
+    environment:
+      - NODE_ENV=production
+      # IMPORTANT: the poller runs inside Docker, so it must use Docker service DNS
+      # (not localhost, which would point at the container itself).
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
+      - REDIS_HOST=redis
+    env_file:
+      - .env
+    restart: unless-stopped
     networks:
       - app-network
 
-  comedic-scorer:
+  download-worker:
     build:
       context: .
-      dockerfile: ./backend/workers/llm-worker/Dockerfile
-    environment:
-      - REDIS_HOST=redis
-      - OLLAMA_HOST=http://ollama:11434
-      - SCORING_TYPE=COMEDIC
-      - MODEL_NAME=llama3
+      dockerfile: ./workers/workers.Dockerfile
+    command: ['npx', 'ts-node', 'downloadWorker.ts']
+    volumes:
+      - ./shared:/app/shared
+      - ./prisma:/app/prisma
     depends_on:
+      - db
       - redis
-      - ollama
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
+      - REDIS_HOST=redis
+    env_file:
+      - .env
+      - .env.local
+    restart: unless-stopped
     networks:
       - app-network
 

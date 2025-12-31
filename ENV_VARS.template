@@ -1,0 +1,34 @@
+# Local environment variables (template)
+#
+# Create two files locally (NOT committed):
+# - .env
+# - .env.local
+#
+# Then paste the needed variables from below and fill in secrets.
+#
+# --- Database (local dev) ---
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/clips-genie
+#
+# --- Redis (local dev) ---
+REDIS_HOST=localhost
+#
+# --- Optional: AWS (only needed for S3 upload/download flows) ---
+AWS_REGION=us-east-1
+# Some parts of the codebase read S3_REGION (fallbacks vary), so set both for consistency.
+S3_REGION=us-east-1
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+#
+# --- Optional: model APIs (only if using external scoring/models) ---
+GOOGLE_API_KEY=
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+LLM_PROVIDER=gemini
+# Acts as the fallback default provider; users can set their own preference in-app.
+GEMINI_MODEL=
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=llama3
+
+# --- Optional: auth debug logging (DANGER: may log OAuth tokens if enabled) ---
+# Default is off. Only set this temporarily for local debugging and avoid sharing logs.
+NEXTAUTH_DEBUG=false

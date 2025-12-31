@@ -1,24 +1,24 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "../../../../auth";
-import { prisma } from "@shared/lib/prisma";
-import { NextRequest } from "next/server";
-import AWS from "aws-sdk";
-import { randomUUID } from "crypto";
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../../../auth';
+import { prisma } from '@shared/lib/prisma';
+import { NextRequest } from 'next/server';
+import AWS from 'aws-sdk';
+import { randomUUID } from 'crypto';
 
-const S3_BUCKET = "clips-genie-uploads";
+const S3_BUCKET = 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION!;
 const s3 = new AWS.S3({
   region: S3_REGION,
   accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  signatureVersion: "v4",
+  signatureVersion: 'v4',
 });
 
 export async function GET() {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.email) {
-    return new Response("Unauthorized", { status: 401 });
+    return new Response('Unauthorized', { status: 401 });
   }
 
   const user = await prisma.user.findUnique({
@@ -32,16 +32,16 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
-    return new Response("Unauthorized", { status: 401 });
+    return new Response('Unauthorized', { status: 401 });
   }
 
   const formData = await req.formData();
-  const file = formData.get("file") as File;
-  const videoTitle = formData.get("videoTitle") as string;
-  const fileName = formData.get("fileName") as string;
+  const file = formData.get('file') as File;
+  const videoTitle = formData.get('videoTitle') as string;
+  const fileName = formData.get('fileName') as string;
 
   if (!file || !videoTitle || !fileName) {
-    return new Response("Missing fields", { status: 400 });
+    return new Response('Missing fields', { status: 400 });
   }
 
   const user = await prisma.user.findUnique({
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     include: { templatePreferences: true },
   });
 
-  if (!user) return new Response("User not found", { status: 404 });
+  if (!user) return new Response('User not found', { status: 404 });
 
   const preferences = user.templatePreferences;
 
@@ -75,12 +75,12 @@ export async function POST(req: NextRequest) {
       s3Key: key,
       s3Url,
       videoTitle,
-      sharedDescription: "",
-      facebookTemplate: preferences?.facebookTemplate || "",
-      instagramTemplate: preferences?.instagramTemplate || "",
-      youtubeTemplate: preferences?.youtubeTemplate || "",
-      blueskyTemplate: "",
-      twitterTemplate: "",
+      sharedDescription: '',
+      facebookTemplate: preferences?.facebookTemplate || '',
+      instagramTemplate: preferences?.instagramTemplate || '',
+      youtubeTemplate: preferences?.youtubeTemplate || '',
+      blueskyTemplate: '',
+      twitterTemplate: '',
     },
   });
 

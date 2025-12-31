@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
+const redisHost = process.env.REDIS_HOST || 'localhost';
 const redis = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
+  host: redisHost,
   port: 6379,
   maxRetriesPerRequest: null,
 });
@@ -12,15 +13,55 @@ const clipGenerationQueue = new Queue('clip-generation', { connection: redis });
 
 export async function POST(req: NextRequest) {
   try {
-    const { feedVideoId, userId, aspectRatio } = await req.json();
+    const {
+      feedVideoId,
+      userId,
+      aspectRatio,
+      scoringMode,
+      includeAudio,
+      saferClips,
+      targetPlatform,
+      contentStyle,
+      minCandidates,
+      maxCandidates,
+      minScore,
+      percentile,
+      maxGeminiCandidates,
+      llmProvider,
+    } = await req.json();
 
     if (!feedVideoId || !userId) {
       return NextResponse.json({ error: 'Missing feedVideoId or userId' }, { status: 400 });
     }
 
+    const existingJob = await clipGenerationQueue.getJob(feedVideoId);
+    if (existingJob) {
+      await existingJob.remove();
+    }
+
+    const resolvedProvider =
+      typeof llmProvider === 'string' && llmProvider.toLowerCase() === 'ollama'
+        ? 'ollama'
+        : 'gemini';
+
     const job = await clipGenerationQueue.add(
       'clip-generation',
-      { feedVideoId, userId, aspectRatio }, // include aspectRatio
+      {
+        feedVideoId,
+        userId,
+        aspectRatio,
+        scoringMode,
+        includeAudio,
+        saferClips,
+        targetPlatform,
+        contentStyle,
+        minCandidates,
+        maxCandidates,
+        minScore,
+        percentile,
+        maxGeminiCandidates,
+        llmProvider: resolvedProvider,
+      },
       { jobId: feedVideoId }
     );
 
@@ -30,4 +71,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Enqueue failed' }, { status: 500 });
   }
 }
-

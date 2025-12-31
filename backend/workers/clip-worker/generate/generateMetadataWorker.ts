@@ -19,7 +19,7 @@ new Worker(
       const res = await fetch('http://backend:3001/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcript })
+        body: JSON.stringify({ transcript }),
       });
 
       const data: any = await res.json();
@@ -33,7 +33,7 @@ new Worker(
         data: {
           videoTitle: data.title,
           sharedDescription: data.description,
-        }
+        },
       });
 
       console.log(`✅ Metadata updated for video ${videoId}`);
@@ -44,4 +44,3 @@ new Worker(
   },
   { connection: redis }
 );
-

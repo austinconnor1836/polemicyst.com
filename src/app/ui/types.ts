@@ -1,11 +1,11 @@
 export enum THEME_MODE {
-    LIGHT = 'light',
-    DARK = 'dark',
-    SYSTEM = 'system',
+  LIGHT = 'light',
+  DARK = 'dark',
+  SYSTEM = 'system',
 }
 
 export interface SideNavItem {
-    label: string;
-    element: React.ReactNode;
-    href: string;
+  label: string;
+  element: React.ReactNode;
+  href: string;
 }

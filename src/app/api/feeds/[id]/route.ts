@@ -6,10 +6,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../auth';
 import { deleteFromS3 } from '@backend/api/lib/s3';
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

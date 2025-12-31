@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 export async function GET() {
   const videos = await prisma.feedVideo.findMany({
     orderBy: { createdAt: 'desc' },
-    include: { feed: true }
+    include: { feed: true },
   });
   return NextResponse.json(videos);
 }

@@ -1,4 +1,4 @@
-'use client'
+'use client';
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 // Define the shape of the context
@@ -28,8 +28,6 @@ export const HamburgerProvider: React.FC<{ children: ReactNode }> = ({ children 
   };
 
   return (
-    <HamburgerContext.Provider value={{ isOpen, toggleMenu }}>
-      {children}
-    </HamburgerContext.Provider>
+    <HamburgerContext.Provider value={{ isOpen, toggleMenu }}>{children}</HamburgerContext.Provider>
   );
 };

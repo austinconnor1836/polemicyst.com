@@ -1,4 +1,3 @@
-
 import { prisma } from '@shared/lib/prisma';
 import { NextResponse } from 'next/server';
 import { deleteFromS3 } from '@backend/api/lib/s3';

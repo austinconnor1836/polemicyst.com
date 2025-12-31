@@ -17,15 +17,16 @@ export async function transcribeVideo(feedVideoId: string): Promise<any[]> {
   const videoPath = `/tmp/${feedVideoId}.mp4`;
   const videoRes = await fetch(feedVideo.s3Url);
 
-  if (!videoRes.ok || !videoRes.body) {
+  const videoBody = videoRes.body;
+  if (!videoRes.ok || !videoBody) {
     throw new Error('Failed to download video');
   }
 
   // Save video to disk
   await new Promise<void>((resolve, reject) => {
     const out = createWriteStream(videoPath);
-    videoRes.body.pipe(out);
-    videoRes.body.on('error', reject);
+    videoBody.pipe(out);
+    videoBody.on('error', reject);
     out.on('finish', resolve);
   });
 
@@ -67,7 +68,7 @@ export async function transcribeVideo(feedVideoId: string): Promise<any[]> {
 }
 
 export async function generateViralClips(feedVideoId: string, aspectRatio: string = '9:16') {
-  console.info('Generating viral clips...')
+  console.info('Generating viral clips...');
   const feedVideo = await prisma.feedVideo.findUnique({
     where: { id: feedVideoId },
   });
@@ -83,14 +84,15 @@ export async function generateViralClips(feedVideoId: string, aspectRatio: strin
   await fs.mkdir(clipsDir, { recursive: true });
 
   const videoRes = await fetch(feedVideo.s3Url);
-  if (!videoRes.ok || !videoRes.body) {
+  const videoBody = videoRes.body;
+  if (!videoRes.ok || !videoBody) {
     throw new Error('Failed to fetch video');
   }
 
   await new Promise<void>((resolve, reject) => {
     const out = createWriteStream(videoPath);
-    videoRes.body.pipe(out);
-    videoRes.body.on('error', reject);
+    videoBody.pipe(out);
+    videoBody.on('error', reject);
     out.on('finish', resolve);
   });
 
@@ -116,33 +118,41 @@ export async function generateViralClips(feedVideoId: string, aspectRatio: strin
     const outPath = path.join(clipsDir, `clip-${i}.mp4`);
     const srtPath = path.join(clipsDir, `clip-${i}.srt`);
 
-    const srt = group.map((s, idx) => {
-      const sTime = new Date(s.start * 1000).toISOString().substring(11, 23).replace('.', ',');
-      const eTime = new Date(s.end * 1000).toISOString().substring(11, 23).replace('.', ',');
-      return `${idx + 1}\n${sTime} --> ${eTime}\n${s.text}\n`;
-    }).join('\n');
+    const srt = group
+      .map((s, idx) => {
+        const sTime = new Date(s.start * 1000).toISOString().substring(11, 23).replace('.', ',');
+        const eTime = new Date(s.end * 1000).toISOString().substring(11, 23).replace('.', ',');
+        return `${idx + 1}\n${sTime} --> ${eTime}\n${s.text}\n`;
+      })
+      .join('\n');
 
     writeFileSync(srtPath, srt, 'utf-8');
 
     await new Promise<void>((resolve, reject) => {
       const ffmpeg = spawn('ffmpeg', [
-        '-i', videoPath,
-        '-ss', `${start}`,
-        '-to', `${end}`,
-        '-vf', `${aspectRatioFilter},subtitles=${srtPath.replace(/:/g, '\\:')}`, // escape colons for FFmpeg
-        '-c:v', 'libx264',
-        '-c:a', 'aac',
+        '-i',
+        videoPath,
+        '-ss',
+        `${start}`,
+        '-to',
+        `${end}`,
+        '-vf',
+        `${aspectRatioFilter},subtitles=${srtPath.replace(/:/g, '\\:')}`, // escape colons for FFmpeg
+        '-c:v',
+        'libx264',
+        '-c:a',
+        'aac',
         outPath,
       ]);
 
-      ffmpeg.stderr.on('data', d => process.stderr.write(d));
-      ffmpeg.on('close', code => {
+      ffmpeg.stderr.on('data', (d) => process.stderr.write(d));
+      ffmpeg.on('close', (code) => {
         if (code === 0) resolve();
         else reject(new Error(`FFmpeg failed (${code})`));
       });
     });
 
-    results.push({ videoPath: outPath, srtPath, text: group.map(g => g.text).join(' ') });
+    results.push({ videoPath: outPath, srtPath, text: group.map((g) => g.text).join(' ') });
   }
 
   return results;

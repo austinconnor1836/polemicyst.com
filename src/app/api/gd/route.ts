@@ -1,10 +1,10 @@
-import { NextRequest } from "next/server";
-import OpenAI from "openai";
-import fs from "fs";
-import path from "path";
-import { spawn } from "child_process";
-import { randomUUID } from "crypto";
-import type { ChatCompletionMessageParam } from "openai/resources/chat";
+import { NextRequest } from 'next/server';
+import OpenAI from 'openai';
+import fs from 'fs';
+import path from 'path';
+import { spawn } from 'child_process';
+import { randomUUID } from 'crypto';
+import type { ChatCompletionMessageParam } from 'openai/resources/chat';
 
 type Highlight = {
   text: string;
@@ -18,7 +18,7 @@ const openai = new OpenAI({
 });
 
 // ✅ Define a dedicated temp folder inside Next.js app
-const TEMP_DIR = path.join(process.cwd(), "tmp");
+const TEMP_DIR = path.join(process.cwd(), 'tmp');
 
 // ✅ Ensure the temp directory exists
 if (!fs.existsSync(TEMP_DIR)) {
@@ -34,22 +34,27 @@ async function extractAndCompressAudio(videoBuffer: Uint8Array): Promise<string>
   fs.writeFileSync(tempInputPath, videoBuffer);
 
   return new Promise((resolve, reject) => {
-    const ffmpeg = spawn("ffmpeg", [
-      "-i", tempInputPath, // Input video file
-      "-vn",               // Remove video stream
-      "-ac", "1",          // Convert to mono
-      "-ar", "16000",      // Reduce sample rate (16kHz)
-      "-b:a", "64k",       // Lower bitrate (64kbps)
-      "-f", "mp3",         // Output format
+    const ffmpeg = spawn('ffmpeg', [
+      '-i',
+      tempInputPath, // Input video file
+      '-vn', // Remove video stream
+      '-ac',
+      '1', // Convert to mono
+      '-ar',
+      '16000', // Reduce sample rate (16kHz)
+      '-b:a',
+      '64k', // Lower bitrate (64kbps)
+      '-f',
+      'mp3', // Output format
       tempOutputPath,
     ]);
 
-    ffmpeg.on("exit", (code) => {
+    ffmpeg.on('exit', (code) => {
       fs.unlinkSync(tempInputPath); // ✅ Delete temp video after conversion
       if (code === 0) {
         resolve(tempOutputPath);
       } else {
-        reject(new Error("FFmpeg failed to extract audio"));
+        reject(new Error('FFmpeg failed to extract audio'));
       }
     });
   });
@@ -63,81 +68,92 @@ async function generateDescriptionAndHashtags(transcript: string): Promise<{
 }> {
   const [descResponse, hashtagResponse, titleResponse] = await Promise.all([
     openai.chat.completions.create({
-      model: "gpt-4",
+      model: 'gpt-4',
       messages: [
-        { role: "system", content: "Summarize the following transcript into an engaging social media post:" },
-        { role: "user", content: transcript },
+        {
+          role: 'system',
+          content: 'Summarize the following transcript into an engaging social media post:',
+        },
+        { role: 'user', content: transcript },
       ],
       max_tokens: 150,
     }),
     openai.chat.completions.create({
-      model: "gpt-4",
+      model: 'gpt-4',
       messages: [
-        { role: "system", content: "Generate five relevant hashtags based on this transcript. Return them as a comma-separated list." },
-        { role: "user", content: transcript },
+        {
+          role: 'system',
+          content:
+            'Generate five relevant hashtags based on this transcript. Return them as a comma-separated list.',
+        },
+        { role: 'user', content: transcript },
       ],
       max_tokens: 20,
     }),
     openai.chat.completions.create({
-      model: "gpt-4",
+      model: 'gpt-4',
       messages: [
-        { role: "system", content: "Generate a compelling, YouTube-style title for this video based on the transcript." },
-        { role: "user", content: transcript },
+        {
+          role: 'system',
+          content:
+            'Generate a compelling, YouTube-style title for this video based on the transcript.',
+        },
+        { role: 'user', content: transcript },
       ],
       max_tokens: 20,
     }),
   ]);
 
-  const description = descResponse.choices?.[0]?.message?.content?.trim() || "No description generated.";
-  const hashtags = hashtagResponse.choices?.[0]?.message?.content?.trim().split(", ") || [];
-  const title = titleResponse.choices?.[0]?.message?.content?.trim() || "Untitled";
+  const description =
+    descResponse.choices?.[0]?.message?.content?.trim() || 'No description generated.';
+  const hashtags = hashtagResponse.choices?.[0]?.message?.content?.trim().split(', ') || [];
+  const title = titleResponse.choices?.[0]?.message?.content?.trim() || 'Untitled';
 
   return { title, description, hashtags };
 }
-
 
 // ✅ API Handler
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const file = formData.get("file") as Blob | null;
+    const file = formData.get('file') as Blob | null;
 
     if (!file) {
-      return new Response(JSON.stringify({ error: "Missing video file" }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'Missing video file' }), { status: 400 });
     }
 
-    console.log("🎥 Processing video...");
+    console.log('🎥 Processing video...');
 
     // ✅ Convert Blob to Uint8Array
     const arrayBuffer = await file.arrayBuffer();
     const videoBuffer = new Uint8Array(arrayBuffer);
 
     // ✅ Extract & compress audio using ffmpeg
-    console.log("🎵 Extracting & compressing audio...");
+    console.log('🎵 Extracting & compressing audio...');
     const compressedAudioPath = await extractAndCompressAudio(videoBuffer);
 
     // ✅ Ensure readable stream for OpenAI API
     const compressedAudioStream = fs.createReadStream(compressedAudioPath);
 
     // ✅ Transcribe using Whisper
-    console.log("📝 Transcribing audio...");
+    console.log('📝 Transcribing audio...');
     const transcriptionResponse = await openai.audio.transcriptions.create({
       file: compressedAudioStream,
-      model: "whisper-1",
-      language: "en",
-      response_format: "verbose_json", // 🆕 Use verbose to get word timestamps
+      model: 'whisper-1',
+      language: 'en',
+      response_format: 'verbose_json', // 🆕 Use verbose to get word timestamps
     });
 
     const transcript = transcriptionResponse.text;
     const segments = transcriptionResponse.segments || []; // 🆕 Expect timestamps
 
     // ✅ Generate AI description
-    console.log("🤖 Generating description...");
+    console.log('🤖 Generating description...');
     const { description, hashtags, title } = await generateDescriptionAndHashtags(transcript);
-    console.log("📢 AI-Generated Description:", description);
+    console.log('📢 AI-Generated Description:', description);
 
     // ✅ Generate highlights using OpenAI
-    console.log("🎯 Extracting highlights...");
+    console.log('🎯 Extracting highlights...');
 
     // Chunk segments into blocks of 15–45s
     const candidates: Highlight[] = [];
@@ -169,7 +185,6 @@ export async function POST(req: NextRequest) {
         }
       }
     }
-
 
     const messages: ChatCompletionMessageParam[] = [
       {
@@ -213,7 +228,8 @@ export async function POST(req: NextRequest) {
             messages: [
               {
                 role: 'system',
-                content: 'You are a short-form video editor. Rate the following clip on a scale from 0 to 100 across Hook, Flow, Value, and Trend. Return as JSON in markdown code block.',
+                content:
+                  'You are a short-form video editor. Rate the following clip on a scale from 0 to 100 across Hook, Flow, Value, and Trend. Return as JSON in markdown code block.',
               },
               {
                 role: 'user',
@@ -229,9 +245,8 @@ export async function POST(req: NextRequest) {
 
           return {
             ...highlight,
-            score: rating.TotalScore || (
-              (rating.Hook + rating.Flow + rating.Value + rating.Trend) / 4
-            ),
+            score:
+              rating.TotalScore || (rating.Hook + rating.Flow + rating.Value + rating.Trend) / 4,
             breakdown: rating,
           };
         } catch (err) {
@@ -244,8 +259,6 @@ export async function POST(req: NextRequest) {
     // Sort descending
     ratedHighlights.sort((a, b) => b.score - a.score);
 
-
-
     // ✅ Cleanup temp files
     fs.unlinkSync(compressedAudioPath);
 
@@ -254,7 +267,9 @@ export async function POST(req: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    console.error("Error generating description:", error.message);
-    return new Response(JSON.stringify({ error: "Failed to generate description" }), { status: 500 });
+    console.error('Error generating description:', error.message);
+    return new Response(JSON.stringify({ error: 'Failed to generate description' }), {
+      status: 500,
+    });
   }
 }

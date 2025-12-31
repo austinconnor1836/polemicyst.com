@@ -3,17 +3,20 @@
  * @param s3Key - S3 object key to delete
  */
 export async function deleteFromS3(s3Key: string): Promise<void> {
-  await s3.deleteObject({
-    Bucket: S3_BUCKET_NAME,
-    Key: s3Key,
-  }).promise();
+  await s3
+    .deleteObject({
+      Bucket: S3_BUCKET_NAME,
+      Key: s3Key,
+    })
+    .promise();
 }
 import { S3 } from 'aws-sdk';
 import { readFile } from 'fs/promises';
 import path from 'path';
 import dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: true });
 
 const S3_BUCKET_NAME = 'clips-genie-uploads';
 const AWS_REGION = 'us-east-2';

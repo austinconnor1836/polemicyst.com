@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { Video } from "@prisma/client";
-import { useSession } from "next-auth/react";
-import React, { createContext, useState, useContext, useEffect, useRef } from "react";
-import toast from "react-hot-toast";
+import { Video } from '@prisma/client';
+import { useSession } from 'next-auth/react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
+import toast from 'react-hot-toast';
 
 export type UploadedVideo = Video;
 
@@ -62,15 +62,15 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [activeVideo, setActiveVideo] = useState<Video | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
-  const [description, setDescription] = useState("");
-  const [sharedDescription, setSharedDescription] = useState("");
-  const [videoTitle, setVideoTitle] = useState("");
+  const [description, setDescription] = useState('');
+  const [sharedDescription, setSharedDescription] = useState('');
+  const [videoTitle, setVideoTitle] = useState('');
 
-  const [facebookTemplate, setFacebookTemplate] = useState("...");
-  const [instagramTemplate, setInstagramTemplate] = useState("...");
-  const [youtubeTemplate, setYoutubeTemplate] = useState("...");
-  const [blueskyTemplate, setBlueskyTemplate] = useState("");
-  const [twitterTemplate, setTwitterTemplate] = useState("");
+  const [facebookTemplate, setFacebookTemplate] = useState('...');
+  const [instagramTemplate, setInstagramTemplate] = useState('...');
+  const [youtubeTemplate, setYoutubeTemplate] = useState('...');
+  const [blueskyTemplate, setBlueskyTemplate] = useState('');
+  const [twitterTemplate, setTwitterTemplate] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState<Record<string, boolean>>({
     facebook: false,
@@ -102,21 +102,21 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const getFileFromCache = (videoId: string) => videoFileCache.current.get(videoId);
   const setFileInCache = (videoId: string, file: File) => videoFileCache.current.set(videoId, file);
 
-  const triggerGridRefresh = () => setRefreshGridToggle(prev => !prev);
+  const triggerGridRefresh = () => setRefreshGridToggle((prev) => !prev);
 
   const fetchAuthenticationStatus = async () => {
     if (!session?.user?.id) return;
     try {
-      const res = await fetch("/api/auth/status");
+      const res = await fetch('/api/auth/status');
       const data = await res.json();
       setIsAuthenticated(data.isAuthenticated || {});
     } catch (error) {
-      console.error("Error fetching authentication status:", error);
+      console.error('Error fetching authentication status:', error);
     }
   };
 
   useEffect(() => {
-    if (status === "authenticated") {
+    if (status === 'authenticated') {
       fetchAuthenticationStatus();
     }
   }, [session, status]);
@@ -124,17 +124,16 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     const loadVideos = async () => {
       try {
-        const res = await fetch("/api/videos");
+        const res = await fetch('/api/videos');
         const data = await res.json();
         setUploadedVideos(data);
       } catch (err) {
-        console.error("❌ Failed to fetch videos on mount:", err);
+        console.error('❌ Failed to fetch videos on mount:', err);
       }
     };
 
     loadVideos();
   }, []);
-
 
   const togglePlatform = (provider: string) => {
     setSelectedPlatforms((prev) =>
@@ -149,9 +148,9 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const generateDescription = async (videoId: string) => {
     setIsGenerating(true);
     try {
-      const response = await fetch("/api/generateDescription", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await fetch('/api/generateDescription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ videoId }),
       });
 
@@ -160,20 +159,20 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setActiveVideo((prev) =>
         prev
           ? {
-            ...prev,
-            videoTitle: updated.title,
-            sharedDescription: updated.fullDescription,
-            blueskyTemplate: updated.shortTemplate,
-            twitterTemplate: updated.shortTemplate,
-            facebookTemplate: prev.facebookTemplate,
-            instagramTemplate: prev.instagramTemplate,
-            youtubeTemplate: prev.youtubeTemplate,
-          }
+              ...prev,
+              videoTitle: updated.title,
+              sharedDescription: updated.fullDescription,
+              blueskyTemplate: updated.shortTemplate,
+              twitterTemplate: updated.shortTemplate,
+              facebookTemplate: prev.facebookTemplate,
+              instagramTemplate: prev.instagramTemplate,
+              youtubeTemplate: prev.youtubeTemplate,
+            }
           : null
       );
     } catch (error) {
-      console.error("❌ Error generating description:", error);
-      toast.error("Failed to generate description.");
+      console.error('❌ Error generating description:', error);
+      toast.error('Failed to generate description.');
     } finally {
       setIsGenerating(false);
     }
@@ -231,7 +230,7 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setUploadedVideos,
         selectedVideoIds,
         setSelectedVideoIds,
-        toggleVideoSelection
+        toggleVideoSelection,
       }}
     >
       {children}
@@ -242,7 +241,7 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 export const usePlatformContext = () => {
   const context = useContext(PlatformContext);
   if (!context) {
-    throw new Error("usePlatformContext must be used within a PlatformProvider");
+    throw new Error('usePlatformContext must be used within a PlatformProvider');
   }
   return context;
 };

@@ -5,11 +5,12 @@ import { VideoFeed } from '@prisma/client';
 
 const execPromise = promisify(exec);
 
-const UPLOADS_DIR = '/app/uploads';  // Inside Docker
+const UPLOADS_DIR = '/app/uploads'; // Inside Docker
 
 interface NewVideo {
   id: string;
   title: string;
+  thumbnailUrl?: string | null;
   url: string;
 }
 
@@ -38,6 +39,7 @@ export async function pollCspanFeed(feed: VideoFeed): Promise<NewVideo | null> {
   return {
     id,
     title,
+    thumbnailUrl: null,
     url: feed.sourceUrl,
   };
 }
