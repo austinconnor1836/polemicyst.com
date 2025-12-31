@@ -17,7 +17,9 @@ export function getFeedVideoThumbnail(video: FeedVideo) {
     extractYouTubeId(video.s3Url) ||
     (video.feed?.sourceType === 'youtube' ? video.videoId || null : null);
 
-  const thumbnailUrl = video.thumbnailUrl || (youtubeId ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg` : null);
+  const thumbnailUrl =
+    video.thumbnailUrl ||
+    (youtubeId ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg` : null);
 
   return { thumbnailUrl, youtubeId };
 }

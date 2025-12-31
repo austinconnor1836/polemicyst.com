@@ -61,7 +61,12 @@ services:
   clip-worker-dev:
     image: node:18
     working_dir: /app
-    command: ["sh", "-c", "apt-get update && apt-get install -y ffmpeg && cd /app && npm install && npx tsx watch clip-worker/index.ts"]
+    command:
+      [
+        'sh',
+        '-c',
+        'apt-get update && apt-get install -y ffmpeg && cd /app && npm install && npx tsx watch clip-worker/index.ts',
+      ]
     volumes:
       - .:/app
       - /app/node_modules

@@ -5,7 +5,11 @@ import { prisma } from '@shared/lib/prisma';
 import { randomUUID } from 'crypto';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
-import { getStrictnessConfig, mergeViralitySettings, type ViralitySettingsValue } from '@shared/virality';
+import {
+  getStrictnessConfig,
+  mergeViralitySettings,
+  type ViralitySettingsValue,
+} from '@shared/virality';
 
 const redisHost = process.env.REDIS_HOST || 'localhost';
 const redis = new Redis({
