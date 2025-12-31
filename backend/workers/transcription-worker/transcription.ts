@@ -2,7 +2,9 @@ import fetch from 'node-fetch';
 import { prisma } from '@shared/lib/prisma';
 import { spawn } from 'child_process';
 
-export async function transcribeFeedVideo(feedVideoId: string): Promise<{ transcript: string, segments: any[] }> {
+export async function transcribeFeedVideo(
+  feedVideoId: string
+): Promise<{ transcript: string; segments: any[] }> {
   console.info('🔍 Checking for existing transcript...');
 
   const feedVideo = await prisma.feedVideo.findUnique({ where: { id: feedVideoId } });
@@ -25,7 +27,6 @@ export async function transcribeFeedVideo(feedVideoId: string): Promise<{ transc
   if (!videoRes.ok || !videoRes.body) {
     throw new Error('Failed to fetch video stream from S3');
   }
-
 
   const pythonProcess = spawn('python3', ['/app/scripts/transcribe.py', '-'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -70,19 +71,17 @@ export async function transcribeFeedVideo(feedVideoId: string): Promise<{ transc
 
   videoRes.body.pipe(pythonProcess.stdin!);
 
-  pythonProcess.stdout.on('data', d => output += d.toString());
-  pythonProcess.stderr.on('data', d => error += d.toString());
+  pythonProcess.stdout.on('data', (d) => (output += d.toString()));
+  pythonProcess.stderr.on('data', (d) => (error += d.toString()));
 
-  const exitCode: number = await new Promise(resolve =>
-    pythonProcess.on('close', resolve)
-  );
+  const exitCode: number = await new Promise((resolve) => pythonProcess.on('close', resolve));
 
   if (exitCode !== 0) {
     console.error('Python stderr:', error);
     throw new Error(`Transcription failed: ${error}`);
   }
 
-  let parsed: { transcript: string, segments: any[] };
+  let parsed: { transcript: string; segments: any[] };
   try {
     parsed = JSON.parse(output);
   } catch {

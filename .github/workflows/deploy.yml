@@ -22,44 +22,44 @@ jobs:
     environment: production
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Build and Push LLM Worker
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        # Build LLM Worker
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG -f backend/workers/llm-worker/Dockerfile .
-        docker tag $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_LLM:latest
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY_LLM:latest
+      - name: Build and Push LLM Worker
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build LLM Worker
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG -f backend/workers/llm-worker/Dockerfile .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_LLM:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_LLM:latest
 
-    - name: Build and Push Clip Worker
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        # Build Clip Worker (Native Linux/AMD64 build - FAST!)
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG -f backend/workers/clip-worker/Dockerfile .
-        docker tag $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:latest
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:latest
+      - name: Build and Push Clip Worker
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build Clip Worker (Native Linux/AMD64 build - FAST!)
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG -f backend/workers/clip-worker/Dockerfile .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:latest
 
-    - name: Update ECS Services
-      run: |
-        aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_PROVOCATIVENESS --force-new-deployment
-        aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_COMEDIC --force-new-deployment
-        aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_CLIP --force-new-deployment
+      - name: Update ECS Services
+        run: |
+          aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_PROVOCATIVENESS --force-new-deployment
+          aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_COMEDIC --force-new-deployment
+          aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_CLIP --force-new-deployment

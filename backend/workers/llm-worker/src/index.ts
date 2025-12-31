@@ -33,7 +33,7 @@ Return ONLY a JSON object with the following format:
   "reasoning": "<short explanation>"
 }
 Transcript:
-`
+`,
 };
 
 const ResponseSchema = z.object({
@@ -43,7 +43,7 @@ const ResponseSchema = z.object({
 
 async function queryOllama(prompt: string, transcript: string) {
   const fullPrompt = `${prompt}\n${transcript}`;
-  
+
   try {
     const response = await fetch(`${OLLAMA_HOST}/api/generate`, {
       method: 'POST',
@@ -52,7 +52,7 @@ async function queryOllama(prompt: string, transcript: string) {
         model: MODEL_NAME,
         prompt: fullPrompt,
         stream: false,
-        format: "json"
+        format: 'json',
       }),
     });
 
@@ -60,7 +60,7 @@ async function queryOllama(prompt: string, transcript: string) {
       throw new Error(`Ollama API error: ${response.statusText}`);
     }
 
-    const data = await response.json() as any;
+    const data = (await response.json()) as any;
     const parsed = JSON.parse(data.response);
     return ResponseSchema.parse(parsed);
   } catch (error) {
@@ -85,7 +85,7 @@ const worker = new Worker(
 
     const prompt = PROMPTS[SCORING_TYPE as keyof typeof PROMPTS];
     if (!prompt) {
-        throw new Error(`Unknown scoring type: ${SCORING_TYPE}`);
+      throw new Error(`Unknown scoring type: ${SCORING_TYPE}`);
     }
 
     const result = await queryOllama(prompt, transcript);

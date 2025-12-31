@@ -46,7 +46,9 @@ new Worker(
         await queueTranscriptionJob({
           feedVideoId: feedVideo.id,
         });
-        console.log(`✅ Downloaded, stored, updated lastVideoId, and queued transcription for video ${videoId} for feed ${feedId}`);
+        console.log(
+          `✅ Downloaded, stored, updated lastVideoId, and queued transcription for video ${videoId} for feed ${feedId}`
+        );
       }
     } catch (err) {
       console.error(`❌ Failed to download/store video for ${feedId}:`, err);

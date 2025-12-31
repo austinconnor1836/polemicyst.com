@@ -14,7 +14,6 @@ export const transcriptionQueue = new Queue('transcription', {
   connection: redis,
 });
 
-
 export interface DownloadJob {
   feedId: string;
   videoId: string;

@@ -1,4 +1,3 @@
-
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
@@ -12,7 +11,7 @@ const UPLOADS_DIR = '/app/uploads';
 export async function pollYouTubeFeed(feed: VideoFeed): Promise<NewVideo | null> {
   const listCommand = `yt-dlp --flat-playlist --print "%(id)s %(title)s" "${feed.sourceUrl}"`;
   const { stdout } = await execPromise(listCommand);
-  
+
   const lines = stdout.trim().split('\n');
 
   if (lines.length === 0) {
@@ -52,7 +51,7 @@ export async function downloadYouTubeVideo(url: string, id: string): Promise<str
 export async function getLatestVideoFromYoutubeFeed(feedId: string): Promise<NewVideo> {
   // Get feed from DB
   const feed = await prisma.videoFeed.findUnique({ where: { id: feedId } });
-  if (!feed)   throw new Error(`No video feed found for id: ${feedId}`);
+  if (!feed) throw new Error(`No video feed found for id: ${feedId}`);
 
   const listCommand = `yt-dlp --flat-playlist --print "%(id)s %(title)s" "${feed.sourceUrl}"`;
   const { stdout } = await execPromise(listCommand);

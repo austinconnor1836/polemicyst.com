@@ -15,15 +15,25 @@ const s3 = new AWS.S3({
 
 const pipeline = promisify(streamPipeline);
 
-
-export async function downloadAndUploadToS3(videoUrl: string, videoId: string | null): Promise<string> {
+export async function downloadAndUploadToS3(
+  videoUrl: string,
+  videoId: string | null
+): Promise<string> {
   if (!videoId) {
     throw new Error('videoId is required for S3 upload');
   }
   const s3Key = `feeds/${videoId}.mp4`;
   const passThrough = new PassThrough();
   // Add yt-dlp workaround for JS runtime warning
-  const ytArgs = ['-o', '-', '-f', 'mp4', '--extractor-args', 'youtube:player_client=default', videoUrl];
+  const ytArgs = [
+    '-o',
+    '-',
+    '-f',
+    'mp4',
+    '--extractor-args',
+    'youtube:player_client=default',
+    videoUrl,
+  ];
   const yt = spawn('yt-dlp', ytArgs);
 
   // Collect stderr for better error reporting
@@ -48,12 +58,14 @@ export async function downloadAndUploadToS3(videoUrl: string, videoId: string | 
 
   try {
     // Use pipeline for robust error handling
-    const uploadPromise = s3.upload({
-      Bucket: S3_BUCKET,
-      Key: s3Key,
-      Body: passThrough,
-      ContentType: 'video/mp4',
-    }).promise();
+    const uploadPromise = s3
+      .upload({
+        Bucket: S3_BUCKET,
+        Key: s3Key,
+        Body: passThrough,
+        ContentType: 'video/mp4',
+      })
+      .promise();
 
     // Pipe yt-dlp stdout to S3 upload
     await pipeline(yt.stdout, passThrough);
