@@ -11,15 +11,35 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
   }
 
   try {
-    const ollamaRes = await fetch('http://ollama:11434/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'llama3',
-        prompt: `Write a compelling YouTube-style description and title for the following transcript:\n\n"${transcript}"\n\nReturn a JSON object like: {"description": "...", "title": "...", "hashtags": ["..."]}`,
-        stream: true,
-      }),
-    });
+    const configuredBaseUrl = (process.env.OLLAMA_BASE_URL || '').replace(/\/$/, '');
+    const localDefault = 'http://127.0.0.1:11434';
+    const dockerServiceDefault = 'http://ollama:11434';
+    const baseUrl = configuredBaseUrl || localDefault;
+
+    const requestBody = {
+      model: process.env.OLLAMA_MODEL || 'llama3',
+      prompt: `Write a compelling YouTube-style description and title for the following transcript:\n\n"${transcript}"\n\nReturn a JSON object like: {"description": "...", "title": "...", "hashtags": ["..."]}`,
+      stream: true,
+    };
+
+    let ollamaRes;
+    try {
+      ollamaRes = await fetch(`${baseUrl}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+    } catch (err) {
+      if (!configuredBaseUrl) {
+        ollamaRes = await fetch(`${dockerServiceDefault}/api/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        });
+      } else {
+        throw err;
+      }
+    }
 
     let raw = '';
     for await (const chunk of ollamaRes.body as NodeJS.ReadableStream) {

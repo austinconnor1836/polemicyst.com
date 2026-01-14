@@ -217,7 +217,10 @@ export async function scoreSegmentWithOllama(params: {
 
   // Default to the docker service name so containers resolve correctly even if
   // OLLAMA_BASE_URL is not provided via env.
-  const baseUrl = process.env.OLLAMA_BASE_URL || 'http://ollama:11434';
+  const configuredBaseUrl = (process.env.OLLAMA_BASE_URL || '').replace(/\/$/, '');
+  const localDefault = 'http://127.0.0.1:11434'; // works for host-installed Ollama
+  const dockerServiceDefault = 'http://ollama:11434'; // works inside docker-compose network when env is unset
+  let baseUrl = configuredBaseUrl || localDefault;
   const model = process.env.OLLAMA_MODEL || 'llama3';
 
   const prompt = [
@@ -253,16 +256,35 @@ export async function scoreSegmentWithOllama(params: {
   );
   let res;
   try {
-    res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        prompt,
-        stream: false,
-        options: { temperature: 0.2 },
-      }),
-    });
+    try {
+      res = await fetch(`${baseUrl}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          prompt,
+          stream: false,
+          options: { temperature: 0.2 },
+        }),
+      });
+    } catch (err) {
+      // If no explicit base URL is configured, fall back to the docker service name.
+      if (!configuredBaseUrl && baseUrl !== dockerServiceDefault) {
+        baseUrl = dockerServiceDefault;
+        res = await fetch(`${baseUrl}/api/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model,
+            prompt,
+            stream: false,
+            options: { temperature: 0.2 },
+          }),
+        });
+      } else {
+        throw err;
+      }
+    }
   } finally {
     clearInterval(heartbeat);
   }
