@@ -19,7 +19,9 @@ const redisConnection = new Redis({
 });
 
 // Queues for scoring
-const provocativenessQueue = new Queue('score-provocativeness', { connection: redisConnection as any });
+const provocativenessQueue = new Queue('score-provocativeness', {
+  connection: redisConnection as any,
+});
 const comedicQueue = new Queue('score-comedic', { connection: redisConnection as any });
 
 const provocativenessEvents = new QueueEvents('score-provocativeness', {

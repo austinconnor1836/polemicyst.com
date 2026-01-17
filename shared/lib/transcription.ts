@@ -92,7 +92,7 @@ export async function transcribeFeedVideo(
       // cwd was path.join(__dirname, '../../') -> root.
       // In Docker, we are at /app.
       // If transcribe.py is not at /app/scripts/transcribe.py, this fails.
-      cwd: process.cwd(), 
+      cwd: process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'], // Ignore stdin, capture stdout/stderr
     });
 

@@ -428,7 +428,7 @@ export async function scoreAndRankCandidatesLLM(params: {
     providerOverride,
   } = params;
 
-  const provider = (providerOverride || process.env.LLM_PROVIDER || 'gemini').toLowerCase();
+  const provider = (providerOverride || process.env.LLM_PROVIDER || 'ollama').toLowerCase();
   let cachedLocalVideoPath = providedPath;
 
   async function ensureLocalVideo(): Promise<string> {

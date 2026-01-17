@@ -1,6 +1,5 @@
-'use client';
-
-import { useMemo, useRef, useState, useEffect } from 'react';
+import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
+import { set as idbSet, get as idbGet, del as idbDel } from 'idb-keyval';
 import ViralitySettings from '@/components/ViralitySettings';
 import {
   DEFAULT_VIRALITY_SETTINGS,
@@ -70,9 +69,7 @@ export default function FeedsPage() {
   const [isAddVideoOpen, setIsAddVideoOpen] = useState(false);
   const [activeVideoTab, setActiveVideoTab] = useState<'file' | 'url'>('file');
   const [importUrl, setImportUrl] = useState('');
-  const [pendingImport, setPendingImport] = useState<{ url: string; startedAt: string } | null>(
-    null
-  );
+
   const [deletingFeedId, setDeletingFeedId] = useState<string | null>(null);
   const [deletingVideoId, setDeletingVideoId] = useState<string | null>(null);
   const [isGeneratingClip, setIsGeneratingClip] = useState(false);
@@ -80,7 +77,12 @@ export default function FeedsPage() {
 
   // Upload state
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [activeUpload, setActiveUpload] = useState<{
+    id: string;
+    filename: string;
+    progress: number;
+    startedAt: string;
+  } | null>(null);
 
   const [videoQuery, setVideoQuery] = useState('');
   const [videoFeedFilter, setVideoFeedFilter] = useState<string>('all');
@@ -205,6 +207,164 @@ export default function FeedsPage() {
     }
   };
 
+  /* 
+    AUTO-RESUME LOGIC
+    1. On mount, check if there's a pending upload metadata in localStorage.
+    2. If yes, check if the file exists in IndexedDB.
+    3. If yes, trigger resumeUpload() automatically.
+  */
+  useEffect(() => {
+    const checkResume = async () => {
+      try {
+        const metaStr = localStorage.getItem('pending-upload-meta');
+        if (!metaStr) return;
+
+        const meta = JSON.parse(metaStr);
+        // Check if file blob is still in IDB
+        const file = await idbGet('pending-upload-file');
+        
+        if (file && file.name === meta.filename && file.size === meta.size) {
+           console.log('🔄 Found pending upload, resuming automatically...', meta);
+           // Trigger resumption
+           resumeUpload(file, meta);
+        } else {
+           // Invalid state, clear it
+           console.log('⚠️ Pending upload metadata found but file missing or mismatched. Clearing.');
+           localStorage.removeItem('pending-upload-meta');
+           await idbDel('pending-upload-file');
+        }
+      } catch (e) {
+        console.error('Auto-resume check failed:', e);
+      }
+    };
+    
+    // Small delay to ensure hydration?
+    setTimeout(checkResume, 500);
+  }, []);
+
+  const resumeUpload = async (file: File, meta: { uploadId: string; key: string; filename: string; size: number }) => {
+     setIsUploading(true);
+     // Restore UI state immediately
+     setActiveUpload({
+       id: meta.uploadId,
+       filename: meta.filename,
+       progress: 0, // Will jump when we calculate parts
+       startedAt: new Date().toISOString(),
+     });
+
+     try {
+       // 1. Get list of already uploaded parts
+       const listRes = await fetch('/api/uploads/multipart/list-parts', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ uploadId: meta.uploadId, key: meta.key }),
+       });
+
+       if (!listRes.ok) throw new Error('Failed to list parts');
+       const { parts: existingParts }: { parts: { PartNumber: number; ETag: string; Size: number }[] } = await listRes.json();
+       
+       const CHUNK_SIZE = 10 * 1024 * 1024;
+       const totalParts = Math.ceil(file.size / CHUNK_SIZE);
+       
+       // Map of existing parts for O(1) lookup
+       const uploadedMap = new Map(existingParts.map(p => [p.PartNumber, p.ETag]));
+       
+       const uploadedPartsList: { PartNumber: number; ETag: string }[] = [...existingParts.map(p => ({ PartNumber: p.PartNumber, ETag: p.ETag }))];
+       let completedPartsCount = existingParts.length;
+
+       // Calculate initial progress
+       const initialPercent = Math.round((completedPartsCount / totalParts) * 100);
+       setActiveUpload(prev => prev ? { ...prev, progress: initialPercent } : null);
+
+       const uploadPart = async (partNumber: number) => {
+         const start = (partNumber - 1) * CHUNK_SIZE;
+         const end = Math.min(start + CHUNK_SIZE, file.size);
+         const chunk = file.slice(start, end);
+
+         const partUrlRes = await fetch('/api/uploads/multipart/part-url', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ uploadId: meta.uploadId, key: meta.key, partNumber }),
+         });
+         
+         if (!partUrlRes.ok) throw new Error(`Failed to get URL for part ${partNumber}`);
+         const { url } = await partUrlRes.json();
+
+         const uploadRes = await fetch(url, { method: 'PUT', body: chunk });
+         if (!uploadRes.ok) throw new Error(`Failed to upload part ${partNumber}`);
+         
+         const eTag = uploadRes.headers.get('ETag');
+         if (!eTag) throw new Error(`No ETag for part ${partNumber}`);
+
+         return eTag;
+       };
+
+       // CONCURRENCY LOOP
+       const CONCURRENCY = 4;
+       const queue = [];
+       for (let i = 1; i <= totalParts; i++) {
+         if (!uploadedMap.has(i)) queue.push(i);
+       }
+
+       const activeWorkers = new Set<Promise<void>>();
+
+       while (queue.length > 0 || activeWorkers.size > 0) {
+         while (queue.length > 0 && activeWorkers.size < CONCURRENCY) {
+           const partNum = queue.shift()!;
+           const promise = uploadPart(partNum).then((eTag) => {
+             uploadedPartsList.push({ PartNumber: partNum, ETag: eTag });
+             completedPartsCount++;
+             const percent = Math.round((completedPartsCount / totalParts) * 100);
+             setActiveUpload(prev => prev ? { ...prev, progress: percent } : null);
+             activeWorkers.delete(promise);
+           }).catch(err => {
+             // Basic retry logic could go here, or just fail entire upload
+             console.error(err);
+             activeWorkers.delete(promise);
+             throw err; // Stop everything
+           });
+           activeWorkers.add(promise);
+         }
+         if (activeWorkers.size > 0) {
+           await Promise.race(activeWorkers);
+         }
+       }
+
+       // Finalize
+       const completeMultiRes = await fetch('/api/uploads/multipart/complete', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ uploadId: meta.uploadId, key: meta.key, parts: uploadedPartsList }),
+       });
+
+       if (!completeMultiRes.ok) throw new Error('Failed to complete multipart upload');
+
+       await fetch('/api/uploads/complete', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ key: meta.key, filename: meta.filename }),
+       });
+
+       toast.success('Upload complete!');
+       
+       // CLEANUP
+       localStorage.removeItem('pending-upload-meta');
+       await idbDel('pending-upload-file');
+
+       await Promise.all([fetchFeeds(), fetchVideos()]);
+       setTimeout(() => setVideoFeedFilter('all'), 500);
+
+     } catch (err) {
+       console.error('Resume failed:', err);
+       toast.error('Resume failed');
+       // Don't clear storage, so user can try refreshing again? 
+       // Or clear it to avoid stuck loop? Let's keep it for now.
+     } finally {
+       setIsUploading(false);
+       setActiveUpload(null);
+     }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -215,75 +375,47 @@ export default function FeedsPage() {
     }
 
     setIsUploading(true);
-    setUploadProgress(0);
-    const toastId = toast.loading('Starting upload...');
+    const tempId = `upload-${Date.now()}`;
+    setActiveUpload({
+      id: tempId,
+      filename: file.name,
+      progress: 0,
+      startedAt: new Date().toISOString(),
+    });
 
     try {
-      // 1. Get presigned URL
-      const presignedRes = await fetch('/api/uploads/presigned', {
+      // 0. Persistence Hook: Save File and Metadata
+      console.log('💾 Persisting file for auto-resume...');
+      await idbSet('pending-upload-file', file);
+      
+      // 1. Initiate Multipart Upload
+      const initRes = await fetch('/api/uploads/multipart/initiate', {
         method: 'POST',
-        body: JSON.stringify({
-          filename: file.name,
-          contentType: file.type,
-        }),
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, contentType: file.type }),
       });
 
-      if (!presignedRes.ok) throw new Error('Failed to get upload URL');
-      const { url, key } = await presignedRes.json();
+      if (!initRes.ok) throw new Error('Failed to initiate upload');
+      const { uploadId, key } = await initRes.json();
+      
+      // Save metadata linked to this upload
+      const meta = { uploadId, key, filename: file.name, size: file.size };
+      localStorage.setItem('pending-upload-meta', JSON.stringify(meta));
 
-      // 2. Upload to S3 (XHR for progress)
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('PUT', url, true);
-        xhr.setRequestHeader('Content-Type', file.type);
+      // 2. Reuse resume logic which handles the looping
+      // We pass the SAME file object and metadata we just got
+      await resumeUpload(file, meta);
 
-        xhr.upload.onprogress = (ev) => {
-          if (ev.lengthComputable) {
-            const percentComplete = (ev.loaded / ev.total) * 100;
-            setUploadProgress(Math.round(percentComplete));
-            if (percentComplete < 100) {
-              toast.loading(`Uploading: ${Math.round(percentComplete)}%`, { id: toastId });
-            }
-          }
-        };
-
-        xhr.onload = () => {
-          if (xhr.status === 200) resolve();
-          else reject(new Error('Upload failed'));
-        };
-
-        xhr.onerror = () => reject(new Error('Network error'));
-        xhr.send(file);
-      });
-
-      toast.loading('Registering video...', { id: toastId });
-
-      // 3. Register upload
-      const completeRes = await fetch('/api/uploads/complete', {
-        method: 'POST',
-        body: JSON.stringify({ key, filename: file.name }),
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (!completeRes.ok) throw new Error('Failed to register upload');
-
-      toast.success('Upload complete!', { id: toastId });
-
-      // Refresh everything
-      await Promise.all([fetchFeeds(), fetchVideos()]);
-
-      // Switch filter to Manual Uploads slightly after to help user find it
-      setTimeout(() => {
-        setVideoFeedFilter('all');
-      }, 500);
     } catch (err) {
       console.error(err);
-      toast.error('Upload failed', { id: toastId });
-    } finally {
+      toast.error('Upload failed');
+      // If init failed, we should probably clear storage so it doesn't try to resume a non-existent upload
+      localStorage.removeItem('pending-upload-meta');
+      await idbDel('pending-upload-file');
       setIsUploading(false);
-      setUploadProgress(0);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setActiveUpload(null);
+    } finally {
+       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -291,7 +423,20 @@ export default function FeedsPage() {
     if (!importUrl) return;
 
     setIsUploading(true);
-    setPendingImport({ url: importUrl, startedAt: new Date().toISOString() });
+    // Use the same activeUpload state for URL imports to show inline
+    const tempId = `import-${Date.now()}`;
+    setActiveUpload({
+      id: tempId,
+      filename: importUrl,
+      progress: 0, // indeterminate
+      startedAt: new Date().toISOString(),
+    });
+    
+    // Optional: Keep toast for URL import since it's server-side and fast/opaque? 
+    // Or unify UX. Let's unify UX but URL import doesn't give real progress easily.
+    // For now, let's keep the toast for URL import as the user specifically asked about file upload UX.
+    // But to be consistent, we can show the card indeterminate.
+    
     const toastId = toast.loading('Importing from URL...');
 
     try {
@@ -320,7 +465,7 @@ export default function FeedsPage() {
       toast.error(err.message || 'Import failed', { id: toastId });
     } finally {
       setIsUploading(false);
-      setPendingImport(null);
+      setActiveUpload(null);
     }
   };
 
@@ -456,21 +601,23 @@ export default function FeedsPage() {
       return videoSort === 'newest' ? bT - aT : aT - bT;
     });
 
-    if (pendingImport) {
+    if (activeUpload) {
       sorted.unshift({
-        id: 'pending-import',
-        feedId: 'pending',
-        videoId: 'pending-import',
-        title: 'Importing video…',
-        s3Url: pendingImport.url,
+        id: activeUpload.id,
+        feedId: 'uploading',
+        videoId: 'uploading',
+        title: activeUpload.filename,
+        s3Url: '',
         thumbnailUrl: null,
-        createdAt: pendingImport.startedAt,
-        feed: { name: 'Manual import' },
-      } as FeedVideo);
+        createdAt: activeUpload.startedAt,
+        feed: { name: 'Uploading...' },
+        status: 'uploading', // Custom status for the UI
+        uploadProgress: activeUpload.progress,
+      } as any); // Cast to any or custom type intersection to allow upload props
     }
 
     return sorted;
-  }, [feeds, videoFeedFilter, videoQuery, videoSort, videos, pendingImport]);
+  }, [feeds, videoFeedFilter, videoQuery, videoSort, videos, activeUpload]);
 
   return (
     <div className="mx-auto w-full max-w-screen-xl px-4 py-6 sm:px-6 lg:px-8">
@@ -743,20 +890,6 @@ export default function FeedsPage() {
                   </Button>
                 </div>
               </div>
-              {isUploading && (
-                <div className="mt-2 text-xs text-muted-foreground">
-                  <div className="mb-1 flex justify-between">
-                    <span>Uploading...</span>
-                    <span>{uploadProgress}%</span>
-                  </div>
-                  <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-zinc-800">
-                    <div
-                      className="h-full rounded-full bg-black transition-all dark:bg-white"
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
             </CardHeader>
             <CardContent>
               {isLoadingVideos ? (
@@ -773,7 +906,7 @@ export default function FeedsPage() {
                     </Card>
                   ))}
                 </div>
-              ) : videos.length === 0 && !pendingImport ? (
+              ) : videos.length === 0 && !activeUpload ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <div className="rounded-full bg-gray-100 p-3 dark:bg-zinc-900">
                     <Upload className="h-6 w-6 text-muted-foreground" />
@@ -795,18 +928,45 @@ export default function FeedsPage() {
               ) : (
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
                   {filteredVideos.map((video) => {
-                    const isPending = video.id === 'pending-import';
+                    // Check if this is our special uploading placeholder
+                    const isUploadingItem = (video as any).status === 'uploading';
+                    const uploadProgress = (video as any).uploadProgress || 0;
+                    
+                    if (isUploadingItem) {
+                      return (
+                         <Card key={video.id + 'uploading'} className="overflow-hidden border-dashed border-2 bg-gray-50/50 dark:bg-zinc-900/20">
+                           <div className="aspect-video w-full flex items-center justify-center bg-muted/20">
+                             <div className="text-center p-6 space-y-4 w-full">
+                               <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+                               <div className="space-y-2">
+                                 <div className="text-sm font-medium truncate px-4">{video.title}</div>
+                                 <div className="w-full max-w-[180px] mx-auto h-2 rounded-full bg-muted overflow-hidden">
+                                   <div 
+                                     className="h-full bg-primary transition-all duration-300 ease-out"
+                                     style={{ width: `${uploadProgress}%` }} 
+                                   />
+                                 </div>
+                                 <div className="text-xs text-muted-foreground">{uploadProgress}% uploaded</div>
+                               </div>
+                             </div>
+                           </div>
+                           <div className="p-4 space-y-2 opacity-50 pointer-events-none">
+                             <div className="h-5 w-3/4 rounded bg-muted/40" />
+                             <div className="h-4 w-1/2 rounded bg-muted/30" />
+                           </div>
+                         </Card>
+                      );
+                    }
+
                     const { thumbnailUrl, youtubeId } = getFeedVideoThumbnail(video);
                     const isYouTube = Boolean(youtubeId);
                     return (
                       <Card
                         key={video.id}
                         className={cn(
-                          'group cursor-pointer overflow-hidden shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20',
-                          isPending && 'cursor-default border-dashed hover:shadow-sm hover:ring-0'
+                          'group cursor-pointer overflow-hidden shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20'
                         )}
                         onClick={() => {
-                          if (isPending) return;
                           setAspectRatio((video.aspectRatio as AspectRatio) || '9:16');
                           setSelectedVideo(video);
                           setIsModalOpen(true);
@@ -814,112 +974,85 @@ export default function FeedsPage() {
                       >
                         <CardContent className="p-0">
                           <div className="relative">
-                            {isPending ? (
-                              <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-muted/50 text-center">
-                                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                                <div className="text-sm font-medium text-foreground">
-                                  Importing new video…
-                                </div>
-                                <p className="text-xs text-muted-foreground px-6">
-                                  You can keep working—this entry will update automatically once the
-                                  download finishes.
-                                </p>
-                              </div>
-                            ) : (
-                              (() => {
-                                if (isYouTube) {
-                                  return (
-                                    <div className="relative aspect-video w-full bg-black/5">
-                                      {thumbnailUrl ? (
-                                        <img
-                                          src={thumbnailUrl}
-                                          alt={video.title}
-                                          className="h-full w-full object-cover"
-                                        />
-                                      ) : (
-                                        <div className="flex h-full items-center justify-center bg-gray-100 text-gray-400">
-                                          <span className="text-xs">No preview</span>
-                                        </div>
-                                      )}
-                                      <div className="absolute right-2 bottom-2 rounded bg-black/70 px-1 py-0.5 text-[10px] font-bold text-white">
-                                        YouTube
-                                      </div>
-                                    </div>
-                                  );
-                                }
-
+                            {(() => {
+                              if (isYouTube) {
                                 return (
-                                  <video
-                                    src={video.s3Url}
-                                    poster={thumbnailUrl || undefined}
-                                    preload="metadata" // Only load partial metadata to be light
-                                    muted
-                                    playsInline
-                                    tabIndex={-1}
-                                    className="aspect-video w-full bg-black/5 object-cover"
-                                  />
-                                );
-                              })()
-                            )}
-
-                            {!isPending && (
-                              <>
-                                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-60 transition-opacity group-hover:opacity-80" />
-                                <div className="pointer-events-none absolute bottom-2 left-2 opacity-0 transition-opacity group-hover:opacity-100">
-                                  <div className="rounded-full bg-black/55 px-2 py-1 text-[11px] font-medium text-white backdrop-blur">
-                                    Generate clip
-                                  </div>
-                                </div>
-
-                                <Button
-                                  variant="secondary"
-                                  size="icon"
-                                  className="absolute right-2 top-2 h-8 w-8 rounded-full bg-white/85 text-gray-900 opacity-0 backdrop-blur transition-opacity hover:bg-white group-hover:opacity-100 dark:bg-zinc-900/80 dark:text-zinc-100 dark:hover:bg-zinc-900"
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    await deleteVideo(video);
-                                  }}
-                                  disabled={deletingVideoId === video.id}
-                                  title="Delete video"
-                                >
-                                  <Trash2
-                                    className={cn(
-                                      'h-4 w-4',
-                                      deletingVideoId === video.id && 'animate-pulse'
+                                  <div className="relative aspect-video w-full bg-black/5">
+                                    {thumbnailUrl ? (
+                                      <img
+                                        src={thumbnailUrl}
+                                        alt={video.title}
+                                        className="h-full w-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="flex h-full items-center justify-center bg-gray-100 text-gray-400">
+                                        <span className="text-xs">No preview</span>
+                                      </div>
                                     )}
-                                  />
-                                </Button>
-                              </>
-                            )}
+                                    <div className="absolute right-2 bottom-2 rounded bg-black/70 px-1 py-0.5 text-[10px] font-bold text-white">
+                                      YouTube
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <video
+                                  src={video.s3Url}
+                                  poster={thumbnailUrl || undefined}
+                                  preload="metadata" // Only load partial metadata to be light
+                                  muted
+                                  playsInline
+                                  tabIndex={-1}
+                                  className="aspect-video w-full bg-black/5 object-cover"
+                                />
+                              );
+                            })()}
+
+                            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-60 transition-opacity group-hover:opacity-80" />
+                            <div className="pointer-events-none absolute bottom-2 left-2 opacity-0 transition-opacity group-hover:opacity-100">
+                              <div className="rounded-full bg-black/55 px-2 py-1 text-[11px] font-medium text-white backdrop-blur">
+                                Generate clip
+                              </div>
+                            </div>
+
+                            <Button
+                              variant="secondary"
+                              size="icon"
+                              className="absolute right-2 top-2 h-8 w-8 rounded-full bg-white/85 text-gray-900 opacity-0 backdrop-blur transition-opacity hover:bg-white group-hover:opacity-100 dark:bg-zinc-900/80 dark:text-zinc-100 dark:hover:bg-zinc-900"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                await deleteVideo(video);
+                              }}
+                              disabled={deletingVideoId === video.id}
+                              title="Delete video"
+                            >
+                              <Trash2
+                                className={cn(
+                                  'h-4 w-4',
+                                  deletingVideoId === video.id && 'animate-pulse'
+                                )}
+                              />
+                            </Button>
                           </div>
-                          {isPending ? (
-                            <div className="space-y-2 p-4">
-                              <div className="font-semibold leading-snug text-foreground">
-                                Preparing video
-                              </div>
-                              <p className="text-xs text-muted-foreground">
-                                Downloading from YouTube and transcoding. No action needed.
-                              </p>
+
+                          <div className="space-y-2 p-4">
+                            <div className="line-clamp-2 font-semibold leading-snug">
+                              {video.title}
                             </div>
-                          ) : (
-                            <div className="space-y-2 p-4">
-                              <div className="line-clamp-2 font-semibold leading-snug">
-                                {video.title}
-                              </div>
-                              <div className="flex flex-wrap items-center gap-2 py-2">
-                                {video.feed?.name ? (
-                                  <Badge variant="secondary" className="my-1">
-                                    {video.feed.name}
-                                  </Badge>
-                                ) : null}
-                                {video.createdAt ? (
-                                  <span className="text-xs text-muted-foreground my-1">
-                                    {formatRelativeTime(video.createdAt)}
-                                  </span>
-                                ) : null}
-                              </div>
+                            <div className="flex flex-wrap items-center gap-2 py-2">
+                              {video.feed?.name ? (
+                                <Badge variant="secondary" className="my-1">
+                                  {video.feed.name}
+                                </Badge>
+                              ) : null}
+                              {video.createdAt ? (
+                                <span className="text-xs text-muted-foreground my-1">
+                                  {formatRelativeTime(video.createdAt)}
+                                </span>
+                              ) : null}
                             </div>
-                          )}
+                          </div>
                         </CardContent>
                       </Card>
                     );
@@ -1080,16 +1213,16 @@ export default function FeedsPage() {
                   </div>
                 </div>
 
-                {isUploading && uploadProgress > 0 && (
+                {isUploading && activeUpload && activeUpload.progress > 0 && (
                   <div className="w-full space-y-2 rounded-md border p-3">
                     <div className="flex justify-between text-xs font-medium">
                       <span>Uploading...</span>
-                      <span>{uploadProgress}%</span>
+                      <span>{activeUpload.progress}%</span>
                     </div>
                     <div className="h-2 w-full rounded-full bg-secondary">
                       <div
                         className="h-full rounded-full bg-primary transition-all duration-300"
-                        style={{ width: `${uploadProgress}%` }}
+                        style={{ width: `${activeUpload.progress}%` }}
                       />
                     </div>
                   </div>

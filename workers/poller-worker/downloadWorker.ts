@@ -11,7 +11,7 @@ import { downloadAndUploadToS3 } from '@shared/util/downloadAndUploadToS3';
 import { queueTranscriptionJob } from '@shared/queues';
 import { Queue } from 'bullmq';
 
-const clipGenerationQueue = new Queue('clip-generation',  { connection: redisConnection as any });
+const clipGenerationQueue = new Queue('clip-generation', { connection: redisConnection as any });
 
 type DownloadJob = {
   feedVideoId: string;
@@ -110,7 +110,7 @@ new Worker<DownloadJob>(
       throw err;
     }
   },
-   { connection: redisConnection as any }
+  { connection: redisConnection as any }
 );
 
 console.log('feed-download worker up');

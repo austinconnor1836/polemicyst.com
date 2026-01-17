@@ -40,7 +40,7 @@ export const DEFAULT_VIRALITY_SETTINGS: ViralitySettingsValue = {
   targetPlatform: 'reels',
   contentStyle: 'auto',
   showAdvanced: false,
-  llmProvider: 'gemini',
+  llmProvider: 'ollama',
 };
 
 export function getStrictnessConfig(preset: StrictnessPreset): StrictnessConfig {

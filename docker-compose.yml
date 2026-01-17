@@ -23,8 +23,6 @@ services:
     networks:
       - app-network
 
-
-
   # Clip Worker - Main job processing (Node.js)
   clip-worker:
     build:
@@ -128,7 +126,6 @@ services:
       - ./shared:/app/shared # ⬅️ needed for prisma and shared code
       - ./prisma:/app/prisma
     depends_on:
-
       - db
       - redis
     environment:

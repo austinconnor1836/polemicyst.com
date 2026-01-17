@@ -9,7 +9,12 @@ services:
       - .:/app
       - /app/node_modules
       - clip-worker-node-modules:/app/workers/clip-worker/node_modules
-    command: ['sh', '-c', 'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev']
+    command:
+      [
+        'sh',
+        '-c',
+        'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
+      ]
 
   poller:
     environment:
@@ -20,7 +25,12 @@ services:
       - .:/app
       - /app/node_modules
       - poller-node-modules:/app/workers/poller-worker/node_modules
-    command: ['sh', '-c', 'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev']
+    command:
+      [
+        'sh',
+        '-c',
+        'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
+      ]
 
   download-worker:
     environment:
@@ -31,7 +41,12 @@ services:
       - .:/app
       - /app/node_modules
       - download-worker-node-modules:/app/workers/video-download-worker/node_modules
-    command: ['sh', '-c', 'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev']
+    command:
+      [
+        'sh',
+        '-c',
+        'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
+      ]
 
   clip-metadata-worker:
     environment:
@@ -42,7 +57,12 @@ services:
       - .:/app
       - /app/node_modules
       - clip-metadata-worker-node-modules:/app/workers/clip-metadata-worker/node_modules
-    command: ['sh', '-c', 'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev']
+    command:
+      [
+        'sh',
+        '-c',
+        'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
+      ]
 
 volumes:
   clip-worker-node-modules:
