@@ -1,16 +1,13 @@
 // /src/app/api/generateDescription/route.ts
 import { NextRequest } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
+import { generateMetadataWithOllama } from '@shared/lib/metadata-generation';
 
 export async function POST(req: NextRequest) {
   const { videoId } = await req.json();
 
   if (!videoId) {
     return new Response('Missing videoId', { status: 400 });
-  }
-
-  if (!videoId) {
-    return new Response('Missing file or videoId', { status: 400 });
   }
 
   try {
@@ -35,21 +32,8 @@ export async function POST(req: NextRequest) {
       return new Response('Transcript not found for video', { status: 404 });
     }
 
-    // ✅ Send transcript to backend generation endpoint
-    const generateRes = await fetch('http://localhost:3001/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transcript: video.transcript }),
-    });
-
-    if (!generateRes.ok) {
-      const errorText = await generateRes.text();
-      console.error('Generation failed:', errorText);
-      return new Response('Failed to generate metadata', { status: 500 });
-    }
-
-    const parsed = await generateRes.json();
-    const { title, description } = parsed;
+    // ✅ Generate metadata using shared logic
+    const { title, description } = await generateMetadataWithOllama(video.transcript);
 
     const fixedHashtags = [
       '#Polemicyst',

@@ -29,7 +29,7 @@ services:
   clip-worker:
     build:
       context: .
-      dockerfile: ./backend/workers/clip-worker/Dockerfile
+      dockerfile: ./workers/clip-worker/Dockerfile
     environment:
       - REDIS_HOST=redis
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
@@ -52,7 +52,7 @@ services:
       [
         'sh',
         '-c',
-        'apt-get update && apt-get install -y ffmpeg && cd /app && npm install && npx tsx watch backend/workers/clip-worker/index.ts',
+        'apt-get update && apt-get install -y ffmpeg && cd /app && npm install && npx tsx watch workers/clip-worker/index.ts',
       ]
     volumes:
       - .:/app
@@ -76,10 +76,11 @@ services:
   clip-metadata-worker:
     build:
       context: .
-      dockerfile: ./backend/workers/clip-metadata-worker/Dockerfile
-    command: ['npx', 'tsx', 'backend/workers/clip-metadata-worker/index.ts']
+      dockerfile: ./workers/clip-metadata-worker/Dockerfile
+    command: ['npx', 'tsx', 'workers/clip-metadata-worker/index.ts']
     environment:
       - REDIS_HOST=redis
+      - OLLAMA_BASE_URL=http://ollama:11434
       - NODE_ENV=production
     depends_on:
       - redis
@@ -108,7 +109,7 @@ services:
   ollama:
     build:
       context: .
-      dockerfile: ./backend/workers/ollama-worker/Dockerfile
+      dockerfile: ./workers/ollama-worker/Dockerfile
     container_name: ollama
     volumes:
       - ollama-data:/root/.ollama
@@ -122,7 +123,7 @@ services:
   poller:
     build:
       context: .
-      dockerfile: ./backend/workers/poller-worker/Dockerfile
+      dockerfile: ./workers/poller-worker/Dockerfile
     volumes:
       - ./shared:/app/shared # ⬅️ needed for prisma and shared code
       - ./prisma:/app/prisma
@@ -145,7 +146,7 @@ services:
   download-worker:
     build:
       context: .
-      dockerfile: ./backend/workers/video-download-worker/Dockerfile
+      dockerfile: ./workers/video-download-worker/Dockerfile
     command: ['npx', 'ts-node', 'index.ts']
     volumes:
       - ./shared:/app/shared
