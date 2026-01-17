@@ -1,15 +1,5 @@
 services:
-  backend:
-    environment:
-      - NODE_ENV=development
-      - CHOKIDAR_USEPOLLING=true
-    volumes:
-      - ./backend:/app/backend
-      - ./shared:/app/shared
-      - ./prisma:/app/prisma
-      # keep container-installed deps even when bind-mounting source
-      - backend-node-modules:/app/backend/node_modules
-    command: ['npm', 'run', 'dev']
+
 
   clip-worker:
     environment:
@@ -17,13 +7,13 @@ services:
       - CHOKIDAR_USEPOLLING=true
       - BACKEND_BASE_URL=http://backend:3001
     volumes:
-      - ./clip-worker:/app/clip-worker
+      - ./backend/workers/clip-worker:/app
       - ./shared:/app/shared
       - ./prisma:/app/prisma
       # keep container-installed deps even when bind-mounting source
-      - clip-worker-node-modules:/app/clip-worker/node_modules
+      - clip-worker-node-modules:/app/node_modules
     command: ['npm', 'run', 'dev']
 
 volumes:
-  backend-node-modules:
+
   clip-worker-node-modules:

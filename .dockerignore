@@ -3,7 +3,7 @@
 .env*
 .env.local
 certificates/
-node_modules/
+**/node_modules/
 src/
 public/
 src/

@@ -9,8 +9,8 @@ import {
   selectCandidatesDynamically,
   TranscriptWordSegment,
   ScoringMode,
-} from '../lib/viral-scoring';
-import { detectContentStyle } from '../lib/content-style';
+} from '../../../shared/lib/scoring/viral-scoring';
+import { detectContentStyle } from '../../../shared/lib/scoring/content-style';
 
 const router = express.Router();
 

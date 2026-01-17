@@ -2,8 +2,8 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import { VideoFeed } from '@prisma/client';
-import { prisma } from '@shared/lib/prisma';
-import { NewVideo } from '@shared/types';
+import { prisma } from '../lib/prisma';
+import { NewVideo } from '../types';
 
 const execPromise = promisify(exec);
 const UPLOADS_DIR = '/app/uploads';

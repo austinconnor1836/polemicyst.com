@@ -37,6 +37,7 @@ RUN npm install
 COPY ./backend/workers/clip-metadata-worker .
 COPY ./shared ./shared
 COPY ./prisma/ ./prisma/
+COPY ./scripts/transcribe.py ./scripts/transcribe.py
 COPY tsconfig.docker.json tsconfig.json
 RUN chmod +x ./start.sh
 

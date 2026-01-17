@@ -1,16 +1,17 @@
-import dotenv from 'dotenv';
+const dotenv = require('dotenv');
+dotenv.config();
 dotenv.config({ path: '.env' });
 dotenv.config({ path: '.env.local', override: true });
 
 import { Worker } from 'bullmq';
 import { downloadQueue } from './queues/downloadQueue';
 import { redisConnection } from './queues/redisConnection';
-import { prisma } from './lib/prisma';
-import { downloadAndUploadToS3 } from './downloadAndUploadToS3';
-import { queueTranscriptionJob } from './queues/transcriptionQueue';
+import { prisma } from '@shared/lib/prisma';
+import { downloadAndUploadToS3 } from '@shared/util/downloadAndUploadToS3';
+import { queueTranscriptionJob } from '@shared/queues';
 import { Queue } from 'bullmq';
 
-const clipGenerationQueue = new Queue('clip-generation', { connection: redisConnection });
+const clipGenerationQueue = new Queue('clip-generation',  { connection: redisConnection as any });
 
 type DownloadJob = {
   feedVideoId: string;
@@ -43,9 +44,9 @@ new Worker<DownloadJob>(
       });
 
       await queueTranscriptionJob({
+        feedVideoId,
         sourceUrl: s3Url,
         title: title || feedVideo.title,
-        feedId: feedId || feedVideo.feedId,
       });
 
       // Auto-trigger clip generation if feed is configured
@@ -109,7 +110,7 @@ new Worker<DownloadJob>(
       throw err;
     }
   },
-  { connection: redisConnection }
+   { connection: redisConnection as any }
 );
 
 console.log('feed-download worker up');

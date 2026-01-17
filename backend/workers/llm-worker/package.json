@@ -8,9 +8,9 @@
     "dev": "ts-node src/index.ts"
   },
   "dependencies": {
-    "bullmq": "^5.0.0",
+    "bullmq": "^5.65.0",
     "dotenv": "^16.0.0",
-    "ioredis": "^5.0.0",
+    "ioredis": "^5.8.2",
     "zod": "^3.0.0"
   },
   "devDependencies": {

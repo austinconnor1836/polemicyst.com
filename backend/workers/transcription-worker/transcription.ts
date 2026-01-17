@@ -1,4 +1,4 @@
-import fetch from 'node-fetch';
+const fetch = require('node-fetch');
 import { prisma } from '@shared/lib/prisma';
 import { spawn } from 'child_process';
 

@@ -92,7 +92,7 @@ const worker = new Worker(
     console.log(`Job ${job.id} completed. Score: ${result.score}`);
     return result;
   },
-  { connection }
+  { connection: connection as any }
 );
 
 worker.on('completed', (job) => {

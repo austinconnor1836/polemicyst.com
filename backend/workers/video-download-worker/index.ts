@@ -55,5 +55,5 @@ new Worker(
       throw err;
     }
   },
-  { connection: redis }
+  { connection: redis as any }
 );

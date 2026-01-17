@@ -23,26 +23,13 @@ services:
     networks:
       - app-network
 
-  backend:
-    build:
-      context: .
-      dockerfile: ./backend/Dockerfile
-    ports:
-      - '3001:3001'
-    environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
-      - REDIS_HOST=redis
-    depends_on:
-      - db
-      - redis
-    networks:
-      - app-network
+
 
   # Clip Worker - Main job processing (Node.js)
   clip-worker:
     build:
       context: .
-      dockerfile: ./clip-worker/Dockerfile
+      dockerfile: ./backend/workers/clip-worker/Dockerfile
     environment:
       - REDIS_HOST=redis
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
@@ -65,7 +52,7 @@ services:
       [
         'sh',
         '-c',
-        'apt-get update && apt-get install -y ffmpeg && cd /app && npm install && npx tsx watch clip-worker/index.ts',
+        'apt-get update && apt-get install -y ffmpeg && cd /app && npm install && npx tsx watch backend/workers/clip-worker/index.ts',
       ]
     volumes:
       - .:/app
@@ -89,8 +76,8 @@ services:
   clip-metadata-worker:
     build:
       context: .
-      dockerfile: ./clip-worker/Dockerfile
-    command: ['node', 'generate/generateMetadataWorker.js']
+      dockerfile: ./backend/workers/clip-metadata-worker/Dockerfile
+    command: ['npx', 'tsx', 'backend/workers/clip-metadata-worker/index.ts']
     environment:
       - REDIS_HOST=redis
       - NODE_ENV=production
@@ -120,13 +107,12 @@ services:
   # Ollama for language model processing
   ollama:
     build:
-      context: ./backend
-      dockerfile: ollama.Dockerfile
+      context: .
+      dockerfile: ./backend/workers/ollama-worker/Dockerfile
     container_name: ollama
     volumes:
-      - ./backend/scripts/start-ollama.sh:/start.sh
       - ollama-data:/root/.ollama
-    entrypoint: ['/bin/bash', '/start.sh']
+    entrypoint: ['/bin/bash', '/app/scripts/start-ollama.sh']
     ports:
       - '11434:11434'
     restart: unless-stopped
@@ -136,12 +122,12 @@ services:
   poller:
     build:
       context: .
-      dockerfile: ./workers/workers.Dockerfile
+      dockerfile: ./backend/workers/poller-worker/Dockerfile
     volumes:
       - ./shared:/app/shared # ⬅️ needed for prisma and shared code
       - ./prisma:/app/prisma
     depends_on:
-      - backend
+
       - db
       - redis
     environment:
@@ -159,8 +145,8 @@ services:
   download-worker:
     build:
       context: .
-      dockerfile: ./workers/workers.Dockerfile
-    command: ['npx', 'ts-node', 'downloadWorker.ts']
+      dockerfile: ./backend/workers/video-download-worker/Dockerfile
+    command: ['npx', 'ts-node', 'index.ts']
     volumes:
       - ./shared:/app/shared
       - ./prisma:/app/prisma

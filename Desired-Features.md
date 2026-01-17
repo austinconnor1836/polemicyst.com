@@ -1,0 +1,2 @@
+- Detect who is speaking in a video
+- Be able to choose multiple default description templates

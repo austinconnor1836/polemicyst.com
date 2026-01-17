@@ -5,15 +5,15 @@ dotenv.config({ path: '.env.local', override: false });
 
 import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
-import { prisma } from '../../shared/lib/prisma';
-import { transcribeFeedVideo } from '../../backend/api/lib/transcription';
+import { prisma } from '@shared/lib/prisma';
+import { transcribeFeedVideo } from '@shared/lib/transcription';
 import {
   buildCandidatesFromTranscript,
   scoreAndRankCandidatesLLM,
   ClipCandidate,
-} from '../../backend/api/lib/viral-scoring';
-import { generateClipFromS3 } from '../../backend/utils/ffmpegUtils';
-import { scorePhilosophicalRhetoric } from '../../backend/api/lib/philosophyRanker';
+} from '@shared/lib/scoring/viral-scoring';
+import { generateClipFromS3 } from '@shared/util/ffmpegUtils';
+import { scorePhilosophicalRhetoric } from '@shared/lib/scoring/philosophy-ranker';
 
 const redisConnection = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
@@ -60,7 +60,7 @@ new Worker(
       }
 
       // 2. Ensuring local video file (Download ONCE)
-      const { downloadFeedVideoToTemp } = await import('../../backend/utils/download');
+      const { downloadFeedVideoToTemp } = await import('@shared/util/download');
       console.log('⬇️ Ensuring local video file...');
       localVideoPath = await downloadFeedVideoToTemp(feedVideo.s3Url);
 
@@ -248,5 +248,5 @@ new Worker(
       }
     }
   },
-  { connection: redisConnection }
+  { connection: redisConnection as any }
 );

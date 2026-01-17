@@ -41,5 +41,5 @@ new Worker(
       throw err; // Mark job as failed → retry if attempts set
     }
   },
-  { connection: redis }
+  { connection: redis as any /* forced cast */ }
 );

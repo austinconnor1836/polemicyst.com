@@ -19,13 +19,13 @@ const redisConnection = new Redis({
 });
 
 // Queues for scoring
-const provocativenessQueue = new Queue('score-provocativeness', { connection: redisConnection });
-const comedicQueue = new Queue('score-comedic', { connection: redisConnection });
+const provocativenessQueue = new Queue('score-provocativeness', { connection: redisConnection as any });
+const comedicQueue = new Queue('score-comedic', { connection: redisConnection as any });
 
 const provocativenessEvents = new QueueEvents('score-provocativeness', {
-  connection: redisConnection,
+  connection: redisConnection as any,
 });
-const comedicEvents = new QueueEvents('score-comedic', { connection: redisConnection });
+const comedicEvents = new QueueEvents('score-comedic', { connection: redisConnection as any });
 
 // Helper: Download video
 async function downloadVideo(url: string, dest: string) {
@@ -223,5 +223,5 @@ new Worker(
       throw err;
     }
   },
-  { connection: redisConnection }
+  { connection: redisConnection as any }
 );

@@ -8,10 +8,10 @@ const redis: Redis = new Redis({
   maxRetriesPerRequest: null,
 });
 
-export const videoDownloadQueue = new Queue('video-download', { connection: redis });
+export const videoDownloadQueue = new Queue('video-download', { connection: redis as any });
 
 export const transcriptionQueue = new Queue('transcription', {
-  connection: redis,
+  connection: redis as any,
 });
 
 export interface DownloadJob {
@@ -29,7 +29,13 @@ export function queueVideoDownloadJob(data: DownloadJob) {
   });
 }
 
-export function queueTranscriptionJob(data: { feedVideoId: string }) {
+export interface TranscriptionJob {
+  feedVideoId: string;
+  sourceUrl?: string; // Optional if we download from S3 using ID? But worker expects it.
+  title?: string;
+}
+
+export function queueTranscriptionJob(data: TranscriptionJob) {
   return transcriptionQueue.add('transcribe', data, {
     removeOnComplete: true,
     removeOnFail: true,

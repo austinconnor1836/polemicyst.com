@@ -20,5 +20,5 @@ new Worker(
       console.error('❌ Transcription failed:', transcriptionError);
     }
   },
-  { connection: transcriptionQueue.opts.connection }
+  { connection: transcriptionQueue.opts.connection as any }
 );

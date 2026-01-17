@@ -1,8 +1,8 @@
-import { prisma } from './lib/prisma';
-import { queueTranscriptionJob } from './queues/transcriptionQueue';
-import { pollYouTubeFeed } from './poller/sources/youtube';
-import { pollCspanFeed } from './poller/sources/cspan';
-import { downloadAndUploadToS3 } from './downloadAndUploadToS3'; // your streaming S3 uploader
+import { prisma } from '@shared/lib/prisma';
+import { queueTranscriptionJob } from '@shared/queues';
+import { pollYouTubeFeed } from '@shared/util/youtube';
+import { pollCspanFeed } from '@shared/util/cspan';
+import { downloadAndUploadToS3 } from '@shared/util/downloadAndUploadToS3';
 
 function inferSourceTypeFromUrl(sourceUrlRaw: string): 'youtube' | 'cspan' | null {
   const lower = (sourceUrlRaw || '').trim().toLowerCase();
@@ -86,7 +86,8 @@ export async function pollFeeds() {
       const s3Url = await downloadAndUploadToS3(newVideo.url, newVideo.id);
 
       // Store in FeedVideo table
-      await prisma.feedVideo.create({
+      // Store in FeedVideo table
+      const feedVideo = await prisma.feedVideo.create({
         data: {
           feedId: feed.id,
           videoId: newVideo.id,
@@ -105,8 +106,8 @@ export async function pollFeeds() {
 
       // Queue transcription
       await queueTranscriptionJob({
+        feedVideoId: feedVideo.id,
         sourceUrl: s3Url,
-        feedId: feed.id,
         title: newVideo.title,
       });
 
