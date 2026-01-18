@@ -1,3 +1,5 @@
+'use client';
+
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { set as idbSet, get as idbGet, del as idbDel } from 'idb-keyval';
 import ViralitySettings from '@/components/ViralitySettings';
@@ -222,147 +224,155 @@ export default function FeedsPage() {
         const meta = JSON.parse(metaStr);
         // Check if file blob is still in IDB
         const file = await idbGet('pending-upload-file');
-        
+
         if (file && file.name === meta.filename && file.size === meta.size) {
-           console.log('🔄 Found pending upload, resuming automatically...', meta);
-           // Trigger resumption
-           resumeUpload(file, meta);
+          console.log('🔄 Found pending upload, resuming automatically...', meta);
+          // Trigger resumption
+          resumeUpload(file, meta);
         } else {
-           // Invalid state, clear it
-           console.log('⚠️ Pending upload metadata found but file missing or mismatched. Clearing.');
-           localStorage.removeItem('pending-upload-meta');
-           await idbDel('pending-upload-file');
+          // Invalid state, clear it
+          console.log('⚠️ Pending upload metadata found but file missing or mismatched. Clearing.');
+          localStorage.removeItem('pending-upload-meta');
+          await idbDel('pending-upload-file');
         }
       } catch (e) {
         console.error('Auto-resume check failed:', e);
       }
     };
-    
+
     // Small delay to ensure hydration?
     setTimeout(checkResume, 500);
   }, []);
 
-  const resumeUpload = async (file: File, meta: { uploadId: string; key: string; filename: string; size: number }) => {
-     setIsUploading(true);
-     // Restore UI state immediately
-     setActiveUpload({
-       id: meta.uploadId,
-       filename: meta.filename,
-       progress: 0, // Will jump when we calculate parts
-       startedAt: new Date().toISOString(),
-     });
+  const resumeUpload = async (
+    file: File,
+    meta: { uploadId: string; key: string; filename: string; size: number }
+  ) => {
+    setIsUploading(true);
+    // Restore UI state immediately
+    setActiveUpload({
+      id: meta.uploadId,
+      filename: meta.filename,
+      progress: 0, // Will jump when we calculate parts
+      startedAt: new Date().toISOString(),
+    });
 
-     try {
-       // 1. Get list of already uploaded parts
-       const listRes = await fetch('/api/uploads/multipart/list-parts', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ uploadId: meta.uploadId, key: meta.key }),
-       });
+    try {
+      // 1. Get list of already uploaded parts
+      const listRes = await fetch('/api/uploads/multipart/list-parts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uploadId: meta.uploadId, key: meta.key }),
+      });
 
-       if (!listRes.ok) throw new Error('Failed to list parts');
-       const { parts: existingParts }: { parts: { PartNumber: number; ETag: string; Size: number }[] } = await listRes.json();
-       
-       const CHUNK_SIZE = 10 * 1024 * 1024;
-       const totalParts = Math.ceil(file.size / CHUNK_SIZE);
-       
-       // Map of existing parts for O(1) lookup
-       const uploadedMap = new Map(existingParts.map(p => [p.PartNumber, p.ETag]));
-       
-       const uploadedPartsList: { PartNumber: number; ETag: string }[] = [...existingParts.map(p => ({ PartNumber: p.PartNumber, ETag: p.ETag }))];
-       let completedPartsCount = existingParts.length;
+      if (!listRes.ok) throw new Error('Failed to list parts');
+      const {
+        parts: existingParts,
+      }: { parts: { PartNumber: number; ETag: string; Size: number }[] } = await listRes.json();
 
-       // Calculate initial progress
-       const initialPercent = Math.round((completedPartsCount / totalParts) * 100);
-       setActiveUpload(prev => prev ? { ...prev, progress: initialPercent } : null);
+      const CHUNK_SIZE = 10 * 1024 * 1024;
+      const totalParts = Math.ceil(file.size / CHUNK_SIZE);
 
-       const uploadPart = async (partNumber: number) => {
-         const start = (partNumber - 1) * CHUNK_SIZE;
-         const end = Math.min(start + CHUNK_SIZE, file.size);
-         const chunk = file.slice(start, end);
+      // Map of existing parts for O(1) lookup
+      const uploadedMap = new Map(existingParts.map((p) => [p.PartNumber, p.ETag]));
 
-         const partUrlRes = await fetch('/api/uploads/multipart/part-url', {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ uploadId: meta.uploadId, key: meta.key, partNumber }),
-         });
-         
-         if (!partUrlRes.ok) throw new Error(`Failed to get URL for part ${partNumber}`);
-         const { url } = await partUrlRes.json();
+      const uploadedPartsList: { PartNumber: number; ETag: string }[] = [
+        ...existingParts.map((p) => ({ PartNumber: p.PartNumber, ETag: p.ETag })),
+      ];
+      let completedPartsCount = existingParts.length;
 
-         const uploadRes = await fetch(url, { method: 'PUT', body: chunk });
-         if (!uploadRes.ok) throw new Error(`Failed to upload part ${partNumber}`);
-         
-         const eTag = uploadRes.headers.get('ETag');
-         if (!eTag) throw new Error(`No ETag for part ${partNumber}`);
+      // Calculate initial progress
+      const initialPercent = Math.round((completedPartsCount / totalParts) * 100);
+      setActiveUpload((prev) => (prev ? { ...prev, progress: initialPercent } : null));
 
-         return eTag;
-       };
+      const uploadPart = async (partNumber: number) => {
+        const start = (partNumber - 1) * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunk = file.slice(start, end);
 
-       // CONCURRENCY LOOP
-       const CONCURRENCY = 4;
-       const queue = [];
-       for (let i = 1; i <= totalParts; i++) {
-         if (!uploadedMap.has(i)) queue.push(i);
-       }
+        const partUrlRes = await fetch('/api/uploads/multipart/part-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uploadId: meta.uploadId, key: meta.key, partNumber }),
+        });
 
-       const activeWorkers = new Set<Promise<void>>();
+        if (!partUrlRes.ok) throw new Error(`Failed to get URL for part ${partNumber}`);
+        const { url } = await partUrlRes.json();
 
-       while (queue.length > 0 || activeWorkers.size > 0) {
-         while (queue.length > 0 && activeWorkers.size < CONCURRENCY) {
-           const partNum = queue.shift()!;
-           const promise = uploadPart(partNum).then((eTag) => {
-             uploadedPartsList.push({ PartNumber: partNum, ETag: eTag });
-             completedPartsCount++;
-             const percent = Math.round((completedPartsCount / totalParts) * 100);
-             setActiveUpload(prev => prev ? { ...prev, progress: percent } : null);
-             activeWorkers.delete(promise);
-           }).catch(err => {
-             // Basic retry logic could go here, or just fail entire upload
-             console.error(err);
-             activeWorkers.delete(promise);
-             throw err; // Stop everything
-           });
-           activeWorkers.add(promise);
-         }
-         if (activeWorkers.size > 0) {
-           await Promise.race(activeWorkers);
-         }
-       }
+        const uploadRes = await fetch(url, { method: 'PUT', body: chunk });
+        if (!uploadRes.ok) throw new Error(`Failed to upload part ${partNumber}`);
 
-       // Finalize
-       const completeMultiRes = await fetch('/api/uploads/multipart/complete', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ uploadId: meta.uploadId, key: meta.key, parts: uploadedPartsList }),
-       });
+        const eTag = uploadRes.headers.get('ETag');
+        if (!eTag) throw new Error(`No ETag for part ${partNumber}`);
 
-       if (!completeMultiRes.ok) throw new Error('Failed to complete multipart upload');
+        return eTag;
+      };
 
-       await fetch('/api/uploads/complete', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ key: meta.key, filename: meta.filename }),
-       });
+      // CONCURRENCY LOOP
+      const CONCURRENCY = 4;
+      const queue = [];
+      for (let i = 1; i <= totalParts; i++) {
+        if (!uploadedMap.has(i)) queue.push(i);
+      }
 
-       toast.success('Upload complete!');
-       
-       // CLEANUP
-       localStorage.removeItem('pending-upload-meta');
-       await idbDel('pending-upload-file');
+      const activeWorkers = new Set<Promise<void>>();
 
-       await Promise.all([fetchFeeds(), fetchVideos()]);
-       setTimeout(() => setVideoFeedFilter('all'), 500);
+      while (queue.length > 0 || activeWorkers.size > 0) {
+        while (queue.length > 0 && activeWorkers.size < CONCURRENCY) {
+          const partNum = queue.shift()!;
+          const promise = uploadPart(partNum)
+            .then((eTag) => {
+              uploadedPartsList.push({ PartNumber: partNum, ETag: eTag });
+              completedPartsCount++;
+              const percent = Math.round((completedPartsCount / totalParts) * 100);
+              setActiveUpload((prev) => (prev ? { ...prev, progress: percent } : null));
+              activeWorkers.delete(promise);
+            })
+            .catch((err) => {
+              // Basic retry logic could go here, or just fail entire upload
+              console.error(err);
+              activeWorkers.delete(promise);
+              throw err; // Stop everything
+            });
+          activeWorkers.add(promise);
+        }
+        if (activeWorkers.size > 0) {
+          await Promise.race(activeWorkers);
+        }
+      }
 
-     } catch (err) {
-       console.error('Resume failed:', err);
-       toast.error('Resume failed');
-       // Don't clear storage, so user can try refreshing again? 
-       // Or clear it to avoid stuck loop? Let's keep it for now.
-     } finally {
-       setIsUploading(false);
-       setActiveUpload(null);
-     }
+      // Finalize
+      const completeMultiRes = await fetch('/api/uploads/multipart/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uploadId: meta.uploadId, key: meta.key, parts: uploadedPartsList }),
+      });
+
+      if (!completeMultiRes.ok) throw new Error('Failed to complete multipart upload');
+
+      await fetch('/api/uploads/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: meta.key, filename: meta.filename }),
+      });
+
+      toast.success('Upload complete!');
+
+      // CLEANUP
+      localStorage.removeItem('pending-upload-meta');
+      await idbDel('pending-upload-file');
+
+      await Promise.all([fetchFeeds(), fetchVideos()]);
+      setTimeout(() => setVideoFeedFilter('all'), 500);
+    } catch (err) {
+      console.error('Resume failed:', err);
+      toast.error('Resume failed');
+      // Don't clear storage, so user can try refreshing again?
+      // Or clear it to avoid stuck loop? Let's keep it for now.
+    } finally {
+      setIsUploading(false);
+      setActiveUpload(null);
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -387,7 +397,7 @@ export default function FeedsPage() {
       // 0. Persistence Hook: Save File and Metadata
       console.log('💾 Persisting file for auto-resume...');
       await idbSet('pending-upload-file', file);
-      
+
       // 1. Initiate Multipart Upload
       const initRes = await fetch('/api/uploads/multipart/initiate', {
         method: 'POST',
@@ -397,7 +407,7 @@ export default function FeedsPage() {
 
       if (!initRes.ok) throw new Error('Failed to initiate upload');
       const { uploadId, key } = await initRes.json();
-      
+
       // Save metadata linked to this upload
       const meta = { uploadId, key, filename: file.name, size: file.size };
       localStorage.setItem('pending-upload-meta', JSON.stringify(meta));
@@ -405,7 +415,6 @@ export default function FeedsPage() {
       // 2. Reuse resume logic which handles the looping
       // We pass the SAME file object and metadata we just got
       await resumeUpload(file, meta);
-
     } catch (err) {
       console.error(err);
       toast.error('Upload failed');
@@ -415,7 +424,7 @@ export default function FeedsPage() {
       setIsUploading(false);
       setActiveUpload(null);
     } finally {
-       if (fileInputRef.current) fileInputRef.current.value = '';
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -431,12 +440,12 @@ export default function FeedsPage() {
       progress: 0, // indeterminate
       startedAt: new Date().toISOString(),
     });
-    
-    // Optional: Keep toast for URL import since it's server-side and fast/opaque? 
+
+    // Optional: Keep toast for URL import since it's server-side and fast/opaque?
     // Or unify UX. Let's unify UX but URL import doesn't give real progress easily.
     // For now, let's keep the toast for URL import as the user specifically asked about file upload UX.
     // But to be consistent, we can show the card indeterminate.
-    
+
     const toastId = toast.loading('Importing from URL...');
 
     try {
@@ -931,30 +940,37 @@ export default function FeedsPage() {
                     // Check if this is our special uploading placeholder
                     const isUploadingItem = (video as any).status === 'uploading';
                     const uploadProgress = (video as any).uploadProgress || 0;
-                    
+
                     if (isUploadingItem) {
                       return (
-                         <Card key={video.id + 'uploading'} className="overflow-hidden border-dashed border-2 bg-gray-50/50 dark:bg-zinc-900/20">
-                           <div className="aspect-video w-full flex items-center justify-center bg-muted/20">
-                             <div className="text-center p-6 space-y-4 w-full">
-                               <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
-                               <div className="space-y-2">
-                                 <div className="text-sm font-medium truncate px-4">{video.title}</div>
-                                 <div className="w-full max-w-[180px] mx-auto h-2 rounded-full bg-muted overflow-hidden">
-                                   <div 
-                                     className="h-full bg-primary transition-all duration-300 ease-out"
-                                     style={{ width: `${uploadProgress}%` }} 
-                                   />
-                                 </div>
-                                 <div className="text-xs text-muted-foreground">{uploadProgress}% uploaded</div>
-                               </div>
-                             </div>
-                           </div>
-                           <div className="p-4 space-y-2 opacity-50 pointer-events-none">
-                             <div className="h-5 w-3/4 rounded bg-muted/40" />
-                             <div className="h-4 w-1/2 rounded bg-muted/30" />
-                           </div>
-                         </Card>
+                        <Card
+                          key={video.id + 'uploading'}
+                          className="overflow-hidden border-dashed border-2 bg-gray-50/50 dark:bg-zinc-900/20"
+                        >
+                          <div className="aspect-video w-full flex items-center justify-center bg-muted/20">
+                            <div className="text-center p-6 space-y-4 w-full">
+                              <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+                              <div className="space-y-2">
+                                <div className="text-sm font-medium truncate px-4">
+                                  {video.title}
+                                </div>
+                                <div className="w-full max-w-[180px] mx-auto h-2 rounded-full bg-muted overflow-hidden">
+                                  <div
+                                    className="h-full bg-primary transition-all duration-300 ease-out"
+                                    style={{ width: `${uploadProgress}%` }}
+                                  />
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {uploadProgress}% uploaded
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="p-4 space-y-2 opacity-50 pointer-events-none">
+                            <div className="h-5 w-3/4 rounded bg-muted/40" />
+                            <div className="h-4 w-1/2 rounded bg-muted/30" />
+                          </div>
+                        </Card>
                       );
                     }
 

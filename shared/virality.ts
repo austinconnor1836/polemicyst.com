@@ -21,6 +21,10 @@ export type StrictnessConfig = {
 
 export type LLMProvider = 'gemini' | 'ollama';
 
+
+
+export type ClipLengthPreference = 'auto' | 'lt30s' | '30s-60s' | '60s-90s' | 'lt3m';
+
 export type ViralitySettingsValue = {
   scoringMode: ScoringMode;
   strictnessPreset: StrictnessPreset;
@@ -30,6 +34,7 @@ export type ViralitySettingsValue = {
   contentStyle: ContentStyle;
   showAdvanced: boolean;
   llmProvider: LLMProvider;
+  clipLength: ClipLengthPreference;
 };
 
 export const DEFAULT_VIRALITY_SETTINGS: ViralitySettingsValue = {
@@ -41,6 +46,7 @@ export const DEFAULT_VIRALITY_SETTINGS: ViralitySettingsValue = {
   contentStyle: 'auto',
   showAdvanced: false,
   llmProvider: 'ollama',
+  clipLength: 'auto',
 };
 
 export function getStrictnessConfig(preset: StrictnessPreset): StrictnessConfig {

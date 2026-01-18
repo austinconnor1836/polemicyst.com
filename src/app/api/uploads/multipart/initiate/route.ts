@@ -13,7 +13,7 @@ const s3 = new S3Client({
 });
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions) as any;
+  const session = (await getServerSession(authOptions)) as any;
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

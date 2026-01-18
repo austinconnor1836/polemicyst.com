@@ -12,7 +12,7 @@ const s3 = new S3Client({
 });
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions) as any;
+  const session = (await getServerSession(authOptions)) as any;
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -29,11 +29,12 @@ export async function POST(req: NextRequest) {
     const { Parts } = await s3.send(command);
 
     // Return simple array of uploaded parts
-    const uploadedParts = Parts?.map((p) => ({
-      PartNumber: p.PartNumber,
-      ETag: p.ETag,
-      Size: p.Size,
-    })) || [];
+    const uploadedParts =
+      Parts?.map((p) => ({
+        PartNumber: p.PartNumber,
+        ETag: p.ETag,
+        Size: p.Size,
+      })) || [];
 
     return NextResponse.json({ parts: uploadedParts });
   } catch (error) {

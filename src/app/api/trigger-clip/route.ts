@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
       percentile,
       maxGeminiCandidates,
       llmProvider,
+      clipLength,
     } = await req.json();
 
     if (!feedVideoId || !userId) {
@@ -36,7 +37,22 @@ export async function POST(req: NextRequest) {
 
     const existingJob = await clipGenerationQueue.getJob(feedVideoId);
     if (existingJob) {
-      await existingJob.remove();
+      const state = await existingJob.getState();
+      // If job is running or queued, don't interfere—just return success for idempotency.
+      if (state === 'active' || state === 'waiting' || state === 'delayed') {
+        console.log(`Job ${feedVideoId} is already ${state}. Returning existing job.`);
+        return NextResponse.json({ message: 'Clip generation already in progress', jobId: existingJob.id });
+      }
+
+      // If job is finished/failed, try to remove it to allow a retry.
+      try {
+        await existingJob.remove();
+      } catch (err: any) {
+        // If it's locked (e.g. stalled but not detected yet), we can't remove it.
+        // In that case, we can't add a new one with the same ID either.
+        console.warn(`Could not remove existing job ${feedVideoId}: ${err.message}`);
+        return NextResponse.json({ message: 'Job is locked or stuck', jobId: existingJob.id });
+      }
     }
 
     const resolvedProvider =
@@ -61,6 +77,7 @@ export async function POST(req: NextRequest) {
         percentile,
         maxGeminiCandidates,
         llmProvider: resolvedProvider,
+        clipLength,
       },
       { jobId: feedVideoId }
     );

@@ -65,6 +65,28 @@ export default function ViralitySettings({
       </div>
 
       <div className="space-y-2">
+        <Label>Clip length</Label>
+        <Select
+          value={value.clipLength || 'auto'}
+          onValueChange={(v) => onChange({ ...value, clipLength: v as any })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select clip length" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="auto">Auto (Smart)</SelectItem>
+            <SelectItem value="lt30s">&lt; 30s (Shorts/Reels)</SelectItem>
+            <SelectItem value="30s-60s">30s - 60s</SelectItem>
+            <SelectItem value="60s-90s">60s - 90s</SelectItem>
+            <SelectItem value="lt3m">Up to 3m</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="text-xs text-gray-500">
+          Restrict candidates to specific duration ranges to speed up processing.
+        </div>
+      </div>
+
+      <div className="space-y-2">
         <Label>Content style</Label>
         <Select
           value={value.contentStyle}

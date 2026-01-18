@@ -318,13 +318,33 @@ export function scoreCandidateHeuristic(text: string): {
  * Build candidate windows by grouping transcript segments into ~windowSeconds windows.
  * The transcriptJson coming from transcription is typically word/phrase segments with start/end.
  */
+import type { ClipLengthPreference } from '../../virality';
+
 export function buildCandidatesFromTranscript(
   segments: TranscriptWordSegment[],
   {
     windowSeconds = 28,
     maxWindowSeconds = 55,
-  }: { windowSeconds?: number; maxWindowSeconds?: number } = {}
+    clipLength = 'auto',
+  }: { windowSeconds?: number; maxWindowSeconds?: number; clipLength?: ClipLengthPreference } = {}
 ): Array<Omit<ClipCandidate, 'score' | 'features'> & { rawSegments: TranscriptWordSegment[] }> {
+  let effectiveMin = windowSeconds;
+  let effectiveMax = maxWindowSeconds;
+
+  if (clipLength === 'lt30s') {
+    effectiveMin = 15;
+    effectiveMax = 30;
+  } else if (clipLength === '30s-60s') {
+    effectiveMin = 30;
+    effectiveMax = 60;
+  } else if (clipLength === '60s-90s') {
+    effectiveMin = 60;
+    effectiveMax = 90;
+  } else if (clipLength === 'lt3m') {
+    effectiveMin = 90;
+    effectiveMax = 180;
+  }
+
   const sorted = [...segments].sort((a, b) => a.start - b.start);
   const candidates: Array<
     Omit<ClipCandidate, 'score' | 'features'> & { rawSegments: TranscriptWordSegment[] }
@@ -342,10 +362,10 @@ export function buildCandidatesFromTranscript(
       const nextEnd = next.end;
       const proposedEnd = Math.max(endS, nextEnd);
       const duration = proposedEnd - startS;
-      if (duration > maxWindowSeconds) break;
+      if (duration > effectiveMax) break;
       rawSegments.push(next);
       endS = proposedEnd;
-      if (duration >= windowSeconds) break;
+      if (duration >= effectiveMin) break;
       j += 1;
     }
 
@@ -364,7 +384,7 @@ export function buildCandidatesFromTranscript(
     }
 
     // Move forward. We advance by roughly half window to create overlap.
-    const targetAdvanceS = startS + Math.max(6, Math.floor(windowSeconds / 2));
+    const targetAdvanceS = startS + Math.max(6, Math.floor(effectiveMin / 2));
     while (i < sorted.length && sorted[i].start < targetAdvanceS) i += 1;
     if (i === j) i += 1; // safety
   }

@@ -45,6 +45,7 @@ new Worker(
       percentile,
       maxGeminiCandidates,
       llmProvider,
+      clipLength,
     } = job.data;
 
     console.log(`📥 Processing clip-generation job for FeedVideo: ${feedVideoId}`);
@@ -108,7 +109,7 @@ new Worker(
 
       // 5. Build Candidates
       console.log('🧠 Building candidates...');
-      const rawCandidates = buildCandidatesFromTranscript(transcriptSegments);
+      const rawCandidates = buildCandidatesFromTranscript(transcriptSegments, { clipLength });
 
       // 6. Score Candidates (using local file)
       console.log(
