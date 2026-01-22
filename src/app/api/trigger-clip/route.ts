@@ -41,7 +41,10 @@ export async function POST(req: NextRequest) {
       // If job is running or queued, don't interfere—just return success for idempotency.
       if (state === 'active' || state === 'waiting' || state === 'delayed') {
         console.log(`Job ${feedVideoId} is already ${state}. Returning existing job.`);
-        return NextResponse.json({ message: 'Clip generation already in progress', jobId: existingJob.id });
+        return NextResponse.json({
+          message: 'Clip generation already in progress',
+          jobId: existingJob.id,
+        });
       }
 
       // If job is finished/failed, try to remove it to allow a retry.

@@ -23,8 +23,6 @@ services:
     networks:
       - app-network
 
-
-
   clip-worker:
     build:
       context: .
