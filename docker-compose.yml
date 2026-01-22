@@ -25,6 +25,24 @@ services:
 
 
 
+  clip-worker:
+    build:
+      context: .
+      dockerfile: ./workers/clip-worker/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - NODE_ENV=production
+    depends_on:
+      - redis
+      - db
+      - ollama
+    command: ['node', 'index.js']
+    restart: unless-stopped
+    networks:
+      - app-network
+
   clip-metadata-worker:
     build:
       context: .
