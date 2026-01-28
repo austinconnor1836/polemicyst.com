@@ -117,7 +117,7 @@ export default function SelectedVideoModal({
 
         <DialogFooter className="gap-2 pt-4 sm:gap-2">
           <Button asChild variant="secondary">
-            <Link href={`/clips/${video.id}`}>
+            <Link href={`/details/${video.id}`}>
               <FileText className="mr-2 h-4 w-4" />
               Transcript
             </Link>

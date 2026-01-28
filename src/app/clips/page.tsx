@@ -274,7 +274,7 @@ export default function ClipsPage() {
                         ) : null}
                       </div>
                       <Button asChild size="sm">
-                        <Link href={`/clips/${job.feedVideoId}`}>View details</Link>
+                        <Link href={`/details/${job.feedVideoId}`}>View details</Link>
                       </Button>
                     </CardContent>
                   </Card>

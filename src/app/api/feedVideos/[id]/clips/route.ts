@@ -34,6 +34,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
               sharedDescription: true,
               s3Url: true,
               s3Key: true,
+              trimStartS: true,
+              trimEndS: true,
               createdAt: true,
             },
             orderBy: { createdAt: 'desc' },

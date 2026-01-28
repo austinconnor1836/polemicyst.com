@@ -14,6 +14,54 @@ const s3 = new AWS.S3({
   signatureVersion: 'v4',
 });
 
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { id: true },
+  });
+  if (!user) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  }
+
+  const clip = await prisma.video.findUnique({
+    where: { id: params.id },
+    select: { id: true, userId: true },
+  });
+  if (!clip) {
+    return NextResponse.json({ error: 'Clip not found' }, { status: 404 });
+  }
+  if (clip.userId !== user.id) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const body = await req.json();
+  const trimStartS = body?.trimStartS;
+  const trimEndS = body?.trimEndS;
+
+  if (trimStartS == null || trimEndS == null) {
+    return NextResponse.json({ error: 'Trim start and end are required.' }, { status: 400 });
+  }
+  if (typeof trimStartS !== 'number' || typeof trimEndS !== 'number') {
+    return NextResponse.json({ error: 'Trim values must be numbers.' }, { status: 400 });
+  }
+  if (trimStartS < 0 || trimEndS <= trimStartS) {
+    return NextResponse.json({ error: 'Invalid trim range.' }, { status: 400 });
+  }
+
+  const updated = await prisma.video.update({
+    where: { id: params.id },
+    data: { trimStartS, trimEndS },
+    select: { id: true, trimStartS: true, trimEndS: true },
+  });
+
+  return NextResponse.json(updated);
+}
+
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {

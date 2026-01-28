@@ -18,15 +18,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import {
-  ArrowLeft,
-  Download,
-  Loader2,
-  PauseCircle,
-  PlayCircle,
-  Save,
-  Sparkles,
-} from 'lucide-react';
+import { ArrowLeft, Download, Loader2, Save, Sparkles } from 'lucide-react';
 import { formatRelativeTime } from '@/app/feeds/util/time';
 
 type ClipRecord = {
@@ -35,6 +27,8 @@ type ClipRecord = {
   sharedDescription?: string | null;
   s3Url?: string | null;
   s3Key?: string | null;
+  trimStartS?: number | null;
+  trimEndS?: number | null;
   createdAt?: string | null;
 };
 
@@ -111,9 +105,17 @@ export default function ClipEditorPage() {
   const [autoCaptions, setAutoCaptions] = useState(true);
   const [safeZone, setSafeZone] = useState(true);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [cropMode, setCropMode] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(true);
+  const [durationOriginalS, setDurationOriginalS] = useState<number | null>(null);
+  const [durationClipS, setDurationClipS] = useState<number | null>(null);
+  const [trimStartS, setTrimStartS] = useState(0);
+  const [trimEndS, setTrimEndS] = useState(0);
+  const [trimDirty, setTrimDirty] = useState(false);
+  const [trimMessage, setTrimMessage] = useState<string | null>(null);
+  const [isSavingTrim, setIsSavingTrim] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [crop, setCrop] = useState<CropRect>(DEFAULT_CROP);
   const [templates, setTemplates] = useState<CropTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -123,12 +125,21 @@ export default function ClipEditorPage() {
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
 
   const previewRef = useRef<HTMLDivElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const clipDurationRef = useRef<HTMLVideoElement | null>(null);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const textDragRef = useRef<{
     id: string;
     startX: number;
     startY: number;
     startPos: { x: number; y: number };
+  } | null>(null);
+  const timelineDragRef = useRef<{
+    handle: 'start' | 'end';
+    startX: number;
+    startStart: number;
+    startEnd: number;
   } | null>(null);
 
   const fetchSummary = useCallback(
@@ -177,6 +188,18 @@ export default function ClipEditorPage() {
     return () => window.clearTimeout(timeout);
   }, [saveMessage]);
 
+  useEffect(() => {
+    if (!trimMessage) return;
+    const timeout = window.setTimeout(() => setTrimMessage(null), 2400);
+    return () => window.clearTimeout(timeout);
+  }, [trimMessage]);
+
+  useEffect(() => {
+    if (!exportMessage) return;
+    const timeout = window.setTimeout(() => setExportMessage(null), 2400);
+    return () => window.clearTimeout(timeout);
+  }, [exportMessage]);
+
   const fetchTemplates = useCallback(async () => {
     setTemplatesLoading(true);
     try {
@@ -201,6 +224,60 @@ export default function ClipEditorPage() {
     const timeout = window.setTimeout(() => setTemplateMessage(null), 2600);
     return () => window.clearTimeout(timeout);
   }, [templateMessage]);
+
+  useEffect(() => {
+    if (!clip || durationOriginalS == null) return;
+    const start = clip.trimStartS ?? 0;
+    const endFallback = durationClipS
+      ? Math.min(durationOriginalS, durationClipS)
+      : durationOriginalS;
+    const end = clip.trimEndS ?? endFallback;
+    setTrimStartS(Math.max(0, Math.min(start, durationOriginalS)));
+    setTrimEndS(Math.max(0, Math.min(end, durationOriginalS)));
+    setTrimDirty(false);
+  }, [clip, durationOriginalS, durationClipS]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const updateDuration = () => {
+      if (Number.isFinite(video.duration) && video.duration > 0) {
+        setDurationOriginalS(video.duration);
+      }
+    };
+    updateDuration();
+    video.addEventListener('loadedmetadata', updateDuration);
+    video.addEventListener('durationchange', updateDuration);
+    video.addEventListener('loadeddata', updateDuration);
+    video.addEventListener('canplay', updateDuration);
+    return () => {
+      video.removeEventListener('loadedmetadata', updateDuration);
+      video.removeEventListener('durationchange', updateDuration);
+      video.removeEventListener('loadeddata', updateDuration);
+      video.removeEventListener('canplay', updateDuration);
+    };
+  }, [summary?.feedVideo?.s3Url, clip?.s3Url]);
+
+  useEffect(() => {
+    const video = clipDurationRef.current;
+    if (!video) return;
+    const updateDuration = () => {
+      if (Number.isFinite(video.duration) && video.duration > 0) {
+        setDurationClipS(video.duration);
+      }
+    };
+    updateDuration();
+    video.addEventListener('loadedmetadata', updateDuration);
+    video.addEventListener('durationchange', updateDuration);
+    video.addEventListener('loadeddata', updateDuration);
+    video.addEventListener('canplay', updateDuration);
+    return () => {
+      video.removeEventListener('loadedmetadata', updateDuration);
+      video.removeEventListener('durationchange', updateDuration);
+      video.removeEventListener('loadeddata', updateDuration);
+      video.removeEventListener('canplay', updateDuration);
+    };
+  }, [clip?.s3Url]);
 
   const clampCrop = useCallback((next: CropRect) => {
     const width = Math.min(1, Math.max(0.08, next.w));
@@ -234,6 +311,20 @@ export default function ClipEditorPage() {
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
+      if (timelineDragRef.current && timelineRef.current) {
+        const state = timelineDragRef.current;
+        const rect = timelineRef.current.getBoundingClientRect();
+        if (rect.width > 0) {
+          const dx = (event.clientX - state.startX) / rect.width;
+          const deltaS = dx * (durationOriginalS ?? 0);
+          if (state.handle === 'start') {
+            handleTrimStartChange(state.startStart + deltaS);
+          } else {
+            handleTrimEndChange(state.startEnd + deltaS);
+          }
+        }
+        return;
+      }
       if (textDragRef.current && previewRef.current) {
         const state = textDragRef.current;
         const rect = previewRef.current.getBoundingClientRect();
@@ -293,6 +384,7 @@ export default function ClipEditorPage() {
     const handlePointerUp = () => {
       dragStateRef.current = null;
       textDragRef.current = null;
+      timelineDragRef.current = null;
     };
 
     window.addEventListener('pointermove', handlePointerMove);
@@ -332,6 +424,118 @@ export default function ClipEditorPage() {
     setTextOverlays((prev) => prev.filter((overlay) => overlay.id !== id));
     setSelectedOverlayId((current) => (current === id ? null : current));
   };
+
+  const formatTime = (seconds: number) => {
+    if (!Number.isFinite(seconds)) return '--:--';
+    const clamped = Math.max(0, seconds);
+    const hours = Math.floor(clamped / 3600);
+    const minutes = Math.floor((clamped % 3600) / 60);
+    const secs = clamped % 60;
+    const formattedSecs = secs.toFixed(1).padStart(4, '0');
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, '0')}:${formattedSecs}`;
+    }
+    return `${minutes}:${formattedSecs}`;
+  };
+
+  const clampTrim = (start: number, end: number) => {
+    const max = durationOriginalS ?? Math.max(end, start);
+    const safeStart = Math.max(0, Math.min(start, max));
+    const safeEnd = Math.max(0, Math.min(end, max));
+    if (safeEnd <= safeStart) {
+      return { start: safeStart, end: Math.min(max, safeStart + 0.1) };
+    }
+    return { start: safeStart, end: safeEnd };
+  };
+
+  const handleTrimStartChange = (value: number) => {
+    const next = clampTrim(value, trimEndS);
+    setTrimStartS(next.start);
+    setTrimEndS(next.end);
+    setTrimDirty(true);
+    if (videoRef.current) {
+      videoRef.current.currentTime = next.start;
+    }
+  };
+
+  const handleTrimEndChange = (value: number) => {
+    const next = clampTrim(trimStartS, value);
+    setTrimStartS(next.start);
+    setTrimEndS(next.end);
+    setTrimDirty(true);
+  };
+
+  const handleTimelinePointerDown = (event: PointerEvent, handle: 'start' | 'end') => {
+    if (!timelineRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.currentTarget instanceof HTMLElement) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    timelineDragRef.current = {
+      handle,
+      startX: event.clientX,
+      startStart: trimStartS,
+      startEnd: trimEndS,
+    };
+  };
+
+  const handleSaveTrim = async () => {
+    if (!clip) return false;
+    setIsSavingTrim(true);
+    setTrimMessage(null);
+    try {
+      const res = await fetch(`/api/clips/${clip.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trimStartS, trimEndS }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setTrimMessage(data?.error || 'Failed to save trim.');
+        return false;
+      }
+      setTrimDirty(false);
+      setTrimMessage('Trim saved.');
+      return true;
+    } catch (err) {
+      console.error(err);
+      setTrimMessage('Failed to save trim.');
+      return false;
+    } finally {
+      setIsSavingTrim(false);
+    }
+  };
+
+  const handleExport = async () => {
+    if (!clip) return;
+    setIsExporting(true);
+    setExportMessage(null);
+    try {
+      if (trimDirty) {
+        const ok = await handleSaveTrim();
+        if (!ok) return;
+      }
+      const res = await fetch(`/api/clips/${clip.id}/export`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setExportMessage(data?.error || 'Failed to export clip.');
+        return;
+      }
+      if (data?.s3Url) {
+        window.open(data.s3Url, '_blank', 'noreferrer');
+        setExportMessage('Export ready.');
+      } else {
+        setExportMessage('Export completed, but no file returned.');
+      }
+    } catch (err) {
+      console.error(err);
+      setExportMessage('Failed to export clip.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
 
   const handleApplyTemplate = (template: CropTemplate) => {
     setAspectRatio((template.aspectRatio as AspectRatio) || '9:16');
@@ -381,10 +585,18 @@ export default function ClipEditorPage() {
     return clip.videoTitle?.trim() || 'Generated clip';
   }, [clip]);
 
+  const startPercent = durationOriginalS
+    ? Math.max(0, Math.min(100, (trimStartS / durationOriginalS) * 100))
+    : 0;
+  const endPercent = durationOriginalS
+    ? Math.max(0, Math.min(100, (trimEndS / durationOriginalS) * 100))
+    : 0;
+  const rangePercent = Math.max(0, endPercent - startPercent);
+
   return (
     <div className="mx-auto w-full max-w-[2200px] px-4 py-6 sm:px-6 lg:px-8 lg:h-[calc(100vh-var(--navbar-height))] lg:overflow-hidden lg:flex lg:flex-col lg:min-h-0 lg:pb-52">
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={() => router.push(`/clips/${feedVideoId}`)}>
+        <Button variant="ghost" size="sm" onClick={() => router.push(`/details/${feedVideoId}`)}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to clip list
         </Button>
@@ -419,47 +631,22 @@ export default function ClipEditorPage() {
         </Card>
       ) : (
         <div className="space-y-6 lg:flex-1 lg:overflow-hidden lg:min-h-0">
-          <Card>
-            <CardHeader className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge>Editing</Badge>
-                <Badge variant="secondary">Opus-style editor</Badge>
-                {summary?.feedVideo?.title ? (
-                  <Badge variant="outline">Source: {summary.feedVideo.title}</Badge>
-                ) : null}
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <CardTitle className="text-2xl font-semibold">{clipLabel}</CardTitle>
-                  <CardDescription>
-                    Refine the clip, captions, and layout before exporting.
-                  </CardDescription>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    onClick={() => setSaveMessage('Draft saved locally.')}
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    Save draft
-                  </Button>
-                  {clip.s3Url ? (
-                    <Button asChild>
-                      <a href={clip.s3Url} download>
-                        <Download className="mr-2 h-4 w-4" />
-                        Export video
-                      </a>
-                    </Button>
-                  ) : (
-                    <Button disabled>Export video</Button>
-                  )}
-                </div>
-              </div>
-              {saveMessage ? (
-                <div className="text-xs text-muted-foreground">{saveMessage}</div>
-              ) : null}
-            </CardHeader>
-          </Card>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="secondary" onClick={() => setSaveMessage('Draft saved locally.')}>
+              <Save className="mr-2 h-4 w-4" />
+              Save draft
+            </Button>
+            <Button onClick={handleExport} disabled={!clip.s3Url || isExporting}>
+              <Download className="mr-2 h-4 w-4" />
+              {isExporting ? 'Exporting...' : 'Export video'}
+            </Button>
+            {saveMessage ? (
+              <span className="text-xs text-muted-foreground">{saveMessage}</span>
+            ) : null}
+            {exportMessage ? (
+              <span className="text-xs text-muted-foreground">{exportMessage}</span>
+            ) : null}
+          </div>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_560px] lg:flex-1 lg:overflow-hidden lg:min-h-0 lg:h-full">
             <div className="space-y-2 lg:overflow-y-auto lg:pr-2 lg:min-h-0 lg:h-full">
@@ -484,13 +671,39 @@ export default function ClipEditorPage() {
                     }}
                   >
                     <video
-                      src={clip.s3Url || undefined}
+                      src={summary?.feedVideo?.s3Url || clip.s3Url || undefined}
                       poster={summary?.feedVideo?.thumbnailUrl || undefined}
                       controls
                       preload="metadata"
                       playsInline
+                      onLoadedMetadata={(event) => {
+                        const duration = event.currentTarget.duration;
+                        if (Number.isFinite(duration)) {
+                          setDurationOriginalS(duration);
+                        }
+                      }}
+                      onTimeUpdate={(event) => {
+                        if (!trimEndS) return;
+                        if (event.currentTarget.currentTime > trimEndS) {
+                          event.currentTarget.pause();
+                        }
+                      }}
+                      onPlay={(event) => {
+                        if (Number.isFinite(event.currentTarget.duration)) {
+                          setDurationOriginalS(event.currentTarget.duration);
+                        }
+                      }}
+                      ref={videoRef}
                       className="absolute inset-0 h-full w-full bg-black object-cover"
                     />
+                    {clip?.s3Url ? (
+                      <video
+                        ref={clipDurationRef}
+                        src={clip.s3Url}
+                        preload="metadata"
+                        className="hidden"
+                      />
+                    ) : null}
                     {textOverlays.map((overlay) => (
                       <div
                         key={overlay.id}
@@ -585,27 +798,9 @@ export default function ClipEditorPage() {
                         ? 'Drag to crop and resize the frame.'
                         : 'Enable crop mode to adjust framing.'}
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsPlaying((prev) => !prev)}
-                    >
-                      {isPlaying ? (
-                        <>
-                          <PauseCircle className="mr-2 h-4 w-4" />
-                          Pause
-                        </>
-                      ) : (
-                        <>
-                          <PlayCircle className="mr-2 h-4 w-4" />
-                          Play
-                        </>
-                      )}
-                    </Button>
                   </div>
                 </CardContent>
               </Card>
-
             </div>
 
             <div className="space-y-2 lg:overflow-y-auto lg:pr-1 lg:min-h-0 lg:h-full">
@@ -707,11 +902,7 @@ export default function ClipEditorPage() {
                       <Button size="sm" onClick={handleSaveTemplate}>
                         Save template
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setCrop(DEFAULT_CROP)}
-                      >
+                      <Button size="sm" variant="outline" onClick={() => setCrop(DEFAULT_CROP)}>
                         Reset crop
                       </Button>
                     </div>
@@ -954,10 +1145,13 @@ export default function ClipEditorPage() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>00:00</span>
-                    <span>00:47</span>
+                    <span>{formatTime(trimStartS)}</span>
+                    <span>{formatTime(trimEndS)}</span>
                   </div>
-                  <div className="relative h-16 overflow-hidden rounded-lg border bg-muted/40">
+                  <div
+                    ref={timelineRef}
+                    className="relative h-16 overflow-hidden rounded-lg border bg-muted/40"
+                  >
                     <div className="absolute inset-0 flex gap-1 p-2">
                       {Array.from({ length: 24 }).map((_, index) => (
                         <div
@@ -971,43 +1165,56 @@ export default function ClipEditorPage() {
                         />
                       ))}
                     </div>
-                    <div className="absolute inset-y-0 left-[12%] w-1.5 rounded bg-white/90 shadow-sm" />
-                    <div className="absolute inset-y-0 right-[14%] w-1.5 rounded bg-white/90 shadow-sm" />
+                    {durationOriginalS ? (
+                      <>
+                        <div
+                          className="absolute inset-y-0 rounded bg-white/10"
+                          style={{
+                            left: `${startPercent}%`,
+                            width: `${rangePercent}%`,
+                          }}
+                        />
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          className="absolute inset-y-0 w-2 -translate-x-1/2 cursor-ew-resize rounded bg-white/90 shadow-sm"
+                          style={{ left: `${startPercent}%` }}
+                          onPointerDown={(event) => handleTimelinePointerDown(event, 'start')}
+                          onPointerUp={(event) => {
+                            if (event.currentTarget instanceof HTMLElement) {
+                              event.currentTarget.releasePointerCapture(event.pointerId);
+                            }
+                            timelineDragRef.current = null;
+                          }}
+                        />
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          className="absolute inset-y-0 w-2 -translate-x-1/2 cursor-ew-resize rounded bg-white/90 shadow-sm"
+                          style={{ left: `${endPercent}%` }}
+                          onPointerDown={(event) => handleTimelinePointerDown(event, 'end')}
+                          onPointerUp={(event) => {
+                            if (event.currentTarget instanceof HTMLElement) {
+                              event.currentTarget.releasePointerCapture(event.pointerId);
+                            }
+                            timelineDragRef.current = null;
+                          }}
+                        />
+                      </>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>{formatTime(0)}</span>
+                    <span>{formatTime(durationOriginalS ?? 0)}</span>
                   </div>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="space-y-2">
-                    <Label>Clip start</Label>
-                    <Input type="text" defaultValue="00:06.2" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Clip end</Label>
-                    <Input type="text" defaultValue="00:43.8" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Hook emphasis</Label>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      defaultValue={72}
-                      className="w-full accent-black"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Focus speaker</Label>
-                    <Select defaultValue="auto">
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select focus" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="auto">Auto</SelectItem>
-                        <SelectItem value="left">Left</SelectItem>
-                        <SelectItem value="center">Center</SelectItem>
-                        <SelectItem value="right">Right</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={handleSaveTrim} disabled={!trimDirty || isSavingTrim}>
+                    {isSavingTrim ? 'Saving...' : 'Save trim'}
+                  </Button>
+                  {trimMessage ? (
+                    <span className="text-xs text-muted-foreground">{trimMessage}</span>
+                  ) : null}
                 </div>
               </CardContent>
             ) : null}

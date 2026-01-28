@@ -59,6 +59,8 @@ model Video {
   twitterTemplate     String
   transcript          String?
   approvedForSplicing Boolean  @default(false)
+  trimStartS          Float?
+  trimEndS            Float?
   createdAt           DateTime @default(now())
 
   // ✅ Clip relationship (self-referencing)

@@ -919,7 +919,7 @@ export default function FeedsPage() {
                           'group cursor-pointer overflow-hidden shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20'
                         )}
                         onClick={() => {
-                          router.push(`/clips/${video.id}`);
+                          router.push(`/details/${video.id}`);
                         }}
                       >
                         <CardContent className="p-0">
@@ -1005,7 +1005,7 @@ export default function FeedsPage() {
                             <div className="flex flex-wrap gap-2 pt-1">
                               <Button asChild size="sm" variant="secondary">
                                 <Link
-                                  href={`/clips/${video.id}`}
+                                  href={`/details/${video.id}`}
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <FileText className="mr-2 h-4 w-4" />
