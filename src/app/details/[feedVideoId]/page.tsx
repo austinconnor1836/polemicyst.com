@@ -476,13 +476,13 @@ export default function ClipGroupPage() {
                         <div className="flex flex-wrap gap-2 pt-2">
                           {clip.s3Url ? (
                             <>
-                      <Button asChild size="sm">
-                        <a
-                          href={`/details/${feedVideoId}/clips/${clip.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <Pencil className="mr-2 h-4 w-4" />
+                              <Button asChild size="sm">
+                                <a
+                                  href={`/details/${feedVideoId}/clips/${clip.id}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <Pencil className="mr-2 h-4 w-4" />
                                   Edit
                                 </a>
                               </Button>

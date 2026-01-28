@@ -51,12 +51,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   const exportKey = `exports/${clip.id}/${Date.now()}.mp4`;
 
   try {
-    const trimmed = await trimClipFromS3(
-      inputUrl,
-      clip.trimStartS,
-      clip.trimEndS,
-      exportKey
-    );
+    const trimmed = await trimClipFromS3(inputUrl, clip.trimStartS, clip.trimEndS, exportKey);
     return NextResponse.json(trimmed);
   } catch (err) {
     console.error('Export trim failed:', err);

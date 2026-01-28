@@ -536,7 +536,6 @@ export default function ClipEditorPage() {
     }
   };
 
-
   const handleApplyTemplate = (template: CropTemplate) => {
     setAspectRatio((template.aspectRatio as AspectRatio) || '9:16');
     setCrop({
@@ -1209,7 +1208,12 @@ export default function ClipEditorPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button size="sm" variant="secondary" onClick={handleSaveTrim} disabled={!trimDirty || isSavingTrim}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleSaveTrim}
+                    disabled={!trimDirty || isSavingTrim}
+                  >
                     {isSavingTrim ? 'Saving...' : 'Save trim'}
                   </Button>
                   {trimMessage ? (
