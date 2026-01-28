@@ -39,7 +39,7 @@ export async function transcribeFeedVideo(
   let processClosed = false;
 
   // Handle errors on the video stream
-  videoRes.body.on('error', (err) => {
+  videoRes.body.on('error', (err: NodeJS.ErrnoException) => {
     console.error('Error reading video stream:', err);
     pythonProcess.stdin?.destroy(err);
   });

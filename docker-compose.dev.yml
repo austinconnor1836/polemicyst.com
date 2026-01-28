@@ -64,8 +64,26 @@ services:
         'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
       ]
 
+  transcription-worker:
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+    working_dir: /app/workers/transcription-worker
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ./workers/transcription-worker/scripts:/app/scripts
+      - transcription-worker-node-modules:/app/workers/transcription-worker/node_modules
+    command:
+      [
+        'sh',
+        '-c',
+        'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
+      ]
+
 volumes:
   clip-worker-node-modules:
   poller-node-modules:
   download-worker-node-modules:
   clip-metadata-worker-node-modules:
+  transcription-worker-node-modules:

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import AspectRatioSelect, { type AspectRatio } from '@/components/AspectRatioSelect';
 import ViralitySettings from '@/components/ViralitySettings';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +17,7 @@ import { FeedVideo } from '@/app/feeds/types';
 import { formatRelativeTime } from '@/app/feeds/util/time';
 import { getFeedVideoThumbnail } from '@/app/feeds/util/thumbnails';
 import type { LLMProvider, ViralitySettingsValue } from '@shared/virality';
+import { FileText } from 'lucide-react';
 
 export type SelectedVideoModalProps = {
   video: FeedVideo | null;
@@ -114,6 +116,12 @@ export default function SelectedVideoModal({
         </div>
 
         <DialogFooter className="gap-2 pt-4 sm:gap-2">
+          <Button asChild variant="secondary">
+            <Link href={`/clips/${video.id}`}>
+              <FileText className="mr-2 h-4 w-4" />
+              Transcript
+            </Link>
+          </Button>
           <Button onClick={onGenerateClip} disabled={isGeneratingClip || isPendingDownload}>
             {isPendingDownload
               ? 'Download in progress'

@@ -12,7 +12,7 @@ RUN pip3 install --upgrade pip --break-system-packages
 RUN pip3 install --no-cache-dir faster-whisper
 
 WORKDIR /app
-COPY ./backend/workers/transcription-worker .
+COPY ./workers/transcription-worker .
 
 COPY ./shared ./shared
 COPY ./prisma/ ./prisma/

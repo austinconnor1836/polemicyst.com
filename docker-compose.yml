@@ -58,6 +58,22 @@ services:
     networks:
       - app-network
 
+  transcription-worker:
+    build:
+      context: .
+      dockerfile: ./workers/transcription-worker/Dockerfile
+    command: ['npx', 'ts-node', '-r', 'tsconfig-paths/register', 'index.ts']
+    environment:
+      - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
+      - NODE_ENV=production
+    depends_on:
+      - redis
+      - db
+    restart: unless-stopped
+    networks:
+      - app-network
+
   # Faster Whisper for transcription
   faster-whisper:
     image: lscr.io/linuxserver/faster-whisper:latest

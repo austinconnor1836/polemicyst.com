@@ -1,4 +1,3 @@
-require('module-alias/register');
 import { Worker } from 'bullmq';
 import { transcriptionQueue } from '@shared/queues';
 import { transcribeFeedVideo } from './transcription';
@@ -6,7 +5,15 @@ import { transcribeFeedVideo } from './transcription';
 new Worker(
   'transcription',
   async (job) => {
-    const { title, sourceUrl, feedVideoId } = job.data;
+    const { title, sourceUrl, feedVideoId } = job.data ?? {};
+    if (!feedVideoId || typeof feedVideoId !== 'string') {
+      console.warn(
+        `⚠️ Skipping transcription job ${job.id}: missing feedVideoId (data keys: ${Object.keys(
+          job.data ?? {}
+        ).join(', ')})`
+      );
+      return;
+    }
     // Download the file from S3
     // Call your transcription logic (e.g., call the API or run the model)
     // Save the transcript to the DB

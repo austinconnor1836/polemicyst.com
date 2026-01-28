@@ -3,12 +3,20 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import AspectRatioSelect, { type AspectRatio } from '@/components/AspectRatioSelect';
+import ViralitySettings from '@/components/ViralitySettings';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { Download, ExternalLink, Loader2, RefreshCw, ArrowLeft } from 'lucide-react';
 import { formatRelativeTime } from '@/app/feeds/util/time';
+import {
+  DEFAULT_VIRALITY_SETTINGS,
+  getStrictnessConfig,
+  type LLMProvider,
+  type ViralitySettingsValue,
+} from '@shared/virality';
 
 type ClipRecord = {
   id: string;
@@ -22,10 +30,13 @@ type ClipRecord = {
 type FeedVideoSummary = {
   feedVideo: {
     id: string;
+    userId: string;
     title: string;
     s3Url: string;
     thumbnailUrl?: string | null;
     createdAt?: string | null;
+    transcript?: string | null;
+    transcriptJson?: { start: number; end: number; text: string }[] | null;
     feed?: { id: string; name: string };
     clipSourceVideoId?: string | null;
     clipSourceVideo?: {
@@ -73,6 +84,18 @@ export default function ClipGroupPage() {
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16');
+  const [viralitySettings, setViralitySettings] = useState<ViralitySettingsValue>({
+    ...DEFAULT_VIRALITY_SETTINGS,
+  });
+  const [defaultLLMProvider, setDefaultLLMProvider] = useState<LLMProvider>(
+    DEFAULT_VIRALITY_SETTINGS.llmProvider
+  );
+  const [isPersistingDefaultLLM, setIsPersistingDefaultLLM] = useState(false);
+  const [isGeneratingClip, setIsGeneratingClip] = useState(false);
+  const [generateMessage, setGenerateMessage] = useState<string | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcribeMessage, setTranscribeMessage] = useState<string | null>(null);
 
   const fetchSummary = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -104,6 +127,31 @@ export default function ClipGroupPage() {
   }, [fetchSummary]);
 
   useEffect(() => {
+    let cancelled = false;
+    const fetchDefaultProvider = async () => {
+      try {
+        const res = await fetch('/api/user/llm-provider');
+        if (!res.ok) return;
+        const data = await res.json();
+        const provider: LLMProvider = data?.llmProvider === 'ollama' ? 'ollama' : 'gemini';
+        if (cancelled) return;
+        setDefaultLLMProvider(provider);
+        setViralitySettings((prev) => {
+          if (prev.llmProvider !== DEFAULT_VIRALITY_SETTINGS.llmProvider) return prev;
+          if (prev.llmProvider === provider) return prev;
+          return { ...prev, llmProvider: provider };
+        });
+      } catch (err) {
+        console.warn('Failed to load default LLM provider', err);
+      }
+    };
+    fetchDefaultProvider();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!summary) return;
     const shouldPoll =
       summary.jobState === 'active' ||
@@ -120,6 +168,99 @@ export default function ClipGroupPage() {
     () => describeJob(summary?.jobState ?? null, summary?.clips ?? []),
     [summary]
   );
+
+  const persistDefaultLLMProvider = async (provider: LLMProvider) => {
+    if (!provider || provider === defaultLLMProvider) {
+      return;
+    }
+    setIsPersistingDefaultLLM(true);
+    try {
+      const res = await fetch('/api/user/llm-provider', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ llmProvider: provider }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to update default');
+      }
+      setDefaultLLMProvider(provider);
+    } catch (err) {
+      console.error('Unable to update default provider', err);
+    } finally {
+      setIsPersistingDefaultLLM(false);
+    }
+  };
+
+  const triggerClip = async () => {
+    if (!summary) return;
+    const { feedVideo } = summary;
+    if (!feedVideo.userId) {
+      throw new Error('Missing userId for feed video');
+    }
+    const strictnessConfig = getStrictnessConfig(viralitySettings.strictnessPreset);
+    const res = await fetch('/api/trigger-clip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        feedVideoId: feedVideo.id,
+        userId: feedVideo.userId,
+        aspectRatio,
+        scoringMode: viralitySettings.scoringMode,
+        includeAudio: viralitySettings.includeAudio,
+        saferClips: viralitySettings.saferClips,
+        targetPlatform: viralitySettings.targetPlatform,
+        contentStyle: viralitySettings.contentStyle,
+        llmProvider: viralitySettings.llmProvider,
+        ...strictnessConfig,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error('Failed to trigger clip');
+    }
+
+    return res.json();
+  };
+
+  const handleGenerateClip = async () => {
+    setIsGeneratingClip(true);
+    setGenerateMessage(null);
+    try {
+      await triggerClip();
+      setGenerateMessage('Clip job enqueued.');
+    } catch (err) {
+      console.error(err);
+      setGenerateMessage('Failed to enqueue clip job.');
+    } finally {
+      setIsGeneratingClip(false);
+    }
+  };
+
+  const requestTranscription = useCallback(async () => {
+    if (!feedVideoId) return;
+    setIsTranscribing(true);
+    setTranscribeMessage(null);
+    try {
+      const res = await fetch(`/api/feedVideos/${feedVideoId}/transcribe`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to queue transcription');
+      }
+      if (data?.alreadyTranscribed) {
+        setTranscribeMessage('Transcript already exists. Refreshing...');
+        await fetchSummary({ silent: true });
+      } else {
+        setTranscribeMessage('Transcription queued. Refresh in a moment.');
+      }
+    } catch (err) {
+      console.error(err);
+      setTranscribeMessage('Failed to queue transcription.');
+    } finally {
+      setIsTranscribing(false);
+    }
+  }, [feedVideoId, fetchSummary]);
 
   return (
     <div className="mx-auto w-full max-w-screen-xl px-4 py-6 sm:px-6 lg:px-8">
@@ -200,6 +341,64 @@ export default function ClipGroupPage() {
                   </a>
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Clip generation settings</CardTitle>
+              <CardDescription>
+                Configure scoring and aspect ratio, then queue a clip generation job.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <AspectRatioSelect value={aspectRatio} onChange={setAspectRatio} />
+              <ViralitySettings
+                value={viralitySettings}
+                onChange={setViralitySettings}
+                defaultLLMProvider={defaultLLMProvider}
+                onPersistLLMProvider={persistDefaultLLMProvider}
+                isPersistingLLMProvider={isPersistingDefaultLLM}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={handleGenerateClip} disabled={isGeneratingClip}>
+                  {isGeneratingClip ? 'Generating...' : 'Generate clip'}
+                </Button>
+                {generateMessage ? (
+                  <span className="text-xs text-muted-foreground">{generateMessage}</span>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Transcript</CardTitle>
+              <CardDescription>
+                Scroll to review the transcript for this video.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {summary.feedVideo.transcript?.trim() ? (
+                <div className="max-h-[360px] overflow-y-auto rounded-md border p-3 text-sm whitespace-pre-wrap leading-relaxed">
+                  {summary.feedVideo.transcript}
+                </div>
+              ) : (
+                <div className="space-y-3 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                  <div>Transcript not available yet.</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={requestTranscription}
+                      disabled={isTranscribing}
+                    >
+                      {isTranscribing ? 'Queuing...' : 'Transcribe now'}
+                    </Button>
+                    {transcribeMessage ? <span>{transcribeMessage}</span> : null}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 

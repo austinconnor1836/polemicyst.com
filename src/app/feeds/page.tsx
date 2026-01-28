@@ -1,16 +1,16 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { set as idbSet, get as idbGet, del as idbDel } from 'idb-keyval';
 import ViralitySettings from '@/components/ViralitySettings';
 import {
   DEFAULT_VIRALITY_SETTINGS,
-  getStrictnessConfig,
   mergeViralitySettings,
   type LLMProvider,
   type ViralitySettingsValue,
 } from '@shared/virality';
-import type { AspectRatio } from '@/components/AspectRatioSelect';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -26,7 +26,6 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { FeedsHeroAnimation } from '@/app/feeds/_components/FeedsHeroAnimation';
-import SelectedVideoModal from '@/app/feeds/_components/SelectedVideoModal';
 import { FeedVideo, VideoFeed } from '@/app/feeds/types';
 import { formatRelativeTime } from '@/app/feeds/util/time';
 import {
@@ -38,7 +37,7 @@ import {
 } from '@/components/ui/select';
 import { getFeedVideoThumbnail } from '@/app/feeds/util/thumbnails';
 import { cn } from '@/lib/utils';
-import { Plus, RefreshCw, Search, Trash2, X, Upload, Settings, Loader2 } from 'lucide-react';
+import { FileText, Plus, RefreshCw, Search, Trash2, X, Upload, Settings, Loader2 } from 'lucide-react';
 import { Toaster, toast } from 'react-hot-toast';
 
 function youtubeHandleUrlFromName(name: string) {
@@ -59,6 +58,7 @@ function youtubeHandleUrlFromName(name: string) {
 export default function FeedsPage() {
   const videosHeaderRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const router = useRouter();
 
   const [feeds, setFeeds] = useState<VideoFeed[]>([]);
   const [videos, setVideos] = useState<FeedVideo[]>([]);
@@ -74,7 +74,6 @@ export default function FeedsPage() {
 
   const [deletingFeedId, setDeletingFeedId] = useState<string | null>(null);
   const [deletingVideoId, setDeletingVideoId] = useState<string | null>(null);
-  const [isGeneratingClip, setIsGeneratingClip] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
 
   // Upload state
@@ -90,18 +89,11 @@ export default function FeedsPage() {
   const [videoFeedFilter, setVideoFeedFilter] = useState<string>('all');
   const [videoSort, setVideoSort] = useState<'newest' | 'oldest' | 'title'>('newest');
 
-  const [selectedVideo, setSelectedVideo] = useState<FeedVideo | null>(null);
   const [selectedFeedSettings, setSelectedFeedSettings] = useState<VideoFeed | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFeedSettingsOpen, setIsFeedSettingsOpen] = useState(false);
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16');
-  const [viralitySettings, setViralitySettings] = useState<ViralitySettingsValue>({
-    ...DEFAULT_VIRALITY_SETTINGS,
-  });
   const [defaultLLMProvider, setDefaultLLMProvider] = useState<LLMProvider>(
     DEFAULT_VIRALITY_SETTINGS.llmProvider
   );
-  const [isPersistingDefaultLLM, setIsPersistingDefaultLLM] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,30 +119,6 @@ export default function FeedsPage() {
       cancelled = true;
     };
   }, []);
-
-  const persistDefaultLLMProvider = async (provider: LLMProvider) => {
-    if (!provider || provider === defaultLLMProvider) {
-      return;
-    }
-    setIsPersistingDefaultLLM(true);
-    try {
-      const res = await fetch('/api/user/llm-provider', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ llmProvider: provider }),
-      });
-      if (!res.ok) {
-        throw new Error('Failed to update default');
-      }
-      setDefaultLLMProvider(provider);
-      toast.success('Default LLM provider updated');
-    } catch (err) {
-      console.error(err);
-      toast.error('Unable to update default provider');
-    } finally {
-      setIsPersistingDefaultLLM(false);
-    }
-  };
 
   const fetchFeeds = async () => {
     setIsLoadingFeeds(true);
@@ -475,48 +443,6 @@ export default function FeedsPage() {
     } finally {
       setIsUploading(false);
       setActiveUpload(null);
-    }
-  };
-
-  const triggerClip = async (video: any) => {
-    try {
-      const strictnessConfig = getStrictnessConfig(viralitySettings.strictnessPreset);
-      const res = await fetch('/api/trigger-clip', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          feedVideoId: video.id,
-          userId: video.userId,
-          aspectRatio: video.aspectRatio || '9:16',
-          scoringMode: viralitySettings.scoringMode,
-          includeAudio: viralitySettings.includeAudio,
-          saferClips: viralitySettings.saferClips,
-          targetPlatform: viralitySettings.targetPlatform,
-          contentStyle: viralitySettings.contentStyle,
-          llmProvider: viralitySettings.llmProvider,
-          ...strictnessConfig,
-        }),
-      });
-
-      if (!res.ok) throw new Error('Failed to trigger clip');
-
-      const data = await res.json();
-      console.log('✅ Job enqueued:', data);
-      toast.success('Clip job enqueued');
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to trigger clip job');
-    }
-  };
-
-  const handleGenerateClip = async () => {
-    if (!selectedVideo) return;
-    setIsGeneratingClip(true);
-    try {
-      await triggerClip({ ...selectedVideo, aspectRatio });
-      setIsModalOpen(false);
-    } finally {
-      setIsGeneratingClip(false);
     }
   };
 
@@ -977,17 +903,15 @@ export default function FeedsPage() {
                     const { thumbnailUrl, youtubeId } = getFeedVideoThumbnail(video);
                     const isYouTube = Boolean(youtubeId);
                     return (
-                      <Card
-                        key={video.id}
-                        className={cn(
-                          'group cursor-pointer overflow-hidden shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20'
-                        )}
-                        onClick={() => {
-                          setAspectRatio((video.aspectRatio as AspectRatio) || '9:16');
-                          setSelectedVideo(video);
-                          setIsModalOpen(true);
-                        }}
-                      >
+                        <Card
+                          key={video.id}
+                          className={cn(
+                            'group cursor-pointer overflow-hidden shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20'
+                          )}
+                          onClick={() => {
+                            router.push(`/clips/${video.id}`);
+                          }}
+                        >
                         <CardContent className="p-0">
                           <div className="relative">
                             {(() => {
@@ -1028,7 +952,7 @@ export default function FeedsPage() {
                             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-60 transition-opacity group-hover:opacity-80" />
                             <div className="pointer-events-none absolute bottom-2 left-2 opacity-0 transition-opacity group-hover:opacity-100">
                               <div className="rounded-full bg-black/55 px-2 py-1 text-[11px] font-medium text-white backdrop-blur">
-                                Generate clip
+                                View details
                               </div>
                             </div>
 
@@ -1068,6 +992,14 @@ export default function FeedsPage() {
                                 </span>
                               ) : null}
                             </div>
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              <Button asChild size="sm" variant="secondary">
+                                <Link href={`/clips/${video.id}`} onClick={(e) => e.stopPropagation()}>
+                                  <FileText className="mr-2 h-4 w-4" />
+                                  Transcript
+                                </Link>
+                              </Button>
+                            </div>
                           </div>
                         </CardContent>
                       </Card>
@@ -1079,21 +1011,6 @@ export default function FeedsPage() {
           </Card>
         </div>
       </div>
-
-      <SelectedVideoModal
-        video={selectedVideo}
-        open={isModalOpen}
-        onOpenChange={setIsModalOpen}
-        aspectRatio={aspectRatio}
-        onAspectRatioChange={setAspectRatio}
-        viralitySettings={viralitySettings}
-        onViralitySettingsChange={setViralitySettings}
-        onGenerateClip={handleGenerateClip}
-        isGeneratingClip={isGeneratingClip}
-        defaultLLMProvider={defaultLLMProvider}
-        onPersistDefaultLLM={persistDefaultLLMProvider}
-        isPersistingDefaultLLM={isPersistingDefaultLLM}
-      />
 
       {/* Add Feed Modal */}
       <Dialog

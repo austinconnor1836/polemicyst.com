@@ -6,17 +6,24 @@ import { redisConnection } from '@workers/queues/redisConnection';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(_request: Request, { params }: { params: { id: string } }) {
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
   const feedVideo = await prisma.feedVideo.findUnique({
-    where: { id: params.id },
+    where: { id },
     select: {
       id: true,
+      userId: true,
       title: true,
       s3Url: true,
       thumbnailUrl: true,
       createdAt: true,
       feed: { select: { id: true, name: true } },
       clipSourceVideoId: true,
+      transcript: true,
+      transcriptJson: true,
       clipSourceVideo: {
         select: {
           id: true,
@@ -52,7 +59,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   } | null = null;
 
   try {
-    const job = await queue.getJob(params.id);
+    const job = await queue.getJob(id);
     if (job) {
       jobState = await job.getState();
       jobMeta = {

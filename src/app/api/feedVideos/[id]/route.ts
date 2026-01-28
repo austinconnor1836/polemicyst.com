@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../auth';
-import { deleteFromS3 } from '@backend/lib/s3';
+import { deleteFromS3 } from '@shared/lib/s3';
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
