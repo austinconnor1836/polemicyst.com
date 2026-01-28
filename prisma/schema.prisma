@@ -28,6 +28,7 @@ model User {
   sessions            Session[]
   videos              Video[]
   templatePreferences TemplatePreferences?
+  clipCropTemplates   ClipCropTemplate[]
   videoFeeds          VideoFeed[]
   feedVideos          FeedVideo[]
 }
@@ -192,4 +193,22 @@ model SegmentRhetoricLabel {
   createdAt DateTime @default(now())
 
   @@index([segmentId])
+}
+
+model ClipCropTemplate {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  aspectRatio String
+  cropX      Float
+  cropY      Float
+  cropWidth  Float
+  cropHeight Float
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
 }
