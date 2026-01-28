@@ -19,6 +19,8 @@ type ClipJobSummary = {
 
 export async function GET() {
   const queue = new Queue('clip-generation', { connection: redisConnection });
+  const now = Date.now();
+  const staleMs = 2 * 60 * 60 * 1000;
 
   try {
     const jobs = await queue.getJobs(['waiting', 'active', 'delayed'], 0, 50);
@@ -56,15 +58,40 @@ export async function GET() {
 
     for (const job of jobs) {
       const feedVideoId = job.data?.feedVideoId as string | undefined;
-      if (!feedVideoId) continue;
+      if (!feedVideoId) {
+        try {
+          await job.remove();
+        } catch {}
+        continue;
+      }
       const meta = feedMap.get(feedVideoId);
-      if (!meta) continue;
+      if (!meta) {
+        try {
+          await job.remove();
+        } catch {}
+        continue;
+      }
 
       let state = 'unknown';
       try {
         state = await job.getState();
       } catch {
         state = 'unknown';
+      }
+
+      const ageMs = now - (job.timestamp ?? now);
+      if ((state === 'waiting' || state === 'delayed') && ageMs > staleMs) {
+        try {
+          await job.remove();
+        } catch {}
+        continue;
+      }
+
+      if (meta.clipSourceVideoId && state !== 'active') {
+        try {
+          await job.remove();
+        } catch {}
+        continue;
       }
 
       summaries.push({

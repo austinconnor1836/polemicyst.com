@@ -8,6 +8,15 @@ import ViralitySettings from '@/components/ViralitySettings';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { Download, ExternalLink, Loader2, RefreshCw, ArrowLeft } from 'lucide-react';
 import { formatRelativeTime } from '@/app/feeds/util/time';
@@ -91,6 +100,7 @@ export default function ClipGroupPage() {
   const [defaultLLMProvider, setDefaultLLMProvider] = useState<LLMProvider>(
     DEFAULT_VIRALITY_SETTINGS.llmProvider
   );
+  const [isGenerateDialogOpen, setIsGenerateDialogOpen] = useState(false);
   const [isPersistingDefaultLLM, setIsPersistingDefaultLLM] = useState(false);
   const [isGeneratingClip, setIsGeneratingClip] = useState(false);
   const [generateMessage, setGenerateMessage] = useState<string | null>(null);
@@ -236,6 +246,13 @@ export default function ClipGroupPage() {
     }
   };
 
+  const handleGenerateDialogOpenChange = (open: boolean) => {
+    setIsGenerateDialogOpen(open);
+    if (open) {
+      setGenerateMessage(null);
+    }
+  };
+
   const requestTranscription = useCallback(async () => {
     if (!feedVideoId) return;
     setIsTranscribing(true);
@@ -340,33 +357,43 @@ export default function ClipGroupPage() {
                     Download
                   </a>
                 </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="mb-6">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Clip generation settings</CardTitle>
-              <CardDescription>
-                Configure scoring and aspect ratio, then queue a clip generation job.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <AspectRatioSelect value={aspectRatio} onChange={setAspectRatio} />
-              <ViralitySettings
-                value={viralitySettings}
-                onChange={setViralitySettings}
-                defaultLLMProvider={defaultLLMProvider}
-                onPersistLLMProvider={persistDefaultLLMProvider}
-                isPersistingLLMProvider={isPersistingDefaultLLM}
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={handleGenerateClip} disabled={isGeneratingClip}>
-                  {isGeneratingClip ? 'Generating...' : 'Generate clip'}
-                </Button>
-                {generateMessage ? (
-                  <span className="text-xs text-muted-foreground">{generateMessage}</span>
-                ) : null}
+                <Dialog open={isGenerateDialogOpen} onOpenChange={handleGenerateDialogOpenChange}>
+                  <DialogTrigger asChild>
+                    <Button>Generate clips</Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>Clip generation settings</DialogTitle>
+                      <DialogDescription>
+                        Configure scoring and aspect ratio, then queue a clip generation job.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <AspectRatioSelect value={aspectRatio} onChange={setAspectRatio} />
+                      <ViralitySettings
+                        value={viralitySettings}
+                        onChange={setViralitySettings}
+                        defaultLLMProvider={defaultLLMProvider}
+                        onPersistLLMProvider={persistDefaultLLMProvider}
+                        isPersistingLLMProvider={isPersistingDefaultLLM}
+                      />
+                      {generateMessage ? (
+                        <div className="text-xs text-muted-foreground">{generateMessage}</div>
+                      ) : null}
+                    </div>
+                    <DialogFooter className="gap-2 pt-4 sm:gap-2">
+                      <Button onClick={handleGenerateClip} disabled={isGeneratingClip}>
+                        {isGeneratingClip ? 'Generating...' : 'Generate clip'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleGenerateDialogOpenChange(false)}
+                      >
+                        Cancel
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
             </CardContent>
           </Card>
@@ -374,9 +401,7 @@ export default function ClipGroupPage() {
           <Card className="mb-6">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Transcript</CardTitle>
-              <CardDescription>
-                Scroll to review the transcript for this video.
-              </CardDescription>
+              <CardDescription>Scroll to review the transcript for this video.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {summary.feedVideo.transcript?.trim() ? (

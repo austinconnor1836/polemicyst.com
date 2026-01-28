@@ -114,9 +114,10 @@ export default function ClipsPage() {
       const res = await fetch('/api/clip-jobs');
       if (!res.ok) throw new Error('Failed to load clip jobs');
       const data = (await res.json()) as ClipJob[];
-      setClipJobs(data);
+      setClipJobs(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
+      setClipJobs([]);
     } finally {
       setIsLoadingJobs(false);
     }

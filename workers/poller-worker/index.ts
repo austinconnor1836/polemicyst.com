@@ -2,6 +2,7 @@ if (process.env.NODE_ENV === 'production') {
   require('module-alias/register');
 }
 import { pollFeeds } from './pollFeeds';
+import './downloadWorker';
 
 async function startPolling() {
   console.log(`[${new Date().toISOString()}] Starting feed polling loop...`);

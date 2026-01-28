@@ -37,7 +37,17 @@ import {
 } from '@/components/ui/select';
 import { getFeedVideoThumbnail } from '@/app/feeds/util/thumbnails';
 import { cn } from '@/lib/utils';
-import { FileText, Plus, RefreshCw, Search, Trash2, X, Upload, Settings, Loader2 } from 'lucide-react';
+import {
+  FileText,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  X,
+  Upload,
+  Settings,
+  Loader2,
+} from 'lucide-react';
 import { Toaster, toast } from 'react-hot-toast';
 
 function youtubeHandleUrlFromName(name: string) {
@@ -903,15 +913,15 @@ export default function FeedsPage() {
                     const { thumbnailUrl, youtubeId } = getFeedVideoThumbnail(video);
                     const isYouTube = Boolean(youtubeId);
                     return (
-                        <Card
-                          key={video.id}
-                          className={cn(
-                            'group cursor-pointer overflow-hidden shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20'
-                          )}
-                          onClick={() => {
-                            router.push(`/clips/${video.id}`);
-                          }}
-                        >
+                      <Card
+                        key={video.id}
+                        className={cn(
+                          'group cursor-pointer overflow-hidden shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20'
+                        )}
+                        onClick={() => {
+                          router.push(`/clips/${video.id}`);
+                        }}
+                      >
                         <CardContent className="p-0">
                           <div className="relative">
                             {(() => {
@@ -994,7 +1004,10 @@ export default function FeedsPage() {
                             </div>
                             <div className="flex flex-wrap gap-2 pt-1">
                               <Button asChild size="sm" variant="secondary">
-                                <Link href={`/clips/${video.id}`} onClick={(e) => e.stopPropagation()}>
+                                <Link
+                                  href={`/clips/${video.id}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
                                   <FileText className="mr-2 h-4 w-4" />
                                   Transcript
                                 </Link>

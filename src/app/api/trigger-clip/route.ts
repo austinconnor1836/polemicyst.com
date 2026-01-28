@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
         llmProvider: resolvedProvider,
         clipLength,
       },
-      { jobId: feedVideoId }
+      { jobId: feedVideoId, removeOnComplete: true, removeOnFail: true }
     );
 
     return NextResponse.json({ message: 'Clip-generation job enqueued', jobId: job.id });

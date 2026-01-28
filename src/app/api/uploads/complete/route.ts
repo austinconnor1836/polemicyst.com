@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
             llmProvider: settings.llmProvider,
             ...strictnessConfig,
           },
-          { jobId: newVideo.id }
+          { jobId: newVideo.id, removeOnComplete: true, removeOnFail: true }
         );
         console.log(`[Auto-Gen] Enqueued job for video ${newVideo.id}`);
       } catch (err) {

@@ -95,7 +95,7 @@ new Worker<DownloadJob>(
             llmProvider: settings.llmProvider,
             ...strictnessConfig,
           },
-          { jobId: feedVideoId }
+          { jobId: feedVideoId, removeOnComplete: true, removeOnFail: true }
         );
         console.log(`feed-download: auto enqueued clip-generation for ${feedVideoId}`);
       }
