@@ -18,7 +18,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { Download, ExternalLink, Loader2, RefreshCw, ArrowLeft } from 'lucide-react';
+import { Download, ExternalLink, Loader2, RefreshCw, ArrowLeft, Pencil } from 'lucide-react';
 import { formatRelativeTime } from '@/app/feeds/util/time';
 import {
   DEFAULT_VIRALITY_SETTINGS,
@@ -476,6 +476,16 @@ export default function ClipGroupPage() {
                         <div className="flex flex-wrap gap-2 pt-2">
                           {clip.s3Url ? (
                             <>
+                              <Button asChild size="sm">
+                                <a
+                                  href={`/clips/${feedVideoId}/${clip.id}/edit`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  Edit
+                                </a>
+                              </Button>
                               <Button asChild size="sm" variant="secondary">
                                 <a href={clip.s3Url} target="_blank" rel="noreferrer">
                                   <ExternalLink className="mr-2 h-4 w-4" />
