@@ -282,9 +282,9 @@ export default function ClipGroupPage() {
   return (
     <div className="mx-auto w-full max-w-screen-xl px-4 py-6 sm:px-6 lg:px-8">
       <div className="mb-4 flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={() => router.push('/clips')}>
+        <Button variant="ghost" size="sm" onClick={() => router.push('/feeds')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to clips
+          Back to feeds
         </Button>
         <Button
           variant="outline"

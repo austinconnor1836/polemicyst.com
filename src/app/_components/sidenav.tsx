@@ -16,7 +16,7 @@ interface SidePanelProps {
 
 const sideNavItems: SideNavItem[] = [
   { label: 'Home', element: <HomeIcon />, href: '/' },
-  { label: 'Clips', element: <MovieIcon />, href: '/clips' },
+  { label: 'Details', element: <MovieIcon />, href: '/details' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
   // Add other items as needed
 ];
