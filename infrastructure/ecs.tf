@@ -16,8 +16,22 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
 
 resource "aws_security_group" "ecs_tasks" {
   name        = "${var.app_name}-ecs-tasks-sg"
-  description = "Allow outbound access only"
+  description = "Allow app ingress from ALB and Redis, outbound access"
   vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port = 6379
+    to_port   = 6379
+    protocol  = "tcp"
+    self      = true
+  }
+
+  ingress {
+    from_port       = 3000
+    to_port         = 3000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
 
   egress {
     from_port   = 0

@@ -2,9 +2,10 @@ import { spawn } from 'child_process';
 import { PassThrough, pipeline as streamPipeline } from 'stream';
 import { promisify } from 'util';
 import AWS from 'aws-sdk';
+import { getS3Key } from '../lib/s3';
 
-const S3_BUCKET = 'clips-genie-uploads';
-const S3_REGION = process.env.S3_REGION;
+const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
+const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
 
 const s3 = new AWS.S3({
   region: S3_REGION,
@@ -22,7 +23,7 @@ export async function downloadAndUploadToS3(
   if (!videoId) {
     throw new Error('videoId is required for S3 upload');
   }
-  const s3Key = `feeds/${videoId}.mp4`;
+  const s3Key = getS3Key(`feeds/${videoId}.mp4`);
   const passThrough = new PassThrough();
   // Add yt-dlp workaround for JS runtime warning
   const ytArgs = [

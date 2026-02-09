@@ -1,8 +1,9 @@
 import { spawn } from 'child_process';
 import { PassThrough } from 'stream';
 import AWS from 'aws-sdk';
+import { getS3Key } from '../shared/lib/s3';
 
-const S3_BUCKET = 'clips-genie-uploads';
+const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
 
 const s3 = new AWS.S3({
@@ -23,7 +24,7 @@ export async function downloadAndUploadToS3(videoUrl: string, videoId: string): 
       return;
     }
 
-    const s3Key = `feeds/${videoId}.mp4`; // 👈 feeds folder inside the bucket
+    const s3Key = getS3Key(`feeds/${videoId}.mp4`); // 👈 feeds folder inside the bucket, with environment prefix
     const passThrough = new PassThrough();
 
     const yt = spawn('yt-dlp', ['-o', '-', '-f', 'mp4', videoUrl]);

@@ -2,17 +2,31 @@
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
-const redis: Redis = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: 6379,
-  maxRetriesPerRequest: null,
-});
+let redis: Redis | null = null;
+let videoDownloadQueue: Queue | null = null;
+let transcriptionQueue: Queue | null = null;
 
-export const videoDownloadQueue = new Queue('video-download', { connection: redis as any });
+function getRedisConnection() {
+  if (redis) return redis;
+  redis = new Redis({
+    host: process.env.REDIS_HOST || 'localhost',
+    port: 6379,
+    maxRetriesPerRequest: null,
+  });
+  return redis;
+}
 
-export const transcriptionQueue = new Queue('transcription', {
-  connection: redis as any,
-});
+export function getVideoDownloadQueue() {
+  if (videoDownloadQueue) return videoDownloadQueue;
+  videoDownloadQueue = new Queue('video-download', { connection: getRedisConnection() as any });
+  return videoDownloadQueue;
+}
+
+export function getTranscriptionQueue() {
+  if (transcriptionQueue) return transcriptionQueue;
+  transcriptionQueue = new Queue('transcription', { connection: getRedisConnection() as any });
+  return transcriptionQueue;
+}
 
 export interface DownloadJob {
   feedId: string;
@@ -23,7 +37,7 @@ export interface DownloadJob {
 }
 
 export function queueVideoDownloadJob(data: DownloadJob) {
-  return videoDownloadQueue.add('download', data, {
+  return getVideoDownloadQueue().add('download', data, {
     removeOnComplete: true,
     removeOnFail: true,
   });
@@ -36,7 +50,7 @@ export interface TranscriptionJob {
 }
 
 export function queueTranscriptionJob(data: TranscriptionJob) {
-  return transcriptionQueue.add('transcribe', data, {
+  return getTranscriptionQueue().add('transcribe', data, {
     removeOnComplete: true,
     removeOnFail: true,
   });

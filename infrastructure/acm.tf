@@ -1,7 +1,14 @@
 resource "aws_acm_certificate" "main" {
-  domain_name               = var.domain_name
-  validation_method         = "DNS"
-  subject_alternative_names = ["www.${var.domain_name}"]
+  domain_name       = var.domain_name
+  validation_method = "DNS"
+  subject_alternative_names = concat(
+    ["www.${var.domain_name}"],
+    [for env_name, env_config in var.environments : env_config.domain if env_config.domain != var.domain_name]
+  )
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_route53_record" "cert_validation" {

@@ -12,20 +12,26 @@ env:
   ECR_REPOSITORY_LLM: polemicyst-llm-worker
   ECR_REPOSITORY_CLIP: polemicyst-clip-worker
   ECS_CLUSTER: polemicyst-cluster
-  ECS_SERVICE_WEB: polemicyst-web
-  ECS_SERVICE_PROVOCATIVENESS: provocativeness-scorer
-  ECS_SERVICE_COMEDIC: comedic-scorer
-  ECS_SERVICE_CLIP: clip-worker
 
 jobs:
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
-    environment: production
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Determine Environment
+        id: env
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+            echo "github_environment=production" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+            echo "github_environment=development" >> $GITHUB_OUTPUT
+          fi
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -34,10 +40,46 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Temporarily skip Docker builds - use existing images from ECR
-      # Will re-enable after migrations are complete
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Web image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.env.outputs.environment }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_WEB:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_WEB:$IMAGE_TAG
+
+      - name: Build and push Clip Worker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.env.outputs.environment }}
+        run: |
+          docker build -f workers/clip-worker/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG
+
+      - name: Build and push LLM Worker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.env.outputs.environment }}
+        run: |
+          docker build -f workers/llm-worker/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG
 
       - name: Update ECS Services
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
         run: |
-          aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_WEB --force-new-deployment
-          aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_CLIP --force-new-deployment
+          # Update web service
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service polemicyst-${ENVIRONMENT}-web \
+            --force-new-deployment
+
+          # Update clip worker service
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service ${ENVIRONMENT}-clip-worker \
+            --force-new-deployment

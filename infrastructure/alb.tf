@@ -34,7 +34,9 @@ resource "aws_lb" "web" {
 }
 
 resource "aws_lb_target_group" "web" {
-  name        = "${var.app_name}-web-tg"
+  for_each = local.environments
+
+  name        = "${var.app_name}-${each.key}-web-tg"
   port        = 3000
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
@@ -47,6 +49,11 @@ resource "aws_lb_target_group" "web" {
     timeout             = 5
     interval            = 30
     matcher             = "200-399"
+  }
+
+  tags = {
+    Name        = "${var.app_name}-${each.key}-web-tg"
+    Environment = each.key
   }
 }
 
@@ -75,6 +82,25 @@ resource "aws_lb_listener" "https" {
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.web.arn
+    target_group_arn = aws_lb_target_group.web["prod"].arn
+  }
+}
+
+# Host-based routing rules for each environment
+resource "aws_lb_listener_rule" "environment_routing" {
+  for_each = local.environments
+
+  listener_arn = aws_lb_listener.https.arn
+  priority     = each.key == "prod" ? 100 : (each.key == "dev" ? 101 : 102)
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.web[each.key].arn
+  }
+
+  condition {
+    host_header {
+      values = [each.value.domain]
+    }
   }
 }
