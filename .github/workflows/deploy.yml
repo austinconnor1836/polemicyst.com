@@ -8,9 +8,11 @@ on:
 
 env:
   AWS_REGION: us-east-1
+  ECR_REPOSITORY_WEB: polemicyst-web
   ECR_REPOSITORY_LLM: polemicyst-llm-worker
   ECR_REPOSITORY_CLIP: polemicyst-clip-worker
   ECS_CLUSTER: polemicyst-cluster
+  ECS_SERVICE_WEB: polemicyst-web
   ECS_SERVICE_PROVOCATIVENESS: provocativeness-scorer
   ECS_SERVICE_COMEDIC: comedic-scorer
   ECS_SERVICE_CLIP: clip-worker
@@ -36,13 +38,24 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Build and Push Web App
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_WEB:$IMAGE_TAG -f Dockerfile .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY_WEB:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_WEB:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_WEB:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_WEB:latest
+
       - name: Build and Push LLM Worker
+        continue-on-error: true
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
           # Build LLM Worker
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG -f backend/workers/llm-worker/Dockerfile .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG -f workers/llm-worker/Dockerfile .
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_LLM:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_LLM:latest
@@ -53,13 +66,14 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           # Build Clip Worker (Native Linux/AMD64 build - FAST!)
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG -f backend/workers/clip-worker/Dockerfile .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG -f workers/clip-worker/Dockerfile .
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:latest
 
       - name: Update ECS Services
         run: |
+          aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_WEB --force-new-deployment
           aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_PROVOCATIVENESS --force-new-deployment
           aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_COMEDIC --force-new-deployment
           aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_CLIP --force-new-deployment
