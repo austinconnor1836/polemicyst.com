@@ -2,10 +2,10 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY backend/workers/llm-worker/package.json backend/workers/llm-worker/package-lock.json* ./
+COPY workers/llm-worker/package.json workers/llm-worker/package-lock.json* ./
 RUN npm install --legacy-peer-deps
 
-COPY backend/workers/llm-worker/ .
+COPY workers/llm-worker/ .
 RUN npm run build
 
 FROM node:20-alpine
