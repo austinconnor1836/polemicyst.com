@@ -34,46 +34,10 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build and Push Web App
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_WEB:$IMAGE_TAG -f Dockerfile .
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY_WEB:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_WEB:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY_WEB:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY_WEB:latest
-
-      - name: Build and Push LLM Worker
-        continue-on-error: true
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          # Build LLM Worker
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG -f workers/llm-worker/Dockerfile .
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_LLM:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY_LLM:latest
-
-      - name: Build and Push Clip Worker
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          # Build Clip Worker (Native Linux/AMD64 build - FAST!)
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG -f workers/clip-worker/Dockerfile .
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:latest
+      # Temporarily skip Docker builds - use existing images from ECR
+      # Will re-enable after migrations are complete
 
       - name: Update ECS Services
         run: |
           aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_WEB --force-new-deployment
-          aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_PROVOCATIVENESS --force-new-deployment
-          aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_COMEDIC --force-new-deployment
           aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE_CLIP --force-new-deployment
