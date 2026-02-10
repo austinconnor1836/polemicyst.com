@@ -9,7 +9,7 @@ COPY prisma ./prisma
 
 RUN npm ci --ignore-scripts
 
-COPY next.config.js postcss.config.js tailwind.config.ts tsconfig.json next-env.d.ts next-auth.d.ts middleware.ts components.json ./
+COPY next.config.js postcss.config.js tailwind.config.ts tsconfig.json next-auth.d.ts middleware.ts components.json ./
 COPY auth.ts ./auth.ts
 COPY public ./public
 COPY src ./src
