@@ -1,243 +1,349 @@
 # Deployment Status & Next Steps
 
-**Last Updated:** 2026-02-09
+**Last Updated:** 2026-02-09 23:45 UTC
 
 ## Current Status
 
 ### ✅ Completed
 
-1. **Infrastructure (Terraform)**
-   - VPC with private subnets + NAT gateway created
-   - ALB created: `polemicyst-alb-479641305.us-east-1.elb.amazonaws.com`
-   - RDS PostgreSQL created: `polemicyst-prod-db.cuxmuuo4s1vd.us-east-1.rds.amazonaws.com`
-   - Route53 hosted zone configured
-   - ACM certificate created
-   - ECS cluster and services defined
-   - ECR repositories created
+1. **Multi-Environment Infrastructure (Terraform)**
+   - ✅ Converted to `for_each` pattern for multi-environment support
+   - ✅ VPC with private/public subnets + 2 NAT gateways
+   - ✅ Application Load Balancer with host-based routing
+   - ✅ RDS PostgreSQL instance (shared between environments)
+   - ✅ Route53 hosted zone with prod and dev DNS records
+   - ✅ ACM certificate covering polemicyst.com, www.polemicyst.com, and dev.polemicyst.com
+   - ✅ ECS cluster with separate services for prod and dev
+   - ✅ ECR repositories for web, clip-worker, and llm-worker
+   - ✅ S3 bucket with environment prefixes (prod/, dev/)
 
-2. **DNS Configuration**
-   - Namecheap nameservers updated to Route53:
+2. **Infrastructure Resources Deployed**
+   - ALB: `polemicyst-alb-479641305.us-east-1.elb.amazonaws.com`
+   - RDS: `polemicyst-prod-db.cuxmuuo4s1vd.us-east-1.rds.amazonaws.com`
+   - S3: `polemicyst-uploads-prod` (with `prod/` and `dev/` prefixes)
+   - ECS Services:
+     - **Production**: `polemicyst-prod-web`, `prod-clip-worker`, `prod-redis`, `prod-provocativeness-scorer`, `prod-comedic-scorer`
+     - **Development**: `polemicyst-dev-web`, `dev-clip-worker`, `dev-redis`, `dev-provocativeness-scorer`, `dev-comedic-scorer`
+
+3. **DNS Configuration**
+   - ✅ Namecheap nameservers updated to Route53:
      - `ns-1305.awsdns-35.org`
      - `ns-1797.awsdns-32.co.uk`
      - `ns-273.awsdns-34.com`
      - `ns-772.awsdns-32.net`
+   - ✅ A and AAAA records created for:
+     - `polemicyst.com` → ALB
+     - `www.polemicyst.com` → ALB
+     - `dev.polemicyst.com` → ALB
 
-3. **Docker Images**
-   - Web app image built and pushed to ECR (Jan 30)
-   - Clip worker image built and pushed to ECR (Jan 30)
-   - LLM worker repository created
+4. **Application Code Updates**
+   - ✅ S3 prefix utilities (`getS3Key`, `stripS3Prefix`) added to [shared/lib/s3.ts](../shared/lib/s3.ts)
+   - ✅ All S3 operations updated to use environment-specific prefixes
+   - ✅ Redis configuration updated for environment-aware service discovery
+   - ✅ GitHub Actions workflow updated for branch-based deployment
 
-4. **Configuration Fixes**
-   - S3 region corrected in `infrastructure/terraform.tfvars` (us-east-2 → us-east-1)
-   - Video preload changed to `"none"` to reduce S3 costs
+5. **GitHub Actions**
+   - ✅ Workflow configured for branch-based deployment:
+     - `main` branch → production environment
+     - `develop` branch → development environment
+   - ✅ Secrets configured (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
+   - ⏳ **In Progress**: Building and pushing dev environment images
+
+### ⏳ In Progress
+
+#### GitHub Actions Deployment
+The develop branch has been pushed and GitHub Actions is currently:
+1. Building Docker images with `:dev` tags
+2. Pushing images to ECR
+3. Deploying to dev ECS services
+
+**Monitor progress**: https://github.com/austinconnor1836/polemicyst.com/actions
 
 ### ⚠️ Pending Actions
 
-#### 1. Apply Terraform Changes
+#### 1. Create Dev Database and Run Migrations
 
-The S3_REGION fix in `terraform.tfvars` needs to be applied to update ECS task environment variables.
+The `polemicyst_dev` database needs to be created in the shared RDS instance, and migrations need to be run for both environments.
 
-**Options:**
+**RDS is in private subnets** - requires VPC access. Options:
 
-**A) Install Terraform locally** (Recommended for full control)
+**Option A: Via ECS Exec (Recommended)**
+
 ```bash
-# Windows (via Chocolatey)
-choco install terraform
+# Wait for dev web service to be running
+aws ecs list-tasks --cluster polemicyst-cluster --service-name polemicyst-dev-web
 
-# Or download from: https://www.terraform.io/downloads
-
-# Then apply:
-cd infrastructure
-terraform init
-terraform plan -var-file=terraform.tfvars
-terraform apply -var-file=terraform.tfvars
-```
-
-**B) Use Terraform Cloud/CI-CD**
-- Set up Terraform Cloud workspace
-- Configure remote backend in `infrastructure/backend.tf`
-- Trigger apply via CI/CD
-
-**C) Use Docker (if Terraform not installed)**
-```powershell
-cd infrastructure
-docker run --rm -v ${PWD}:/workspace -w /workspace hashicorp/terraform:latest init
-docker run --rm -v ${PWD}:/workspace -w /workspace hashicorp/terraform:latest apply -var-file=terraform.tfvars -auto-approve
-```
-
-#### 2. Run Database Migrations
-
-RDS is in private subnets (secure by design) and can't be accessed from local machine.
-
-**Options:**
-
-**A) Run migrations from ECS task** (Recommended)
-```bash
-# Create one-time ECS task to run migrations
-aws ecs run-task \
+# Get task ID from output, then exec into container
+aws ecs execute-command \
   --cluster polemicyst-cluster \
-  --task-definition polemicyst-web \
-  --launch-type FARGATE \
-  --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx],assignPublicIp=DISABLED}" \
-  --overrides '{"containerOverrides":[{"name":"web","command":["npx","prisma","migrate","deploy"]}]}'
+  --task TASK_ID \
+  --container web \
+  --command "/bin/sh" \
+  --interactive
+
+# Inside container, create database:
+# Note: Container can connect to RDS via DATABASE_URL, but needs postgres db to create new db
+# May need to install psql or use Node script
+
+# Run migrations for dev
+npx prisma migrate deploy
 ```
 
-**B) Use AWS Session Manager** (Port forwarding)
+**Option B: Create Database via Node Script in ECS Task**
+
+Create a migration task definition that:
+1. Connects to RDS using postgres database
+2. Creates `polemicyst_dev` database
+3. Runs Prisma migrations
+
+**Option C: AWS Session Manager Port Forwarding**
+
 ```bash
-# 1. Create bastion host or use existing ECS task
-# 2. Forward RDS port through Session Manager
+# Forward RDS port through SSM (requires bastion host or ECS Exec enabled)
 aws ssm start-session --target <instance-id> \
   --document-name AWS-StartPortForwardingSessionToRemoteHost \
   --parameters '{"portNumber":["5432"],"localPortNumber":["5432"],"host":["polemicyst-prod-db.cuxmuuo4s1vd.us-east-1.rds.amazonaws.com"]}'
 
-# 3. Then run migrations locally
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/clipsgenie npx prisma migrate deploy
+# In another terminal, create database and run migrations
+PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -c "CREATE DATABASE polemicyst_dev"
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/polemicyst_dev npx prisma migrate deploy
 ```
 
-**C) Update security group temporarily** (Not recommended for production)
+**Production Database Migrations:**
 ```bash
-# Allow your IP temporarily
-aws ec2 authorize-security-group-ingress \
-  --group-id <rds-security-group-id> \
-  --protocol tcp \
-  --port 5432 \
-  --cidr <your-ip>/32
-
-# Run migrations, then revoke access
-aws ec2 revoke-security-group-ingress \
-  --group-id <rds-security-group-id> \
-  --protocol tcp \
-  --port 5432 \
-  --cidr <your-ip>/32
+# Also run on prod database if not already done
+DATABASE_URL=postgresql://postgres:postgres@polemicyst-prod-db.cuxmuuo4s1vd.us-east-1.rds.amazonaws.com:5432/clipsgenie npx prisma migrate deploy
 ```
 
-#### 3. Verify Deployment
+#### 2. Verify Dev Environment
 
-Once migrations are complete:
+Once GitHub Actions completes and migrations are run:
 
-1. **Check ECS services are healthy:**
-   ```bash
-   aws ecs describe-services --cluster polemicyst-cluster --services polemicyst-web clip-worker redis
-   ```
+**Check Deployment Status:**
+```bash
+# Check ECS services
+aws ecs describe-services --cluster polemicyst-cluster --services polemicyst-dev-web dev-clip-worker dev-redis
 
-2. **Check ALB target health:**
-   ```bash
-   aws elbv2 describe-target-health --target-group-arn <target-group-arn>
-   ```
+# Check task health
+aws ecs list-tasks --cluster polemicyst-cluster --service-name polemicyst-dev-web
 
-3. **Test the website:**
-   - Visit: https://polemicyst.com
-   - Check login works (Google OAuth)
-   - Upload a test video
-   - Verify workers process it
-
-4. **Monitor logs:**
-   ```bash
-   # Web app logs
-   aws logs tail /ecs/polemicyst-web --follow
-
-   # Clip worker logs
-   aws logs tail /ecs/polemicyst-clip-worker --follow
-   ```
-
-## Important Notes
-
-### S3 Bucket Configuration
-
-- **Dev:** Create separate bucket `polemicyst-uploads-dev` in `us-east-1`
-- **Prod:** Currently using `polemicyst-uploads-prod` in `us-east-1`
-- Old S3 URLs in the database still point to `us-east-2` - you may want to migrate or start with fresh data
-
-### Environment Variables
-
-Key env vars for production (already set in `terraform.tfvars`):
-
-```hcl
-web_environment = {
-  NEXTAUTH_URL           = "https://polemicyst.com"
-  NEXTAUTH_SECRET        = "..." # Secure secret
-  GOOGLE_CLIENT_ID       = "..."
-  GOOGLE_CLIENT_SECRET   = "..."
-  AUTH_ALLOWLIST_ENABLED = "true"
-  AUTH_ALLOWED_EMAILS    = "aconnor731@gmail.com"
-  AUTH_ALLOWED_PROVIDERS = "google"
-}
+# Check ALB target health
+aws elbv2 describe-target-health --target-group-arn arn:aws:elasticloadbalancing:us-east-1:746669200861:targetgroup/polemicyst-dev-web-tg/983da4896b971916
 ```
 
-Also auto-injected by Terraform:
-- `S3_BUCKET=polemicyst-uploads-prod`
-- `S3_REGION=us-east-1`
-- `DATABASE_URL=postgresql://...` (constructed from RDS endpoint)
+**Test Dev Environment:**
+1. Visit https://dev.polemicyst.com
+2. Verify SSL certificate is valid
+3. Test Google OAuth login
+4. Upload a test video
+5. Verify video is stored in S3 under `dev/` prefix
+6. Check that dev and prod data are isolated
 
-### GitHub Actions
+**Monitor Logs:**
+```bash
+# Dev web logs
+aws logs tail /ecs/polemicyst-dev-web --follow
 
-`.github/workflows/deploy.yml` is configured to:
-1. Build and push Docker images on push to `main` or `develop`
-2. Force new ECS deployments
+# Dev clip worker logs
+aws logs tail /ecs/dev-clip-worker --follow
 
-**Required GitHub Secrets:**
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
+# Dev redis logs
+aws logs tail /ecs/dev-redis --follow
+```
 
-Check if these are set: https://github.com/YOUR_USERNAME/polemicyst.com/settings/secrets/actions
+#### 3. Verify Production Environment
 
-### Cost Optimization
+After infrastructure changes, verify prod is still working:
 
-1. **Video preload:** Changed to `"none"` to reduce S3 GET requests
-2. **LLM workers:** Scaled to 0 by default (scale up when needed)
-3. **FARGATE_SPOT:** Used for LLM workers to reduce costs
-4. **Consider CloudFront:** Add CDN in front of S3 for better caching
+**Check Production:**
+```bash
+# Check prod services
+aws ecs describe-services --cluster polemicyst-cluster --services polemicyst-prod-web prod-clip-worker
 
-## Quick Commands
+# Check target health
+aws elbv2 describe-target-health --target-group-arn arn:aws:elasticloadbalancing:us-east-1:746669200861:targetgroup/polemicyst-prod-web-tg/57360234aa9a09d2
+```
 
-### Check Terraform State
+**Test Production:**
+1. Visit https://polemicyst.com
+2. Verify no regressions
+3. Test authentication
+4. Verify existing videos still accessible
+5. Verify S3 operations use `prod/` prefix
+
+#### 4. Clean Up Old Resources
+
+- **Old Target Group**: `polemicyst-web-tg` (ARN: `arn:aws:elasticloadbalancing:us-east-1:746669200861:targetgroup/polemicyst-web-tg/76f998095aa3ab25`)
+  - No longer managed by Terraform (removed from state)
+  - Can be manually deleted from AWS Console after confirming everything works
+  - Located in EC2 → Target Groups
+
+## Environment Configuration Summary
+
+### Production Environment
+- **Branch**: `main`
+- **Domain**: `polemicyst.com`
+- **Database**: `clipsgenie` (in shared RDS)
+- **S3 Prefix**: `prod/`
+- **Redis**: `redis-prod.polemicyst.local`
+- **Resources**: 512 CPU, 1024 Memory
+- **Services**:
+  - `polemicyst-prod-web` (desired: 1)
+  - `prod-clip-worker` (desired: 1)
+  - `prod-redis` (desired: 1)
+  - `prod-provocativeness-scorer` (desired: 0)
+  - `prod-comedic-scorer` (desired: 0)
+
+### Development Environment
+- **Branch**: `develop`
+- **Domain**: `dev.polemicyst.com`
+- **Database**: `polemicyst_dev` (in shared RDS) - **NEEDS TO BE CREATED**
+- **S3 Prefix**: `dev/`
+- **Redis**: `redis-dev.polemicyst.local`
+- **Resources**: 256 CPU, 512 Memory
+- **Services**:
+  - `polemicyst-dev-web` (desired: 1)
+  - `dev-clip-worker` (desired: 0 - scale up when needed)
+  - `dev-redis` (desired: 1)
+  - `dev-provocativeness-scorer` (desired: 0)
+  - `dev-comedic-scorer` (desired: 0)
+
+## Cost Summary
+
+### Current Monthly Costs (~$178/month)
+- **Shared Infrastructure**: ~$109/month
+  - VPC with 2 NAT Gateways: ~$65/month
+  - RDS db.t3.small: ~$28/month
+  - ALB: ~$16/month
+- **Production Services**: ~$53/month
+- **Development Services**: ~$16/month
+
+### Cost Optimization Tips
+1. **Scale dev to zero when not in use**:
+   ```bash
+   aws ecs update-service --cluster polemicyst-cluster --service polemicyst-dev-web --desired-count 0
+   aws ecs update-service --cluster polemicyst-cluster --service dev-redis --desired-count 0
+   ```
+
+2. **Use auto-scaling schedules**:
+   - Scale dev down at 6 PM weekdays
+   - Scale dev down all weekend
+   - Scale back up at 9 AM weekdays
+
+3. **S3 lifecycle policies** for dev environment:
+   - Delete objects older than 30 days
+   - Move to Glacier after 7 days
+
+## Deployment Workflow
+
+### Making Changes
+```bash
+# For dev deployment
+git checkout develop
+git add .
+git commit -m "Your changes"
+git push origin develop  # Triggers dev deployment
+
+# For prod deployment (after testing in dev)
+git checkout main
+git merge develop
+git push origin main  # Triggers prod deployment
+```
+
+### Manual Service Updates
+```bash
+# Update web service
+aws ecs update-service --cluster polemicyst-cluster --service polemicyst-prod-web --force-new-deployment
+
+# Update clip worker
+aws ecs update-service --cluster polemicyst-cluster --service prod-clip-worker --force-new-deployment
+
+# Scale service
+aws ecs update-service --cluster polemicyst-cluster --service dev-clip-worker --desired-count 1
+```
+
+## Important Files
+
+- **Terraform Config**: `infrastructure/*.tf`
+- **Terraform Variables**: `infrastructure/terraform.tfvars` (contains secrets, not in git)
+- **GitHub Actions**: `.github/workflows/deploy.yml`
+- **S3 Utilities**: `shared/lib/s3.ts`
+- **Redis Config**: `shared/queues.ts`
+- **Deployment Docs**: `docs/DEPLOYMENT.md`
+
+## Quick Reference Commands
+
+### View Infrastructure Outputs
 ```bash
 cd infrastructure
-terraform output  # View all outputs
-terraform state list  # List all resources
+terraform output
 ```
 
-### Update a Single Service
+### Check Service Status
 ```bash
-aws ecs update-service --cluster polemicyst-cluster --service polemicyst-web --force-new-deployment
+aws ecs describe-services --cluster polemicyst-cluster --services polemicyst-prod-web polemicyst-dev-web
 ```
 
-### Scale Services
+### View Recent Logs
 ```bash
-# Scale down provocativeness scorer
-aws ecs update-service --cluster polemicyst-cluster --service provocativeness-scorer --desired-count 0
+aws logs tail /ecs/polemicyst-prod-web --since 1h
+aws logs tail /ecs/polemicyst-dev-web --since 1h
+```
 
-# Scale up for processing
-aws ecs update-service --cluster polemicyst-cluster --service provocativeness-scorer --desired-count 1
+### Check Database Connections
+```bash
+# From within VPC (ECS Exec)
+psql -h polemicyst-prod-db.cuxmuuo4s1vd.us-east-1.rds.amazonaws.com -U postgres -l
 ```
 
 ### View ECR Images
 ```bash
-aws ecr describe-images --repository-name polemicyst-web --max-items 5
-aws ecr describe-images --repository-name polemicyst-clip-worker --max-items 5
-aws ecr describe-images --repository-name polemicyst-llm-worker --max-items 5
+aws ecr describe-images --repository-name polemicyst-web
+aws ecr describe-images --repository-name polemicyst-clip-worker
 ```
 
 ## Troubleshooting
 
-### Site not loading
-1. Check DNS propagation: `nslookup polemicyst.com`
-2. Check ACM certificate validation in AWS Console
-3. Check ALB target health
-4. Check ECS task logs
+### Services Failing to Start
+1. Check CloudWatch logs for errors
+2. Verify environment variables in task definition
+3. Check security group rules
+4. Ensure database migrations have been run
 
-### Database connection errors
-1. Verify `DATABASE_URL` env var in ECS task definition
-2. Check RDS security group allows traffic from ECS security group
-3. Check RDS is in same VPC as ECS tasks
+### Database Connection Errors
+1. Verify DATABASE_URL is correct in task definition
+2. Check RDS security group allows ECS security group
+3. Ensure database exists (especially `polemicyst_dev`)
+4. Verify RDS is in available state
 
-### S3 upload/access errors
-1. Verify `S3_BUCKET` and `S3_REGION` env vars are set correctly
-2. Check ECS task IAM role has S3 permissions
-3. Verify bucket policy allows ECS task role
+### S3 Upload/Access Issues
+1. Check S3_BUCKET and S3_PREFIX environment variables
+2. Verify ECS task role has S3 permissions
+3. Ensure `getS3Key()` utility is used consistently
+4. Check CloudWatch logs for S3 error messages
 
-### Workers not processing
-1. Check Redis service is running
-2. Verify worker task environment variables
-3. Check worker logs for errors
-4. Ensure queue names match between API and workers
+### DNS/SSL Issues
+1. Verify DNS has propagated: `nslookup dev.polemicyst.com`
+2. Check ACM certificate status in AWS Console
+3. Verify Route53 records are correct
+4. Check ALB listener certificate attachment
+
+## Next Steps After Deployment
+
+1. [ ] Create `polemicyst_dev` database in RDS
+2. [ ] Run Prisma migrations on both databases
+3. [ ] Monitor GitHub Actions deployment to completion
+4. [ ] Test dev environment thoroughly
+5. [ ] Verify prod environment still works
+6. [ ] Delete old target group from AWS Console
+7. [ ] Set up CloudWatch alarms for critical metrics
+8. [ ] Configure auto-scaling schedules for dev
+9. [ ] Set up S3 lifecycle policies for dev prefix
+10. [ ] Document any environment-specific quirks
+
+## Support & Resources
+
+- **GitHub Repo**: https://github.com/austinconnor1836/polemicyst.com
+- **GitHub Actions**: https://github.com/austinconnor1836/polemicyst.com/actions
+- **AWS Console**: https://console.aws.amazon.com/
+- **Terraform Docs**: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
