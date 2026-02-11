@@ -12,10 +12,17 @@ type Highlight = {
   end: number;
 };
 
-// Initialize OpenAI API
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let cachedOpenAI: OpenAI | null = null;
+
+function getOpenAIClient() {
+  if (cachedOpenAI) return cachedOpenAI;
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY is required');
+  }
+  cachedOpenAI = new OpenAI({ apiKey });
+  return cachedOpenAI;
+}
 
 // ✅ Define a dedicated temp folder inside Next.js app
 const TEMP_DIR = path.join(process.cwd(), 'tmp');
@@ -61,7 +68,10 @@ async function extractAndCompressAudio(videoBuffer: Uint8Array): Promise<string>
 }
 
 // ✅ Function to Generate AI-Based Description and Hashtags
-async function generateDescriptionAndHashtags(transcript: string): Promise<{
+async function generateDescriptionAndHashtags(
+  openai: OpenAI,
+  transcript: string
+): Promise<{
   title: string;
   description: string;
   hashtags: string[];
@@ -115,6 +125,7 @@ async function generateDescriptionAndHashtags(transcript: string): Promise<{
 // ✅ API Handler
 export async function POST(req: NextRequest) {
   try {
+    const openai = getOpenAIClient();
     const formData = await req.formData();
     const file = formData.get('file') as Blob | null;
 
@@ -149,7 +160,10 @@ export async function POST(req: NextRequest) {
 
     // ✅ Generate AI description
     console.log('🤖 Generating description...');
-    const { description, hashtags, title } = await generateDescriptionAndHashtags(transcript);
+    const { description, hashtags, title } = await generateDescriptionAndHashtags(
+      openai,
+      transcript
+    );
     console.log('📢 AI-Generated Description:', description);
 
     // ✅ Generate highlights using OpenAI

@@ -3,10 +3,13 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../../../../auth';
 import AWS from 'aws-sdk';
 
+const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
+const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
+
 const s3 = new AWS.S3({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: 'us-east-2',
+  region: S3_REGION,
   signatureVersion: 'v4',
 });
 
@@ -20,7 +23,7 @@ export async function POST(req: NextRequest) {
     const { uploadId, key, partNumber } = await req.json();
 
     const url = await s3.getSignedUrlPromise('uploadPart', {
-      Bucket: 'clips-genie-uploads',
+      Bucket: S3_BUCKET,
       Key: key,
       UploadId: uploadId,
       PartNumber: partNumber,

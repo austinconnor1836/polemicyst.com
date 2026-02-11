@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../../auth';
 import { prisma } from '@shared/lib/prisma';
-import { transcriptionQueue } from '@shared/queues';
+import { getTranscriptionQueue } from '@shared/queues';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,6 +35,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ ok: true, alreadyTranscribed: true });
   }
 
+  const transcriptionQueue = getTranscriptionQueue();
   await transcriptionQueue.add(
     'transcribe',
     { feedVideoId: feedVideo.id },

@@ -6,7 +6,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../auth';
 import { deleteFromS3 } from '@shared/lib/s3';
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -14,7 +15,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   try {
     // Find all FeedVideos for this feed
-    const feedVideos = await prisma.feedVideo.findMany({ where: { feedId: params.id } });
+    const feedVideos = await prisma.feedVideo.findMany({ where: { feedId: id } });
 
     // Delete each video from S3
     for (const video of feedVideos) {
@@ -32,10 +33,10 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     }
 
     // Delete FeedVideos from DB
-    await prisma.feedVideo.deleteMany({ where: { feedId: params.id } });
+    await prisma.feedVideo.deleteMany({ where: { feedId: id } });
 
     // Delete the feed itself
-    await prisma.videoFeed.delete({ where: { id: params.id } });
+    await prisma.videoFeed.delete({ where: { id } });
 
     return NextResponse.json({ success: true });
   } catch (err) {

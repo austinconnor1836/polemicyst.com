@@ -480,6 +480,35 @@ export default function ClipEditorPage() {
     };
   };
 
+  const handleTimelineTrackPointerDown = (event: PointerEvent) => {
+    if (!timelineRef.current || !durationOriginalS) return;
+    event.preventDefault();
+    const rect = timelineRef.current.getBoundingClientRect();
+    if (!rect.width) return;
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const target = ratio * durationOriginalS;
+    const distanceToStart = Math.abs(target - trimStartS);
+    const distanceToEnd = Math.abs(target - trimEndS);
+    if (distanceToStart <= distanceToEnd) {
+      handleTrimStartChange(target);
+      timelineDragRef.current = {
+        handle: 'start',
+        startX: event.clientX,
+        startStart: target,
+        startEnd: trimEndS,
+      };
+    } else {
+      handleTrimEndChange(target);
+      timelineDragRef.current = {
+        handle: 'end',
+        startX: event.clientX,
+        startStart: trimStartS,
+        startEnd: target,
+      };
+    }
+    timelineRef.current.setPointerCapture(event.pointerId);
+  };
+
   const handleSaveTrim = async () => {
     if (!clip) return false;
     setIsSavingTrim(true);
@@ -1150,8 +1179,9 @@ export default function ClipEditorPage() {
                   <div
                     ref={timelineRef}
                     className="relative h-16 overflow-hidden rounded-lg border bg-muted/40"
+                    onPointerDown={handleTimelineTrackPointerDown}
                   >
-                    <div className="absolute inset-0 flex gap-1 p-2">
+                    <div className="absolute inset-0 flex gap-1 p-2 pointer-events-none">
                       {Array.from({ length: 24 }).map((_, index) => (
                         <div
                           key={`segment-${index}`}
@@ -1176,7 +1206,7 @@ export default function ClipEditorPage() {
                         <div
                           role="button"
                           tabIndex={0}
-                          className="absolute inset-y-0 w-2 -translate-x-1/2 cursor-ew-resize rounded bg-white/90 shadow-sm"
+                          className="absolute inset-y-0 w-4 -translate-x-1/2 cursor-ew-resize rounded bg-white/90 shadow-sm"
                           style={{ left: `${startPercent}%` }}
                           onPointerDown={(event) => handleTimelinePointerDown(event, 'start')}
                           onPointerUp={(event) => {
@@ -1189,7 +1219,7 @@ export default function ClipEditorPage() {
                         <div
                           role="button"
                           tabIndex={0}
-                          className="absolute inset-y-0 w-2 -translate-x-1/2 cursor-ew-resize rounded bg-white/90 shadow-sm"
+                          className="absolute inset-y-0 w-4 -translate-x-1/2 cursor-ew-resize rounded bg-white/90 shadow-sm"
                           style={{ left: `${endPercent}%` }}
                           onPointerDown={(event) => handleTimelinePointerDown(event, 'end')}
                           onPointerUp={(event) => {

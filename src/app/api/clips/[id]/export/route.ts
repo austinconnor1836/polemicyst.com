@@ -6,7 +6,8 @@ import { trimClipFromS3 } from '@shared/util/ffmpegUtils';
 
 export const runtime = 'nodejs';
 
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -21,7 +22,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   }
 
   const clip = await prisma.video.findUnique({
-    where: { id: params.id },
+    where: { id },
     select: {
       id: true,
       userId: true,

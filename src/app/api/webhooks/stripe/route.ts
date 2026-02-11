@@ -9,17 +9,32 @@ export const config = {
   },
 };
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-04-30.basil',
-});
+let stripeClient: Stripe | null = null;
+
+function getStripeClient() {
+  if (stripeClient) return stripeClient;
+  const apiKey = process.env.STRIPE_SECRET_KEY;
+  if (!apiKey) {
+    throw new Error('STRIPE_SECRET_KEY is required');
+  }
+  stripeClient = new Stripe(apiKey, {
+    apiVersion: '2025-04-30.basil',
+  });
+  return stripeClient;
+}
 
 export async function POST(req: NextRequest) {
+  const stripe = getStripeClient();
   const rawBody = await req.text();
   const signature = req.headers.get('stripe-signature') || '';
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    return new Response('Missing STRIPE_WEBHOOK_SECRET', { status: 500 });
+  }
 
   let event;
   try {
-    event = stripe.webhooks.constructEvent(rawBody, signature, process.env.STRIPE_WEBHOOK_SECRET!);
+    event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
   } catch (err: any) {
     console.error('❌ Stripe webhook signature verification failed.', err.message);
     return new Response(`Webhook Error: ${err.message}`, { status: 400 });

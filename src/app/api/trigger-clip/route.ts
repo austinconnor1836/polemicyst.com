@@ -2,14 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
-const redisHost = process.env.REDIS_HOST || 'localhost';
-const redis = new Redis({
-  host: redisHost,
-  port: 6379,
-  maxRetriesPerRequest: null,
-});
+let redis: Redis | null = null;
+let clipGenerationQueue: Queue | null = null;
 
-const clipGenerationQueue = new Queue('clip-generation', { connection: redis });
+function getRedisConnection() {
+  if (redis) return redis;
+  redis = new Redis({
+    host: process.env.REDIS_HOST || 'localhost',
+    port: 6379,
+    maxRetriesPerRequest: null,
+  });
+  return redis;
+}
+
+function getClipGenerationQueue() {
+  if (clipGenerationQueue) return clipGenerationQueue;
+  clipGenerationQueue = new Queue('clip-generation', { connection: getRedisConnection() });
+  return clipGenerationQueue;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -35,7 +45,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing feedVideoId or userId' }, { status: 400 });
     }
 
-    const existingJob = await clipGenerationQueue.getJob(feedVideoId);
+    const queue = getClipGenerationQueue();
+    const existingJob = await queue.getJob(feedVideoId);
     if (existingJob) {
       const state = await existingJob.getState();
       // If job is running or queued, don't interfere—just return success for idempotency.
@@ -63,7 +74,7 @@ export async function POST(req: NextRequest) {
         ? 'ollama'
         : 'gemini';
 
-    const job = await clipGenerationQueue.add(
+    const job = await queue.add(
       'clip-generation',
       {
         feedVideoId,

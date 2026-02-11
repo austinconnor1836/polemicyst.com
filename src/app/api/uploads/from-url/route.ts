@@ -11,15 +11,31 @@ import {
   type ViralitySettingsValue,
 } from '@shared/virality';
 
-const redisHost = process.env.REDIS_HOST || 'localhost';
-const redis = new Redis({
-  host: redisHost,
-  port: 6379,
-  maxRetriesPerRequest: null,
-});
+let redis: Redis | null = null;
+let clipGenerationQueue: Queue | null = null;
+let downloadQueue: Queue | null = null;
 
-const clipGenerationQueue = new Queue('clip-generation', { connection: redis });
-const downloadQueue = new Queue('feed-download', { connection: redis });
+function getRedisConnection() {
+  if (redis) return redis;
+  redis = new Redis({
+    host: process.env.REDIS_HOST || 'localhost',
+    port: 6379,
+    maxRetriesPerRequest: null,
+  });
+  return redis;
+}
+
+function getClipGenerationQueue() {
+  if (clipGenerationQueue) return clipGenerationQueue;
+  clipGenerationQueue = new Queue('clip-generation', { connection: getRedisConnection() });
+  return clipGenerationQueue;
+}
+
+function getDownloadQueue() {
+  if (downloadQueue) return downloadQueue;
+  downloadQueue = new Queue('feed-download', { connection: getRedisConnection() });
+  return downloadQueue;
+}
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -75,7 +91,8 @@ export async function POST(req: NextRequest) {
     });
 
     // 3. Enqueue download job
-    await downloadQueue.add('download', {
+    const queue = getDownloadQueue();
+    await queue.add('download', {
       feedVideoId: newVideo.id,
       url,
       title: newVideo.title,

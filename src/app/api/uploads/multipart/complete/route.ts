@@ -3,8 +3,11 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../../../../auth';
 import { S3Client, CompleteMultipartUploadCommand } from '@aws-sdk/client-s3';
 
+const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
+const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
+
 const s3 = new S3Client({
-  region: 'us-east-2',
+  region: S3_REGION,
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
@@ -24,7 +27,7 @@ export async function POST(req: NextRequest) {
     const sortedParts = parts.sort((a: any, b: any) => a.PartNumber - b.PartNumber);
 
     const command = new CompleteMultipartUploadCommand({
-      Bucket: 'clips-genie-uploads',
+      Bucket: S3_BUCKET,
       Key: key,
       UploadId: uploadId,
       MultipartUpload: {

@@ -4,8 +4,8 @@ const fetch = require('node-fetch');
 import { S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 
-const CLIPS_BUCKET = 'clips-genie-uploads';
-const CLIPS_REGION = 'us-east-2';
+const CLIPS_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
+const CLIPS_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
 const s3 = new S3Client({ region: CLIPS_REGION });
 
 function parseTimeToSeconds(t: string): number {

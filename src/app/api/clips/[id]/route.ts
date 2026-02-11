@@ -14,7 +14,8 @@ const s3 = new AWS.S3({
   signatureVersion: 'v4',
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -29,7 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const clip = await prisma.video.findUnique({
-    where: { id: params.id },
+    where: { id },
     select: { id: true, userId: true },
   });
   if (!clip) {
@@ -54,7 +55,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const updated = await prisma.video.update({
-    where: { id: params.id },
+    where: { id },
     data: { trimStartS, trimEndS },
     select: { id: true, trimStartS: true, trimEndS: true },
   });
@@ -62,7 +63,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json(updated);
 }
 
-export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -77,7 +79,7 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
   }
 
   const clip = await prisma.video.findUnique({
-    where: { id: params.id },
+    where: { id },
     select: { id: true, userId: true, s3Key: true },
   });
   if (!clip) {

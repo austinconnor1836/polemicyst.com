@@ -4,8 +4,11 @@ import { authOptions } from '../../../../../../auth';
 import { S3Client, CreateMultipartUploadCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 
+const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
+const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
+
 const s3 = new S3Client({
-  region: 'us-east-2',
+  region: S3_REGION,
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
@@ -25,7 +28,7 @@ export async function POST(req: NextRequest) {
     const key = `uploads/${session.user.email}/${randomUUID()}.${fileExt}`;
 
     const command = new CreateMultipartUploadCommand({
-      Bucket: 'clips-genie-uploads',
+      Bucket: S3_BUCKET,
       Key: key,
       ContentType: contentType || 'video/mp4',
     });

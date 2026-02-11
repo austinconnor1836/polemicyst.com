@@ -11,14 +11,27 @@ import {
   type ViralitySettingsValue,
 } from '@shared/virality';
 
-const redisHost = process.env.REDIS_HOST || 'localhost';
-const redis = new Redis({
-  host: redisHost,
-  port: 6379,
-  maxRetriesPerRequest: null,
-});
+const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
+const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
 
-const clipGenerationQueue = new Queue('clip-generation', { connection: redis });
+let redis: Redis | null = null;
+let clipGenerationQueue: Queue | null = null;
+
+function getRedisConnection() {
+  if (redis) return redis;
+  redis = new Redis({
+    host: process.env.REDIS_HOST || 'localhost',
+    port: 6379,
+    maxRetriesPerRequest: null,
+  });
+  return redis;
+}
+
+function getClipGenerationQueue() {
+  if (clipGenerationQueue) return clipGenerationQueue;
+  clipGenerationQueue = new Queue('clip-generation', { connection: getRedisConnection() });
+  return clipGenerationQueue;
+}
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -59,7 +72,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Create the FeedVideo record
     // We use the S3 URL format consistent with the rest of the app
-    const s3Url = `https://clips-genie-uploads.s3.us-east-2.amazonaws.com/${key}`;
+    const s3Url = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
 
     const newVideo = await prisma.feedVideo.create({
       data: {
@@ -78,7 +91,8 @@ export async function POST(req: NextRequest) {
         const settings = mergeViralitySettings(rawSettings);
         const strictnessConfig = getStrictnessConfig(settings.strictnessPreset);
 
-        await clipGenerationQueue.add(
+        const queue = getClipGenerationQueue();
+        await queue.add(
           'clip-generation',
           {
             feedVideoId: newVideo.id,

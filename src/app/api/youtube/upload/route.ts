@@ -5,8 +5,8 @@ import AWS from 'aws-sdk';
 
 const prisma = new PrismaClient();
 
-const S3_BUCKET = 'clips-genie-uploads';
-const S3_REGION = process.env.S3_REGION!;
+const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
+const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
 
 const s3 = new AWS.S3({
   region: S3_REGION,

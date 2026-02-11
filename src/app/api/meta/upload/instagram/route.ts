@@ -5,8 +5,8 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-const S3_BUCKET = 'clips-genie-uploads';
-const S3_REGION = process.env.S3_REGION;
+const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
+const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

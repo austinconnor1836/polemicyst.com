@@ -19,6 +19,28 @@ interface ExtendedJWT extends JWT {
 const prisma = new PrismaClient();
 
 const NEXTAUTH_DEBUG_ENABLED = process.env.NEXTAUTH_DEBUG === 'true';
+const AUTH_ALLOWLIST_ENABLED = process.env.AUTH_ALLOWLIST_ENABLED === 'true';
+const AUTH_ALLOWED_EMAILS = parseAllowlist(process.env.AUTH_ALLOWED_EMAILS);
+const AUTH_ALLOWED_PROVIDERS = parseAllowlist(process.env.AUTH_ALLOWED_PROVIDERS ?? 'google');
+
+function parseAllowlist(value?: string): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isAllowedEmail(email?: string | null): boolean {
+  if (!AUTH_ALLOWLIST_ENABLED) return true;
+  if (!email || AUTH_ALLOWED_EMAILS.length === 0) return false;
+  return AUTH_ALLOWED_EMAILS.includes(email.toLowerCase());
+}
+
+function isAllowedProvider(provider?: string | null): boolean {
+  if (!AUTH_ALLOWLIST_ENABLED) return true;
+  if (!provider || AUTH_ALLOWED_PROVIDERS.length === 0) return false;
+  return AUTH_ALLOWED_PROVIDERS.includes(provider.toLowerCase());
+}
 
 function redactSecrets(input: unknown): unknown {
   const seen = new WeakSet<object>();
@@ -224,6 +246,7 @@ export const authOptions: NextAuthOptions = {
     },
     async signIn({ user, account }) {
       if (!user.email || !account) return false;
+      if (!isAllowedEmail(user.email) || !isAllowedProvider(account.provider)) return false;
 
       const existingUser = await prisma.user.findUnique({
         where: { email: user.email },
