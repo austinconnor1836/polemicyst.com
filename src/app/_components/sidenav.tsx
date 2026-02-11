@@ -8,6 +8,7 @@ import { SideNavItem } from '../ui/types'
 import Link from 'next/link'
 import HomeIcon from '@mui/icons-material/Home'
 import DescriptionIcon from '@mui/icons-material/Description'
+import SportsBasketballIcon from '@mui/icons-material/SportsBasketball'
 
 interface SidePanelProps {
   onSelectItem?: (item: string) => void
@@ -16,7 +17,7 @@ interface SidePanelProps {
 const sideNavItems: SideNavItem[] = [
   { label: 'Home', element: <HomeIcon />, href: '/' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
-  // Add other items as needed
+  { label: 'NCAA Seeds', element: <SportsBasketballIcon />, href: '/ncaa-seed-probability' },
 ]
 
 const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {

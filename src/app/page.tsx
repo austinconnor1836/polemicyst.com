@@ -5,7 +5,10 @@ import React from 'react'
 import Particles from './_components/particles'
 import { lusitana } from './ui/fonts'
 
-const navigation = [{ name: 'Blog', href: '/posts' }]
+const navigation = [
+  { name: 'Blog', href: '/posts' },
+  { name: 'NCAA Seeds', href: '/ncaa-seed-probability' },
+]
 
 export default function Home() {
   return (
