@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 
 
-const TemplateModal: React.FC<> = () => {
+const TemplateModal: React.FC = () => {
   const { setShowTemplateModal } = usePlatformContext();
   const [facebookTemplate, setFacebookTemplate] = useState("");
   const [instagramTemplate, setInstagramTemplate] = useState("");
