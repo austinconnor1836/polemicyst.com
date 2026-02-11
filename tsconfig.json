@@ -25,6 +25,7 @@
     "target": "ES2017",
     "types": ["react", "react-dom"],
     "paths": {
+      "@/*": ["src/*"],
       "@shared/*": ["shared/*"],
       "@backend/*": ["backend/*"]
     }
