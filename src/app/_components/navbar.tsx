@@ -47,15 +47,11 @@ const Navbar: React.FC = () => {
     const handler = () => applyTheme('system');
 
     // Safari < 14 uses addListener/removeListener
-    // eslint-disable-next-line deprecation/deprecation
     if (typeof mql.addEventListener === 'function') mql.addEventListener('change', handler);
-    // eslint-disable-next-line deprecation/deprecation
     else mql.addListener(handler);
 
     return () => {
-      // eslint-disable-next-line deprecation/deprecation
       if (typeof mql.removeEventListener === 'function') mql.removeEventListener('change', handler);
-      // eslint-disable-next-line deprecation/deprecation
       else mql.removeListener(handler);
     };
   }, [theme]);
