@@ -7,7 +7,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
 
-RUN npm ci --ignore-scripts
+RUN npm ci --ignore-scripts --legacy-peer-deps
 
 COPY next.config.js postcss.config.js tailwind.config.ts tsconfig.json next-auth.d.ts middleware.ts components.json ./
 COPY auth.ts ./auth.ts
