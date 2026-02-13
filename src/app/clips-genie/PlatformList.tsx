@@ -66,7 +66,7 @@ const PlatformList = () => {
   };
 
   return (
-    <div className="md:w-1/4 bg-gray-100 dark:bg-[#1e1e1e] p-4 rounded-lg">
+    <div className="md:w-1/4 bg-gray-100 dark:bg-background p-4 rounded-lg">
       <h3 className="text-lg font-semibold mb-2">Platforms</h3>
       <ul className="space-y-2">
         {platforms.map(({ name, icon, provider }) => {
@@ -85,7 +85,7 @@ const PlatformList = () => {
               className={`flex items-center justify-between p-2 cursor-pointer rounded-md transition ${
                 isSelected
                   ? 'bg-blue-200 dark:bg-blue-700'
-                  : 'hover:bg-gray-200 dark:hover:bg-[#292c35]'
+                  : 'hover:bg-gray-200 dark:hover:bg-surface'
               }`}
               onClick={() => togglePlatform(provider)}
             >

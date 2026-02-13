@@ -1,27 +1,6 @@
 import { NextRequest } from 'next/server';
-import { buffer } from 'micro';
-import Stripe from 'stripe';
 import { prisma } from '../../../../../shared/lib/prisma';
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
-let stripeClient: Stripe | null = null;
-
-function getStripeClient() {
-  if (stripeClient) return stripeClient;
-  const apiKey = process.env.STRIPE_SECRET_KEY;
-  if (!apiKey) {
-    throw new Error('STRIPE_SECRET_KEY is required');
-  }
-  stripeClient = new Stripe(apiKey, {
-    apiVersion: '2025-04-30.basil',
-  });
-  return stripeClient;
-}
+import { getStripeClient, planIdFromPriceId } from '@/lib/stripe';
 
 export async function POST(req: NextRequest) {
   const stripe = getStripeClient();
@@ -35,27 +14,55 @@ export async function POST(req: NextRequest) {
   let event;
   try {
     event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
-  } catch (err: any) {
-    console.error('❌ Stripe webhook signature verification failed.', err.message);
-    return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Stripe webhook signature verification failed.', message);
+    return new Response(`Webhook Error: ${message}`, { status: 400 });
   }
 
-  const subscription = event.data.object;
-
   switch (event.type) {
+    case 'checkout.session.completed': {
+      const session = event.data.object;
+      const customerId = session.customer as string;
+      const userEmail = session.customer_details?.email;
+
+      // Safety net: link customer and set plan from the checkout session
+      if (userEmail && customerId) {
+        const subscriptionId = session.subscription as string | null;
+        let planId = 'free';
+
+        if (subscriptionId) {
+          const sub = await stripe.subscriptions.retrieve(subscriptionId);
+          const priceId = sub.items.data[0]?.price?.id;
+          if (priceId) {
+            planId = planIdFromPriceId(priceId);
+          }
+        }
+
+        await prisma.user.updateMany({
+          where: { email: userEmail },
+          data: { stripeCustomerId: customerId, subscriptionPlan: planId },
+        });
+      }
+      break;
+    }
+
     case 'customer.subscription.created':
     case 'customer.subscription.updated': {
+      const subscription = event.data.object;
       const customerId = subscription.customer as string;
-      const plan = subscription.items.data[0].price.nickname || 'free';
+      const priceId = subscription.items.data[0]?.price?.id;
+      const planId = priceId ? planIdFromPriceId(priceId) : 'free';
 
       await prisma.user.updateMany({
         where: { stripeCustomerId: customerId },
-        data: { subscriptionPlan: plan },
+        data: { subscriptionPlan: planId },
       });
       break;
     }
 
     case 'customer.subscription.deleted': {
+      const subscription = event.data.object;
       const customerId = subscription.customer as string;
 
       await prisma.user.updateMany({

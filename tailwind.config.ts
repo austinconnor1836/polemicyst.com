@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import plugin from 'tailwindcss/plugin';
 
 const config: Config = {
   darkMode: 'class',
@@ -17,8 +18,20 @@ const config: Config = {
         'accent-1': '#FAFAFA',
         'accent-2': '#EAEAEA',
         'accent-7': '#333',
-        success: '#0070f3',
         cyan: '#79FFE1',
+        // Design tokens — auto-switch light/dark via CSS custom properties
+        primary: 'rgb(var(--color-primary) / <alpha-value>)',
+        accent: 'rgb(var(--color-accent) / <alpha-value>)',
+        background: 'rgb(var(--color-background) / <alpha-value>)',
+        surface: 'rgb(var(--color-surface) / <alpha-value>)',
+        foreground: 'rgb(var(--color-text) / <alpha-value>)',
+        muted: {
+          DEFAULT: 'rgb(var(--color-text-muted) / <alpha-value>)',
+          foreground: 'rgb(var(--color-text-muted) / <alpha-value>)',
+        },
+        border: 'rgb(var(--color-border) / <alpha-value>)',
+        success: 'rgb(var(--color-success) / <alpha-value>)',
+        destructive: 'rgb(var(--color-destructive) / <alpha-value>)',
       },
       spacing: {
         28: '7rem',
@@ -119,6 +132,21 @@ const config: Config = {
           '30%': { opacity: '0.08' },
           '100%': { opacity: '0', transform: 'translateX(12%)' },
         },
+        'glass-orb-1': {
+          '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+          '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+          '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+        },
+        'glass-orb-2': {
+          '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+          '33%': { transform: 'translate(-40px, 30px) scale(0.95)' },
+          '66%': { transform: 'translate(25px, -35px) scale(1.05)' },
+        },
+        'glass-orb-3': {
+          '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+          '33%': { transform: 'translate(20px, 40px) scale(1.08)' },
+          '66%': { transform: 'translate(-35px, -25px) scale(0.92)' },
+        },
       },
       animation: {
         'dialog-overlay-in': 'dialog-overlay-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both',
@@ -129,9 +157,17 @@ const config: Config = {
         'dialog-content-in': 'dialog-content-in 560ms cubic-bezier(0.16, 1, 0.3, 1) both',
         'dialog-content-out': 'dialog-content-out 240ms cubic-bezier(0.4, 0, 1, 1) both',
         'dialog-shine': 'dialog-shine 700ms cubic-bezier(0.16, 1, 0.3, 1) both',
+        'glass-orb-1': 'glass-orb-1 20s ease-in-out infinite',
+        'glass-orb-2': 'glass-orb-2 25s ease-in-out infinite',
+        'glass-orb-3': 'glass-orb-3 30s ease-in-out infinite',
       },
     },
   },
-  plugins: [require('tailwindcss-animate')],
+  plugins: [
+    require('tailwindcss-animate'),
+    plugin(function ({ addVariant }) {
+      addVariant('glass', '[data-theme="glass"] &');
+    }),
+  ],
 };
 export default config;

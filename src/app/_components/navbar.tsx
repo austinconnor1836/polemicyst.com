@@ -5,6 +5,7 @@ import { useSession, signIn, signOut } from 'next-auth/react';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import WbSunnyIcon from '@mui/icons-material/WbSunny';
 import NightsStayIcon from '@mui/icons-material/NightsStay';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import HamburgerMenu from './hamburger/hamburger';
 import { Button } from '@/components/ui/button';
 
@@ -14,7 +15,7 @@ const Navbar: React.FC = () => {
   const { data: session } = useSession();
   const user = session?.user;
   const [menuOpen, setMenuOpen] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+  const [theme, setTheme] = useState<'light' | 'dark' | 'glass' | 'system'>('system');
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -23,17 +24,27 @@ const Navbar: React.FC = () => {
     return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ?? false;
   };
 
-  const applyTheme = (mode: 'light' | 'dark' | 'system') => {
-    // Tailwind uses the presence of the `dark` class (see tailwind.config.ts darkMode: "class")
-    // so we only ever toggle that one.
-    const isDark = mode === 'dark' || (mode === 'system' && getSystemIsDark());
+  const applyTheme = (mode: 'light' | 'dark' | 'glass' | 'system') => {
+    const isDark = mode === 'dark' || mode === 'glass' || (mode === 'system' && getSystemIsDark());
     document.documentElement.classList.toggle('dark', isDark);
+
+    if (mode === 'glass') {
+      document.documentElement.setAttribute('data-theme', 'glass');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+
     localStorage.setItem(STORAGE_KEY, mode);
   };
 
   // Load theme from localStorage
   useEffect(() => {
-    const savedTheme = localStorage.getItem(STORAGE_KEY) as 'light' | 'dark' | 'system' | null;
+    const savedTheme = localStorage.getItem(STORAGE_KEY) as
+      | 'light'
+      | 'dark'
+      | 'glass'
+      | 'system'
+      | null;
     if (savedTheme) setTheme(savedTheme);
     applyTheme(savedTheme || 'system');
   }, []);
@@ -58,7 +69,7 @@ const Navbar: React.FC = () => {
 
   // Cycle through theme modes
   const toggleTheme = () => {
-    const modes: ('light' | 'dark' | 'system')[] = ['light', 'dark', 'system'];
+    const modes: ('light' | 'dark' | 'glass' | 'system')[] = ['light', 'dark', 'glass', 'system'];
     const nextMode = modes[(modes.indexOf(theme) + 1) % modes.length];
     setTheme(nextMode);
     applyTheme(nextMode);
@@ -80,7 +91,7 @@ const Navbar: React.FC = () => {
   }, [menuOpen]);
 
   return (
-    <nav className="navbar dark:bg-[#121212] dark:text-slate-400 bg-[#F9F9F9] text-[#2E2E2E] fixed top-0 left-0 z-50 w-full shadow-lg">
+    <nav className="navbar bg-background text-foreground fixed top-0 left-0 z-50 w-full shadow-lg glass:bg-transparent glass:shadow-none glass:glass-surface glass:border-b glass:border-white/10">
       <div className="flex justify-between items-center px-4 py-2">
         <HamburgerMenu />
         <div className="flex items-center gap-4 relative">
@@ -108,7 +119,7 @@ const Navbar: React.FC = () => {
           {menuOpen && (
             <div
               ref={menuRef}
-              className="absolute right-0 mt-40 w-48 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow-lg"
+              className="absolute right-0 mt-40 w-48 bg-surface border border-border rounded shadow-lg glass:bg-[rgba(255,255,255,0.08)] glass:border-white/10 glass:backdrop-blur-xl glass:shadow-[var(--glass-shadow)]"
             >
               {user ? (
                 <>
@@ -142,6 +153,8 @@ const Navbar: React.FC = () => {
                   <WbSunnyIcon />
                 ) : theme === 'dark' ? (
                   <NightsStayIcon />
+                ) : theme === 'glass' ? (
+                  <AutoAwesomeIcon />
                 ) : (
                   <Brightness4Icon />
                 )}

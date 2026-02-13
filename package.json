@@ -15,7 +15,8 @@
     "format:check": "prettier --check .",
     "prepare": "husky install",
     "backend": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up",
-    "openapi:generate": "cd android && ./gradlew openApiGenerate"
+    "openapi:generate": "cd android && ./gradlew openApiGenerate",
+    "tokens": "node scripts/generate-tokens.mjs"
   },
   "dependencies": {
     "@atproto/api": "^0.14.7",

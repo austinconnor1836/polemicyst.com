@@ -125,6 +125,7 @@ model Account {
   id_token          String?
   refresh_token     String?
   scope             String?
+  session_state     String?
   token_type        String?
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -52,7 +52,9 @@
 ### ⏳ In Progress
 
 #### GitHub Actions Deployment
+
 The develop branch has been pushed and GitHub Actions is currently:
+
 1. Building Docker images with `:dev` tags
 2. Pushing images to ECR
 3. Deploying to dev ECS services
@@ -92,6 +94,7 @@ npx prisma migrate deploy
 **Option B: Create Database via Node Script in ECS Task**
 
 Create a migration task definition that:
+
 1. Connects to RDS using postgres database
 2. Creates `polemicyst_dev` database
 3. Runs Prisma migrations
@@ -110,6 +113,7 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/polemicyst_dev npx pr
 ```
 
 **Production Database Migrations:**
+
 ```bash
 # Also run on prod database if not already done
 DATABASE_URL=postgresql://postgres:postgres@polemicyst-prod-db.cuxmuuo4s1vd.us-east-1.rds.amazonaws.com:5432/clipsgenie npx prisma migrate deploy
@@ -120,6 +124,7 @@ DATABASE_URL=postgresql://postgres:postgres@polemicyst-prod-db.cuxmuuo4s1vd.us-e
 Once GitHub Actions completes and migrations are run:
 
 **Check Deployment Status:**
+
 ```bash
 # Check ECS services
 aws ecs describe-services --cluster polemicyst-cluster --services polemicyst-dev-web dev-clip-worker dev-redis
@@ -132,6 +137,7 @@ aws elbv2 describe-target-health --target-group-arn arn:aws:elasticloadbalancing
 ```
 
 **Test Dev Environment:**
+
 1. Visit https://dev.polemicyst.com
 2. Verify SSL certificate is valid
 3. Test Google OAuth login
@@ -140,6 +146,7 @@ aws elbv2 describe-target-health --target-group-arn arn:aws:elasticloadbalancing
 6. Check that dev and prod data are isolated
 
 **Monitor Logs:**
+
 ```bash
 # Dev web logs
 aws logs tail /ecs/polemicyst-dev-web --follow
@@ -156,6 +163,7 @@ aws logs tail /ecs/dev-redis --follow
 After infrastructure changes, verify prod is still working:
 
 **Check Production:**
+
 ```bash
 # Check prod services
 aws ecs describe-services --cluster polemicyst-cluster --services polemicyst-prod-web prod-clip-worker
@@ -165,6 +173,7 @@ aws elbv2 describe-target-health --target-group-arn arn:aws:elasticloadbalancing
 ```
 
 **Test Production:**
+
 1. Visit https://polemicyst.com
 2. Verify no regressions
 3. Test authentication
@@ -181,6 +190,7 @@ aws elbv2 describe-target-health --target-group-arn arn:aws:elasticloadbalancing
 ## Environment Configuration Summary
 
 ### Production Environment
+
 - **Branch**: `main`
 - **Domain**: `polemicyst.com`
 - **Database**: `clipsgenie` (in shared RDS)
@@ -195,6 +205,7 @@ aws elbv2 describe-target-health --target-group-arn arn:aws:elasticloadbalancing
   - `prod-comedic-scorer` (desired: 0)
 
 ### Development Environment
+
 - **Branch**: `develop`
 - **Domain**: `dev.polemicyst.com`
 - **Database**: `polemicyst_dev` (in shared RDS) - **NEEDS TO BE CREATED**
@@ -211,6 +222,7 @@ aws elbv2 describe-target-health --target-group-arn arn:aws:elasticloadbalancing
 ## Cost Summary
 
 ### Current Monthly Costs (~$178/month)
+
 - **Shared Infrastructure**: ~$109/month
   - VPC with 2 NAT Gateways: ~$65/month
   - RDS db.t3.small: ~$28/month
@@ -219,7 +231,9 @@ aws elbv2 describe-target-health --target-group-arn arn:aws:elasticloadbalancing
 - **Development Services**: ~$16/month
 
 ### Cost Optimization Tips
+
 1. **Scale dev to zero when not in use**:
+
    ```bash
    aws ecs update-service --cluster polemicyst-cluster --service polemicyst-dev-web --desired-count 0
    aws ecs update-service --cluster polemicyst-cluster --service dev-redis --desired-count 0
@@ -237,6 +251,7 @@ aws elbv2 describe-target-health --target-group-arn arn:aws:elasticloadbalancing
 ## Deployment Workflow
 
 ### Making Changes
+
 ```bash
 # For dev deployment
 git checkout develop
@@ -251,6 +266,7 @@ git push origin main  # Triggers prod deployment
 ```
 
 ### Manual Service Updates
+
 ```bash
 # Update web service
 aws ecs update-service --cluster polemicyst-cluster --service polemicyst-prod-web --force-new-deployment
@@ -274,29 +290,34 @@ aws ecs update-service --cluster polemicyst-cluster --service dev-clip-worker --
 ## Quick Reference Commands
 
 ### View Infrastructure Outputs
+
 ```bash
 cd infrastructure
 terraform output
 ```
 
 ### Check Service Status
+
 ```bash
 aws ecs describe-services --cluster polemicyst-cluster --services polemicyst-prod-web polemicyst-dev-web
 ```
 
 ### View Recent Logs
+
 ```bash
 aws logs tail /ecs/polemicyst-prod-web --since 1h
 aws logs tail /ecs/polemicyst-dev-web --since 1h
 ```
 
 ### Check Database Connections
+
 ```bash
 # From within VPC (ECS Exec)
 psql -h polemicyst-prod-db.cuxmuuo4s1vd.us-east-1.rds.amazonaws.com -U postgres -l
 ```
 
 ### View ECR Images
+
 ```bash
 aws ecr describe-images --repository-name polemicyst-web
 aws ecr describe-images --repository-name polemicyst-clip-worker
@@ -305,24 +326,28 @@ aws ecr describe-images --repository-name polemicyst-clip-worker
 ## Troubleshooting
 
 ### Services Failing to Start
+
 1. Check CloudWatch logs for errors
 2. Verify environment variables in task definition
 3. Check security group rules
 4. Ensure database migrations have been run
 
 ### Database Connection Errors
+
 1. Verify DATABASE_URL is correct in task definition
 2. Check RDS security group allows ECS security group
 3. Ensure database exists (especially `polemicyst_dev`)
 4. Verify RDS is in available state
 
 ### S3 Upload/Access Issues
+
 1. Check S3_BUCKET and S3_PREFIX environment variables
 2. Verify ECS task role has S3 permissions
 3. Ensure `getS3Key()` utility is used consistently
 4. Check CloudWatch logs for S3 error messages
 
 ### DNS/SSL Issues
+
 1. Verify DNS has propagated: `nslookup dev.polemicyst.com`
 2. Check ACM certificate status in AWS Console
 3. Verify Route53 records are correct

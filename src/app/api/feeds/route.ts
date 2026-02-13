@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../auth'; // adjust path if needed
-import { queueVideoDownloadJob } from '@shared/queues';
+import { checkFeedQuota } from '@/lib/plans';
 
 function detectSourceType(sourceUrlRaw: string): 'youtube' | 'cspan' {
   const trimmed = (sourceUrlRaw || '').trim();
@@ -52,6 +52,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
+  // Check feed quota before proceeding
+  const quota = await checkFeedQuota(user.id, user.subscriptionPlan);
+  if (!quota.allowed) {
+    return NextResponse.json(
+      {
+        error: quota.message,
+        code: 'QUOTA_EXCEEDED',
+        limit: quota.limit,
+        usage: quota.currentUsage,
+      },
+      { status: 403 }
+    );
+  }
+
   const data = await req.json();
   const { name, sourceUrl, pollingInterval, autoGenerateClips, viralitySettings } = data;
 
@@ -92,16 +106,56 @@ export async function POST(req: Request) {
     },
   });
 
-  // Enqueue a video download job with just the feed info
-  // await queueVideoDownloadJob({
-  //   feedId: newFeed.id,
-  //   sourceUrl: newFeed.sourceUrl,
-  //   userId: newFeed.userId,
-  //   sourceType: newFeed.sourceType,
-  //   // Add any other fields your worker expects
-  // });
+  // Pull the latest video from the source and queue a download job
+  try {
+    let newVideo: { id: string; title: string; url: string; thumbnailUrl?: string | null } | null =
+      null;
 
-  await queueVideoDownloadJob(newFeed);
+    if (sourceType === 'youtube') {
+      const { pollYouTubeFeed } = await import('@shared/util/youtube');
+      newVideo = await pollYouTubeFeed(newFeed);
+    } else if (sourceType === 'cspan') {
+      const { pollCspanFeed } = await import('@shared/util/cspan');
+      newVideo = await pollCspanFeed(newFeed);
+    }
+
+    if (newVideo) {
+      const thumbnailUrl =
+        newVideo.thumbnailUrl ??
+        (sourceType === 'youtube'
+          ? `https://img.youtube.com/vi/${newVideo.id}/maxresdefault.jpg`
+          : null);
+
+      const feedVideo = await prisma.feedVideo.create({
+        data: {
+          feedId: newFeed.id,
+          videoId: newVideo.id,
+          title: newVideo.title,
+          thumbnailUrl,
+          s3Url: '',
+          status: 'pending',
+          userId: user.id,
+        },
+      });
+
+      await prisma.videoFeed.update({
+        where: { id: newFeed.id },
+        data: { lastVideoId: newVideo.id },
+      });
+
+      const { queueFeedDownloadJob } = await import('@shared/queues');
+      await queueFeedDownloadJob({
+        feedVideoId: feedVideo.id,
+        url: newVideo.url,
+        title: newVideo.title,
+        feedId: newFeed.id,
+        userId: user.id,
+      });
+    }
+  } catch (err) {
+    // Non-blocking: feed is created even if initial pull fails
+    console.error('Initial video pull failed (non-blocking):', err);
+  }
 
   return NextResponse.json(newFeed);
 }

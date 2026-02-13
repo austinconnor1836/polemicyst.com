@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
         picture: user.image,
         id: user.id,
       },
-      secret: process.env.NEXTAUTH_SECRET!,
+      secret: process.env.AUTH_SECRET!,
     });
 
     return NextResponse.json({

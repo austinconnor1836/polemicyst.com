@@ -12,14 +12,15 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          'bg-black text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90',
+          'bg-primary text-surface hover:bg-primary/90 glass:!bg-white/[0.15] glass:!text-white glass:hover:!bg-white/25 glass:backdrop-blur-md glass:!border glass:!border-white/[0.12]',
         secondary:
-          'bg-gray-100 text-gray-900 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-50 dark:hover:bg-zinc-700',
+          'bg-gray-100 text-gray-900 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-50 dark:hover:bg-zinc-700 glass:!bg-white/[0.08] glass:!text-zinc-200 glass:hover:!bg-white/[0.16] glass:!border glass:!border-white/[0.1]',
         outline:
-          'border border-gray-200 bg-transparent hover:bg-gray-100 dark:border-zinc-700 dark:hover:bg-zinc-800',
-        ghost: 'hover:bg-gray-100 dark:hover:bg-zinc-800',
-        link: 'px-0 underline-offset-4 hover:underline text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300',
-        destructive: 'bg-red-600 text-white hover:bg-red-700',
+          'border border-border bg-transparent hover:bg-gray-100 dark:hover:bg-zinc-800 glass:!border-white/[0.15] glass:hover:!bg-white/[0.1]',
+        ghost: 'hover:bg-gray-100 dark:hover:bg-zinc-800 glass:hover:!bg-white/[0.1]',
+        link: 'px-0 underline-offset-4 hover:underline text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 glass:!text-blue-300 glass:hover:!text-blue-200',
+        destructive:
+          'bg-destructive text-white hover:bg-destructive/90 glass:!bg-red-500/40 glass:hover:!bg-red-500/60 glass:!border glass:!border-red-400/20',
       },
       size: {
         default: 'h-10 px-4 py-2',
