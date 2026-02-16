@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -19,7 +20,7 @@ interface SubscriptionData {
   hasStripeCustomer: boolean;
 }
 
-export default function BillingPage() {
+function BillingContent() {
   const { status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -111,5 +112,19 @@ export default function BillingPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function BillingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center glass:bg-transparent">
+          <p className="text-muted">Loading...</p>
+        </div>
+      }
+    >
+      <BillingContent />
+    </Suspense>
   );
 }

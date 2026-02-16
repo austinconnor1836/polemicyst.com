@@ -33,7 +33,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(viralitySettings !== undefined && { viralitySettings }),
       ...(typeof name === 'string' && name.trim() && { name: name.trim() }),
       ...(typeof pollingInterval === 'number' &&
-        Number.isFinite(pollingInterval) && { pollingInterval: Math.max(1, Math.floor(pollingInterval)) }),
+        Number.isFinite(pollingInterval) && {
+          pollingInterval: Math.max(1, Math.floor(pollingInterval)),
+        }),
     },
   });
 
