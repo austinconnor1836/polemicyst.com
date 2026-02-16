@@ -94,9 +94,7 @@ export async function transcribeFeedVideoWithSpeakers(
     process.stderr.write(msg);
   });
 
-  const exitCode: number = await new Promise((resolve) =>
-    pythonProcess.on('close', resolve)
-  );
+  const exitCode: number = await new Promise((resolve) => pythonProcess.on('close', resolve));
 
   if (exitCode !== 0) {
     console.error('Python stderr:', error);

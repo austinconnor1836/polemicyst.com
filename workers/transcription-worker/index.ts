@@ -64,9 +64,21 @@ new Worker(
           maxCandidates: 20,
           maxGeminiCandidates: 24,
           ...(strictnessPreset === 'strict'
-            ? { minScore: 7.0, percentile: 0.9, minCandidates: 3, maxCandidates: 12, maxGeminiCandidates: 18 }
+            ? {
+                minScore: 7.0,
+                percentile: 0.9,
+                minCandidates: 3,
+                maxCandidates: 12,
+                maxGeminiCandidates: 18,
+              }
             : strictnessPreset === 'loose'
-              ? { minScore: 6.0, percentile: 0.75, minCandidates: 5, maxCandidates: 24, maxGeminiCandidates: 36 }
+              ? {
+                  minScore: 6.0,
+                  percentile: 0.75,
+                  minCandidates: 5,
+                  maxCandidates: 24,
+                  maxGeminiCandidates: 36,
+                }
               : {}),
         };
 

@@ -29,15 +29,43 @@ interface SpeakerTranscriptProps {
 }
 
 const SPEAKER_STYLES: Record<string, { bg: string; text: string; badge: string }> = {
-  'Speaker 1': { bg: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-800 dark:text-blue-200', badge: 'bg-blue-600' },
-  'Speaker 2': { bg: 'bg-green-50 dark:bg-green-950/30', text: 'text-green-800 dark:text-green-200', badge: 'bg-green-600' },
-  'Speaker 3': { bg: 'bg-purple-50 dark:bg-purple-950/30', text: 'text-purple-800 dark:text-purple-200', badge: 'bg-purple-600' },
-  'Speaker 4': { bg: 'bg-orange-50 dark:bg-orange-950/30', text: 'text-orange-800 dark:text-orange-200', badge: 'bg-orange-600' },
-  'Speaker 5': { bg: 'bg-pink-50 dark:bg-pink-950/30', text: 'text-pink-800 dark:text-pink-200', badge: 'bg-pink-600' },
-  'Speaker 6': { bg: 'bg-teal-50 dark:bg-teal-950/30', text: 'text-teal-800 dark:text-teal-200', badge: 'bg-teal-600' },
+  'Speaker 1': {
+    bg: 'bg-blue-50 dark:bg-blue-950/30',
+    text: 'text-blue-800 dark:text-blue-200',
+    badge: 'bg-blue-600',
+  },
+  'Speaker 2': {
+    bg: 'bg-green-50 dark:bg-green-950/30',
+    text: 'text-green-800 dark:text-green-200',
+    badge: 'bg-green-600',
+  },
+  'Speaker 3': {
+    bg: 'bg-purple-50 dark:bg-purple-950/30',
+    text: 'text-purple-800 dark:text-purple-200',
+    badge: 'bg-purple-600',
+  },
+  'Speaker 4': {
+    bg: 'bg-orange-50 dark:bg-orange-950/30',
+    text: 'text-orange-800 dark:text-orange-200',
+    badge: 'bg-orange-600',
+  },
+  'Speaker 5': {
+    bg: 'bg-pink-50 dark:bg-pink-950/30',
+    text: 'text-pink-800 dark:text-pink-200',
+    badge: 'bg-pink-600',
+  },
+  'Speaker 6': {
+    bg: 'bg-teal-50 dark:bg-teal-950/30',
+    text: 'text-teal-800 dark:text-teal-200',
+    badge: 'bg-teal-600',
+  },
 };
 
-const DEFAULT_STYLE = { bg: 'bg-gray-50 dark:bg-gray-900/30', text: 'text-gray-800 dark:text-gray-200', badge: 'bg-gray-600' };
+const DEFAULT_STYLE = {
+  bg: 'bg-gray-50 dark:bg-gray-900/30',
+  text: 'text-gray-800 dark:text-gray-200',
+  badge: 'bg-gray-600',
+};
 
 function formatTimestamp(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -146,9 +174,7 @@ export default function SpeakerTranscript({
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Speaker-Identified Transcript</CardTitle>
-          <CardDescription>
-            Generate a transcript that identifies who is speaking.
-          </CardDescription>
+          <CardDescription>Generate a transcript that identifies who is speaking.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-3">
@@ -159,9 +185,7 @@ export default function SpeakerTranscript({
                 min={1}
                 max={20}
                 value={numSpeakers}
-                onChange={(e) =>
-                  setNumSpeakers(e.target.value ? parseInt(e.target.value) : '')
-                }
+                onChange={(e) => setNumSpeakers(e.target.value ? parseInt(e.target.value) : '')}
                 placeholder="Auto"
                 className="w-24"
               />
@@ -214,10 +238,7 @@ export default function SpeakerTranscript({
             {data.speakers.map((speaker) => {
               const style = SPEAKER_STYLES[speaker] || DEFAULT_STYLE;
               return (
-                <Badge
-                  key={speaker}
-                  className={cn('text-white', style.badge)}
-                >
+                <Badge key={speaker} className={cn('text-white', style.badge)}>
                   {speaker}
                 </Badge>
               );
@@ -230,10 +251,7 @@ export default function SpeakerTranscript({
           {grouped.map((group, idx) => {
             const style = SPEAKER_STYLES[group.speaker] || DEFAULT_STYLE;
             return (
-              <div
-                key={idx}
-                className={cn('rounded-md border p-3', style.bg)}
-              >
+              <div key={idx} className={cn('rounded-md border p-3', style.bg)}>
                 <div className="flex items-center justify-between mb-1">
                   <span className={cn('text-xs font-bold uppercase tracking-wide', style.text)}>
                     {group.speaker}
@@ -253,21 +271,11 @@ export default function SpeakerTranscript({
         </div>
 
         <div className="flex items-center justify-between pt-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setData(null)}
-            className="text-xs"
-          >
+          <Button variant="ghost" size="sm" onClick={() => setData(null)} className="text-xs">
             <RefreshCw className="mr-1 h-3 w-3" />
             Re-generate
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={copyToClipboard}
-            className="text-xs"
-          >
+          <Button variant="ghost" size="sm" onClick={copyToClipboard} className="text-xs">
             {copied ? (
               <>
                 <Check className="mr-1 h-3 w-3" />

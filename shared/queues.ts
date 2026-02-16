@@ -69,7 +69,9 @@ export function queueFeedDownloadJob(data: FeedDownloadJob) {
 
 export function getSpeakerTranscriptionQueue() {
   if (speakerTranscriptionQueue) return speakerTranscriptionQueue;
-  speakerTranscriptionQueue = new Queue('speaker-transcription', { connection: getRedisConnection() as any });
+  speakerTranscriptionQueue = new Queue('speaker-transcription', {
+    connection: getRedisConnection() as any,
+  });
   return speakerTranscriptionQueue;
 }
 
