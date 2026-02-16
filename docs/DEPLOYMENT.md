@@ -11,6 +11,7 @@ All Terraform configuration lives in `infrastructure/`.
 The infrastructure supports both **production** and **development** environments using a cost-effective shared infrastructure approach:
 
 **Shared Infrastructure** (between prod and dev):
+
 - VPC, NAT Gateways, Internet Gateway
 - Single RDS instance (with separate databases)
 - Single S3 bucket (with environment prefixes: `prod/`, `dev/`)
@@ -18,6 +19,7 @@ The infrastructure supports both **production** and **development** environments
 - Single ECS cluster
 
 **Separate Per Environment**:
+
 - ECS services and task definitions
 - ALB target groups and listener rules
 - Database schemas within RDS
@@ -125,6 +127,7 @@ terraform apply
 ```
 
 Useful outputs:
+
 - `route53_name_servers` (for DNS configuration)
 - `alb_dns_name` (ALB endpoint)
 - `rds_endpoint` (database endpoint)
@@ -156,6 +159,7 @@ Add these GitHub Actions secrets in your repository settings:
 - `AWS_SECRET_ACCESS_KEY`
 
 The workflow in `.github/workflows/deploy.yml` automatically:
+
 1. Detects branch (main = prod, develop = dev)
 2. Builds Docker images with environment-specific tags (`:prod`, `:dev`)
 3. Pushes to ECR
@@ -180,16 +184,19 @@ GRANT ALL PRIVILEGES ON DATABASE polemicyst_dev TO postgres;
 ### Run Migrations
 
 For **production** database:
+
 ```bash
 DATABASE_URL=postgresql://postgres:PASSWORD@RDS_ENDPOINT:5432/clipsgenie npx prisma migrate deploy
 ```
 
 For **development** database:
+
 ```bash
 DATABASE_URL=postgresql://postgres:PASSWORD@RDS_ENDPOINT:5432/polemicyst_dev npx prisma migrate deploy
 ```
 
 **Note**: RDS is in a private subnet. Run migrations either:
+
 - From a bastion host in the VPC
 - Via ECS Exec into a running web container
 - Using a one-off ECS task
@@ -215,12 +222,14 @@ npx prisma migrate deploy
 ## 6) Verify Deployments
 
 ### Production Environment
+
 - Open `https://polemicyst.com` once DNS + ACM validation are complete
 - Verify ECS services are healthy: `polemicyst-prod-web`, `prod-clip-worker`, etc.
 - Test Google OAuth login
 - Upload a test video and verify it's stored under `prod/` prefix in S3
 
 ### Development Environment
+
 - Open `https://dev.polemicyst.com`
 - Verify SSL certificate is valid for subdomain
 - Test authentication flow
@@ -245,38 +254,43 @@ aws logs tail /ecs/polemicyst-dev-web --follow
 
 Each environment has its own configuration injected via ECS task definitions:
 
-| Variable | Production | Development |
-|----------|-----------|-------------|
-| `ENVIRONMENT` | `prod` | `dev` |
-| `DATABASE_URL` | Points to `clipsgenie` | Points to `polemicyst_dev` |
-| `NEXTAUTH_URL` | `https://polemicyst.com` | `https://dev.polemicyst.com` |
-| `S3_PREFIX` | `prod` | `dev` |
-| `REDIS_HOST` | `redis-prod.polemicyst.local` | `redis-dev.polemicyst.local` |
-| `NODE_ENV` | `production` | `development` |
-| CPU/Memory | 512/1024 | 256/512 |
+| Variable       | Production                    | Development                  |
+| -------------- | ----------------------------- | ---------------------------- |
+| `ENVIRONMENT`  | `prod`                        | `dev`                        |
+| `DATABASE_URL` | Points to `clipsgenie`        | Points to `polemicyst_dev`   |
+| `NEXTAUTH_URL` | `https://polemicyst.com`      | `https://dev.polemicyst.com` |
+| `S3_PREFIX`    | `prod`                        | `dev`                        |
+| `REDIS_HOST`   | `redis-prod.polemicyst.local` | `redis-dev.polemicyst.local` |
+| `NODE_ENV`     | `production`                  | `development`                |
+| CPU/Memory     | 512/1024                      | 256/512                      |
 
 ## Deployment Workflow
 
 ### Deploying to Development
+
 ```bash
 git checkout develop
 git add .
 git commit -m "Your changes"
 git push origin develop
 ```
+
 GitHub Actions automatically builds and deploys to dev environment.
 
 ### Deploying to Production
+
 ```bash
 git checkout main
 git merge develop
 git push origin main
 ```
+
 GitHub Actions automatically builds and deploys to prod environment.
 
 ## Cost Optimization
 
 ### Current Monthly Costs (~$178/month)
+
 - VPC with NAT Gateways: ~$65/month
 - RDS db.t3.small: ~$28/month
 - ALB: ~$16/month
@@ -284,7 +298,9 @@ GitHub Actions automatically builds and deploys to prod environment.
 - ECS dev services: ~$16/month
 
 ### Tips to Reduce Dev Costs
+
 1. **Scale dev to zero when not in use**:
+
    ```bash
    aws ecs update-service --cluster polemicyst-cluster --service polemicyst-dev-web --desired-count 0
    aws ecs update-service --cluster polemicyst-cluster --service dev-clip-worker --desired-count 0
@@ -304,21 +320,25 @@ GitHub Actions automatically builds and deploys to prod environment.
 ## Troubleshooting
 
 ### Services Not Starting
+
 - Check ECS task logs in CloudWatch
 - Verify environment variables are set correctly
 - Ensure security groups allow traffic between ALB and ECS tasks
 
 ### Database Connection Issues
+
 - Verify RDS security group allows connections from ECS security group
 - Check DATABASE_URL format: `postgresql://USER:PASS@HOST:5432/DBNAME`
 - Ensure database exists and migrations have been run
 
 ### S3 Access Issues
+
 - Verify ECS task role has S3 permissions
 - Check S3_BUCKET and S3_PREFIX environment variables
 - Ensure getS3Key() utility is used for all S3 operations
 
 ### SSL Certificate Issues
+
 - ACM validation can take 20-30 minutes
 - Verify DNS CNAME records for validation are present in Route53
 - Check certificate status in ACM console
@@ -342,6 +362,7 @@ When returning to this project:
 If a deployment causes issues:
 
 1. **Quick rollback** via ECS:
+
    ```bash
    # Revert to previous task definition
    aws ecs update-service --cluster polemicyst-cluster \
@@ -350,6 +371,7 @@ If a deployment causes issues:
    ```
 
 2. **Git revert and redeploy**:
+
    ```bash
    git revert HEAD
    git push origin main

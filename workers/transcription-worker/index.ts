@@ -1,7 +1,11 @@
-import { Worker } from 'bullmq';
+import { Worker, Queue } from 'bullmq';
 import { prisma } from '@shared/lib/prisma';
 import { transcriptionQueue } from '@shared/queues';
 import { transcribeFeedVideo } from './transcription';
+
+const clipGenerationQueue = new Queue('clip-generation', {
+  connection: transcriptionQueue.opts.connection as any,
+});
 
 new Worker(
   'transcription',
@@ -43,6 +47,46 @@ new Worker(
       console.log('🔍 Checking for existing transcript...');
       await transcribeFeedVideo(resolvedFeedVideoId);
       console.log('🎤 Transcription complete.');
+
+      // Auto-trigger clip generation if the feed has autoGenerateClips enabled
+      const feedVideo = await prisma.feedVideo.findUnique({
+        where: { id: resolvedFeedVideoId },
+        include: { feed: true },
+      });
+      if (feedVideo?.feed?.autoGenerateClips && feedVideo.feed.viralitySettings) {
+        const settings = feedVideo.feed.viralitySettings as Record<string, any>;
+        const strictnessPreset = settings.strictnessPreset || 'balanced';
+        const strictnessConfig = {
+          minScore: 6.5,
+          percentile: 0.85,
+          minCandidates: 3,
+          maxCandidates: 20,
+          maxGeminiCandidates: 24,
+          ...(strictnessPreset === 'strict'
+            ? { minScore: 7.0, percentile: 0.9, minCandidates: 3, maxCandidates: 12, maxGeminiCandidates: 18 }
+            : strictnessPreset === 'loose'
+              ? { minScore: 6.0, percentile: 0.75, minCandidates: 5, maxCandidates: 24, maxGeminiCandidates: 36 }
+              : {}),
+        };
+
+        await clipGenerationQueue.add(
+          'clip-generation',
+          {
+            feedVideoId: resolvedFeedVideoId,
+            userId: feedVideo.feed.userId,
+            aspectRatio: '9:16',
+            scoringMode: settings.scoringMode || 'hybrid',
+            includeAudio: settings.includeAudio || false,
+            saferClips: settings.saferClips ?? true,
+            targetPlatform: settings.targetPlatform || 'reels',
+            contentStyle: settings.contentStyle || 'auto',
+            llmProvider: settings.llmProvider,
+            ...strictnessConfig,
+          },
+          { jobId: resolvedFeedVideoId, removeOnComplete: true, removeOnFail: true }
+        );
+        console.log(`transcription: auto enqueued clip-generation for ${resolvedFeedVideoId}`);
+      }
     } catch (transcriptionError: any) {
       if (
         resolvedFeedVideoId &&

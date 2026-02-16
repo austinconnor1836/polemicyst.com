@@ -4,6 +4,7 @@ import Redis from 'ioredis';
 
 let redis: Redis | null = null;
 let videoDownloadQueue: Queue | null = null;
+let feedDownloadQueue: Queue | null = null;
 let transcriptionQueue: Queue | null = null;
 
 function getRedisConnection() {
@@ -38,6 +39,28 @@ export interface DownloadJob {
 
 export function queueVideoDownloadJob(data: DownloadJob) {
   return getVideoDownloadQueue().add('download', data, {
+    removeOnComplete: true,
+    removeOnFail: true,
+  });
+}
+
+/** Job shape expected by workers/poller-worker/downloadWorker.ts (queue: feed-download) */
+export interface FeedDownloadJob {
+  feedVideoId: string;
+  url: string;
+  title?: string;
+  feedId?: string;
+  userId?: string;
+}
+
+export function getFeedDownloadQueue() {
+  if (feedDownloadQueue) return feedDownloadQueue;
+  feedDownloadQueue = new Queue('feed-download', { connection: getRedisConnection() as any });
+  return feedDownloadQueue;
+}
+
+export function queueFeedDownloadJob(data: FeedDownloadJob) {
+  return getFeedDownloadQueue().add('download', data, {
     removeOnComplete: true,
     removeOnFail: true,
   });

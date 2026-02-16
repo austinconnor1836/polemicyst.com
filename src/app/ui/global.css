@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+@import './tokens.css';
+
 .line {
   fill: none;
   /* stroke: black; */
@@ -14,13 +16,8 @@
 
 :root {
   --navbar-height: 3.3rem; /* Adjust this value to match the actual height of your navbar */
-  --bg-color: #f9f9f9;
-  --text-color: #2e2e2e;
-}
-
-[data-mode='dark'] {
-  --bg-color: #292c35;
-  --text-color: #e0e0e0;
+  --bg-color: rgb(var(--color-background));
+  --text-color: rgb(var(--color-text));
 }
 
 .bg-theme {
@@ -29,4 +26,107 @@
   transition:
     background-color 0.3s ease,
     color 0.3s ease;
+}
+
+/* ── Liquid Glass Theme ── */
+
+[data-theme='glass'] {
+  /* Override design tokens so token-based classes (bg-surface, etc.) look glass-appropriate */
+  --color-background: 8 8 20;
+  --color-surface: 18 18 35;
+  --color-text: 235 235 245;
+  --color-text-muted: 160 160 190;
+  --color-border: 80 80 120;
+  --color-primary: 180 170 255;
+  --color-accent: 255 120 150;
+  --color-success: 70 165 255;
+  --color-destructive: 255 100 100;
+
+  /* Glass-specific variables */
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-bg-elevated: rgba(255, 255, 255, 0.08);
+  --glass-bg-hover: rgba(255, 255, 255, 0.12);
+  --glass-bg-input: rgba(255, 255, 255, 0.06);
+
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-border-prominent: rgba(255, 255, 255, 0.18);
+
+  --glass-blur: 16px;
+  --glass-blur-lg: 24px;
+  --glass-saturate: 1.8;
+
+  --glass-spectral: linear-gradient(
+    135deg,
+    rgba(255, 0, 128, 0.4),
+    rgba(255, 165, 0, 0.35),
+    rgba(255, 255, 0, 0.3),
+    rgba(0, 255, 128, 0.35),
+    rgba(0, 128, 255, 0.4),
+    rgba(128, 0, 255, 0.35),
+    rgba(255, 0, 128, 0.4)
+  );
+
+  --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  --glass-shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+}
+
+[data-theme='glass'] body {
+  background: linear-gradient(145deg, #050510 0%, #0a0a1a 40%, #0d0d20 100%) !important;
+  color: #e0e0e0;
+}
+
+.glass-surface {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-surface-elevated {
+  background: var(--glass-bg-elevated);
+  backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border-prominent);
+  box-shadow: var(--glass-shadow-lg);
+}
+
+.glass-spectral-edge {
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-spectral-edge::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--glass-spectral);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* Fallback for browsers without backdrop-filter */
+@supports not (backdrop-filter: blur(1px)) {
+  [data-theme='glass'] .glass-surface,
+  [data-theme='glass'] .glass-surface-elevated {
+    background: rgba(15, 15, 30, 0.95);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme='glass'] .animate-glass-orb-1,
+  [data-theme='glass'] .animate-glass-orb-2,
+  [data-theme='glass'] .animate-glass-orb-3 {
+    animation: none !important;
+  }
 }

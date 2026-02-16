@@ -26,5 +26,7 @@ export const middleware = withAuth({
 });
 
 export const config = {
-  matcher: ['/((?!api/auth|auth/signin|_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    '/((?!api/auth|api/webhooks|auth/signin|pricing|_next/static|_next/image|favicon.ico).*)',
+  ],
 };

@@ -33,12 +33,12 @@ const surfaceTokens = [
   {
     label: 'Background',
     description: 'Page canvas / neutral surface',
-    className: 'bg-[#F9F9F9] text-[#2E2E2E] dark:bg-[#121212] dark:text-[#E0E0E0]',
+    className: 'bg-background text-foreground',
   },
   {
     label: 'Card',
     description: 'Raised containers',
-    className: 'bg-white text-slate-900 dark:bg-zinc-950 dark:text-zinc-50',
+    className: 'bg-surface text-foreground',
   },
   {
     label: 'Muted',
@@ -48,8 +48,7 @@ const surfaceTokens = [
   {
     label: 'Border',
     description: 'Hairlines + outlines',
-    className:
-      'border border-gray-200 bg-white text-gray-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100',
+    className: 'border border-border bg-surface text-foreground',
   },
 ];
 
@@ -226,10 +225,7 @@ export default function DesignSystemPage() {
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-3">
             {['Clips queued', 'Segments scored', 'Manual uploads'].map((metric) => (
-              <div
-                key={metric}
-                className="rounded-lg border border-gray-200 p-4 dark:border-zinc-800"
-              >
+              <div key={metric} className="rounded-lg border border-border p-4">
                 <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">{metric}</p>
                 <p className="mt-2 text-3xl font-semibold">24</p>
               </div>

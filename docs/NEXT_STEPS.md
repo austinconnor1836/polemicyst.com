@@ -16,6 +16,7 @@
 The RDS database is in private subnets and needs migrations run from within the VPC.
 
 **Option A: Via AWS Console** (Easiest)
+
 1. Go to AWS Console → ECS → Clusters → polemicyst-cluster
 2. Click "Tasks" tab → "Run new task"
 3. Configure:
@@ -70,6 +71,7 @@ docker run --rm `
 After migrations complete:
 
 #### Check ECS Services
+
 ```bash
 # Via AWS Console: ECS → Clusters → polemicyst-cluster → Services
 # Or via CLI:
@@ -77,11 +79,13 @@ aws ecs describe-services --cluster polemicyst-cluster --services polemicyst-web
 ```
 
 Look for:
+
 - **Running count** matches **Desired count**
 - **Health status**: HEALTHY
 - **Latest deployment** is active
 
 #### Check ALB Target Health
+
 ```bash
 # Via AWS Console: EC2 → Target Groups → polemicyst-web-tg
 # Or via CLI (need target group ARN):
@@ -91,9 +95,11 @@ aws elbv2 describe-target-health --target-group-arn <arn>
 #### Test the Website
 
 1. **Wait for DNS propagation** (can take up to 48 hours, but usually faster)
+
    ```bash
    nslookup polemicyst.com
    ```
+
    Should resolve to ALB IP addresses
 
 2. **Visit https://polemicyst.com**
@@ -112,6 +118,7 @@ aws elbv2 describe-target-health --target-group-arn <arn>
 ### 3. Monitor Workers
 
 Worker logs:
+
 ```bash
 aws logs tail /ecs/polemicyst-clip-worker --follow
 aws logs tail /ecs/polemicyst-provocativeness --follow  # If scaled up
@@ -121,24 +128,28 @@ aws logs tail /ecs/polemicyst-comedic --follow  # If scaled up
 ## Troubleshooting
 
 ### Site Not Loading
+
 1. Check ALB listener rules and target group health
 2. Verify ECS tasks are running and healthy
 3. Check CloudWatch logs for errors
 4. Verify security groups allow traffic (ALB → ECS tasks → RDS)
 
 ### Database Connection Errors
+
 1. Verify DATABASE_URL in task definition is correct
 2. Check RDS security group allows traffic from ECS security group
 3. Verify RDS is in same VPC as ECS tasks
 4. Check RDS is running (not stopped for cost savings)
 
 ### S3 Upload/Access Errors
+
 1. Check S3_BUCKET and S3_REGION env vars are set correctly in task definitions
 2. Verify ECS task IAM role has S3 permissions
 3. Check bucket policy allows ECS task role
 4. Old database rows may still reference us-east-2 bucket
 
 ### Workers Not Processing
+
 1. Check Redis service is running: `aws ecs describe-services --cluster polemicyst-cluster --services redis`
 2. Verify worker environment variables match API settings
 3. Check worker logs for connection errors
@@ -147,6 +158,7 @@ aws logs tail /ecs/polemicyst-comedic --follow  # If scaled up
 ## Cost Optimization Tips
 
 1. **LLM Workers**: Keep scaled to 0 when not in use
+
    ```bash
    aws ecs update-service --cluster polemicyst-cluster --service provocativeness-scorer --desired-count 0
    aws ecs update-service --cluster polemicyst-cluster --service comedic-scorer --desired-count 0
@@ -170,6 +182,7 @@ aws logs tail /ecs/polemicyst-comedic --follow  # If scaled up
 ## Quick Reference
 
 **Terraform commands:**
+
 ```bash
 cd infrastructure
 C:\Users\ac130\bin\terraform.exe plan
@@ -178,6 +191,7 @@ C:\Users\ac130\bin\terraform.exe output
 ```
 
 **Useful AWS Resources:**
+
 - VPC ID: `vpc-0f3795c3b533fe1aa`
 - RDS Endpoint: `polemicyst-prod-db.cuxmuuo4s1vd.us-east-1.rds.amazonaws.com`
 - ALB DNS: `polemicyst-alb-479641305.us-east-1.elb.amazonaws.com`
@@ -188,6 +202,7 @@ C:\Users\ac130\bin\terraform.exe output
   - `746669200861.dkr.ecr.us-east-1.amazonaws.com/polemicyst-llm-worker`
 
 **GitHub Actions:**
+
 - Repository secrets needed: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
 - Triggers on push to `main` or `develop` branches
 - Builds and pushes Docker images, then forces ECS deployments

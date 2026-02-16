@@ -9,9 +9,6 @@ import { redisConnection } from './queues/redisConnection';
 import { prisma } from '@shared/lib/prisma';
 import { downloadAndUploadToS3 } from '@shared/util/downloadAndUploadToS3';
 import { queueTranscriptionJob } from '@shared/queues';
-import { Queue } from 'bullmq';
-
-const clipGenerationQueue = new Queue('clip-generation', { connection: redisConnection as any });
 
 type DownloadJob = {
   feedVideoId: string;
@@ -24,7 +21,7 @@ type DownloadJob = {
 new Worker<DownloadJob>(
   downloadQueue.name,
   async (job) => {
-    const { feedVideoId, url, title, feedId } = job.data;
+    const { feedVideoId, url, title } = job.data;
 
     const feedVideo = await prisma.feedVideo.findUnique({ where: { id: feedVideoId } });
     if (!feedVideo) {
@@ -48,57 +45,6 @@ new Worker<DownloadJob>(
         sourceUrl: s3Url,
         title: title || feedVideo.title,
       });
-
-      // Auto-trigger clip generation if feed is configured
-      const feed = await prisma.videoFeed.findUnique({
-        where: { id: feedVideo.feedId },
-      });
-      if (feed?.autoGenerateClips && feed.viralitySettings) {
-        const settings = feed.viralitySettings as any;
-        const strictnessPreset = settings.strictnessPreset || 'balanced';
-        const strictnessConfig = {
-          minScore: 6.5,
-          percentile: 0.85,
-          minCandidates: 3,
-          maxCandidates: 20,
-          maxGeminiCandidates: 24,
-          ...(strictnessPreset === 'strict'
-            ? {
-                minScore: 7.0,
-                percentile: 0.9,
-                minCandidates: 3,
-                maxCandidates: 12,
-                maxGeminiCandidates: 18,
-              }
-            : strictnessPreset === 'loose'
-              ? {
-                  minScore: 6.0,
-                  percentile: 0.75,
-                  minCandidates: 5,
-                  maxCandidates: 24,
-                  maxGeminiCandidates: 36,
-                }
-              : {}),
-        };
-
-        await clipGenerationQueue.add(
-          'clip-generation',
-          {
-            feedVideoId,
-            userId: feed.userId,
-            aspectRatio: '9:16',
-            scoringMode: settings.scoringMode || 'hybrid',
-            includeAudio: settings.includeAudio || false,
-            saferClips: settings.saferClips ?? true,
-            targetPlatform: settings.targetPlatform || 'reels',
-            contentStyle: settings.contentStyle || 'auto',
-            llmProvider: settings.llmProvider,
-            ...strictnessConfig,
-          },
-          { jobId: feedVideoId, removeOnComplete: true, removeOnFail: true }
-        );
-        console.log(`feed-download: auto enqueued clip-generation for ${feedVideoId}`);
-      }
 
       console.log(`feed-download: downloaded ${feedVideoId} -> ${s3Url}`);
     } catch (err) {

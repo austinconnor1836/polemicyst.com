@@ -1,16 +1,18 @@
-FROM node:18
+FROM node:18-slim
 
 # System deps for Python + venv + FFmpeg
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip python3-venv ffmpeg && \
+    apt-get install -y --no-install-recommends python3 python3-pip python3-venv ffmpeg && \
+    rm -rf /var/lib/apt/lists/* && \
     python3 -m venv /venv
 
 # Activate virtualenv and install Python packages
 ENV PATH="/venv/bin:$PATH"
-RUN pip3 install --upgrade pip --break-system-packages
-RUN pip install --upgrade pip && \
-    pip install torch --index-url https://download.pytorch.org/whl/cpu && \
-    pip install faster-whisper transformers soundfile
+ENV PIP_NO_CACHE_DIR=1
+RUN pip3 install --upgrade pip --break-system-packages && \
+    pip install --upgrade pip && \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir faster-whisper transformers soundfile
 
 WORKDIR /app
 

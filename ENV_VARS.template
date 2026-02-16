@@ -14,6 +14,8 @@ REDIS_HOST=localhost
 #
 # --- Optional: AWS (only needed for S3 upload/download flows) ---
 AWS_REGION=us-east-1
+# S3 bucket used by uploads/feeds (set per environment)
+S3_BUCKET=
 # Some parts of the codebase read S3_REGION (fallbacks vary), so set both for consistency.
 S3_REGION=us-east-1
 AWS_ACCESS_KEY_ID=
@@ -32,3 +34,19 @@ OLLAMA_MODEL=llama3
 # --- Optional: auth debug logging (DANGER: may log OAuth tokens if enabled) ---
 # Default is off. Only set this temporarily for local debugging and avoid sharing logs.
 NEXTAUTH_DEBUG=false
+
+# --- Optional: auth allowlist (lockdown mode) ---
+# When enabled, only the allowed emails/providers can sign in.
+AUTH_ALLOWLIST_ENABLED=true
+# Comma-separated list of allowed emails (lower/upper case ok).
+AUTH_ALLOWED_EMAILS=
+# Comma-separated list of allowed providers (default used in code: google).
+AUTH_ALLOWED_PROVIDERS=google
+
+# --- Stripe (billing & subscriptions) ---
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+# Price IDs from your Stripe dashboard (Products → Pricing)
+STRIPE_PRO_PRICE_ID=
+STRIPE_BUSINESS_PRICE_ID=

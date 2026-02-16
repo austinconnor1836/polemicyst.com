@@ -65,9 +65,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <meta name="theme-color" content="#000" />
         <link rel="alternate" type="application/rss+xml" href="/feed.xml" />
       </head>
-      <body
-        className={`${inter.className} dark:bg-[#121212] dark:text-[#E0E0E0] bg-[#F9F9F9] text-[#2E2E2E]`}
-      >
+      <body className={`${inter.className} bg-background text-foreground`}>
         <StoreProvider>
           <HamburgerProvider>
             <SessionProviderWrapper>

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { set as idbSet, get as idbGet, del as idbDel } from 'idb-keyval';
 import ViralitySettings from '@/components/ViralitySettings';
 import {
@@ -26,6 +27,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { FeedsHeroAnimation } from '@/app/feeds/_components/FeedsHeroAnimation';
+import { CardGridBackground } from '@/app/feeds/_components/CardGridBackground';
 import { FeedVideo, VideoFeed } from '@/app/feeds/types';
 import { formatRelativeTime } from '@/app/feeds/util/time';
 import {
@@ -69,6 +71,7 @@ export default function FeedsPage() {
   const videosHeaderRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const router = useRouter();
+  const { status: sessionStatus } = useSession();
 
   const [feeds, setFeeds] = useState<VideoFeed[]>([]);
   const [videos, setVideos] = useState<FeedVideo[]>([]);
@@ -514,6 +517,19 @@ export default function FeedsPage() {
     fetchVideos();
   }, []);
 
+  // Clear server-fetched data when the user logs out
+  const wasAuthenticated = useRef(false);
+  useEffect(() => {
+    if (sessionStatus === 'authenticated') {
+      wasAuthenticated.current = true;
+    } else if (sessionStatus === 'unauthenticated' && wasAuthenticated.current) {
+      wasAuthenticated.current = false;
+      setFeeds([]);
+      setVideos([]);
+      setPageError(null);
+    }
+  }, [sessionStatus]);
+
   const videoCountsByFeed = useMemo(() => {
     const map = new Map<string, number>();
     for (const v of videos) {
@@ -587,7 +603,7 @@ export default function FeedsPage() {
 
       {pageError && (
         <div className="mb-6">
-          <Card className="border-red-200 bg-red-50/60 dark:border-red-900/60 dark:bg-red-950/30">
+          <Card className="border-red-200 bg-red-50/60 dark:border-red-900/60 dark:bg-red-950/30 glass:border-red-500/20 glass:bg-red-950/20">
             <CardContent className="p-4 text-sm text-red-800 dark:text-red-200">
               {pageError}
             </CardContent>
@@ -608,8 +624,10 @@ export default function FeedsPage() {
         {/* Left: feed management */}
         <div className="space-y-6 lg:col-span-4">
           {/* Feed List */}
-          <Card>
-            <CardHeader className="pb-3">
+          <Card className="relative overflow-hidden glass:!bg-transparent glass:!shadow-none glass:!border-[var(--glass-border-prominent)] glass:glass-spectral-edge">
+            <CardGridBackground className="absolute inset-0" />
+            <div className="pointer-events-none absolute inset-0 bg-surface/85 glass:!bg-[#0a0a1a]/15 glass:backdrop-blur-sm" />
+            <CardHeader className="relative pb-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <CardTitle className="text-base">Sources</CardTitle>
@@ -629,13 +647,13 @@ export default function FeedsPage() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="relative space-y-2">
               {isLoadingFeeds ? (
                 <div className="space-y-2">
                   {Array.from({ length: 3 }).map((_, idx) => (
                     <div
                       key={idx}
-                      className="h-[66px] w-full animate-pulse rounded-md border bg-gray-50 dark:bg-zinc-900/30"
+                      className="h-[66px] w-full animate-pulse rounded-md border bg-gray-50 dark:bg-zinc-900/30 glass:bg-white/5 glass:border-white/5"
                     />
                   ))}
                 </div>
@@ -658,9 +676,9 @@ export default function FeedsPage() {
                     <div
                       key={feed.id}
                       className={cn(
-                        'group flex items-start justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-gray-50 dark:hover:bg-zinc-900/40',
+                        'group flex items-start justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-gray-50 dark:hover:bg-zinc-900/40 glass:border-white/5 glass:hover:bg-white/8',
                         videoFeedFilter === feed.id &&
-                          'border-gray-400 bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900/40'
+                          'border-gray-400 bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900/40 glass:border-white/20 glass:bg-white/8'
                       )}
                     >
                       <button
@@ -735,8 +753,10 @@ export default function FeedsPage() {
 
         {/* Right: feed videos */}
         <div className="space-y-4 lg:col-span-8">
-          <Card className="h-full border-muted/60 shadow-sm">
-            <CardHeader className="space-y-4 pb-4" ref={videosHeaderRef}>
+          <Card className="relative h-full overflow-hidden border-muted/60 shadow-sm glass:!bg-transparent glass:!shadow-none glass:!border-[var(--glass-border-prominent)] glass:glass-spectral-edge">
+            <CardGridBackground className="absolute inset-0" />
+            <div className="pointer-events-none absolute inset-0 bg-surface/85 glass:!bg-[#0a0a1a]/15 glass:backdrop-blur-sm" />
+            <CardHeader className="relative space-y-4 pb-4" ref={videosHeaderRef}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between scroll-mt-24">
                 <div>
                   <CardTitle className="text-xl">Ingested Videos</CardTitle>
@@ -836,16 +856,16 @@ export default function FeedsPage() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="relative">
               {isLoadingVideos ? (
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
                   {Array.from({ length: 6 }).map((_, idx) => (
                     <Card key={idx} className="overflow-hidden border-dashed shadow-none">
                       <CardContent className="p-0">
-                        <div className="aspect-video w-full animate-pulse bg-gray-100 dark:bg-zinc-900/40" />
+                        <div className="aspect-video w-full animate-pulse bg-gray-100 dark:bg-zinc-900/40 glass:bg-white/5" />
                         <div className="space-y-2 p-4">
-                          <div className="h-4 w-4/5 animate-pulse rounded bg-gray-100 dark:bg-zinc-900/40" />
-                          <div className="h-3 w-2/5 animate-pulse rounded bg-gray-100 dark:bg-zinc-900/40" />
+                          <div className="h-4 w-4/5 animate-pulse rounded bg-gray-100 dark:bg-zinc-900/40 glass:bg-white/5" />
+                          <div className="h-3 w-2/5 animate-pulse rounded bg-gray-100 dark:bg-zinc-900/40 glass:bg-white/5" />
                         </div>
                       </CardContent>
                     </Card>
@@ -853,7 +873,7 @@ export default function FeedsPage() {
                 </div>
               ) : videos.length === 0 && !activeUpload ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="rounded-full bg-gray-100 p-3 dark:bg-zinc-900">
+                  <div className="rounded-full bg-gray-100 p-3 dark:bg-zinc-900 glass:bg-white/10">
                     <Upload className="h-6 w-6 text-muted-foreground" />
                   </div>
                   <h3 className="mt-4 text-lg font-semibold">No videos ingested yet</h3>
@@ -1274,7 +1294,7 @@ function FeedSettingsForm({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 rounded-lg border p-4 bg-gray-50 dark:bg-zinc-900/50">
+      <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4 bg-gray-50 dark:bg-zinc-900/50 glass:bg-white/5 glass:border-white/10">
         <div className="space-y-0.5">
           <Label className="text-base">Auto-generate clips</Label>
           <div className="text-sm text-muted-foreground">

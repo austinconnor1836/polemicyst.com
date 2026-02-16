@@ -21,6 +21,7 @@ The application supports two environments sharing cost-effective infrastructure:
 - **Development**: `develop` branch → [dev.polemicyst.com](https://dev.polemicyst.com)
 
 **Shared Resources** (~$109/month):
+
 - VPC with NAT Gateways
 - RDS PostgreSQL instance (separate databases per environment)
 - S3 bucket (environment-specific prefixes: `prod/`, `dev/`)
@@ -28,6 +29,7 @@ The application supports two environments sharing cost-effective infrastructure:
 - ECS Cluster
 
 **Environment-Specific** (~$16/month for dev):
+
 - ECS Services and Task Definitions
 - ALB Target Groups
 - Redis instances
@@ -38,6 +40,7 @@ The application supports two environments sharing cost-effective infrastructure:
 ### Tech Stack
 
 **Frontend**:
+
 - Next.js 14 (App Router)
 - React 18
 - TypeScript
@@ -45,6 +48,7 @@ The application supports two environments sharing cost-effective infrastructure:
 - NextAuth.js for authentication
 
 **Backend**:
+
 - Node.js
 - Prisma ORM
 - PostgreSQL (AWS RDS)
@@ -52,12 +56,14 @@ The application supports two environments sharing cost-effective infrastructure:
 - AWS S3 for video storage
 
 **Workers**:
+
 - Clip Worker: Video processing and clip extraction (FFmpeg)
 - LLM Workers: Content scoring (Gemini API, Ollama)
 - Transcription Worker: Video-to-text conversion
 - Feed Poller: RSS feed monitoring
 
 **Infrastructure**:
+
 - AWS ECS Fargate
 - Terraform for infrastructure as code
 - GitHub Actions for CI/CD
@@ -77,29 +83,34 @@ The application supports two environments sharing cost-effective infrastructure:
 ### Setup
 
 1. **Clone the repository**:
+
    ```bash
    git clone https://github.com/austinconnor1836/polemicyst.com.git
    cd polemicyst.com
    ```
 
 2. **Install dependencies**:
+
    ```bash
    npm install
    ```
 
 3. **Set up environment variables**:
+
    ```bash
    cp ENV_VARS.template .env.local
    # Edit .env.local with your configuration
    ```
 
 4. **Set up database**:
+
    ```bash
    npx prisma migrate dev
    npx prisma generate
    ```
 
 5. **Start Redis** (required for workers):
+
    ```bash
    # Using Docker
    docker run -d -p 6379:6379 redis:alpine
@@ -109,6 +120,7 @@ The application supports two environments sharing cost-effective infrastructure:
    ```
 
 6. **Run the development server**:
+
    ```bash
    npm run dev
    ```
@@ -140,6 +152,7 @@ npm run dev
 The application uses automated GitHub Actions deployment:
 
 ### Deploy to Development
+
 ```bash
 git checkout develop
 git add .
@@ -150,6 +163,7 @@ git push origin develop
 Automatically deploys to [dev.polemicyst.com](https://dev.polemicyst.com)
 
 ### Deploy to Production
+
 ```bash
 git checkout main
 git merge develop
@@ -161,6 +175,7 @@ Automatically deploys to [polemicyst.com](https://polemicyst.com)
 ### Manual Deployment
 
 For manual infrastructure updates:
+
 ```bash
 cd infrastructure
 terraform init
@@ -237,6 +252,7 @@ aws logs tail /ecs/polemicyst-dev-web --follow
 ### Cost Monitoring
 
 Monitor AWS costs in Cost Explorer, filtered by:
+
 - Environment tags (prod/dev)
 - Service types (ECS, RDS, S3, etc.)
 
