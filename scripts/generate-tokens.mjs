@@ -88,10 +88,7 @@ function generateKotlin() {
     lines.push(`val Token${capitalize(name)}Dark = Color(0xFF${hex})`);
   }
 
-  const out = resolve(
-    root,
-    'android/app/src/main/java/com/polemicyst/android/ui/theme/Tokens.kt'
-  );
+  const out = resolve(root, 'android/app/src/main/java/com/polemicyst/android/ui/theme/Tokens.kt');
   ensureDir(out);
   writeFileSync(out, lines.join('\n') + '\n');
   console.log(`  Kotlin  -> ${out}`);
