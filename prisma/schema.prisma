@@ -106,6 +106,7 @@ model FeedVideo {
   status         String    @default("ready") // pending | ready | failed
   transcript     String?
   transcriptJson Json?
+  speakerTranscriptJson Json?
   createdAt      DateTime  @default(now())
 
   userId String

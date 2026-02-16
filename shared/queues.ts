@@ -6,6 +6,7 @@ let redis: Redis | null = null;
 let videoDownloadQueue: Queue | null = null;
 let feedDownloadQueue: Queue | null = null;
 let transcriptionQueue: Queue | null = null;
+let speakerTranscriptionQueue: Queue | null = null;
 
 function getRedisConnection() {
   if (redis) return redis;
@@ -61,6 +62,24 @@ export function getFeedDownloadQueue() {
 
 export function queueFeedDownloadJob(data: FeedDownloadJob) {
   return getFeedDownloadQueue().add('download', data, {
+    removeOnComplete: true,
+    removeOnFail: true,
+  });
+}
+
+export function getSpeakerTranscriptionQueue() {
+  if (speakerTranscriptionQueue) return speakerTranscriptionQueue;
+  speakerTranscriptionQueue = new Queue('speaker-transcription', { connection: getRedisConnection() as any });
+  return speakerTranscriptionQueue;
+}
+
+export interface SpeakerTranscriptionJob {
+  feedVideoId: string;
+  numSpeakers?: number;
+}
+
+export function queueSpeakerTranscriptionJob(data: SpeakerTranscriptionJob) {
+  return getSpeakerTranscriptionQueue().add('speaker-transcribe', data, {
     removeOnComplete: true,
     removeOnFail: true,
   });

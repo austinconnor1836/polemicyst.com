@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AspectRatioSelect, { type AspectRatio } from '@/components/AspectRatioSelect';
 import ViralitySettings from '@/components/ViralitySettings';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { Download, ExternalLink, Loader2, RefreshCw, ArrowLeft, Pencil } from 'lucide-react';
+import SpeakerTranscript from '@/components/SpeakerTranscript';
 import { formatRelativeTime } from '@/app/feeds/util/time';
 import {
   DEFAULT_VIRALITY_SETTINGS,
@@ -106,6 +107,7 @@ export default function ClipGroupPage() {
   const [generateMessage, setGenerateMessage] = useState<string | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcribeMessage, setTranscribeMessage] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const fetchSummary = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -337,6 +339,7 @@ export default function ClipGroupPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <video
+                ref={videoRef}
                 src={summary.feedVideo.s3Url}
                 poster={summary.feedVideo.thumbnailUrl || undefined}
                 controls
@@ -426,6 +429,18 @@ export default function ClipGroupPage() {
               )}
             </CardContent>
           </Card>
+
+          <div className="mb-6">
+            <SpeakerTranscript
+              feedVideoId={feedVideoId}
+              onSeek={(time) => {
+                if (videoRef.current) {
+                  videoRef.current.currentTime = time;
+                  videoRef.current.play();
+                }
+              }}
+            />
+          </div>
 
           {summary.clips.length === 0 ? (
             <Card className="border-dashed">
