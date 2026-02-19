@@ -1,5 +1,11 @@
 # Polemicyst — LLM / Claude Notes
 
+## Commit rules
+
+Every commit **must** pass lint (`npm run lint`) and build (`npx next build`) before being created. Do not commit code that fails either step.
+
+## Overview
+
 This file is the **canonical log** for structural changes to the viral clip generation system, especially anything related to **LLM scoring, prompts, model orchestration, and safety**.
 
 If you change how scoring works, how candidates are selected, which models are called, or how the UI maps to backend scoring knobs, **update this file**.
