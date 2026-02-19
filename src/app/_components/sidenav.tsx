@@ -1,32 +1,36 @@
-'use client'
+'use client';
 
-import React from 'react'
-import cn from 'classnames'
-import { useHamburger } from '../context/HamburgerContext' // Import context
-import { IconButton } from '@mui/material'
-import { SideNavItem } from '../ui/types'
-import Link from 'next/link'
-import HomeIcon from '@mui/icons-material/Home'
-import DescriptionIcon from '@mui/icons-material/Description'
-import SportsBasketballIcon from '@mui/icons-material/SportsBasketball'
+import React from 'react';
+import cn from 'classnames';
+import { useHamburger } from '../context/HamburgerContext'; // Import context
+import { IconButton } from '@mui/material';
+import { SideNavItem } from '../ui/types';
+import Link from 'next/link';
+import HomeIcon from '@mui/icons-material/Home';
+import DescriptionIcon from '@mui/icons-material/Description';
+import MovieIcon from '@mui/icons-material/Movie';
+import PaymentIcon from '@mui/icons-material/Payment';
+import SportsBasketballIcon from '@mui/icons-material/SportsBasketball';
 
 interface SidePanelProps {
-  onSelectItem?: (item: string) => void
+  onSelectItem?: (item: string) => void;
 }
 
 const sideNavItems: SideNavItem[] = [
   { label: 'Home', element: <HomeIcon />, href: '/' },
+  { label: 'Details', element: <MovieIcon />, href: '/details' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
   { label: 'NCAA Seeds', element: <SportsBasketballIcon />, href: '/ncaa-seed-probability' },
-]
+  { label: 'Billing', element: <PaymentIcon />, href: '/billing' },
+];
 
 const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
-  const { isOpen } = useHamburger() // Use the isOpen state from context
+  const { isOpen } = useHamburger(); // Use the isOpen state from context
 
   return (
     <div
       className={cn(
-        'h-screen shadow-lg transition-all duration-500 ease-in-out fixed left-0 z-40 dark:bg-[#121212] dark:text-slate-400 bg-[#F9F9F9] text-[#2E2E2E]', // Tailwind transition and fixed positioning
+        'h-screen shadow-lg transition-all duration-500 ease-in-out fixed left-0 z-40 bg-background text-foreground glass:bg-transparent glass:shadow-none glass:glass-surface glass:border-r glass:border-white/10', // Tailwind transition and fixed positioning
 
         {
           'w-auto min-w-[200px]': isOpen, // Large width when opened
@@ -62,7 +66,7 @@ const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
         ))}
       </ul>
     </div>
-  )
-}
+  );
+};
 
-export default SidePanel
+export default SidePanel;

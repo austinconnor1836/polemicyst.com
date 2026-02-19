@@ -1,0 +1,41 @@
+{
+  "": {
+    "swift-dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/master.swiftdeps"
+  },
+  "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/DesignSystem/Tokens.swift": {
+    "dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/Tokens.d",
+    "object": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/Tokens.swift.o",
+    "swiftmodule": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/Tokens~partial.swiftmodule",
+    "swift-dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/Tokens.swiftdeps"
+  },
+  "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Feeds/FeedVideosView.swift": {
+    "dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/FeedVideosView.d",
+    "object": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/FeedVideosView.swift.o",
+    "swiftmodule": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/FeedVideosView~partial.swiftmodule",
+    "swift-dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/FeedVideosView.swiftdeps"
+  },
+  "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Feeds/FeedsFeature.swift": {
+    "dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/FeedsFeature.d",
+    "object": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/FeedsFeature.swift.o",
+    "swiftmodule": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/FeedsFeature~partial.swiftmodule",
+    "swift-dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/FeedsFeature.swiftdeps"
+  },
+  "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Home/HomeView.swift": {
+    "dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/HomeView.d",
+    "object": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/HomeView.swift.o",
+    "swiftmodule": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/HomeView~partial.swiftmodule",
+    "swift-dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/HomeView.swiftdeps"
+  },
+  "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Models/Models.swift": {
+    "dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/Models.d",
+    "object": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/Models.swift.o",
+    "swiftmodule": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/Models~partial.swiftmodule",
+    "swift-dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/Models.swiftdeps"
+  },
+  "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Networking/APIClient.swift": {
+    "dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/APIClient.d",
+    "object": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/APIClient.swift.o",
+    "swiftmodule": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/APIClient~partial.swiftmodule",
+    "swift-dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/arm64-apple-macosx/debug/PolemicystiOS.build/APIClient.swiftdeps"
+  }
+}

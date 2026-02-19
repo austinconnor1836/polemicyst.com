@@ -4,7 +4,7 @@ services:
     image: postgres:15
     container_name: clips-genie-db
     ports:
-      - "5432:5432"
+      - '5432:5432'
     environment:
       POSTGRES_DB: clips-genie
       POSTGRES_USER: postgres
@@ -13,54 +13,46 @@ services:
       - pg-data:/var/lib/postgresql/data
     networks:
       - app-network
-  
+
   # Redis for job queuing
   redis:
     image: redis:alpine
     ports:
-      - "6379:6379"
+      - '6379:6379'
     restart: unless-stopped
     networks:
       - app-network
-  
-  backend:
-    build:
-      context: .
-      dockerfile: ./backend/Dockerfile
-    ports:
-      - "3001:3001"
-    environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
-      - REDIS_HOST=redis
-    depends_on:
-      - db
-      - redis
-    networks:
-      - app-network
 
-  # Clip Worker - Main job processing (Node.js)
   clip-worker:
     build:
       context: .
-      dockerfile: ./clip-worker/Dockerfile
+      dockerfile: ./workers/clip-worker/Dockerfile
     environment:
       - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
+      - OLLAMA_BASE_URL=http://ollama:11434
       - NODE_ENV=production
     depends_on:
       - redis
-    command: ["node", "index.js"]
+      - db
+      - ollama
+    command: ['node', 'index.js']
     restart: unless-stopped
     networks:
       - app-network
-  
+
   clip-metadata-worker:
     build:
       context: .
-      dockerfile: ./clip-worker/Dockerfile
-    command: ["node", "generate/generateMetadataWorker.js"]
+      dockerfile: ./workers/clip-metadata-worker/Dockerfile
+    command: ['npx', 'tsx', 'index.ts']
     environment:
       - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
+      - OLLAMA_BASE_URL=http://ollama:11434
       - NODE_ENV=production
+    env_file:
+      - .env
     depends_on:
       - redis
       - db
@@ -68,6 +60,21 @@ services:
     networks:
       - app-network
 
+  transcription-worker:
+    build:
+      context: .
+      dockerfile: ./workers/transcription-worker/Dockerfile
+    command: ['npx', 'ts-node', '-r', 'tsconfig-paths/register', 'index.ts']
+    environment:
+      - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
+      - NODE_ENV=production
+    depends_on:
+      - redis
+      - db
+    restart: unless-stopped
+    networks:
+      - app-network
 
   # Faster Whisper for transcription
   faster-whisper:
@@ -88,33 +95,58 @@ services:
   # Ollama for language model processing
   ollama:
     build:
-      context: ./backend
-      dockerfile: ollama.Dockerfile
+      context: .
+      dockerfile: ./workers/ollama-worker/Dockerfile
     container_name: ollama
     volumes:
-      - ./backend/scripts/start-ollama.sh:/start.sh
       - ollama-data:/root/.ollama
-    entrypoint: ["/bin/bash", "/start.sh"]
+    entrypoint: ['/bin/bash', '/app/scripts/start-ollama.sh']
     ports:
-      - "11434:11434"
+      - '11434:11434'
     restart: unless-stopped
     networks:
       - app-network
-  
+
   poller:
     build:
       context: .
-      dockerfile: ./workers/workers.Dockerfile
+      dockerfile: ./workers/poller-worker/Dockerfile
     volumes:
-      - ./shared:/app/shared  # ⬅️ needed for prisma and shared code
+      - ./shared:/app/shared # ⬅️ needed for prisma and shared code
       - ./prisma:/app/prisma
     depends_on:
-      - backend
+      - db
       - redis
     environment:
       - NODE_ENV=production
+      # IMPORTANT: the poller runs inside Docker, so it must use Docker service DNS
+      # (not localhost, which would point at the container itself).
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
+      - REDIS_HOST=redis
     env_file:
       - .env
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  download-worker:
+    build:
+      context: .
+      dockerfile: ./workers/video-download-worker/Dockerfile
+    command: ['npx', 'ts-node', 'index.ts']
+    volumes:
+      - ./shared:/app/shared
+      - ./prisma:/app/prisma
+    depends_on:
+      - db
+      - redis
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
+      - REDIS_HOST=redis
+    env_file:
+      - .env
+      - .env.local
     restart: unless-stopped
     networks:
       - app-network

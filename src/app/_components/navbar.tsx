@@ -5,7 +5,9 @@ import { useSession, signIn, signOut } from 'next-auth/react';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import WbSunnyIcon from '@mui/icons-material/WbSunny';
 import NightsStayIcon from '@mui/icons-material/NightsStay';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import HamburgerMenu from './hamburger/hamburger';
+import { Button } from '@/components/ui/button';
 
 const STORAGE_KEY = 'theme-mode';
 
@@ -13,27 +15,61 @@ const Navbar: React.FC = () => {
   const { data: session } = useSession();
   const user = session?.user;
   const [menuOpen, setMenuOpen] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+  const [theme, setTheme] = useState<'light' | 'dark' | 'glass' | 'system'>('system');
 
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const getSystemIsDark = () => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ?? false;
+  };
+
+  const applyTheme = (mode: 'light' | 'dark' | 'glass' | 'system') => {
+    const isDark = mode === 'dark' || mode === 'glass' || (mode === 'system' && getSystemIsDark());
+    document.documentElement.classList.toggle('dark', isDark);
+
+    if (mode === 'glass') {
+      document.documentElement.setAttribute('data-theme', 'glass');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+
+    localStorage.setItem(STORAGE_KEY, mode);
+  };
+
   // Load theme from localStorage
   useEffect(() => {
-    const savedTheme = localStorage.getItem(STORAGE_KEY) as 'light' | 'dark' | 'system' | null;
+    const savedTheme = localStorage.getItem(STORAGE_KEY) as
+      | 'light'
+      | 'dark'
+      | 'glass'
+      | 'system'
+      | null;
     if (savedTheme) setTheme(savedTheme);
     applyTheme(savedTheme || 'system');
   }, []);
 
-  // Apply theme changes
-  const applyTheme = (mode: 'light' | 'dark' | 'system') => {
-    document.documentElement.classList.remove('light', 'dark');
-    if (mode !== 'system') document.documentElement.classList.add(mode);
-    localStorage.setItem(STORAGE_KEY, mode);
-  };
+  // Keep system theme in sync when `Theme: System` is selected.
+  useEffect(() => {
+    if (theme !== 'system') return;
+    const mql = window.matchMedia?.('(prefers-color-scheme: dark)');
+    if (!mql) return;
+
+    const handler = () => applyTheme('system');
+
+    // Safari < 14 uses addListener/removeListener
+    if (typeof mql.addEventListener === 'function') mql.addEventListener('change', handler);
+    else mql.addListener(handler);
+
+    return () => {
+      if (typeof mql.removeEventListener === 'function') mql.removeEventListener('change', handler);
+      else mql.removeListener(handler);
+    };
+  }, [theme]);
 
   // Cycle through theme modes
   const toggleTheme = () => {
-    const modes: ('light' | 'dark' | 'system')[] = ['light', 'dark', 'system'];
+    const modes: ('light' | 'dark' | 'glass' | 'system')[] = ['light', 'dark', 'glass', 'system'];
     const nextMode = modes[(modes.indexOf(theme) + 1) % modes.length];
     setTheme(nextMode);
     applyTheme(nextMode);
@@ -55,54 +91,74 @@ const Navbar: React.FC = () => {
   }, [menuOpen]);
 
   return (
-    <nav className="navbar dark:bg-[#121212] dark:text-slate-400 bg-[#F9F9F9] text-[#2E2E2E] fixed top-0 left-0 z-50 w-full shadow-lg">
+    <nav className="navbar bg-background text-foreground fixed top-0 left-0 z-50 w-full shadow-lg glass:bg-transparent glass:shadow-none glass:glass-surface glass:border-b glass:border-white/10">
       <div className="flex justify-between items-center px-4 py-2">
         <HamburgerMenu />
         <div className="flex items-center gap-4 relative">
           {/* Account Icon Button */}
-          <button onClick={() => setMenuOpen(!menuOpen)} className="focus:outline-none">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 rounded-full p-0"
+            onClick={() => setMenuOpen(!menuOpen)}
+          >
             {user ? (
-              <img src={user.image || '/default-avatar.png'} alt="User Avatar" className="w-8 h-8 rounded-full" />
+              <img
+                src={user.image || '/default-avatar.png'}
+                alt="User Avatar"
+                className="w-8 h-8 rounded-full"
+              />
             ) : (
               <div className="w-8 h-8 rounded-full bg-gray-400 flex items-center justify-center text-white">
                 ?
               </div>
             )}
-          </button>
+          </Button>
 
           {/* Dropdown Menu */}
           {menuOpen && (
             <div
               ref={menuRef}
-              className="absolute right-0 mt-40 w-48 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow-lg"
+              className="absolute right-0 mt-40 w-48 bg-surface border border-border rounded shadow-lg glass:bg-[rgba(255,255,255,0.08)] glass:border-white/10 glass:backdrop-blur-xl glass:shadow-[var(--glass-shadow)]"
             >
               {user ? (
                 <>
                   <p className="px-4 py-2 text-sm">{user.name || 'User'}</p>
-                  <button
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start rounded-none px-4"
                     onClick={() => signOut()}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-200 dark:hover:bg-gray-700"
                   >
                     Logout
-                  </button>
+                  </Button>
                 </>
               ) : (
-                <button
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start rounded-none px-4"
                   onClick={() => signIn('google')}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-200 dark:hover:bg-gray-700"
                 >
                   Login
-                </button>
+                </Button>
               )}
 
               {/* Theme Switcher */}
-              <button
-                className="w-full flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-200 dark:hover:bg-gray-700 mt-2"
+              <Button
+                variant="ghost"
+                className="mt-2 w-full justify-between rounded-none px-4"
                 onClick={toggleTheme}
               >
                 <span>Theme: {theme.charAt(0).toUpperCase() + theme.slice(1)}</span>
-                {theme === 'light' ? <WbSunnyIcon /> : theme === 'dark' ? <NightsStayIcon /> : <Brightness4Icon />}
-              </button>
+                {theme === 'light' ? (
+                  <WbSunnyIcon />
+                ) : theme === 'dark' ? (
+                  <NightsStayIcon />
+                ) : theme === 'glass' ? (
+                  <AutoAwesomeIcon />
+                ) : (
+                  <Brightness4Icon />
+                )}
+              </Button>
             </div>
           )}
         </div>

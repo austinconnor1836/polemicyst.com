@@ -18,13 +18,15 @@ if (!fs.existsSync(CLIPS_DIR)) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { highlights, filename } = await req.json() as {
+    const { highlights, filename } = (await req.json()) as {
       highlights: Highlight[];
       filename: string;
     };
 
     if (!highlights?.length || !filename) {
-      return new Response(JSON.stringify({ error: 'Missing highlights or filename' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'Missing highlights or filename' }), {
+        status: 400,
+      });
     }
 
     const inputPath = path.join(TEMP_DIR, filename);
@@ -43,12 +45,18 @@ export async function POST(req: NextRequest) {
 
       await new Promise((resolve, reject) => {
         const ffmpeg = spawn('ffmpeg', [
-          '-ss', h.start.toString(),
-          '-t', duration.toString(), // ✅ use -t for duration instead of -to for end time
-          '-i', inputPath,
-          '-c:v', 'libx264',
-          '-c:a', 'aac',
-          '-preset', 'fast',
+          '-ss',
+          h.start.toString(),
+          '-t',
+          duration.toString(), // ✅ use -t for duration instead of -to for end time
+          '-i',
+          inputPath,
+          '-c:v',
+          'libx264',
+          '-c:a',
+          'aac',
+          '-preset',
+          'fast',
           outputPath,
         ]);
 
@@ -64,7 +72,6 @@ export async function POST(req: NextRequest) {
     }
 
     return new Response(JSON.stringify({ clips: clipPaths }), { status: 200 });
-
   } catch (error: any) {
     console.error('Error clipping video:', error.message);
     return new Response(JSON.stringify({ error: 'Failed to clip video' }), { status: 500 });

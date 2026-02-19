@@ -1,0 +1,683 @@
+{
+  "builtTestProducts": [
+    {
+      "binaryPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOSPackageTests.xctest/Contents/MacOS/PolemicystiOSPackageTests",
+      "packagePath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios",
+      "productName": "PolemicystiOSPackageTests"
+    }
+  ],
+  "copyCommands": {},
+  "explicitTargetDependencyImportCheckingMode": {
+    "none": {}
+  },
+  "generatedSourceTargetSet": [],
+  "pluginDescriptions": [],
+  "swiftCommands": {
+    "C.PolemicystApp-debug.module": {
+      "executable": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp.build/sources",
+      "importPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug",
+      "inputs": [
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystApp/App.swift"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.swiftmodule"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp.build/sources"
+        }
+      ],
+      "isLibrary": false,
+      "moduleName": "PolemicystApp",
+      "moduleOutputPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp.swiftmodule",
+      "objects": [
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp.build/App.swift.o"
+      ],
+      "otherArguments": [
+        "-target",
+        "x86_64-apple-macosx13.0",
+        "-swift-version",
+        "5",
+        "-enable-batch-mode",
+        "-index-store-path",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j10",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-module-cache-path",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "PolemicystApp_main",
+        "-parse-as-library",
+        "-color-diagnostics",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "ios"
+      ],
+      "outputFileMapPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp.build/output-file-map.json",
+      "outputs": [
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp.build/App.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp.swiftmodule"
+        }
+      ],
+      "sources": [
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystApp/App.swift"
+      ],
+      "tempsPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp.build",
+      "wholeModuleOptimization": false
+    },
+    "C.PolemicystiOS-debug.module": {
+      "executable": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/sources",
+      "importPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug",
+      "inputs": [
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/DesignSystem/Tokens.swift"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Feeds/FeedVideosView.swift"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Feeds/FeedsFeature.swift"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Home/HomeView.swift"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Models/Models.swift"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Networking/APIClient.swift"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/sources"
+        }
+      ],
+      "isLibrary": true,
+      "moduleName": "PolemicystiOS",
+      "moduleOutputPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.swiftmodule",
+      "objects": [
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/Tokens.swift.o",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/FeedVideosView.swift.o",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/FeedsFeature.swift.o",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/HomeView.swift.o",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/Models.swift.o",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/APIClient.swift.o"
+      ],
+      "otherArguments": [
+        "-target",
+        "x86_64-apple-macosx13.0",
+        "-swift-version",
+        "5",
+        "-enable-batch-mode",
+        "-index-store-path",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j10",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-module-cache-path",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/PolemicystiOS-Swift.h",
+        "-color-diagnostics",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "ios"
+      ],
+      "outputFileMapPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/output-file-map.json",
+      "outputs": [
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/Tokens.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/FeedVideosView.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/FeedsFeature.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/HomeView.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/Models.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/APIClient.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.swiftmodule"
+        }
+      ],
+      "sources": [
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/DesignSystem/Tokens.swift",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Feeds/FeedVideosView.swift",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Feeds/FeedsFeature.swift",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Home/HomeView.swift",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Models/Models.swift",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Networking/APIClient.swift"
+      ],
+      "tempsPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build",
+      "wholeModuleOptimization": false
+    },
+    "C.PolemicystiOSTests-debug.module": {
+      "executable": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOSTests.build/sources",
+      "importPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug",
+      "inputs": [
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Tests/PolemicystiOSTests.swift"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.swiftmodule"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOSTests.build/sources"
+        }
+      ],
+      "isLibrary": true,
+      "moduleName": "PolemicystiOSTests",
+      "moduleOutputPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOSTests.swiftmodule",
+      "objects": [
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOSTests.build/PolemicystiOSTests.swift.o"
+      ],
+      "otherArguments": [
+        "-target",
+        "x86_64-apple-macosx13.0",
+        "-swift-version",
+        "5",
+        "-enable-batch-mode",
+        "-index-store-path",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j10",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-module-cache-path",
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-color-diagnostics",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "ios"
+      ],
+      "outputFileMapPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOSTests.build/output-file-map.json",
+      "outputs": [
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOSTests.build/PolemicystiOSTests.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOSTests.swiftmodule"
+        }
+      ],
+      "sources": [
+        "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Tests/PolemicystiOSTests.swift"
+      ],
+      "tempsPath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOSTests.build",
+      "wholeModuleOptimization": false
+    }
+  },
+  "swiftFrontendCommands": {},
+  "swiftTargetScanArgs": {
+    "PolemicystApp": [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "PolemicystApp",
+      "-package-name",
+      "ios",
+      "-incremental",
+      "-c",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystApp/App.swift",
+      "-I",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug",
+      "-target",
+      "x86_64-apple-macosx13.0",
+      "-swift-version",
+      "5",
+      "-enable-batch-mode",
+      "-index-store-path",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j10",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-module-cache-path",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "PolemicystApp_main",
+      "-parse-as-library",
+      "-color-diagnostics",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "ios",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "PolemicystiOS": [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "PolemicystiOS",
+      "-package-name",
+      "ios",
+      "-incremental",
+      "-c",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/DesignSystem/Tokens.swift",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Feeds/FeedVideosView.swift",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Feeds/FeedsFeature.swift",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Home/HomeView.swift",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Models/Models.swift",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Networking/APIClient.swift",
+      "-I",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug",
+      "-target",
+      "x86_64-apple-macosx13.0",
+      "-swift-version",
+      "5",
+      "-enable-batch-mode",
+      "-index-store-path",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j10",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-module-cache-path",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/PolemicystiOS-Swift.h",
+      "-color-diagnostics",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "ios",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "PolemicystiOSTests": [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "PolemicystiOSTests",
+      "-package-name",
+      "ios",
+      "-incremental",
+      "-c",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Tests/PolemicystiOSTests.swift",
+      "-I",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug",
+      "-target",
+      "x86_64-apple-macosx13.0",
+      "-swift-version",
+      "5",
+      "-enable-batch-mode",
+      "-index-store-path",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j10",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-module-cache-path",
+      "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-color-diagnostics",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "ios",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap": {
+    "PolemicystApp": ["PolemicystiOS"],
+    "PolemicystiOS": [],
+    "PolemicystiOSTests": ["PolemicystiOS"]
+  },
+  "testDiscoveryCommands": {},
+  "testEntryPointCommands": {},
+  "writeCommands": {
+    "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp-entitlement.plist": {
+      "alwaysOutOfDate": false,
+      "inputs": [
+        {
+          "kind": "virtual",
+          "name": "<entitlement-plist>"
+        },
+        {
+          "kind": "virtual",
+          "name": "<com.apple.security.get-task-allow>"
+        }
+      ],
+      "outputFilePath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp-entitlement.plist"
+    },
+    "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp.build/sources": {
+      "alwaysOutOfDate": false,
+      "inputs": [
+        {
+          "kind": "virtual",
+          "name": "<sources-file-list>"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystApp/App.swift"
+        }
+      ],
+      "outputFilePath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp.build/sources"
+    },
+    "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp.product/Objects.LinkFileList": {
+      "alwaysOutOfDate": false,
+      "inputs": [
+        {
+          "kind": "virtual",
+          "name": "<link-file-list>"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp.build/App.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/APIClient.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/FeedVideosView.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/FeedsFeature.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/HomeView.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/Models.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/Tokens.swift.o"
+        }
+      ],
+      "outputFilePath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystApp.product/Objects.LinkFileList"
+    },
+    "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/sources": {
+      "alwaysOutOfDate": false,
+      "inputs": [
+        {
+          "kind": "virtual",
+          "name": "<sources-file-list>"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/DesignSystem/Tokens.swift"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Feeds/FeedVideosView.swift"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Feeds/FeedsFeature.swift"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Features/Home/HomeView.swift"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Models/Models.swift"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystiOS/Networking/APIClient.swift"
+        }
+      ],
+      "outputFilePath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/sources"
+    },
+    "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOSPackageTests.product/Objects.LinkFileList": {
+      "alwaysOutOfDate": false,
+      "inputs": [
+        {
+          "kind": "virtual",
+          "name": "<link-file-list>"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/APIClient.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/FeedVideosView.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/FeedsFeature.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/HomeView.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/Models.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/Tokens.swift.o"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOSTests.build/PolemicystiOSTests.swift.o"
+        }
+      ],
+      "outputFilePath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOSPackageTests.product/Objects.LinkFileList"
+    },
+    "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOSTests.build/sources": {
+      "alwaysOutOfDate": false,
+      "inputs": [
+        {
+          "kind": "virtual",
+          "name": "<sources-file-list>"
+        },
+        {
+          "kind": "file",
+          "name": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Tests/PolemicystiOSTests.swift"
+        }
+      ],
+      "outputFilePath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOSTests.build/sources"
+    },
+    "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt": {
+      "alwaysOutOfDate": true,
+      "inputs": [
+        {
+          "kind": "virtual",
+          "name": "<swift-get-version>"
+        },
+        {
+          "kind": "file",
+          "name": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+    }
+  }
+}

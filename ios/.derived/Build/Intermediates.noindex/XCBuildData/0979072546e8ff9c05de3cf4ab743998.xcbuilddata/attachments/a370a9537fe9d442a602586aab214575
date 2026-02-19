@@ -1,0 +1,18 @@
+{
+  "" : {
+    "diagnostics" : "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/Intermediates.noindex/PolemicystiOS.build/Debug-iphonesimulator/PolemicystApp.build/Objects-normal/arm64/PolemicystApp-master.dia",
+    "emit-module-dependencies" : "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/Intermediates.noindex/PolemicystiOS.build/Debug-iphonesimulator/PolemicystApp.build/Objects-normal/arm64/PolemicystApp-master-emit-module.d",
+    "emit-module-diagnostics" : "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/Intermediates.noindex/PolemicystiOS.build/Debug-iphonesimulator/PolemicystApp.build/Objects-normal/arm64/PolemicystApp-master-emit-module.dia",
+    "swift-dependencies" : "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/Intermediates.noindex/PolemicystiOS.build/Debug-iphonesimulator/PolemicystApp.build/Objects-normal/arm64/PolemicystApp-master.swiftdeps"
+  },
+  "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystApp/App.swift" : {
+    "const-values" : "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/Intermediates.noindex/PolemicystiOS.build/Debug-iphonesimulator/PolemicystApp.build/Objects-normal/arm64/App.swiftconstvalues",
+    "dependencies" : "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/Intermediates.noindex/PolemicystiOS.build/Debug-iphonesimulator/PolemicystApp.build/Objects-normal/arm64/App.d",
+    "diagnostics" : "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/Intermediates.noindex/PolemicystiOS.build/Debug-iphonesimulator/PolemicystApp.build/Objects-normal/arm64/App.dia",
+    "index-unit-output-path" : "/PolemicystiOS.build/Debug-iphonesimulator/PolemicystApp.build/Objects-normal/arm64/App.o",
+    "llvm-bc" : "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/Intermediates.noindex/PolemicystiOS.build/Debug-iphonesimulator/PolemicystApp.build/Objects-normal/arm64/App.bc",
+    "object" : "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/Intermediates.noindex/PolemicystiOS.build/Debug-iphonesimulator/PolemicystApp.build/Objects-normal/arm64/App.o",
+    "swift-dependencies" : "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/Intermediates.noindex/PolemicystiOS.build/Debug-iphonesimulator/PolemicystApp.build/Objects-normal/arm64/App.swiftdeps",
+    "swiftmodule" : "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.derived/Build/Intermediates.noindex/PolemicystiOS.build/Debug-iphonesimulator/PolemicystApp.build/Objects-normal/arm64/App~partial.swiftmodule"
+  }
+}
