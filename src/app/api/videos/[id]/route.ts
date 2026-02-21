@@ -15,7 +15,8 @@ const s3 = new AWS.S3({
   signatureVersion: "v4",
 });
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.email) {
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 
   const video = await prisma.video.findUnique({
-    where: { id: params.id },
+    where: { id },
   });
 
   if (!video) {
@@ -33,8 +34,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   return Response.json(video);
 }
 
-export async function PUT(req: NextRequest, context: { params: { id: string } }) {
-  const videoId = context.params.id;
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: videoId } = await params;
   const body = await req.json();
 
   try {
@@ -58,8 +59,8 @@ export async function PUT(req: NextRequest, context: { params: { id: string } })
   }
 }
 
-export async function DELETE(_: NextRequest, context: { params: { id: string } }) {
-  const id = context.params.id;
+export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
   try {
     // Get the video entry to fetch S3 key before deletion
