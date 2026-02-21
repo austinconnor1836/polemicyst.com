@@ -37,6 +37,10 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "backend/index.ts",
+    "backend/routes",
+    "backend/queues.ts",
+    "backend/scripts"
   ]
 }
