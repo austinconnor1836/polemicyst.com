@@ -11,9 +11,6 @@ export async function deleteFromS3(s3Key: string): Promise<void> {
 import { S3 } from 'aws-sdk';
 import { readFile } from 'fs/promises';
 import path from 'path';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const S3_BUCKET_NAME = 'clips-genie-uploads';
 const AWS_REGION = 'us-east-2';
