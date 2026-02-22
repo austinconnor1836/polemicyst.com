@@ -1,0 +1,89 @@
+services:
+  clip-worker:
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+      - BACKEND_BASE_URL=http://backend:3001
+    working_dir: /app/workers/clip-worker
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - clip-worker-node-modules:/app/workers/clip-worker/node_modules
+    command:
+      [
+        'sh',
+        '-c',
+        'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
+      ]
+
+  poller:
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+    working_dir: /app/workers/poller-worker
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - poller-node-modules:/app/workers/poller-worker/node_modules
+    command:
+      [
+        'sh',
+        '-c',
+        'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
+      ]
+
+  download-worker:
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+    working_dir: /app/workers/video-download-worker
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - download-worker-node-modules:/app/workers/video-download-worker/node_modules
+    command:
+      [
+        'sh',
+        '-c',
+        'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
+      ]
+
+  clip-metadata-worker:
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+    working_dir: /app/workers/clip-metadata-worker
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - clip-metadata-worker-node-modules:/app/workers/clip-metadata-worker/node_modules
+    command:
+      [
+        'sh',
+        '-c',
+        'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
+      ]
+
+  transcription-worker:
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+    working_dir: /app/workers/transcription-worker
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ./workers/transcription-worker/scripts:/app/scripts
+      - transcription-worker-node-modules:/app/workers/transcription-worker/node_modules
+    command:
+      [
+        'sh',
+        '-c',
+        'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
+      ]
+
+volumes:
+  clip-worker-node-modules:
+  poller-node-modules:
+  download-worker-node-modules:
+  clip-metadata-worker-node-modules:
+  transcription-worker-node-modules:

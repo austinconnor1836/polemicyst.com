@@ -1,5 +1,5 @@
-import { Suspense } from "react";
-import SignInClient from "./SignInClient";
+import { Suspense } from 'react';
+import SignInClient from './SignInClient';
 
 export default function SignInPage() {
   return (

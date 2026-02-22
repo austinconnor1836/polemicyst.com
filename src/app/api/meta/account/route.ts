@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import axios from "axios";
+import { NextRequest, NextResponse } from 'next/server';
+import axios from 'axios';
 
 export async function POST(req: NextRequest) {
   try {
@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
     const { accessToken } = body;
 
     if (!accessToken) {
-      return NextResponse.json({ error: "Missing access token" }, { status: 400 });
+      return NextResponse.json({ error: 'Missing access token' }, { status: 400 });
     }
 
     // Get the user's Facebook account details
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     // Find a valid Facebook Page that the user manages
     const page = data.data.find((account: any) => account.id);
     if (!page) {
-      return NextResponse.json({ error: "No Facebook page found" }, { status: 400 });
+      return NextResponse.json({ error: 'No Facebook page found' }, { status: 400 });
     }
 
     // Get Instagram business account ID (if linked)
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
       instagramAccountId: instaResponse.data.instagram_business_account?.id || null,
     });
   } catch (error: any) {
-    console.error("Error fetching Facebook account info:", error.response?.data || error.message);
-    return NextResponse.json({ error: "Failed to retrieve account details" }, { status: 500 });
+    console.error('Error fetching Facebook account info:', error.response?.data || error.message);
+    return NextResponse.json({ error: 'Failed to retrieve account details' }, { status: 500 });
   }
 }

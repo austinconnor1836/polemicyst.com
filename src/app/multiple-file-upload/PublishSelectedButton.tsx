@@ -1,40 +1,34 @@
-"use client";
+'use client';
 
-import React, { useState } from "react";
-import { usePlatformContext } from "./PlatformContext";
-import { useSession } from "next-auth/react";
-import axios from "axios";
-import toast from "react-hot-toast";
+import React, { useState } from 'react';
+import { usePlatformContext } from './PlatformContext';
+import { useSession } from 'next-auth/react';
+import axios from 'axios';
+import toast from 'react-hot-toast';
+import { Button } from '@/components/ui/button';
 
 const PublishSelectedButton = () => {
-  const {
-    uploadedVideos,
-    selectedVideoIds,
-    selectedPlatforms,
-    isAuthenticated,
-    setIsPosting,
-  } = usePlatformContext();
+  const { uploadedVideos, selectedVideoIds, selectedPlatforms, isAuthenticated, setIsPosting } =
+    usePlatformContext();
 
   const { data: session } = useSession();
   const [isPublishing, setIsPublishing] = useState(false);
 
   const handlePublish = async () => {
-    const videosToPublish = uploadedVideos.filter((video) =>
-      selectedVideoIds.has(video.id)
-    );
+    const videosToPublish = uploadedVideos.filter((video) => selectedVideoIds.has(video.id));
 
     if (!videosToPublish.length) {
-      toast.error("No videos selected for publishing.");
+      toast.error('No videos selected for publishing.');
       return;
     }
 
     if (!selectedPlatforms.length) {
-      toast.error("No platforms selected.");
+      toast.error('No platforms selected.');
       return;
     }
 
     if (!session?.user?.id) {
-      toast.error("User not authenticated.");
+      toast.error('User not authenticated.');
       return;
     }
 
@@ -42,11 +36,11 @@ const PublishSelectedButton = () => {
     setIsPosting(true);
 
     const endpointMap: Record<string, string> = {
-      facebook: "/api/meta/upload/facebook",
-      instagram: "/api/meta/upload/instagram",
-      google: "/api/youtube/upload",
-      bluesky: "/api/bluesky/post",
-      twitter: "/api/twitter/post",
+      facebook: '/api/meta/upload/facebook',
+      instagram: '/api/meta/upload/instagram',
+      google: '/api/youtube/upload',
+      bluesky: '/api/bluesky/post',
+      twitter: '/api/twitter/post',
     };
 
     for (const video of videosToPublish) {
@@ -58,9 +52,9 @@ const PublishSelectedButton = () => {
         twitter: video.twitterTemplate,
       };
 
-      let uploadedYouTubeUrl = "";
+      let uploadedYouTubeUrl = '';
 
-      if (selectedPlatforms.includes("google")) {
+      if (selectedPlatforms.includes('google')) {
         try {
           const ytRes = await axios.post(endpointMap.google, {
             videoId: video.id,
@@ -79,13 +73,13 @@ const PublishSelectedButton = () => {
         if (!endpointMap[platform]) continue;
 
         try {
-          if (platform === "facebook" || platform === "instagram") {
+          if (platform === 'facebook' || platform === 'instagram') {
             await axios.post(endpointMap[platform], {
               videoId: video.id,
               description: descriptions[platform],
               userId: session.user.id,
             });
-          } else if (platform === "bluesky" || platform === "twitter") {
+          } else if (platform === 'bluesky' || platform === 'twitter') {
             await axios.post(endpointMap[platform], {
               youtubeUrl: uploadedYouTubeUrl,
               description: descriptions[platform],
@@ -100,17 +94,19 @@ const PublishSelectedButton = () => {
 
     setIsPublishing(false);
     setIsPosting(false);
-    toast.success("Publishing completed.");
+    toast.success('Publishing completed.');
   };
 
   return (
-    <button
-      onClick={handlePublish}
-      disabled={isPublishing}
-      className="mt-8 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
-    >
-      {isPublishing ? "Publishing..." : "Publish Selected"}
-    </button>
+    <div className="mt-8">
+      <Button
+        onClick={handlePublish}
+        disabled={isPublishing}
+        className="bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 dark:bg-green-600 dark:text-white dark:hover:bg-green-700"
+      >
+        {isPublishing ? 'Publishing...' : 'Publish Selected'}
+      </Button>
+    </div>
   );
 };
 

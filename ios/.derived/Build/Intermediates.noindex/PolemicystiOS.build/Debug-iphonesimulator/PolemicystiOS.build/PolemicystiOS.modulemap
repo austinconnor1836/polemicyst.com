@@ -1,0 +1,4 @@
+module PolemicystiOS {
+header "PolemicystiOS-Swift.h"
+export *
+}

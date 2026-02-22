@@ -3,16 +3,14 @@ import { THEME_MODE } from '../../app/ui/types';
 import { createAppSlice } from '../createAppSlice';
 const { DARK, LIGHT, SYSTEM } = THEME_MODE;
 
-
 interface UIState {
   isMenuOpen: boolean;
-  theme: THEME_MODE
-  ;
+  theme: THEME_MODE;
 }
 
 const initialState: UIState = {
   isMenuOpen: true,
-  theme: THEME_MODE.SYSTEM
+  theme: THEME_MODE.SYSTEM,
 };
 
 export const uiSlice = createAppSlice({
@@ -47,7 +45,7 @@ export const uiSlice = createAppSlice({
   selectors: {
     selectIsMenuOpen: (state) => state.isMenuOpen,
     selectTheme: (state) => state.theme,
-  }
+  },
 });
 
 export const { toggleMenu, toggleTheme } = uiSlice.actions;

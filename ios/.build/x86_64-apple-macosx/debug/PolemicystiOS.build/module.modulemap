@@ -1,0 +1,4 @@
+module PolemicystiOS {
+    header "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/x86_64-apple-macosx/debug/PolemicystiOS.build/PolemicystiOS-Swift.h"
+    requires objc
+}

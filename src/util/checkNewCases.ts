@@ -7,9 +7,7 @@ export const checkNewCases = (newCases: Case[], storedCases: Case[]): Case[] => 
   const newEntries = newCases.filter(
     (newCase) =>
       !storedCases.some(
-        (storedCase) =>
-          storedCase.number === newCase.number &&
-          storedCase.docket === newCase.docket
+        (storedCase) => storedCase.number === newCase.number && storedCase.docket === newCase.docket
       )
   );
 

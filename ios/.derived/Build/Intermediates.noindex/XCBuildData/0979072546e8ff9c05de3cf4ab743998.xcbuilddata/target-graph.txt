@@ -1,0 +1,4 @@
+Target dependency graph (2 targets)
+Target 'PolemicystApp' in project 'PolemicystiOS'
+➜ Explicit dependency on target 'PolemicystiOS' in project 'PolemicystiOS'
+Target 'PolemicystiOS' in project 'PolemicystiOS' (no dependencies)
