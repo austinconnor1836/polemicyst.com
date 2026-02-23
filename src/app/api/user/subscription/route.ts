@@ -13,6 +13,7 @@ export async function GET() {
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
     select: {
+      id: true,
       subscriptionPlan: true,
       stripeCustomerId: true,
       _count: { select: { videoFeeds: true } },
@@ -25,6 +26,19 @@ export async function GET() {
 
   const plan = resolvePlan(user.subscriptionPlan);
 
+  // Count clips generated this month
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const clipsThisMonth = await prisma.video.count({
+    where: {
+      userId: user.id,
+      sourceVideoId: { not: null },
+      createdAt: { gte: startOfMonth },
+    },
+  });
+
   return NextResponse.json({
     plan: {
       id: plan.id,
@@ -34,6 +48,7 @@ export async function GET() {
     },
     usage: {
       feeds: user._count.videoFeeds,
+      clipsThisMonth,
     },
     hasStripeCustomer: !!user.stripeCustomerId,
   });

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
+import { prisma } from '@shared/lib/prisma';
+import { checkClipQuota } from '@/lib/plans';
 
 let redis: Redis | null = null;
 let clipGenerationQueue: Queue | null = null;
@@ -43,6 +45,24 @@ export async function POST(req: NextRequest) {
 
     if (!feedVideoId || !userId) {
       return NextResponse.json({ error: 'Missing feedVideoId or userId' }, { status: 400 });
+    }
+
+    // Check clip quota
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { subscriptionPlan: true },
+    });
+    const clipQuota = await checkClipQuota(userId, user?.subscriptionPlan);
+    if (!clipQuota.allowed) {
+      return NextResponse.json(
+        {
+          error: clipQuota.message,
+          code: 'QUOTA_EXCEEDED',
+          limit: clipQuota.limit,
+          usage: clipQuota.currentUsage,
+        },
+        { status: 403 }
+      );
     }
 
     const queue = getClipGenerationQueue();

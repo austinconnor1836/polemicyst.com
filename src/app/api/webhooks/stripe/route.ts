@@ -51,13 +51,24 @@ export async function POST(req: NextRequest) {
     case 'customer.subscription.updated': {
       const subscription = event.data.object;
       const customerId = subscription.customer as string;
-      const priceId = subscription.items.data[0]?.price?.id;
-      const planId = priceId ? planIdFromPriceId(priceId) : 'free';
+      const subStatus = subscription.status;
 
-      await prisma.user.updateMany({
-        where: { stripeCustomerId: customerId },
-        data: { subscriptionPlan: planId },
-      });
+      // If subscription is no longer active/trialing, downgrade to free
+      if (subStatus !== 'active' && subStatus !== 'trialing') {
+        await prisma.user.updateMany({
+          where: { stripeCustomerId: customerId },
+          data: { subscriptionPlan: 'free' },
+        });
+        console.log(`Downgraded customer ${customerId} to free (status: ${subStatus})`);
+      } else {
+        const priceId = subscription.items.data[0]?.price?.id;
+        const planId = priceId ? planIdFromPriceId(priceId) : 'free';
+
+        await prisma.user.updateMany({
+          where: { stripeCustomerId: customerId },
+          data: { subscriptionPlan: planId },
+        });
+      }
       break;
     }
 
@@ -69,6 +80,26 @@ export async function POST(req: NextRequest) {
         where: { stripeCustomerId: customerId },
         data: { subscriptionPlan: 'free' },
       });
+      break;
+    }
+
+    case 'invoice.payment_failed': {
+      const invoice = event.data.object as { subscription?: string | null } & Record<string, any>;
+      const subscriptionId = invoice.subscription ?? null;
+      if (subscriptionId) {
+        const sub = await stripe.subscriptions.retrieve(subscriptionId);
+        const subStatus = sub.status;
+        if (subStatus === 'past_due' || subStatus === 'unpaid' || subStatus === 'canceled') {
+          const customerId = sub.customer as string;
+          await prisma.user.updateMany({
+            where: { stripeCustomerId: customerId },
+            data: { subscriptionPlan: 'free' },
+          });
+          console.log(
+            `Payment failed: downgraded customer ${customerId} to free (status: ${subStatus})`
+          );
+        }
+      }
       break;
     }
 

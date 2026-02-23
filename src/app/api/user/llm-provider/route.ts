@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../auth';
 import { prisma } from '@shared/lib/prisma';
 import type { LLMProvider } from '@shared/virality';
+import { checkLlmProviderAccess } from '@/lib/plans';
 
 function normalizeProvider(value?: string | null): LLMProvider {
   return value && value.toLowerCase() === 'ollama' ? 'ollama' : 'gemini';
@@ -51,6 +52,23 @@ async function handleUpdate(req: NextRequest) {
     requested === 'ollama' || requested === 'gemini' ? (requested as LLMProvider) : null;
   if (!provider) {
     return NextResponse.json({ error: 'Invalid provider' }, { status: 400 });
+  }
+
+  // Check if user's plan allows this provider
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { subscriptionPlan: true },
+  });
+  const providerAccess = checkLlmProviderAccess(provider, user?.subscriptionPlan);
+  if (!providerAccess.allowed) {
+    return NextResponse.json(
+      {
+        error: providerAccess.message,
+        code: 'PLAN_RESTRICTED',
+        allowedProviders: providerAccess.allowedProviders,
+      },
+      { status: 403 }
+    );
   }
 
   await prisma.user.update({

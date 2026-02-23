@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../auth'; // adjust path if needed
-import { checkFeedQuota } from '@/lib/plans';
+import { checkFeedQuota, checkAutoGenerateAccess } from '@/lib/plans';
 
 function detectSourceType(sourceUrlRaw: string): 'youtube' | 'cspan' {
   const trimmed = (sourceUrlRaw || '').trim();
@@ -68,6 +68,17 @@ export async function POST(req: Request) {
 
   const data = await req.json();
   const { name, sourceUrl, pollingInterval, autoGenerateClips, viralitySettings } = data;
+
+  // Enforce auto-generate access
+  if (autoGenerateClips) {
+    const autoAccess = checkAutoGenerateAccess(user.subscriptionPlan);
+    if (!autoAccess.allowed) {
+      return NextResponse.json(
+        { error: autoAccess.message, code: 'PLAN_RESTRICTED' },
+        { status: 403 }
+      );
+    }
+  }
 
   if (!name || !String(name).trim()) {
     return NextResponse.json({ error: 'Name is required' }, { status: 400 });

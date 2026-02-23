@@ -13,10 +13,10 @@ interface SubscriptionData {
   plan: {
     id: string;
     name: string;
-    limits: { maxFeeds: number };
+    limits: { maxFeeds: number; maxClipsPerMonth: number };
     features: string[];
   };
-  usage: { feeds: number };
+  usage: { feeds: number; clipsThisMonth: number };
   hasStripeCustomer: boolean;
 }
 
@@ -90,6 +90,12 @@ function BillingContent() {
               <p className="text-sm text-muted">Sources (feeds)</p>
               <p className="text-lg font-medium">
                 {data.usage.feeds} / {plan.limits.maxFeeds}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted">Clips this month</p>
+              <p className="text-lg font-medium">
+                {data.usage.clipsThisMonth} / {plan.limits.maxClipsPerMonth}
               </p>
             </div>
             <ul className="space-y-1">
