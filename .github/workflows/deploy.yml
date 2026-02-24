@@ -52,12 +52,12 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_WEB:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_WEB:$IMAGE_TAG
 
-      - name: Build and push Clip Worker image
+      - name: Build and push Clip Metadata Worker image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.env.outputs.environment }}
         run: |
-          docker build -f workers/clip-worker/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG .
+          docker build -f workers/clip-metadata-worker/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG
 
       - name: Build and push LLM Worker image
@@ -78,7 +78,7 @@ jobs:
             --service polemicyst-${ENVIRONMENT}-web \
             --force-new-deployment
 
-          # Update clip worker service
+          # Update clip worker service (now runs clip-metadata-worker code)
           aws ecs update-service \
             --cluster $ECS_CLUSTER \
             --service ${ENVIRONMENT}-clip-worker \
