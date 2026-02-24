@@ -135,7 +135,9 @@ jobs:
           path: android/app/build/outputs/apk/dev/debug/*.apk
 
       - name: Upload to Firebase App Distribution
-        if: ${{ secrets.FIREBASE_APP_ID_DEV != '' }}
+        if: ${{ env.FIREBASE_APP_ID_DEV != '' }}
+        env:
+          FIREBASE_APP_ID_DEV: ${{ secrets.FIREBASE_APP_ID_DEV }}
         uses: wzieba/Firebase-Distribution-Github-Action@v1
         with:
           appId: ${{ secrets.FIREBASE_APP_ID_DEV }}
@@ -184,7 +186,9 @@ jobs:
           path: android/app/build/outputs/bundle/prodRelease/*.aab
 
       - name: Upload to Play Store
-        if: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        if: ${{ env.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
