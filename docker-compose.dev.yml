@@ -1,20 +1,21 @@
 services:
-  clip-worker:
-    environment:
-      - NODE_ENV=development
-      - CHOKIDAR_USEPOLLING=true
-      - BACKEND_BASE_URL=http://backend:3001
-    working_dir: /app/workers/clip-worker
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - clip-worker-node-modules:/app/workers/clip-worker/node_modules
-    command:
-      [
-        'sh',
-        '-c',
-        'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
-      ]
+  # clip-worker: LEGACY — see docker-compose.yml for details
+  # clip-worker:
+  #   environment:
+  #     - NODE_ENV=development
+  #     - CHOKIDAR_USEPOLLING=true
+  #     - BACKEND_BASE_URL=http://backend:3001
+  #   working_dir: /app/workers/clip-worker
+  #   volumes:
+  #     - .:/app
+  #     - /app/node_modules
+  #     - clip-worker-node-modules:/app/workers/clip-worker/node_modules
+  #   command:
+  #     [
+  #       'sh',
+  #       '-c',
+  #       'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
+  #     ]
 
   poller:
     environment:
@@ -82,7 +83,7 @@ services:
       ]
 
 volumes:
-  clip-worker-node-modules:
+  # clip-worker-node-modules:  # LEGACY
   poller-node-modules:
   download-worker-node-modules:
   clip-metadata-worker-node-modules:

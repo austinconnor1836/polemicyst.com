@@ -1,11 +1,11 @@
 import { Worker, Queue } from 'bullmq';
 import { prisma } from '@shared/lib/prisma';
-import { transcriptionQueue } from '@shared/queues';
+import { getTranscriptionQueue } from '@shared/queues';
 import { transcribeFeedVideo } from './transcription';
 import { checkClipQuota } from '@shared/lib/plans';
 
 const clipGenerationQueue = new Queue('clip-generation', {
-  connection: transcriptionQueue.opts.connection as any,
+  connection: getTranscriptionQueue().opts.connection as any,
 });
 
 new Worker(
@@ -130,5 +130,5 @@ new Worker(
       console.error('❌ Transcription failed:', transcriptionError);
     }
   },
-  { connection: transcriptionQueue.opts.connection as any }
+  { connection: getTranscriptionQueue().opts.connection as any }
 );
