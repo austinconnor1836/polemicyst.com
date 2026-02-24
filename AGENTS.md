@@ -19,15 +19,16 @@ sudo docker compose up -d db redis
 
 ### Running the frontend (Next.js dev server)
 ```bash
-npx next dev --port 3000
+npm run dev
 ```
-Note: The `npm run dev` script uses `--experimental-https` which requires `mkcert`. For local dev without HTTPS, run `npx next dev` directly.
+This runs `next dev --experimental-https` with auto-generated self-signed certificates (mkcert is auto-downloaded on first run). Chrome will show a cert warning — click Advanced > Proceed to bypass.
 
 ### Running the backend (Express)
 ```bash
-cd backend && npx tsc && REDIS_HOST=localhost node index.js
+npm run backend        # run without rebuilding (uses existing JS)
+npm run backend:build  # build TypeScript first, then run
 ```
-The backend compiles TypeScript in-place (no `dist/` directory). The `shared/lib/prisma.ts` module is referenced via relative paths.
+Both scripts are defined in the root `package.json`. The backend compiles TypeScript in-place (no `dist/` directory). The `shared/lib/prisma.ts` module is referenced via relative paths.
 
 ### Environment variables
 A `.env` file at the project root is required. Key variables:
