@@ -28,7 +28,7 @@ This runs `next dev --experimental-https` with auto-generated self-signed certif
 npm run backend        # run without rebuilding (uses existing JS)
 npm run backend:build  # build TypeScript first, then run
 ```
-Both scripts are defined in the root `package.json`. The backend compiles TypeScript in-place (no `dist/` directory). The `shared/lib/prisma.ts` module is referenced via relative paths.
+These scripts are defined in the root `package.json` on the `develop` branch. The backend compiles TypeScript in-place (no `dist/` directory). The `shared/lib/prisma.ts` module is referenced via relative paths.
 
 ### Environment variables
 A `.env` file at the project root is required. Key variables:
