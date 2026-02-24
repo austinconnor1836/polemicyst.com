@@ -18,7 +18,15 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { ChevronDown, Download, ExternalLink, Loader2, RefreshCw, ArrowLeft, Pencil } from 'lucide-react';
+import {
+  ChevronDown,
+  Download,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+  ArrowLeft,
+  Pencil,
+} from 'lucide-react';
 import { formatRelativeTime } from '@/app/feeds/util/time';
 import {
   DEFAULT_VIRALITY_SETTINGS,
@@ -412,7 +420,7 @@ export default function ClipGroupPage() {
                 <ChevronDown
                   className={cn(
                     'h-5 w-5 text-muted-foreground transition-transform duration-200',
-                    isTranscriptOpen && 'rotate-180',
+                    isTranscriptOpen && 'rotate-180'
                   )}
                 />
               </div>
