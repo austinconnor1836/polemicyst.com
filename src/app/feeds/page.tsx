@@ -373,6 +373,7 @@ export default function FeedsPage() {
       progress: 0,
       startedAt: new Date().toISOString(),
     });
+    setIsAddVideoOpen(false);
 
     try {
       // 0. Persistence Hook: Save File and Metadata

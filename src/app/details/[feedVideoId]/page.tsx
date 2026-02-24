@@ -18,7 +18,15 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { Download, ExternalLink, Loader2, RefreshCw, ArrowLeft, Pencil } from 'lucide-react';
+import {
+  ChevronDown,
+  Download,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+  ArrowLeft,
+  Pencil,
+} from 'lucide-react';
 import { formatRelativeTime } from '@/app/feeds/util/time';
 import {
   DEFAULT_VIRALITY_SETTINGS,
@@ -105,6 +113,7 @@ export default function ClipGroupPage() {
   const [isGeneratingClip, setIsGeneratingClip] = useState(false);
   const [generateMessage, setGenerateMessage] = useState<string | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
   const [transcribeMessage, setTranscribeMessage] = useState<string | null>(null);
 
   const fetchSummary = useCallback(
@@ -399,32 +408,50 @@ export default function ClipGroupPage() {
           </Card>
 
           <Card className="mb-6">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Transcript</CardTitle>
-              <CardDescription>Scroll to review the transcript for this video.</CardDescription>
+            <CardHeader
+              className="cursor-pointer select-none pb-3"
+              onClick={() => setIsTranscriptOpen((o) => !o)}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">Transcript</CardTitle>
+                  <CardDescription>Scroll to review the transcript for this video.</CardDescription>
+                </div>
+                <ChevronDown
+                  className={cn(
+                    'h-5 w-5 text-muted-foreground transition-transform duration-200',
+                    isTranscriptOpen && 'rotate-180'
+                  )}
+                />
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {summary.feedVideo.transcript?.trim() ? (
-                <div className="max-h-[360px] overflow-y-auto rounded-md border p-3 text-sm whitespace-pre-wrap leading-relaxed">
-                  {summary.feedVideo.transcript}
-                </div>
-              ) : (
-                <div className="space-y-3 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                  <div>Transcript not available yet.</div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={requestTranscription}
-                      disabled={isTranscribing}
-                    >
-                      {isTranscribing ? 'Queuing...' : 'Transcribe now'}
-                    </Button>
-                    {transcribeMessage ? <span>{transcribeMessage}</span> : null}
+            {isTranscriptOpen && (
+              <CardContent className="space-y-3">
+                {summary.feedVideo.transcript?.trim() ? (
+                  <div className="max-h-[360px] overflow-y-auto rounded-md border p-3 text-sm whitespace-pre-wrap leading-relaxed">
+                    {summary.feedVideo.transcript}
                   </div>
-                </div>
-              )}
-            </CardContent>
+                ) : (
+                  <div className="space-y-3 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                    <div>Transcript not available yet.</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          requestTranscription();
+                        }}
+                        disabled={isTranscribing}
+                      >
+                        {isTranscribing ? 'Queuing...' : 'Transcribe now'}
+                      </Button>
+                      {transcribeMessage ? <span>{transcribeMessage}</span> : null}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            )}
           </Card>
 
           {summary.clips.length === 0 ? (

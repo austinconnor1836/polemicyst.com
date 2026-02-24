@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../auth'; // adjust path if needed
-import { checkFeedQuota } from '@/lib/plans';
+import { checkFeedQuota, checkAutoGenerateAccess } from '@/lib/plans';
 
 function detectSourceType(sourceUrlRaw: string): 'youtube' | 'cspan' {
   const trimmed = (sourceUrlRaw || '').trim();
@@ -32,7 +32,21 @@ function detectSourceType(sourceUrlRaw: string): 'youtube' | 'cspan' {
 }
 
 export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+  });
+
+  if (!user) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  }
+
   const feeds = await prisma.videoFeed.findMany({
+    where: { userId: user.id },
     orderBy: { createdAt: 'desc' },
   });
   return NextResponse.json(feeds);
@@ -68,6 +82,17 @@ export async function POST(req: Request) {
 
   const data = await req.json();
   const { name, sourceUrl, pollingInterval, autoGenerateClips, viralitySettings } = data;
+
+  // Enforce auto-generate access
+  if (autoGenerateClips) {
+    const autoAccess = checkAutoGenerateAccess(user.subscriptionPlan);
+    if (!autoAccess.allowed) {
+      return NextResponse.json(
+        { error: autoAccess.message, code: 'PLAN_RESTRICTED' },
+        { status: 403 }
+      );
+    }
+  }
 
   if (!name || !String(name).trim()) {
     return NextResponse.json({ error: 'Name is required' }, { status: 400 });

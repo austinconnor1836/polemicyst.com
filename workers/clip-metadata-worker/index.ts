@@ -14,6 +14,7 @@ import {
 } from '@shared/lib/scoring/viral-scoring';
 import { generateClipFromS3 } from '@shared/util/ffmpegUtils';
 import { scorePhilosophicalRhetoric } from '@shared/lib/scoring/philosophy-ranker';
+import { checkClipQuota } from '@shared/lib/plans';
 
 const redisConnection = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
@@ -49,6 +50,19 @@ new Worker(
     } = job.data;
 
     console.log(`📥 Processing clip-generation job for FeedVideo: ${feedVideoId}`);
+
+    // Double-check clip quota before expensive processing
+    const quotaUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { subscriptionPlan: true },
+    });
+    const clipQuota = await checkClipQuota(userId, quotaUser?.subscriptionPlan);
+    if (!clipQuota.allowed) {
+      console.warn(
+        `⚠️ Clip quota exceeded for user ${userId} (${clipQuota.currentUsage}/${clipQuota.limit}). Skipping job.`
+      );
+      return;
+    }
 
     let localVideoPath: string | null = null;
 
@@ -162,6 +176,15 @@ new Worker(
       // For now, let's proceed.
 
       for (const c of philosophyWeightedCandidates) {
+        // Re-check quota before each clip to stop if limit is hit mid-loop
+        const loopQuota = await checkClipQuota(userId, quotaUser?.subscriptionPlan);
+        if (!loopQuota.allowed) {
+          console.warn(
+            `⚠️ Clip quota reached mid-generation (${loopQuota.currentUsage}/${loopQuota.limit}). Stopping.`
+          );
+          break;
+        }
+
         console.log(`✂️ Generating clip: ${c.tStartS}-${c.tEndS} (Score: ${c.score})`);
 
         // Create Segment
