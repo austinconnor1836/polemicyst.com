@@ -4,9 +4,7 @@
     "dev": "next dev --experimental-https",
     "build": "npx prisma generate && next build",
     "build:worker": "tsc",
-    "start": "next start",
-    "backend": "node backend/index.js",
-    "backend:build": "cd backend && tsc && cd .. && node backend/index.js"
+    "start": "next start"
   },
   "dependencies": {
     "@atproto/api": "^0.14.7",
