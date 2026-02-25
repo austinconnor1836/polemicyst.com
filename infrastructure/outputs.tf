@@ -27,7 +27,13 @@ output "route53_name_servers" {
 }
 
 output "rds_endpoint" {
-  value = aws_db_instance.main.address
+  description = "Prod RDS endpoint (legacy)"
+  value       = aws_db_instance.db["prod"].address
+}
+
+output "rds_endpoints" {
+  description = "RDS endpoint per environment"
+  value       = { for env, db in aws_db_instance.db : env => db.address }
 }
 
 output "s3_bucket" {
