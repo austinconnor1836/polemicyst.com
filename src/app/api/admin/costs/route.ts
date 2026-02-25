@@ -10,10 +10,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const days = Math.min(
-    Number(req.nextUrl.searchParams.get('days') || '30'),
-    365
-  );
+  const days = Math.min(Number(req.nextUrl.searchParams.get('days') || '30'), 365);
   const since = new Date();
   since.setDate(since.getDate() - days);
 

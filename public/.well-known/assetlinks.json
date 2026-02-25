@@ -4,9 +4,7 @@
     "target": {
       "namespace": "android_app",
       "package_name": "com.polemicyst.android",
-      "sha256_cert_fingerprints": [
-        "TODO:ADD_YOUR_SIGNING_CERT_SHA256_FINGERPRINT_HERE"
-      ]
+      "sha256_cert_fingerprints": ["TODO:ADD_YOUR_SIGNING_CERT_SHA256_FINGERPRINT_HERE"]
     }
   }
 ]

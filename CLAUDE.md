@@ -63,13 +63,13 @@ In the Feeds modal, users can set:
 
 ### Stages tracked
 
-| Stage | Provider | What's captured |
-|---|---|---|
-| `download` | s3 | file size, estimated S3 bandwidth cost, duration |
-| `transcription` | whisper | duration (cost is $0 for local Whisper) |
-| `llm_scoring` | gemini / ollama | input/output tokens, images, audio seconds, estimated USD, duration |
-| `ffmpeg_render` | ffmpeg | duration (local compute, $0) |
-| `s3_upload` | s3 | estimated PUT + bandwidth cost |
+| Stage           | Provider        | What's captured                                                     |
+| --------------- | --------------- | ------------------------------------------------------------------- |
+| `download`      | s3              | file size, estimated S3 bandwidth cost, duration                    |
+| `transcription` | whisper         | duration (cost is $0 for local Whisper)                             |
+| `llm_scoring`   | gemini / ollama | input/output tokens, images, audio seconds, estimated USD, duration |
+| `ffmpeg_render` | ffmpeg          | duration (local compute, $0)                                        |
+| `s3_upload`     | s3              | estimated PUT + bandwidth cost                                      |
 
 ### Cost estimation
 

@@ -4,11 +4,11 @@
 
 Three jobs in `.github/workflows/deploy.yml`:
 
-| Job | Runner | Branch | Action |
-|-----|--------|--------|--------|
-| `ios-test` | `macos-15` | all pushes | XcodeGen generate → xcodebuild test on iPhone 16 simulator |
-| `build-ios-dev` | `macos-15` | `develop` only | Fastlane `beta` → TestFlight |
-| `build-ios-release` | `macos-15` | `main` only | Fastlane `release` → App Store Connect (no auto-submit) |
+| Job                 | Runner     | Branch         | Action                                                     |
+| ------------------- | ---------- | -------------- | ---------------------------------------------------------- |
+| `ios-test`          | `macos-15` | all pushes     | XcodeGen generate → xcodebuild test on iPhone 16 simulator |
+| `build-ios-dev`     | `macos-15` | `develop` only | Fastlane `beta` → TestFlight                               |
+| `build-ios-release` | `macos-15` | `main` only    | Fastlane `release` → App Store Connect (no auto-submit)    |
 
 Build jobs depend on `ios-test` passing (mirrors Android pattern).
 
@@ -20,11 +20,11 @@ Build jobs depend on `ios-test` passing (mirrors Android pattern).
 
 ## Environment URLs
 
-| Context | API_BASE_URL | How set |
-|---------|-------------|---------|
-| Local Debug | `http://127.0.0.1:3000` | Debug build setting in project.yml |
+| Context          | API_BASE_URL                 | How set                                 |
+| ---------------- | ---------------------------- | --------------------------------------- |
+| Local Debug      | `http://127.0.0.1:3000`      | Debug build setting in project.yml      |
 | TestFlight (dev) | `https://dev.polemicyst.com` | Fastlane `xcargs` override in beta lane |
-| App Store (prod) | `https://polemicyst.com` | Release build setting in project.yml |
+| App Store (prod) | `https://polemicyst.com`     | Release build setting in project.yml    |
 
 `AppConfiguration.apiBaseURL` reads from `Bundle.main.infoDictionary["API_BASE_URL"]`, falls back to localhost for SPM-only builds.
 
@@ -37,16 +37,16 @@ Build jobs depend on `ios-test` passing (mirrors Android pattern).
 
 ## GitHub Secrets (repo-level, not per-environment)
 
-| Secret | Purpose |
-|--------|---------|
-| `APPLE_TEAM_ID` | 10-char Apple Developer Team ID |
-| `ASC_KEY_ID` | App Store Connect API Key ID |
-| `ASC_ISSUER_ID` | App Store Connect API Issuer ID |
-| `ASC_KEY_CONTENT` | Base64 `.p8` API key |
-| `APPLE_CERTIFICATE_BASE64` | Base64 distribution cert `.p12` |
-| `APPLE_CERTIFICATE_PASSWORD` | `.p12` password |
-| `APPLE_PROVISIONING_PROFILE_BASE64` | Base64 provisioning profile |
-| `APPLE_PROVISIONING_PROFILE_NAME` | Profile name for Xcode |
+| Secret                              | Purpose                         |
+| ----------------------------------- | ------------------------------- |
+| `APPLE_TEAM_ID`                     | 10-char Apple Developer Team ID |
+| `ASC_KEY_ID`                        | App Store Connect API Key ID    |
+| `ASC_ISSUER_ID`                     | App Store Connect API Issuer ID |
+| `ASC_KEY_CONTENT`                   | Base64 `.p8` API key            |
+| `APPLE_CERTIFICATE_BASE64`          | Base64 distribution cert `.p12` |
+| `APPLE_CERTIFICATE_PASSWORD`        | `.p12` password                 |
+| `APPLE_PROVISIONING_PROFILE_BASE64` | Base64 provisioning profile     |
+| `APPLE_PROVISIONING_PROFILE_NAME`   | Profile name for Xcode          |
 
 ## Key Files
 

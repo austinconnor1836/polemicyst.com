@@ -7,6 +7,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 ## Revenue-Critical (Must-Have for Launch)
 
 ### Billing & Quotas
+
 - [x] Stripe checkout integration (pricing page → checkout → webhook)
 - [x] Plan definitions with limits (free/pro/business)
 - [x] Feed quota enforcement
@@ -18,6 +19,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 - [ ] Stripe Customer Portal integration for plan changes/cancellation (verify working end-to-end)
 
 ### Deployment
+
 - [ ] Run database migrations on production RDS (see `docs/NEXT_STEPS.md`)
 - [ ] Verify ECS services healthy after deploy (web, workers, redis)
 - [ ] Verify SSL certificate and DNS resolution for polemicyst.com
@@ -30,6 +32,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 ## Mobile Apps — Quota & Error Handling
 
 ### Android (`android/`)
+
 - [ ] Add structured error response parsing (decode JSON error body with `code`, `message`, `allowedProviders` fields)
 - [ ] Handle HTTP 403 specifically — show upgrade prompt with plan info instead of generic error
 - [ ] Add billing/subscription screen (show current plan, usage meters, link to web billing portal)
@@ -39,6 +42,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 - [ ] Add "Upgrade Plan" CTA when quota errors are hit
 
 ### iOS (`ios/`)
+
 - [ ] Add structured error response parsing in `APIClient.swift` (decode JSON error body, not just status code)
 - [ ] Handle HTTP 403 specifically — show upgrade prompt
 - [ ] Add billing/subscription screen
@@ -53,18 +57,21 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 ## Web App — Remaining Features
 
 ### Core Product
+
 - [ ] Clip editing/trimming improvements (trim UI on detail page)
 - [ ] Clip export to social platforms (verify Bluesky, Meta, YouTube, Twitter flows work)
 - [ ] AI description generation (verify `generateDescription` endpoint works)
 - [ ] Clip templates system (CRUD exists but UI may not be wired up)
 
 ### UX Polish
+
 - [ ] Show quota warnings before user hits limit (e.g., "9/10 clips used this month")
 - [ ] Show upgrade prompts inline when 403 is returned on the web app (feeds page, clip generation)
 - [ ] Add loading/progress states for clip generation on feeds page
 - [ ] Error handling for Stripe portal session failures
 
 ### Security & Auth
+
 - [ ] Audit all API routes have proper auth checks (some may be missing `getServerSession`)
 - [ ] Rate limiting on public API endpoints
 - [ ] CSRF protection review
@@ -83,6 +90,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 ---
 
 ## API Contract
+
 - [ ] Update `openapi/spec.yaml` with new quota error responses (403 with `QUOTA_EXCEEDED`, `PLAN_RESTRICTED` codes)
 - [ ] Update `openapi/spec.yaml` with `/api/user/subscription` endpoint (new `clipsThisMonth` field)
 - [ ] Verify Android Retrofit interfaces match current API spec

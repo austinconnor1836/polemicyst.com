@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/index-build/x86_64-apple-macosx/debug/PolemicystApp.build/master.swiftdeps"
+  },
+  "/Users/austin/Developer/polemicyst/polemicyst.com/ios/Sources/PolemicystApp/App.swift": {
+    "dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/index-build/x86_64-apple-macosx/debug/PolemicystApp.build/App.d",
+    "object": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/index-build/x86_64-apple-macosx/debug/PolemicystApp.build/App.swift.o",
+    "swiftmodule": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/index-build/x86_64-apple-macosx/debug/PolemicystApp.build/App~partial.swiftmodule",
+    "swift-dependencies": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/index-build/x86_64-apple-macosx/debug/PolemicystApp.build/App.swiftdeps",
+    "diagnostics": "/Users/austin/Developer/polemicyst/polemicyst.com/ios/.build/index-build/x86_64-apple-macosx/debug/PolemicystApp.build/App.dia"
+  }
+}

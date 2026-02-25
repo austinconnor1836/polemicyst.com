@@ -69,5 +69,6 @@ Colors are defined in `tokens/colors.json` at the repo root and generated into `
 ## Feature parity
 
 When implementing a new feature, reference the web app's corresponding:
+
 - API route: `src/app/api/...`
 - UI component: `src/app/...` or `src/components/...`
