@@ -90,14 +90,12 @@ export default function FeedsPage() {
   const [deletingVideoId, setDeletingVideoId] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
 
-  // Upload state
-  const [isUploading, setIsUploading] = useState(false);
-  const [activeUpload, setActiveUpload] = useState<{
-    id: string;
-    filename: string;
-    progress: number;
-    startedAt: string;
-  } | null>(null);
+  // Upload state — Map keyed by tracking ID allows concurrent uploads
+  const [activeUploads, setActiveUploads] = useState<
+    Map<string, { id: string; filename: string; progress: number; startedAt: string }>
+  >(new Map());
+  const isUploading = activeUploads.size > 0;
+  const [isImportingUrl, setIsImportingUrl] = useState(false);
 
   const [videoQuery, setVideoQuery] = useState('');
   const [videoFeedFilter, setVideoFeedFilter] = useState<string>('all');
@@ -228,15 +226,20 @@ export default function FeedsPage() {
 
   const resumeUpload = async (
     file: File,
-    meta: { uploadId: string; key: string; filename: string; size: number }
+    meta: { uploadId: string; key: string; filename: string; size: number },
+    trackingId?: string
   ) => {
-    setIsUploading(true);
-    // Restore UI state immediately
-    setActiveUpload({
-      id: meta.uploadId,
-      filename: meta.filename,
-      progress: 0, // Will jump when we calculate parts
-      startedAt: new Date().toISOString(),
+    const tid = trackingId || meta.uploadId;
+    // Add/update this upload in the map
+    setActiveUploads((prev) => {
+      const next = new Map(prev);
+      next.set(tid, {
+        id: tid,
+        filename: meta.filename,
+        progress: 0,
+        startedAt: new Date().toISOString(),
+      });
+      return next;
     });
 
     try {
@@ -265,7 +268,13 @@ export default function FeedsPage() {
 
       // Calculate initial progress
       const initialPercent = Math.round((completedPartsCount / totalParts) * 100);
-      setActiveUpload((prev) => (prev ? { ...prev, progress: initialPercent } : null));
+      setActiveUploads((prev) => {
+        const entry = prev.get(tid);
+        if (!entry) return prev;
+        const next = new Map(prev);
+        next.set(tid, { ...entry, progress: initialPercent });
+        return next;
+      });
 
       const uploadPart = async (partNumber: number) => {
         const start = (partNumber - 1) * CHUNK_SIZE;
@@ -307,7 +316,13 @@ export default function FeedsPage() {
               uploadedPartsList.push({ PartNumber: partNum, ETag: eTag });
               completedPartsCount++;
               const percent = Math.round((completedPartsCount / totalParts) * 100);
-              setActiveUpload((prev) => (prev ? { ...prev, progress: percent } : null));
+              setActiveUploads((prev) => {
+                const entry = prev.get(tid);
+                if (!entry) return prev;
+                const next = new Map(prev);
+                next.set(tid, { ...entry, progress: percent });
+                return next;
+              });
               activeWorkers.delete(promise);
             })
             .catch((err) => {
@@ -352,8 +367,11 @@ export default function FeedsPage() {
       // Don't clear storage, so user can try refreshing again?
       // Or clear it to avoid stuck loop? Let's keep it for now.
     } finally {
-      setIsUploading(false);
-      setActiveUpload(null);
+      setActiveUploads((prev) => {
+        const next = new Map(prev);
+        next.delete(tid);
+        return next;
+      });
     }
   };
 
@@ -366,13 +384,16 @@ export default function FeedsPage() {
       return;
     }
 
-    setIsUploading(true);
     const tempId = `upload-${Date.now()}`;
-    setActiveUpload({
-      id: tempId,
-      filename: file.name,
-      progress: 0,
-      startedAt: new Date().toISOString(),
+    setActiveUploads((prev) => {
+      const next = new Map(prev);
+      next.set(tempId, {
+        id: tempId,
+        filename: file.name,
+        progress: 0,
+        startedAt: new Date().toISOString(),
+      });
+      return next;
     });
     setIsAddVideoOpen(false);
 
@@ -397,15 +418,18 @@ export default function FeedsPage() {
 
       // 2. Reuse resume logic which handles the looping
       // We pass the SAME file object and metadata we just got
-      await resumeUpload(file, meta);
+      await resumeUpload(file, meta, tempId);
     } catch (err) {
       console.error(err);
       toast.error('Upload failed');
       // If init failed, we should probably clear storage so it doesn't try to resume a non-existent upload
       localStorage.removeItem('pending-upload-meta');
       await idbDel('pending-upload-file');
-      setIsUploading(false);
-      setActiveUpload(null);
+      setActiveUploads((prev) => {
+        const next = new Map(prev);
+        next.delete(tempId);
+        return next;
+      });
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -414,20 +438,18 @@ export default function FeedsPage() {
   const handleUrlImport = async () => {
     if (!importUrl) return;
 
-    setIsUploading(true);
-    // Use the same activeUpload state for URL imports to show inline
     const tempId = `import-${Date.now()}`;
-    setActiveUpload({
-      id: tempId,
-      filename: importUrl,
-      progress: 0, // indeterminate
-      startedAt: new Date().toISOString(),
+    setActiveUploads((prev) => {
+      const next = new Map(prev);
+      next.set(tempId, {
+        id: tempId,
+        filename: importUrl,
+        progress: 0,
+        startedAt: new Date().toISOString(),
+      });
+      return next;
     });
-
-    // Optional: Keep toast for URL import since it's server-side and fast/opaque?
-    // Or unify UX. Let's unify UX but URL import doesn't give real progress easily.
-    // For now, let's keep the toast for URL import as the user specifically asked about file upload UX.
-    // But to be consistent, we can show the card indeterminate.
+    setIsImportingUrl(true);
 
     const toastId = toast.loading('Importing from URL...');
 
@@ -456,8 +478,12 @@ export default function FeedsPage() {
       console.error(err);
       toast.error(err.message || 'Import failed', { id: toastId });
     } finally {
-      setIsUploading(false);
-      setActiveUpload(null);
+      setIsImportingUrl(false);
+      setActiveUploads((prev) => {
+        const next = new Map(prev);
+        next.delete(tempId);
+        return next;
+      });
     }
   };
 
@@ -564,23 +590,23 @@ export default function FeedsPage() {
       return videoSort === 'newest' ? bT - aT : aT - bT;
     });
 
-    if (activeUpload) {
+    for (const upload of Array.from(activeUploads.values())) {
       sorted.unshift({
-        id: activeUpload.id,
+        id: upload.id,
         feedId: 'uploading',
         videoId: 'uploading',
-        title: activeUpload.filename,
+        title: upload.filename,
         s3Url: '',
         thumbnailUrl: null,
-        createdAt: activeUpload.startedAt,
+        createdAt: upload.startedAt,
         feed: { name: 'Uploading...' },
-        status: 'uploading', // Custom status for the UI
-        uploadProgress: activeUpload.progress,
-      } as any); // Cast to any or custom type intersection to allow upload props
+        status: 'uploading',
+        uploadProgress: upload.progress,
+      } as any);
     }
 
     return sorted;
-  }, [feeds, videoFeedFilter, videoQuery, videoSort, videos, activeUpload]);
+  }, [feeds, videoFeedFilter, videoQuery, videoSort, videos, activeUploads]);
 
   return (
     <div className="mx-auto w-full max-w-screen-xl px-4 py-6 sm:px-6 lg:px-8">
@@ -773,7 +799,6 @@ export default function FeedsPage() {
                     variant="secondary"
                     size="sm"
                     onClick={() => setIsAddVideoOpen(true)}
-                    disabled={isUploading}
                     className="gap-2 ml-2"
                   >
                     <Upload className="h-4 w-4" />
@@ -873,7 +898,7 @@ export default function FeedsPage() {
                     </Card>
                   ))}
                 </div>
-              ) : videos.length === 0 && !activeUpload ? (
+              ) : videos.length === 0 && activeUploads.size === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <div className="rounded-full bg-gray-100 p-3 dark:bg-zinc-900 glass:bg-white/10">
                     <Upload className="h-6 w-6 text-muted-foreground" />
@@ -1185,20 +1210,6 @@ export default function FeedsPage() {
                   </div>
                 </div>
 
-                {isUploading && activeUpload && activeUpload.progress > 0 && (
-                  <div className="w-full space-y-2 rounded-md border p-3">
-                    <div className="flex justify-between text-xs font-medium">
-                      <span>Uploading...</span>
-                      <span>{activeUpload.progress}%</span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-secondary">
-                      <div
-                        className="h-full rounded-full bg-primary transition-all duration-300"
-                        style={{ width: `${activeUpload.progress}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
               </div>
             ) : (
               <div className="space-y-4 py-2">
@@ -1217,10 +1228,10 @@ export default function FeedsPage() {
                 <div className="pt-2">
                   <Button
                     onClick={handleUrlImport}
-                    disabled={!importUrl || isUploading}
+                    disabled={!importUrl || isImportingUrl}
                     className="w-full"
                   >
-                    {isUploading ? (
+                    {isImportingUrl ? (
                       <span className="flex w-full items-center justify-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Importing video…
@@ -1229,7 +1240,7 @@ export default function FeedsPage() {
                       'Import Video'
                     )}
                   </Button>
-                  {isUploading && (
+                  {isImportingUrl && (
                     <div className="mt-3 flex items-start gap-3 rounded-md border border-dashed bg-muted/60 p-3 text-left text-sm">
                       <Loader2 className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin text-muted-foreground" />
                       <div>
