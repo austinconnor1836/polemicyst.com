@@ -500,9 +500,7 @@ export default function ClipGroupPage() {
                   <Card
                     key={clip.id}
                     className="relative cursor-pointer overflow-hidden shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20"
-                    onClick={() =>
-                      router.push(`/details/${feedVideoId}/clips/${clip.id}`)
-                    }
+                    onClick={() => router.push(`/details/${feedVideoId}/clips/${clip.id}`)}
                   >
                     <CardContent className="p-0">
                       <video
