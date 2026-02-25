@@ -26,7 +26,10 @@ import {
   RefreshCw,
   ArrowLeft,
   Pencil,
+  Trash2,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { ThemedToaster } from '@/components/themed-toaster';
 import { formatRelativeTime } from '@/app/feeds/util/time';
 import {
   DEFAULT_VIRALITY_SETTINGS,
@@ -115,6 +118,7 @@ export default function ClipGroupPage() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
   const [transcribeMessage, setTranscribeMessage] = useState<string | null>(null);
+  const [deletingClipId, setDeletingClipId] = useState<string | null>(null);
 
   const fetchSummary = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -288,8 +292,27 @@ export default function ClipGroupPage() {
     }
   }, [feedVideoId, fetchSummary]);
 
+  const deleteClip = async (clipId: string) => {
+    if (!confirm('Delete this clip?')) return;
+    setDeletingClipId(clipId);
+    try {
+      const res = await fetch(`/api/clips/${clipId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete clip');
+      setSummary((prev) =>
+        prev ? { ...prev, clips: prev.clips.filter((c) => c.id !== clipId) } : prev
+      );
+      toast.success('Clip deleted');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to delete clip');
+    } finally {
+      setDeletingClipId(null);
+    }
+  };
+
   return (
     <div className="mx-auto w-full max-w-screen-xl px-4 py-6 sm:px-6 lg:px-8">
+      <ThemedToaster />
       <div className="mb-4 flex items-center gap-2">
         <Button variant="ghost" size="sm" onClick={() => router.push('/feeds')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -474,7 +497,7 @@ export default function ClipGroupPage() {
               </div>
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
                 {summary.clips.map((clip) => (
-                  <Card key={clip.id} className="overflow-hidden shadow-sm">
+                  <Card key={clip.id} className="relative overflow-hidden shadow-sm">
                     <CardContent className="p-0">
                       <video
                         src={clip.s3Url || undefined}
@@ -527,9 +550,27 @@ export default function ClipGroupPage() {
                               </Button>
                             </>
                           ) : null}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive glass:!text-[rgb(var(--color-destructive))] glass:hover:!bg-red-500/10"
+                            onClick={() => deleteClip(clip.id)}
+                            disabled={deletingClipId === clip.id}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </Button>
                         </div>
                       </div>
                     </CardContent>
+                    {deletingClipId === clip.id && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/80 backdrop-blur-sm dark:bg-black/60 glass:!bg-black/50">
+                        <div className="flex items-center gap-2 text-sm font-medium text-foreground dark:text-white glass:!text-white">
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                          Deleting…
+                        </div>
+                      </div>
+                    )}
                   </Card>
                 ))}
               </div>

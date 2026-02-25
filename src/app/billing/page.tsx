@@ -7,7 +7,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
+import { ThemedToaster } from '@/components/themed-toaster';
 
 interface SubscriptionData {
   plan: {
@@ -74,7 +75,7 @@ function BillingContent() {
 
   return (
     <div className="min-h-screen px-4 py-16 glass:bg-transparent">
-      <Toaster position="top-center" />
+      <ThemedToaster position="top-center" />
       <div className="mx-auto max-w-2xl space-y-6">
         <h1 className="text-3xl font-bold">Billing</h1>
 
