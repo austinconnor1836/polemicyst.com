@@ -1,3 +1,13 @@
+export type LLMCostMeta = {
+  inputTokens?: number;
+  outputTokens?: number;
+  inputImages?: number;
+  audioSeconds?: number;
+  estimatedCostUsd: number;
+  modelName?: string;
+  durationMs?: number;
+};
+
 export type LLMScoreResult = {
   score: number;
   rationale: string;
@@ -12,4 +22,6 @@ export type LLMScoreResult = {
   riskFlags?: string[];
   hasViralMoment?: boolean;
   confidence?: number;
+  /** Internal cost metadata — not a score field */
+  _cost?: LLMCostMeta;
 };

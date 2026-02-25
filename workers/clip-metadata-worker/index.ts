@@ -15,6 +15,7 @@ import {
 import { generateClipFromS3 } from '@shared/util/ffmpegUtils';
 import { scorePhilosophicalRhetoric } from '@shared/lib/scoring/philosophy-ranker';
 import { checkClipQuota } from '@shared/lib/plans';
+import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
 
 const redisConnection = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
@@ -49,6 +50,8 @@ new Worker(
       clipLength,
     } = job.data;
 
+    const costTracker = new CostTracker(userId, feedVideoId);
+
     console.log(`📥 Processing clip-generation job for FeedVideo: ${feedVideoId}`);
 
     // Double-check clip quota before expensive processing
@@ -77,14 +80,36 @@ new Worker(
       // 2. Ensuring local video file (Download ONCE)
       const { downloadFeedVideoToTemp } = await import('@shared/util/download');
       console.log('⬇️ Ensuring local video file...');
-      localVideoPath = await downloadFeedVideoToTemp(feedVideo.s3Url);
+      localVideoPath = await costTracker.track(
+        'download',
+        () => downloadFeedVideoToTemp(feedVideo.s3Url),
+        (resultPath) => {
+          let fileSizeBytes: number | undefined;
+          try {
+            const fsSync = require('fs');
+            fileSizeBytes = fsSync.statSync(resultPath).size;
+          } catch {}
+          return {
+            provider: 's3',
+            fileSizeBytes,
+            estimatedCostUsd: fileSizeBytes ? estimateS3Cost(fileSizeBytes) : 0,
+          };
+        }
+      );
 
       // 3. Transcribe (using local file)
       console.log('🎤 Ensuring transcript...');
       let transcript: string;
       let transcriptSegments: any[];
       try {
-        const result = await transcribeFeedVideo(feedVideoId, localVideoPath);
+        const result = await costTracker.track(
+          'transcription',
+          () => transcribeFeedVideo(feedVideoId, localVideoPath!),
+          () => ({
+            provider: 'whisper',
+            estimatedCostUsd: 0,
+          })
+        );
         transcript = result.transcript;
         transcriptSegments = result.segments;
       } catch (transcribeErr) {
@@ -141,6 +166,7 @@ new Worker(
         saferClips,
         localVideoPath: localVideoPath,
         providerOverride: llmProvider,
+        costTracker,
       });
 
       const philosophyWeightedCandidates: ClipCandidate[] = topCandidates.map((candidate) => {
@@ -206,12 +232,29 @@ new Worker(
         // generateClipFromS3 likely does `ffmpeg -i s3Url`.
         // If we pass a local path, ffmpeg works fine.
         // However, the function name is misleading.
-        const { s3Url } = await generateClipFromS3(
-          localVideoPath, // Use local path!
-          formatTime(c.tStartS),
-          formatTime(c.tEndS),
-          s3Key,
-          aspectRatio || '9:16'
+        const { s3Url } = await costTracker.track(
+          'ffmpeg_render',
+          () =>
+            generateClipFromS3(
+              localVideoPath!, // Use local path!
+              formatTime(c.tStartS),
+              formatTime(c.tEndS),
+              s3Key,
+              aspectRatio || '9:16'
+            ),
+          (result) => {
+            // Record S3 upload cost separately
+            costTracker.add({
+              stage: 's3_upload',
+              provider: 's3',
+              estimatedCostUsd: estimateS3Cost(5 * 1024 * 1024), // ~5MB estimate per clip
+              metadata: { s3Key },
+            });
+            return {
+              provider: 'ffmpeg',
+              estimatedCostUsd: 0, // local compute
+            };
+          }
         );
 
         // Create Clip (New Schema)
@@ -262,6 +305,13 @@ new Worker(
       console.error('❌ Error processing job:', err);
       throw err;
     } finally {
+      // Flush cost events (non-fatal)
+      try {
+        await costTracker.flush();
+      } catch (costErr) {
+        console.error('⚠️ Cost tracking flush failed (non-fatal):', costErr);
+      }
+
       // Cleanup local video
       if (localVideoPath) {
         const fs = await import('fs');

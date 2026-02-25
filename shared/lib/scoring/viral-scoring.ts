@@ -1,4 +1,5 @@
 import type { LLMScoreResult } from './llm-types';
+import type { CostTracker } from '../cost-tracking';
 
 export type TranscriptWordSegment = {
   start: number; // seconds
@@ -433,6 +434,7 @@ export async function scoreAndRankCandidatesLLM(params: {
   saferClips?: boolean;
   localVideoPath?: string;
   providerOverride?: string;
+  costTracker?: CostTracker;
 }): Promise<ClipCandidate[]> {
   const {
     s3Url,
@@ -446,6 +448,7 @@ export async function scoreAndRankCandidatesLLM(params: {
     saferClips = false,
     localVideoPath: providedPath,
     providerOverride,
+    costTracker,
   } = params;
 
   const provider = (providerOverride || process.env.LLM_PROVIDER || 'ollama').toLowerCase();
@@ -560,6 +563,18 @@ export async function scoreAndRankCandidatesLLM(params: {
         mediaSummary,
       });
       scored.push(buildCandidate(llm, c, 'ollama'));
+
+      if (costTracker && llm._cost) {
+        costTracker.add({
+          stage: 'llm_scoring',
+          provider: 'ollama',
+          model: llm._cost.modelName,
+          inputTokens: llm._cost.inputTokens,
+          outputTokens: llm._cost.outputTokens,
+          durationMs: llm._cost.durationMs,
+          estimatedCostUsd: llm._cost.estimatedCostUsd,
+        });
+      }
     }
   } else {
     const apiKey = process.env.GOOGLE_API_KEY;
@@ -600,6 +615,20 @@ export async function scoreAndRankCandidatesLLM(params: {
       });
 
       scored.push(buildCandidate(llm, c, 'gemini'));
+
+      if (costTracker && llm._cost) {
+        costTracker.add({
+          stage: 'llm_scoring',
+          provider: 'gemini',
+          model: llm._cost.modelName,
+          inputTokens: llm._cost.inputTokens,
+          outputTokens: llm._cost.outputTokens,
+          inputImages: llm._cost.inputImages,
+          inputAudioS: llm._cost.audioSeconds,
+          durationMs: llm._cost.durationMs,
+          estimatedCostUsd: llm._cost.estimatedCostUsd,
+        });
+      }
     }
   }
 

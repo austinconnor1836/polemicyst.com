@@ -10,6 +10,8 @@ import HomeIcon from '@mui/icons-material/Home';
 import DescriptionIcon from '@mui/icons-material/Description';
 import MovieIcon from '@mui/icons-material/Movie';
 import PaymentIcon from '@mui/icons-material/Payment';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import { useSession } from 'next-auth/react';
 
 interface SidePanelProps {
   onSelectItem?: (item: string) => void;
@@ -24,6 +26,14 @@ const sideNavItems: SideNavItem[] = [
 
 const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
   const { isOpen } = useHamburger(); // Use the isOpen state from context
+  const { data: session } = useSession();
+
+  const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
+  const isAdmin = session?.user?.email === adminEmail;
+
+  const navItems = isAdmin
+    ? [...sideNavItems, { label: 'Costs', element: <BarChartIcon />, href: '/admin/costs' }]
+    : sideNavItems;
 
   return (
     <div
@@ -38,7 +48,7 @@ const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
       style={{ marginTop: 'var(--navbar-height)' }} // Adjust margin to be below the navbar
     >
       <ul className="flex flex-col">
-        {sideNavItems.map((item, index) => (
+        {navItems.map((item, index) => (
           <Link key={item.label} href={item.href} passHref>
             <li
               key={index}

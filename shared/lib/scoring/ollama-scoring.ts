@@ -402,6 +402,10 @@ export async function scoreSegmentWithOllama(params: {
 
   const score = coerceScore(parsed.score, 0);
 
+  const durationMs = Date.now() - startedAt;
+  const ollamaInputTokens = data?.prompt_eval_count as number | undefined;
+  const ollamaOutputTokens = data?.eval_count as number | undefined;
+
   const result = {
     score,
     rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
@@ -416,6 +420,13 @@ export async function scoreSegmentWithOllama(params: {
     riskFlags: coerceArray(parsed.riskFlags),
     hasViralMoment: coerceBool(parsed.hasViralMoment, score >= 6),
     confidence: clamp(Number(parsed.confidence) || 0, 0, 1),
+    _cost: {
+      inputTokens: ollamaInputTokens,
+      outputTokens: ollamaOutputTokens,
+      estimatedCostUsd: 0, // local inference
+      modelName: model,
+      durationMs,
+    },
   };
 
   console.log(

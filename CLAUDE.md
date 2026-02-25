@@ -53,7 +53,47 @@ In the Feeds modal, users can set:
   - requests `riskScore/riskFlags` in the LLM JSON response
   - applies a risk penalty to final score and bumps minimum thresholds slightly
 
+## Per-clip cost instrumentation
+
+### Architecture
+
+- **`CostEvent` table** (`prisma/schema.prisma`): stores one row per billable operation. Key fields: `userId`, `jobId` (== feedVideoId), `stage`, `provider`, `model`, token counts, `durationMs`, `estimatedCostUsd`. Indexed on `userId`, `jobId`, `createdAt`.
+- **`CostTracker`** (`shared/lib/cost-tracking.ts`): in-memory accumulator created per worker job. Exposes `add()`, `track()` (wraps async ops with duration timing), and `flush()` (single `createMany()` at job end). Non-fatal — if flush fails, the pipeline continues.
+- **`_cost` field** on `LLMScoreResult` (`shared/lib/scoring/llm-types.ts`): each scoring function (Gemini, Ollama) returns token counts, model name, and estimated USD alongside scores. The viral-scoring orchestrator feeds these into the `CostTracker`.
+
+### Stages tracked
+
+| Stage           | Provider        | What's captured                                                     |
+| --------------- | --------------- | ------------------------------------------------------------------- |
+| `download`      | s3              | file size, estimated S3 bandwidth cost, duration                    |
+| `transcription` | whisper         | duration (cost is $0 for local Whisper)                             |
+| `llm_scoring`   | gemini / ollama | input/output tokens, images, audio seconds, estimated USD, duration |
+| `ffmpeg_render` | ffmpeg          | duration (local compute, $0)                                        |
+| `s3_upload`     | s3              | estimated PUT + bandwidth cost                                      |
+
+### Cost estimation
+
+- **Gemini**: uses `usageMetadata` from API response when available; falls back to heuristic (258 tokens/image, 32 tokens/sec audio, ~4 chars/token text). Pricing: $0.075/1M input, $0.30/1M output (Flash).
+- **Ollama**: extracts `prompt_eval_count` / `eval_count` from response. Cost is $0 (local).
+- **S3**: $0.005/1K PUTs + $0.09/GB transfer.
+
+### Admin dashboard
+
+- **`/admin/costs`** — gated by `ADMIN_EMAIL` env var (server) / `NEXT_PUBLIC_ADMIN_EMAIL` (client sidenav).
+- **API**: `GET /api/admin/costs?days=30` — returns totals, by-stage, by-job, and daily breakdowns.
+- **Subscription API** (`/api/user/subscription`) now includes `costThisMonth` in the usage response.
+- **`isAdmin()` helper**: `shared/lib/admin.ts`.
+
 ## Change log
+
+### 2026-02-25
+
+- Added **per-clip cost instrumentation** across the full pipeline (download → transcription → LLM scoring → FFmpeg → S3 upload).
+- New `CostEvent` Prisma model + migration.
+- New `CostTracker` utility with batched, non-fatal DB writes.
+- Gemini and Ollama scoring functions now return `_cost` metadata (tokens, model, estimated USD).
+- Admin-only cost dashboard at `/admin/costs` with per-stage breakdown, per-job costs, daily totals, and margin projector.
+- Sidenav conditionally shows "Costs" link for admin user.
 
 ### 2025-12-15
 
