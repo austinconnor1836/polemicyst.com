@@ -6,11 +6,7 @@ import { Toaster, type ToasterProps } from 'react-hot-toast';
  * Theme-aware Toaster that uses design-token CSS custom properties.
  * Automatically adapts to light / dark / glass themes.
  */
-export function ThemedToaster({
-  position = 'top-right',
-}: {
-  position?: ToasterProps['position'];
-}) {
+export function ThemedToaster({ position = 'top-right' }: { position?: ToasterProps['position'] }) {
   return (
     <Toaster
       position={position}

@@ -1209,7 +1209,6 @@ export default function FeedsPage() {
                     <div className="text-xs text-muted-foreground">MP4, MOV supported</div>
                   </div>
                 </div>
-
               </div>
             ) : (
               <div className="space-y-4 py-2">

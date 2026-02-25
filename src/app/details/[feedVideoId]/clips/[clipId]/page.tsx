@@ -688,11 +688,7 @@ export default function ClipEditorPage() {
               <Download className="mr-2 h-4 w-4" />
               {isExporting ? 'Exporting...' : 'Export video'}
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteClip}
-              disabled={isDeletingClip}
-            >
+            <Button variant="destructive" onClick={handleDeleteClip} disabled={isDeletingClip}>
               {isDeletingClip ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
