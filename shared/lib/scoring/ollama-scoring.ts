@@ -368,7 +368,8 @@ export async function scoreSegmentWithOllama(params: {
 
   if (!parsed || typeof parsed !== 'object') {
     // Detect LLM content-safety refusal and return a zero-score fallback instead of crashing
-    const refusalPatterns = /\b(cannot|can't|I'm unable|I am unable|not able to|refuse)\b.*\b(content|create|generate|score|help)\b/i;
+    const refusalPatterns =
+      /\b(cannot|can't|I'm unable|I am unable|not able to|refuse)\b.*\b(content|create|generate|score|help)\b/i;
     if (refusalPatterns.test(rawText)) {
       console.warn(
         `[ollama] LLM refused to score segment (safety filter) durationMs=${Date.now() - startedAt} raw=${rawText.slice(0, 200)}`
