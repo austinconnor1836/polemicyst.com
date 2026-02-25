@@ -3,7 +3,7 @@ import PolemicystiOS
 
 @main
 struct PolemicystApp: App {
-    private let apiClient = APIClient(baseURL: URL(string: "http://127.0.0.1:3000")!)
+    private let apiClient = APIClient(baseURL: AppConfiguration.apiBaseURL)
     @State private var tabSelection = 0
 
     var body: some Scene {

@@ -95,3 +95,12 @@ android/.idea/
 android/*.iml
 android/app/*.iml
 android/captures/
+
+# iOS
+ios/*.xcodeproj/
+ios/build/
+ios/Supporting/Info.plist
+ios/fastlane/cert.p12
+ios/fastlane/profile.mobileprovision
+ios/fastlane/report.xml
+ios/vendor/

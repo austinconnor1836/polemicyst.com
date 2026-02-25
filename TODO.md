@@ -90,6 +90,17 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 
 ---
 
+## Clipfire Rebrand (App Split)
+
+- [ ] Register new App ID `com.clipfire.app` in Apple Developer portal
+- [ ] Update `ios/project.yml` bundle ID from `com.polemicyst.app` to `com.clipfire.app`
+- [ ] Update `ios/fastlane/Appfile` bundle ID
+- [ ] Create new provisioning profile for `com.clipfire.app`
+- [ ] Create new App Store Connect app record for Clipfire
+- [ ] Update GitHub Secrets with new provisioning profile
+
+---
+
 ## Nice-to-Have (Post-Launch)
 
 - [ ] Usage analytics dashboard (admin view)
