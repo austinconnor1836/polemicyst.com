@@ -18,7 +18,9 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import { ArrowLeft, Download, Loader2, Save, Sparkles } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, Save, Sparkles, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { ThemedToaster } from '@/components/themed-toaster';
 import { formatRelativeTime } from '@/app/feeds/util/time';
 
 type ClipRecord = {
@@ -123,6 +125,7 @@ export default function ClipEditorPage() {
   const [templateMessage, setTemplateMessage] = useState<string | null>(null);
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
+  const [isDeletingClip, setIsDeletingClip] = useState(false);
 
   const previewRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -565,6 +568,22 @@ export default function ClipEditorPage() {
     }
   };
 
+  const handleDeleteClip = async () => {
+    if (!clip || !confirm('Delete this clip?')) return;
+    setIsDeletingClip(true);
+    try {
+      const res = await fetch(`/api/clips/${clip.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete clip');
+      toast.success('Clip deleted');
+      router.push(`/details/${feedVideoId}`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to delete clip');
+    } finally {
+      setIsDeletingClip(false);
+    }
+  };
+
   const handleApplyTemplate = (template: CropTemplate) => {
     setAspectRatio((template.aspectRatio as AspectRatio) || '9:16');
     setCrop({
@@ -623,6 +642,7 @@ export default function ClipEditorPage() {
 
   return (
     <div className="mx-auto w-full max-w-[2200px] px-4 py-6 sm:px-6 lg:px-8 lg:h-[calc(100vh-var(--navbar-height))] lg:overflow-hidden lg:flex lg:flex-col lg:min-h-0 lg:pb-52">
+      <ThemedToaster />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="sm" onClick={() => router.push(`/details/${feedVideoId}`)}>
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -667,6 +687,18 @@ export default function ClipEditorPage() {
             <Button onClick={handleExport} disabled={!clip.s3Url || isExporting}>
               <Download className="mr-2 h-4 w-4" />
               {isExporting ? 'Exporting...' : 'Export video'}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteClip}
+              disabled={isDeletingClip}
+            >
+              {isDeletingClip ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              {isDeletingClip ? 'Deleting…' : 'Delete clip'}
             </Button>
             {saveMessage ? (
               <span className="text-xs text-muted-foreground">{saveMessage}</span>

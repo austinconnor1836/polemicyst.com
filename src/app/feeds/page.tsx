@@ -50,7 +50,8 @@ import {
   Settings,
   Loader2,
 } from 'lucide-react';
-import { Toaster, toast } from 'react-hot-toast';
+import toast from 'react-hot-toast';
+import { ThemedToaster } from '@/components/themed-toaster';
 
 function youtubeHandleUrlFromName(name: string) {
   const trimmed = (name || '').trim();
@@ -583,7 +584,7 @@ export default function FeedsPage() {
 
   return (
     <div className="mx-auto w-full max-w-screen-xl px-4 py-6 sm:px-6 lg:px-8">
-      <Toaster position="top-right" />
+      <ThemedToaster />
       <div className="mb-6">
         <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-b from-background to-background/60">
           <FeedsHeroAnimation className="absolute inset-0 opacity-90" />
@@ -998,13 +999,17 @@ export default function FeedsPage() {
                               disabled={deletingVideoId === video.id}
                               title="Delete video"
                             >
-                              <Trash2
-                                className={cn(
-                                  'h-4 w-4',
-                                  deletingVideoId === video.id && 'animate-pulse'
-                                )}
-                              />
+                              <Trash2 className="h-4 w-4" />
                             </Button>
+
+                            {deletingVideoId === video.id && (
+                              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/80 backdrop-blur-sm dark:bg-black/60 glass:!bg-black/50">
+                                <div className="flex items-center gap-2 text-sm font-medium text-foreground dark:text-white glass:!text-white">
+                                  <Loader2 className="h-5 w-5 animate-spin" />
+                                  Deleting…
+                                </div>
+                              </div>
+                            )}
                           </div>
 
                           <div className="space-y-2 p-4">
