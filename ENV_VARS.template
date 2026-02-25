@@ -43,6 +43,10 @@ AUTH_ALLOWED_EMAILS=
 # Comma-separated list of allowed providers (default used in code: google).
 AUTH_ALLOWED_PROVIDERS=google
 
+# --- Admin (cost dashboard access) ---
+ADMIN_EMAIL=aconnor731@gmail.com
+NEXT_PUBLIC_ADMIN_EMAIL=aconnor731@gmail.com
+
 # --- Stripe (billing & subscriptions) ---
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=

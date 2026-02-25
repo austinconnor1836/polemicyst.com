@@ -39,6 +39,22 @@ export async function GET() {
     },
   });
 
+  // Cost tracking summary for the current month
+  let costThisMonth: { totalUsd: number; eventCount: number } = { totalUsd: 0, eventCount: 0 };
+  try {
+    const costAgg = await prisma.costEvent.aggregate({
+      where: { userId: user.id, createdAt: { gte: startOfMonth } },
+      _sum: { estimatedCostUsd: true },
+      _count: true,
+    });
+    costThisMonth = {
+      totalUsd: costAgg._sum.estimatedCostUsd ?? 0,
+      eventCount: costAgg._count,
+    };
+  } catch {
+    // CostEvent table may not exist yet in some environments
+  }
+
   return NextResponse.json({
     plan: {
       id: plan.id,
@@ -49,6 +65,7 @@ export async function GET() {
     usage: {
       feeds: user._count.videoFeeds,
       clipsThisMonth,
+      costThisMonth,
     },
     hasStripeCustomer: !!user.stripeCustomerId,
   });
