@@ -109,3 +109,4 @@ ios/fastlane/cert.p12
 ios/fastlane/profile.mobileprovision
 ios/fastlane/report.xml
 ios/vendor/
+nul
