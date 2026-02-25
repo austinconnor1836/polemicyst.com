@@ -497,7 +497,11 @@ export default function ClipGroupPage() {
               </div>
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
                 {summary.clips.map((clip) => (
-                  <Card key={clip.id} className="relative overflow-hidden shadow-sm">
+                  <Card
+                    key={clip.id}
+                    className="relative cursor-pointer overflow-hidden shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20"
+                    onClick={() => router.push(`/details/${feedVideoId}/clips/${clip.id}`)}
+                  >
                     <CardContent className="p-0">
                       <video
                         src={clip.s3Url || undefined}
@@ -523,7 +527,11 @@ export default function ClipGroupPage() {
                             </span>
                           ) : null}
                         </div>
-                        <div className="flex flex-wrap gap-2 pt-2">
+                        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+                        <div
+                          className="flex flex-wrap gap-2 pt-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {clip.s3Url ? (
                             <>
                               <Button asChild size="sm">
@@ -534,12 +542,6 @@ export default function ClipGroupPage() {
                                 >
                                   <Pencil className="mr-2 h-4 w-4" />
                                   Edit
-                                </a>
-                              </Button>
-                              <Button asChild size="sm" variant="secondary">
-                                <a href={clip.s3Url} target="_blank" rel="noreferrer">
-                                  <ExternalLink className="mr-2 h-4 w-4" />
-                                  Open
                                 </a>
                               </Button>
                               <Button asChild size="sm" variant="outline">
