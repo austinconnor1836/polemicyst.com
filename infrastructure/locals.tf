@@ -1,13 +1,13 @@
 locals {
   # Legacy single-environment support (fallback)
-  database_url = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.main.address}:5432/${var.db_name}"
+  database_url = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.db["prod"].address}:5432/${var.db_name}"
   s3_region    = var.s3_region != "" ? var.s3_region : var.aws_region
 
   # Multi-environment configuration
   environments = {
     for env_name, env_config in var.environments : env_name => {
       # Database URL for this environment
-      database_url = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.main.address}:5432/${env_config.db_name}"
+      database_url = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.db[env_name].address}:5432/${env_config.db_name}"
 
       # Web service environment variables
       web_environment = {
@@ -22,7 +22,7 @@ locals {
         NODE_ENV    = env_name == "prod" ? "production" : "development"
 
         # Database
-        DATABASE_URL = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.main.address}:5432/${env_config.db_name}"
+        DATABASE_URL = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.db[env_name].address}:5432/${env_config.db_name}"
 
         # NextAuth
         NEXTAUTH_URL    = env_config.nextauth_url
@@ -54,7 +54,7 @@ locals {
         NODE_ENV    = env_name == "prod" ? "production" : "development"
 
         # Database
-        DATABASE_URL = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.main.address}:5432/${env_config.db_name}"
+        DATABASE_URL = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.db[env_name].address}:5432/${env_config.db_name}"
 
         # Redis
         REDIS_HOST = "redis-${env_name}.${var.app_name}.local"

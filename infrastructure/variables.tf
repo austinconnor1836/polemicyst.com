@@ -45,38 +45,44 @@ variable "db_engine_version" {
   default     = "15.5"
 }
 
+# DEPRECATED: use per-environment DB settings in var.environments instead
 variable "db_instance_class" {
-  description = "RDS instance class"
+  description = "DEPRECATED — use environments.*.db_instance_class"
   type        = string
   default     = "db.t3.small"
 }
 
+# DEPRECATED: use per-environment DB settings in var.environments instead
 variable "db_allocated_storage" {
-  description = "Allocated storage (GB)"
+  description = "DEPRECATED — use environments.*.db_allocated_storage"
   type        = number
   default     = 20
 }
 
+# DEPRECATED: use per-environment DB settings in var.environments instead
 variable "db_multi_az" {
-  description = "Enable Multi-AZ"
+  description = "DEPRECATED — use environments.*.db_multi_az"
   type        = bool
   default     = true
 }
 
+# DEPRECATED: use per-environment DB settings in var.environments instead
 variable "db_backup_retention_days" {
-  description = "Backup retention in days"
+  description = "DEPRECATED — use environments.*.db_backup_retention"
   type        = number
   default     = 7
 }
 
+# DEPRECATED: use per-environment DB settings in var.environments instead
 variable "db_deletion_protection" {
-  description = "Enable deletion protection"
+  description = "DEPRECATED — use environments.*.db_deletion_protection"
   type        = bool
   default     = false
 }
 
+# DEPRECATED: use per-environment DB settings in var.environments instead
 variable "db_skip_final_snapshot" {
-  description = "Skip final snapshot on destroy"
+  description = "DEPRECATED — use environments.*.db_skip_final_snapshot"
   type        = bool
   default     = true
 }
@@ -135,6 +141,14 @@ variable "environments" {
     nextauth_url              = string
     nextauth_secret           = string
     s3_prefix                 = string
+
+    # Per-environment RDS settings
+    db_instance_class    = string
+    db_allocated_storage = number
+    db_multi_az          = bool
+    db_backup_retention  = number
+    db_deletion_protection = bool
+    db_skip_final_snapshot = bool
   }))
   default = {}
 }
