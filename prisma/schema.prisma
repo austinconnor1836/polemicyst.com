@@ -58,11 +58,14 @@ model Video {
   approvedForSplicing Boolean  @default(false)
   createdAt           DateTime @default(now())
 
-  // ✅ Clip relationship (self-referencing)
+  // Clip relationship (self-referencing)
   sourceVideo   Video?  @relation("ClipSource", fields: [sourceVideoId], references: [id])
   sourceVideoId String?
-
   generatedClips Video[] @relation("ClipSource")
+
+  // Link back to the source FeedVideo that spawned this clip
+  feedVideo   FeedVideo? @relation("FeedVideoClips", fields: [feedVideoId], references: [id])
+  feedVideoId String?
 
   // Added relation for pipeline segments
   segments        Segment[]
@@ -86,18 +89,22 @@ model VideoFeed {
 }
 
 model FeedVideo {
-  id             String    @id @default(uuid())
-  feedId         String
-  feed           VideoFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
-  videoId        String
-  title          String
-  s3Url          String
-  transcript     String?
-  transcriptJson Json?
-  createdAt      DateTime  @default(now())
+  id                    String    @id @default(uuid())
+  feedId                String
+  feed                  VideoFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  videoId               String
+  title                 String
+  s3Url                 String
+  transcript            String?
+  transcriptJson        Json?
+  clipGenerationStatus  String    @default("idle") // idle | queued | processing | completed | failed
+  clipGenerationError   String?
+  createdAt             DateTime  @default(now())
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  generatedClips Video[] @relation("FeedVideoClips")
 
   @@unique([feedId, videoId])
 }

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { TrashIcon } from '@heroicons/react/24/solid';
 
 type FeedVideo = {
   id: string;
@@ -9,17 +11,22 @@ type FeedVideo = {
   feed?: { name: string };
   userId?: string;
   aspectRatio?: string;
+  clipGenerationStatus?: string;
+  _count?: { generatedClips: number };
 };
-import { TrashIcon } from '@heroicons/react/24/solid';
+
+const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  idle: { label: 'No clips', className: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
+  queued: { label: 'Queued', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' },
+  processing: { label: 'Generating...', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 animate-pulse' },
+  completed: { label: 'Clips ready', className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' },
+  failed: { label: 'Failed', className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' },
+};
 
 export default function FeedsPage() {
   const [feeds, setFeeds] = useState<any[]>([]);
   const [videos, setVideos] = useState<FeedVideo[]>([]);
   const [form, setForm] = useState({ name: '', sourceUrl: '', pollingInterval: 60 });
-
-  const [selectedVideo, setSelectedVideo] = useState<FeedVideo | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [aspectRatio, setAspectRatio] = useState("9:16");
 
   const fetchFeeds = async () => {
     const res = await fetch('/api/feeds');
@@ -43,33 +50,10 @@ export default function FeedsPage() {
     fetchFeeds();
   };
 
-  const triggerClip = async (video: any) => {
-    try {
-      const res = await fetch('/api/trigger-clip', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          feedVideoId: video.id,
-          userId: video.userId,
-          aspectRatio: video.aspectRatio || "9:16"
-        }),
-      });
-
-      if (!res.ok) throw new Error('Failed to trigger clip');
-
-      const data = await res.json();
-      console.log('✅ Job enqueued:', data);
-      alert(`Clip job enqueued for "${video.title}"`);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to trigger clip job');
-    }
-  };
-
   const deleteFeed = async (feedId: string) => {
     const res = await fetch(`/api/feeds/${feedId}`, { method: 'DELETE' });
     if (res.ok) {
-      fetchFeeds(); // refresh feed list
+      fetchFeeds();
     } else {
       alert('Failed to delete feed');
     }
@@ -134,85 +118,74 @@ export default function FeedsPage() {
       {/* Video Grid */}
       <h2 className="text-xl font-semibold mb-4">Feed Videos</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-  {videos.map((video) => (
-          <div
-            key={video.id}
-            className="border p-2 rounded shadow cursor-pointer"
-            onClick={() => { setSelectedVideo(video); setIsModalOpen(true); }}
-          >
-            <video
-              src={video.s3Url}
-              controls
-              className="w-full h-auto rounded pointer-events-auto"
-              onClick={(e) => e.stopPropagation()}
-            />
-            <div className="mt-2">
-              <div className="font-semibold">{video.title}</div>
-              <div className="text-xs text-gray-500">Feed: {video.feed?.name}</div>
-              <button
-                className="mt-2 text-red-600 hover:text-red-800 flex items-center"
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  if (confirm(`Delete video '${video.title}'?`)) {
-                    const res = await fetch('/api/feedVideos/delete', {
-                      method: 'DELETE',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ id: video.id })
-                    });
-                    if (res.ok) {
-                      setVideos(videos.filter((v: any) => v.id !== video.id));
-                    } else {
-                      alert('Failed to delete video');
-                    }
-                  }
-                }}
-                title="Delete video"
-              >
-                <TrashIcon className="h-4 w-4 mr-1" /> Delete
-              </button>
+        {videos.map((video) => {
+          const status = video.clipGenerationStatus || 'idle';
+          const badge = STATUS_BADGE[status] || STATUS_BADGE.idle;
+          const clipCount = video._count?.generatedClips || 0;
+
+          return (
+            <div
+              key={video.id}
+              className="border dark:border-gray-700 rounded-lg shadow hover:shadow-md transition-shadow overflow-hidden"
+            >
+              <video
+                src={video.s3Url}
+                controls
+                className="w-full h-auto"
+              />
+              <div className="p-3">
+                <div className="font-semibold truncate">{video.title}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Feed: {video.feed?.name}
+                </div>
+
+                {/* Status badge */}
+                <div className="flex items-center gap-2 mt-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.className}`}>
+                    {badge.label}
+                  </span>
+                  {clipCount > 0 && (
+                    <span className="text-xs text-gray-500">
+                      {clipCount} clip{clipCount !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-2 mt-3">
+                  <Link
+                    href={`/feeds/${video.id}`}
+                    className="flex-1 text-center bg-blue-600 text-white text-sm px-3 py-1.5 rounded hover:bg-blue-700 transition-colors"
+                  >
+                    View Details
+                  </Link>
+                  <button
+                    className="text-red-600 hover:text-red-800 p-1.5"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (confirm(`Delete video '${video.title}'?`)) {
+                        const res = await fetch('/api/feedVideos/delete', {
+                          method: 'DELETE',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ id: video.id })
+                        });
+                        if (res.ok) {
+                          setVideos(videos.filter((v: any) => v.id !== video.id));
+                        } else {
+                          alert('Failed to delete video');
+                        }
+                      }
+                    }}
+                    title="Delete video"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-
-        ))}
+          );
+        })}
       </div>
-
-      {/* Modal */}
-  {isModalOpen && selectedVideo && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded shadow-lg w-full max-w-md">
-            <h2 className="text-lg font-semibold mb-2">{selectedVideo.title}</h2>
-            <video src={selectedVideo.s3Url} controls className="w-full rounded mb-4" />
-
-            <label className="block mb-2 font-medium">Aspect Ratio:</label>
-            <select
-              value={aspectRatio}
-              onChange={(e) => setAspectRatio(e.target.value)}
-              className="w-full p-2 border rounded mb-4"
-            >
-              <option value="9:16">9:16 (Portrait)</option>
-              <option value="16:9">16:9 (Landscape)</option>
-              <option value="1:1">1:1 (Square)</option>
-            </select>
-
-            <button
-              onClick={async () => {
-                await triggerClip({ ...selectedVideo, aspectRatio });
-                setIsModalOpen(false);
-              }}
-              className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 mb-2"
-            >
-              Generate Clip
-            </button>
-
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="w-full text-gray-700 py-2 rounded border border-gray-300"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

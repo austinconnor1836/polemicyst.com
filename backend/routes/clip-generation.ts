@@ -24,6 +24,11 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
   console.log('clip-generation hit with aspectRatio:', aspectRatio);
 
   try {
+    await prisma.feedVideo.update({
+      where: { id: feedVideoId },
+      data: { clipGenerationStatus: 'processing', clipGenerationError: null },
+    });
+
     // Step 1: Transcribe the video
     try {
       console.log('🔍 Checking for existing transcript...');
@@ -31,6 +36,10 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
       console.log('🎤 Transcription complete.');
     } catch (transcriptionError: any) {
       console.error('❌ Transcription failed:', transcriptionError);
+      await prisma.feedVideo.update({
+        where: { id: feedVideoId },
+        data: { clipGenerationStatus: 'failed', clipGenerationError: transcriptionError.message || 'Transcription failed' },
+      });
       return res.status(500).json({
         error: 'Transcription failed',
         details: transcriptionError.message || 'Unknown transcription error'
@@ -50,6 +59,7 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
       const created = await prisma.video.create({
         data: {
           userId,
+          feedVideoId,
           videoTitle: '',
           s3Url: videoUpload.url,
           s3Key: videoUpload.key,
@@ -86,10 +96,19 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
       createdClips.push(created);
     }
 
+    await prisma.feedVideo.update({
+      where: { id: feedVideoId },
+      data: { clipGenerationStatus: 'completed' },
+    });
+
     return res.json({ message: '✅ Clips generated successfully', clips: createdClips });
 
   } catch (err: any) {
     console.error('❌ Clip generation failed:', err);
+    await prisma.feedVideo.update({
+      where: { id: feedVideoId },
+      data: { clipGenerationStatus: 'failed', clipGenerationError: err.message || 'Unknown error' },
+    }).catch(() => {});
     return res.status(500).json({ error: 'Clip generation failed', details: err.message });
   }
 });

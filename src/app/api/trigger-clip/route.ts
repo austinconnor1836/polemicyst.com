@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
+import { prisma } from '@shared/lib/prisma';
 
 const redis = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
@@ -18,9 +19,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing feedVideoId or userId' }, { status: 400 });
     }
 
+    await prisma.feedVideo.update({
+      where: { id: feedVideoId },
+      data: { clipGenerationStatus: 'queued', clipGenerationError: null },
+    });
+
     const job = await clipGenerationQueue.add(
       'clip-generation',
-      { feedVideoId, userId, aspectRatio }, // include aspectRatio
+      { feedVideoId, userId, aspectRatio },
       { jobId: feedVideoId }
     );
 
