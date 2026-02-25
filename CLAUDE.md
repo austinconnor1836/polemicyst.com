@@ -1,4 +1,14 @@
-# Polemicyst — LLM / Claude Notes
+# Polemicyst — Claude Code Instructions
+
+## Git workflow
+
+- **Always create a new branch from `develop`** before starting work on a new task. Run `git checkout develop && git pull origin develop && git checkout -b <branch-name>` first.
+- PRs should target `develop`, not `main`.
+- Use descriptive branch names: `feature/<name>`, `fix/<name>`, `chore/<name>`.
+
+---
+
+# LLM / Claude Notes
 
 This file is the **canonical log** for structural changes to the viral clip generation system, especially anything related to **LLM scoring, prompts, model orchestration, and safety**.
 
