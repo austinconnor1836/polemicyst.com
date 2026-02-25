@@ -28,7 +28,7 @@ platform :ios do
       scheme: SCHEME,
       configuration: "Release",
       export_method: "app-store",
-      xcargs: "API_BASE_URL='https://dev.polemicyst.com'",
+      xcargs: "API_BASE_URL='https://dev.polemicyst.com' DEVELOPMENT_TEAM='#{ENV["APPLE_TEAM_ID"]}'",
       output_directory: "./build",
       output_name: "Polemicyst.ipa"
     )
@@ -57,6 +57,7 @@ platform :ios do
       scheme: SCHEME,
       configuration: "Release",
       export_method: "app-store",
+      xcargs: "DEVELOPMENT_TEAM='#{ENV["APPLE_TEAM_ID"]}'",
       output_directory: "./build",
       output_name: "Polemicyst.ipa"
     )
