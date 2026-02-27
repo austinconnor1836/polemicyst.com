@@ -60,7 +60,9 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
     fetchFeedVideo();
   }, [fetchFeedVideo]);
 
-  const isActiveGeneration = feedVideo?.clipGenerationStatus === 'queued' || feedVideo?.clipGenerationStatus === 'processing';
+  const isActiveGeneration =
+    feedVideo?.clipGenerationStatus === 'queued' ||
+    feedVideo?.clipGenerationStatus === 'processing';
 
   useEffect(() => {
     if (isActiveGeneration) {
@@ -71,7 +73,10 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
           if (newCount > previousClipCountRef.current) {
             previousClipCountRef.current = newCount;
           }
-          if (data.clipGenerationStatus !== 'queued' && data.clipGenerationStatus !== 'processing') {
+          if (
+            data.clipGenerationStatus !== 'queued' &&
+            data.clipGenerationStatus !== 'processing'
+          ) {
             if (pollingRef.current) clearInterval(pollingRef.current);
           }
         }
@@ -124,7 +129,9 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
         <Link href="/feeds" className="text-blue-600 hover:underline flex items-center gap-1 mb-4">
           <ArrowLeftIcon className="h-4 w-4" /> Back to Feeds
         </Link>
-        <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-4 rounded">{error}</div>
+        <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-4 rounded">
+          {error}
+        </div>
       </div>
     );
   }
@@ -143,15 +150,13 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
       <div className="bg-white dark:bg-[#292c35] rounded-lg shadow-md p-6 mb-6">
         <h1 className="text-2xl font-bold mb-1">{feedVideo.title}</h1>
         {feedVideo.feed && (
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Feed: {feedVideo.feed.name}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Feed: {feedVideo.feed.name}
+          </p>
         )}
 
         <div className="max-w-lg">
-          <video
-            src={feedVideo.s3Url}
-            controls
-            className="w-full rounded"
-          />
+          <video src={feedVideo.s3Url} controls className="w-full rounded" />
         </div>
       </div>
 
@@ -180,12 +185,14 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
               disabled={isTriggering || isActiveGeneration}
               className="bg-green-600 text-white px-5 py-2 rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
             >
-              {isTriggering ? 'Queuing...' : isActiveGeneration ? 'Generating...' : 'Generate Clips'}
+              {isTriggering
+                ? 'Queuing...'
+                : isActiveGeneration
+                  ? 'Generating...'
+                  : 'Generate Clips'}
             </button>
 
-            <span className={`text-sm font-medium ${statusInfo.color}`}>
-              {statusInfo.text}
-            </span>
+            <span className={`text-sm font-medium ${statusInfo.color}`}>{statusInfo.text}</span>
           </div>
         </div>
 
@@ -226,7 +233,12 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
               <div className="flex flex-col items-center gap-3">
                 <div className="animate-pulse text-blue-500">
                   <svg className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"
+                    />
                   </svg>
                 </div>
                 <p>Clips are being generated. They will appear here as they are ready.</p>
@@ -243,11 +255,7 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
                 className="border dark:border-gray-700 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
               >
                 {clip.s3Url ? (
-                  <video
-                    src={clip.s3Url}
-                    controls
-                    className="w-full aspect-video bg-black"
-                  />
+                  <video src={clip.s3Url} controls className="w-full aspect-video bg-black" />
                 ) : (
                   <div className="w-full aspect-video bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />

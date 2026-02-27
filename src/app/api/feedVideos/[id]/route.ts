@@ -4,10 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../auth';
 import { deleteFromS3 } from '@shared/lib/s3';
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const feedVideo = await prisma.feedVideo.findUnique({
     where: { id },
