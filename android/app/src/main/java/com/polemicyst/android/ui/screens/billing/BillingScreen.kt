@@ -15,7 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -130,7 +130,7 @@ private fun BillingContent(subscription: SubscriptionInfo) {
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Icon(Icons.Filled.OpenInNew, contentDescription = null)
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
                 Spacer(modifier = Modifier.padding(start = 8.dp))
                 Text("Manage Billing")
             }
