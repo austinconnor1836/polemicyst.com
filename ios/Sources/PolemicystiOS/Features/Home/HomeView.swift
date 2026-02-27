@@ -35,19 +35,37 @@ public struct HomeView: View {
                         .foregroundStyle(DesignTokens.textPrimary)
                     Label("Review and manage your generated clips", systemImage: "play.rectangle.fill")
                         .foregroundStyle(DesignTokens.textPrimary)
+                    Label("Track your usage and subscription", systemImage: "chart.bar.fill")
+                        .foregroundStyle(DesignTokens.textPrimary)
                 }
                 .padding()
                 .background(DesignTokens.surface.opacity(0.7))
                 .cornerRadius(DesignTokens.cornerRadius)
 
-                Button(action: { selection = 1 }) {
-                    Text("Go to Feeds")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(DesignTokens.accent)
-                        .foregroundStyle(DesignTokens.background)
-                        .cornerRadius(DesignTokens.cornerRadius)
+                HStack(spacing: DesignTokens.spacing) {
+                    Button(action: { selection = 1 }) {
+                        Text("Feeds")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(DesignTokens.accent)
+                            .foregroundStyle(DesignTokens.background)
+                            .cornerRadius(DesignTokens.cornerRadius)
+                    }
+
+                    Button(action: { selection = 3 }) {
+                        Text("Clips")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(DesignTokens.surface)
+                            .foregroundStyle(DesignTokens.accent)
+                            .cornerRadius(DesignTokens.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: DesignTokens.cornerRadius)
+                                    .stroke(DesignTokens.accent.opacity(0.5), lineWidth: 1)
+                            )
+                    }
                 }
                 .padding(.horizontal, DesignTokens.largeSpacing)
 
