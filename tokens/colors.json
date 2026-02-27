@@ -1,0 +1,13 @@
+{
+  "colors": {
+    "primary": { "light": "#1A1A2E", "dark": "#D0BCFF" },
+    "accent": { "light": "#E94560", "dark": "#FF6B81" },
+    "background": { "light": "#F9F9F9", "dark": "#121212" },
+    "surface": { "light": "#FFFFFF", "dark": "#292c35" },
+    "text": { "light": "#2E2E2E", "dark": "#E0E0E0" },
+    "textMuted": { "light": "#625B71", "dark": "#CCC2DC" },
+    "border": { "light": "#E5E7EB", "dark": "#3F3F46" },
+    "success": { "light": "#0070f3", "dark": "#3291FF" },
+    "destructive": { "light": "#DC2626", "dark": "#FF6B6B" }
+  }
+}

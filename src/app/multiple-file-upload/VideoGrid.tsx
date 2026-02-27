@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { usePlatformContext } from './PlatformContext';
 import TemplateModal from './TemplateModal';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface Video {
   id: string;
@@ -28,7 +30,7 @@ const VideoGrid = () => {
     setSelectedVideoIds,
     toggleVideoSelection,
     uploadedVideos,
-    setUploadedVideos
+    setUploadedVideos,
   } = usePlatformContext();
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -61,9 +63,7 @@ const VideoGrid = () => {
 
     try {
       await Promise.all(
-        Array.from(selectedVideoIds).map((id) =>
-          fetch(`/api/videos/${id}`, { method: 'DELETE' })
-        )
+        Array.from(selectedVideoIds).map((id) => fetch(`/api/videos/${id}`, { method: 'DELETE' }))
       );
 
       setUploadedVideos((prev) => prev.filter((video) => !selectedVideoIds.has(video.id)));
@@ -77,66 +77,66 @@ const VideoGrid = () => {
 
   return (
     <>
-      <button
-        className="mt-4 bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
-        onClick={() => setShowTemplateModal(true)}
-      >
-        Edit Post Templates
-      </button>
-      {showTemplateModal && (
-        <TemplateModal />
-      )}
-      {uploadedVideos.length === 0 ? <p className="text-center text-gray-500 mt-8">No videos uploaded yet.</p> : <div className="mt-10">
-        <div className="flex justify-between mb-2">
-          <button onClick={handleSelectAll} className="text-sm text-blue-600 hover:underline">
-            {selectedVideoIds.size === uploadedVideos.length ? 'Deselect All' : 'Select All'}
-          </button>
-
-          <button
-            onClick={handleDeleteSelected}
-            disabled={selectedVideoIds.size === 0 || isDeleting}
-            className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 disabled:bg-gray-400"
-          >
-            {isDeleting ? 'Deleting...' : 'Delete Selected'}
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-          {uploadedVideos.map((video) => (
-            <div
-              key={video.id}
-              className="relative border rounded-lg p-4 shadow-sm bg-white dark:bg-gray-800"
+      <div className="mt-4">
+        <Button variant="secondary" onClick={() => setShowTemplateModal(true)}>
+          Edit Post Templates
+        </Button>
+      </div>
+      {showTemplateModal && <TemplateModal />}
+      {uploadedVideos.length === 0 ? (
+        <p className="text-center text-gray-500 mt-8">No videos uploaded yet.</p>
+      ) : (
+        <div className="mt-10">
+          <div className="flex justify-between mb-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSelectAll}
+              className="px-0 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
             >
-              {/* Checkbox */}
-              <input
-                type="checkbox"
-                className="absolute top-2 right-2"
-                checked={selectedVideoIds.has(video.id)}
-                onChange={() => toggleVideoSelection(video.id)}
-                onClick={(e) => e.stopPropagation()}
-              />
+              {selectedVideoIds.size === uploadedVideos.length ? 'Deselect All' : 'Select All'}
+            </Button>
 
-              {/* Clickable area */}
-              <div onClick={() => setActiveVideo(video)} className="cursor-pointer">
-                <h3 className="font-semibold text-sm truncate mb-2">{video.videoTitle}</h3>
+            <Button
+              onClick={handleDeleteSelected}
+              disabled={selectedVideoIds.size === 0 || isDeleting}
+              variant="destructive"
+              size="sm"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Selected'}
+            </Button>
+          </div>
 
-                {/* ✅ Actual video preview */}
-                <video
-                  src={video.s3Url ?? ""}
-                  controls
-                  className="w-full rounded max-h-48"
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+            {uploadedVideos.map((video) => (
+              <Card key={video.id} className="relative shadow-sm dark:bg-gray-800">
+                {/* Checkbox */}
+                <input
+                  type="checkbox"
+                  className="absolute top-2 right-2"
+                  checked={selectedVideoIds.has(video.id)}
+                  onChange={() => toggleVideoSelection(video.id)}
+                  onClick={(e) => e.stopPropagation()}
                 />
 
-                <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 line-clamp-3">
-                  {video.sharedDescription}
-                </p>
-              </div>
-            </div>
-          ))}
+                {/* Clickable area */}
+                <CardContent onClick={() => setActiveVideo(video)} className="cursor-pointer p-4">
+                  <h3 className="mb-2 truncate text-sm font-semibold">{video.videoTitle}</h3>
+
+                  {/* ✅ Actual video preview */}
+                  <video src={video.s3Url ?? ''} controls className="w-full rounded max-h-48" />
+
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 line-clamp-3">
+                    {video.sharedDescription}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
-      </div>}
+      )}
     </>
-  )
+  );
 };
 
 export default VideoGrid;

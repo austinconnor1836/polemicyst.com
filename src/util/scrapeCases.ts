@@ -35,7 +35,6 @@ export const scrapeCases = async (): Promise<Case[]> => {
       if (!isDateNaN && date.length) {
         cases.push({ number: caseNumber, date, docket, name, judge, citation });
       }
-
     });
 
     return cases;

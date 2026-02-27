@@ -5,7 +5,11 @@ import { BskyAgent, RichText } from '@atproto/api';
 const prisma = new PrismaClient();
 
 // Wait for YouTube to generate a real thumbnail (max 5 min)
-async function waitForValidThumbnail(videoId: string, maxRetries = 60, interval = 5000): Promise<string | null> {
+async function waitForValidThumbnail(
+  videoId: string,
+  maxRetries = 60,
+  interval = 5000
+): Promise<string | null> {
   const tryUrls = [
     `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
     `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
@@ -48,7 +52,10 @@ export async function POST(req: Request) {
     });
 
     if (!account || !account.access_token || !account.refresh_token || !account.scope) {
-      return NextResponse.json({ message: 'Bluesky session not found or incomplete.' }, { status: 401 });
+      return NextResponse.json(
+        { message: 'Bluesky session not found or incomplete.' },
+        { status: 401 }
+      );
     }
 
     const session = {
@@ -123,9 +130,11 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ message: 'Posted to Bluesky successfully!', post }, { status: 200 });
-
   } catch (error) {
     console.error('❌ Error posting to Bluesky:', error);
-    return NextResponse.json({ message: 'Failed to post', error: error instanceof Error ? error.message : error }, { status: 500 });
+    return NextResponse.json(
+      { message: 'Failed to post', error: error instanceof Error ? error.message : error },
+      { status: 500 }
+    );
   }
 }

@@ -7,6 +7,7 @@
 generator client {
   provider = "prisma-client-js"
   output   = "../node_modules/.prisma/client"
+  binaryTargets = ["native", "darwin-arm64"]
 }
 
 datasource db {
@@ -22,10 +23,12 @@ model User {
   stripeCustomerId    String?
   subscriptionPlan    String               @default("free") // 'free', 'pro', etc.
   image               String?
+  defaultLLMProvider  String               @default("ollama")
   accounts            Account[]
   sessions            Session[]
   videos              Video[]
   templatePreferences TemplatePreferences?
+  clipCropTemplates   ClipCropTemplate[]
   videoFeeds          VideoFeed[]
   feedVideos          FeedVideo[]
 }
@@ -56,6 +59,8 @@ model Video {
   twitterTemplate     String
   transcript          String?
   approvedForSplicing Boolean  @default(false)
+  trimStartS          Float?
+  trimEndS            Float?
   createdAt           DateTime @default(now())
 
   // Clip relationship (self-referencing)
@@ -69,6 +74,7 @@ model Video {
 
   // Added relation for pipeline segments
   segments        Segment[]
+  clipSourceFeedVideo FeedVideo? @relation("FeedVideoClipSource")
 }
 
 model VideoFeed {
@@ -79,6 +85,8 @@ model VideoFeed {
   pollingInterval Int
   lastCheckedAt   DateTime?
   lastVideoId     String?
+  autoGenerateClips Boolean   @default(false)
+  viralitySettings  Json?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -93,8 +101,12 @@ model FeedVideo {
   feedId                String
   feed                  VideoFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
   videoId               String
+  clipSourceVideoId     String?   @unique
+  clipSourceVideo       Video?    @relation("FeedVideoClipSource", fields: [clipSourceVideoId], references: [id], onDelete: SetNull)
   title                 String
+  thumbnailUrl          String?
   s3Url                 String
+  status                String    @default("ready") // pending | ready | failed
   transcript            String?
   transcriptJson        Json?
   clipGenerationStatus  String    @default("idle") // idle | queued | processing | completed | failed
@@ -120,6 +132,7 @@ model Account {
   id_token          String?
   refresh_token     String?
   scope             String?
+  session_state     String?
   token_type        String?
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -145,6 +158,7 @@ model Segment {
   score     Float
   selected  Boolean  @default(false)
   clips     Clip[]
+  rhetoricLabels SegmentRhetoricLabel[]
 
   @@index([videoId])
   @@index([score])
@@ -178,4 +192,55 @@ model Metric {
   collectedAt DateTime @default(now())
 
   @@index([clipId])
+}
+
+model SegmentRhetoricLabel {
+  id        String   @id @default(uuid())
+  segmentId String
+  segment   Segment  @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  label     Float
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([segmentId])
+}
+
+model CostEvent {
+  id               String   @id @default(cuid())
+  userId           String
+  jobId            String   // feedVideoId — groups events per video run
+  stage            String   // download | transcription | llm_scoring | ffmpeg_render | s3_upload
+  provider         String?  // gemini | ollama | whisper | s3 | ffmpeg
+  model            String?
+  inputTokens      Int?
+  outputTokens     Int?
+  inputImages      Int?
+  inputAudioS      Float?
+  durationMs       Int?
+  fileSizeBytes    BigInt?
+  estimatedCostUsd Float    @default(0)
+  metadata         Json?
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+  @@index([jobId])
+  @@index([createdAt])
+}
+
+model ClipCropTemplate {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  aspectRatio String
+  cropX      Float
+  cropY      Float
+  cropWidth  Float
+  cropHeight Float
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
 }

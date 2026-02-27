@@ -28,7 +28,7 @@ const ChatGPT: React.FC = () => {
 
     try {
       const gptApiRoute = buildApiRoute(ApiRoutes.CHAT_GPT);
-    //   const response = await axios.post('/api/chat', { message: input });
+      //   const response = await axios.post('/api/chat', { message: input });
       const response = await axios.post(gptApiRoute, { message: input });
       const assistantMessage: Message = { role: 'assistant', content: response.data.message };
       setMessages([...messages, userMessage, assistantMessage]);
@@ -42,50 +42,45 @@ const ChatGPT: React.FC = () => {
   return (
     // <div className="max-w-xl mx-auto pb-20">
     <div className="max-w-xl flex flex-col">
-    {/* <div className="h-4/5 overflow-auto"> */}
-    <List>
-      {messages.map((msg, index) => (
-        <ListItem key={index}>
-          <ListItemText
-            primary={msg.content}
-            className={msg.role === 'user' ? 'text-right' : 'text-left'}
-          />
-        </ListItem>
-      ))}
-    </List>
-    {/* </div> */}
+      {/* <div className="h-4/5 overflow-auto"> */}
+      <List>
+        {messages.map((msg, index) => (
+          <ListItem key={index}>
+            <ListItemText
+              primary={msg.content}
+              className={msg.role === 'user' ? 'text-right' : 'text-left'}
+            />
+          </ListItem>
+        ))}
+      </List>
+      {/* </div> */}
 
-    {loading && <CircularProgress />}
+      {loading && <CircularProgress />}
 
-    {/* <div className="fixed bottom-10 left-0 right-0 bg-white p-4 shadow-md"> */}
-    {/* <div className="absolute bottom-10 shadow-md flex space-x-2"> */}
+      {/* <div className="fixed bottom-10 left-0 right-0 bg-white p-4 shadow-md"> */}
+      {/* <div className="absolute bottom-10 shadow-md flex space-x-2"> */}
       <div className="bottom-10">
-      <TextField
-        className="bg-transparent flex-grow w-4/5"
-        label="Type a message"
-        fullWidth
-        variant="outlined"
-        value={input}
-        onChange={handleInputChange}
-        onKeyPress={(event) => {
-          if (event.key === 'Enter') {
-            handleSendMessage();
-          }
-        }}
-        disabled={loading}
-      />
-      <div className='w-1/5'>
-      <Button
-        onClick={handleSendMessage}
-        variant="contained"
-        fullWidth
-        disabled={loading}
-      >
-        Send
-      </Button>
+        <TextField
+          className="bg-transparent flex-grow w-4/5"
+          label="Type a message"
+          fullWidth
+          variant="outlined"
+          value={input}
+          onChange={handleInputChange}
+          onKeyPress={(event) => {
+            if (event.key === 'Enter') {
+              handleSendMessage();
+            }
+          }}
+          disabled={loading}
+        />
+        <div className="w-1/5">
+          <Button onClick={handleSendMessage} variant="contained" fullWidth disabled={loading}>
+            Send
+          </Button>
+        </div>
       </div>
     </div>
-  </div>
     // <div style={{ maxWidth: '600px', margin: '0 auto' }}>
     // <div className={`max-w-xl mx-auto pb-20`}>
     //   <List>
