@@ -11,6 +11,12 @@ export async function GET() {
   return NextResponse.json(feeds);
 }
 
+const PLAN_FEED_LIMITS: Record<string, number> = {
+  free: 3,
+  pro: 25,
+  enterprise: -1,
+};
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
@@ -19,10 +25,27 @@ export async function POST(req: Request) {
 
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
+    include: { videoFeeds: { select: { id: true } } },
   });
 
   if (!user) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  }
+
+  const plan = user.subscriptionPlan || 'free';
+  const feedLimit = PLAN_FEED_LIMITS[plan] ?? PLAN_FEED_LIMITS.free;
+
+  if (feedLimit !== -1 && user.videoFeeds.length >= feedLimit) {
+    return NextResponse.json(
+      {
+        code: 'QUOTA_EXCEEDED',
+        message: `You have reached the feed limit (${feedLimit}) for the ${plan} plan. Upgrade to add more feeds.`,
+        plan,
+        limit: feedLimit,
+        usage: user.videoFeeds.length,
+      },
+      { status: 403 },
+    );
   }
 
   const data = await req.json();
