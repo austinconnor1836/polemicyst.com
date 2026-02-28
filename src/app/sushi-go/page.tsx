@@ -1,8 +1,8 @@
-'use client'
+'use client';
 
-import React, { useState } from 'react'
-import { handSizeForPlayerCount, hasChopsticks } from './engine'
-import { useGameState } from './useGameState'
+import React, { useState } from 'react';
+import { handSizeForPlayerCount, hasChopsticks } from './engine';
+import { useGameState } from './useGameState';
 import {
   CardView,
   ChopsticksPrompt,
@@ -12,7 +12,7 @@ import {
   RoundSummary,
   Scoreboard,
   SetupScreen,
-} from './components'
+} from './components';
 
 export default function SushiGoPage() {
   const {
@@ -25,10 +25,10 @@ export default function SushiGoPage() {
     confirmReveal,
     startNextRound,
     resetGame,
-  } = useGameState()
+  } = useGameState();
 
-  const [selectedCardId, setSelectedCardId] = useState<number | null>(null)
-  const [showChopsticksPrompt, setShowChopsticksPrompt] = useState(false)
+  const [selectedCardId, setSelectedCardId] = useState<number | null>(null);
+  const [showChopsticksPrompt, setShowChopsticksPrompt] = useState(false);
 
   // ── Setup Screen ──────────────────────────────────────────────────────
   if (!game) {
@@ -36,12 +36,12 @@ export default function SushiGoPage() {
       <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-900 dark:to-zinc-950">
         <SetupScreen onStart={startGame} />
       </div>
-    )
+    );
   }
 
-  const human = game.players.find(p => p.isHuman)!
-  const opponents = game.players.filter(p => !p.isHuman)
-  const totalTurns = handSizeForPlayerCount(game.players.length)
+  const human = game.players.find((p) => p.isHuman)!;
+  const opponents = game.players.filter((p) => !p.isHuman);
+  const totalTurns = handSizeForPlayerCount(game.players.length);
 
   // ── Round End ─────────────────────────────────────────────────────────
   if (game.phase === 'round_end') {
@@ -49,7 +49,7 @@ export default function SushiGoPage() {
       <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-900 dark:to-zinc-950">
         <RoundSummary players={game.players} round={game.round} onNext={startNextRound} />
       </div>
-    )
+    );
   }
 
   // ── Game Over ─────────────────────────────────────────────────────────
@@ -58,61 +58,61 @@ export default function SushiGoPage() {
       <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-900 dark:to-zinc-950">
         <GameOver players={game.players} onPlayAgain={resetGame} />
       </div>
-    )
+    );
   }
 
   // ── Pick / Reveal Phase ───────────────────────────────────────────────
-  const isPicking = game.phase === 'pick'
-  const isRevealing = game.phase === 'reveal'
-  const humanHasChopsticks = hasChopsticks(human.played)
+  const isPicking = game.phase === 'pick';
+  const isRevealing = game.phase === 'reveal';
+  const humanHasChopsticks = hasChopsticks(human.played);
 
   const handleCardClick = (cardId: number) => {
-    if (!isPicking) return
+    if (!isPicking) return;
 
     if (chopsticks.using) {
       // This is the second card pick for chopsticks
       if (cardId !== chopsticks.firstCardId) {
-        pickCard(cardId)
-        setSelectedCardId(null)
-        setShowChopsticksPrompt(false)
+        pickCard(cardId);
+        setSelectedCardId(null);
+        setShowChopsticksPrompt(false);
       }
-      return
+      return;
     }
 
     // First card selection
     if (selectedCardId === cardId) {
-      setSelectedCardId(null)
-      setShowChopsticksPrompt(false)
+      setSelectedCardId(null);
+      setShowChopsticksPrompt(false);
     } else {
-      setSelectedCardId(cardId)
+      setSelectedCardId(cardId);
       // Show chopsticks prompt if player has chopsticks and more than 1 card left
-      setShowChopsticksPrompt(humanHasChopsticks && human.hand.length > 1)
+      setShowChopsticksPrompt(humanHasChopsticks && human.hand.length > 1);
     }
-  }
+  };
 
   const handleConfirmPick = () => {
-    if (selectedCardId === null) return
-    pickCard(selectedCardId)
-    setSelectedCardId(null)
-    setShowChopsticksPrompt(false)
-  }
+    if (selectedCardId === null) return;
+    pickCard(selectedCardId);
+    setSelectedCardId(null);
+    setShowChopsticksPrompt(false);
+  };
 
   const handleUseChopsticks = () => {
-    if (selectedCardId === null) return
-    startChopsticksPlay(selectedCardId)
-    setSelectedCardId(null)
-    setShowChopsticksPrompt(false)
-  }
+    if (selectedCardId === null) return;
+    startChopsticksPlay(selectedCardId);
+    setSelectedCardId(null);
+    setShowChopsticksPrompt(false);
+  };
 
   const handleSkipChopsticks = () => {
-    setShowChopsticksPrompt(false)
-  }
+    setShowChopsticksPrompt(false);
+  };
 
   // Find the last card played by each player this turn (for reveal)
   const getLastPlayed = (p: typeof human) => {
-    if (p.played.length === 0) return null
-    return p.played[p.played.length - 1]
-  }
+    if (p.played.length === 0) return null;
+    return p.played[p.played.length - 1];
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-900 dark:to-zinc-950 flex flex-col">
@@ -142,7 +142,7 @@ export default function SushiGoPage() {
 
       {/* Opponents */}
       <div className="px-3 sm:px-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
-        {opponents.map(p => (
+        {opponents.map((p) => (
           <PlayedArea key={p.id} player={p} />
         ))}
       </div>
@@ -155,14 +155,14 @@ export default function SushiGoPage() {
               <div>
                 <span className="text-sm font-medium">Cards Revealed!</span>
                 <div className="flex gap-2 mt-2">
-                  {game.players.map(p => {
-                    const last = getLastPlayed(p)
+                  {game.players.map((p) => {
+                    const last = getLastPlayed(p);
                     return last ? (
                       <div key={p.id} className="text-center">
                         <CardView card={last} small disabled />
                         <div className="text-[10px] mt-1 opacity-60">{p.name}</div>
                       </div>
-                    ) : null
+                    ) : null;
                   })}
                 </div>
               </div>
@@ -190,10 +190,7 @@ export default function SushiGoPage() {
         {/* Chopsticks prompt */}
         {isPicking && showChopsticksPrompt && selectedCardId !== null && (
           <div className="px-3 sm:px-4 mt-2">
-            <ChopsticksPrompt
-              onUse={handleUseChopsticks}
-              onSkip={handleSkipChopsticks}
-            />
+            <ChopsticksPrompt onUse={handleUseChopsticks} onSkip={handleSkipChopsticks} />
           </div>
         )}
 
@@ -238,5 +235,5 @@ export default function SushiGoPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

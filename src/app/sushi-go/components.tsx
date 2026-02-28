@@ -1,23 +1,24 @@
-'use client'
+'use client';
 
-import React from 'react'
-import { Card, CARD_INFO, countMaki, Player } from './engine'
-import { ChopsticksState } from './useGameState'
+import React from 'react';
+import { Card, CARD_INFO, countMaki, Player } from './engine';
+import { ChopsticksState } from './useGameState';
 
 // ── Card Component ──────────────────────────────────────────────────────────
 
 interface CardViewProps {
-  card: Card
-  onClick?: () => void
-  selected?: boolean
-  small?: boolean
-  faceDown?: boolean
-  disabled?: boolean
+  card: Card;
+  onClick?: () => void;
+  selected?: boolean;
+  small?: boolean;
+  faceDown?: boolean;
+  disabled?: boolean;
 }
 
 export function CardView({ card, onClick, selected, small, faceDown, disabled }: CardViewProps) {
-  const info = CARD_INFO[card.type]
-  const makiDots = card.type === 'maki1' ? 1 : card.type === 'maki2' ? 2 : card.type === 'maki3' ? 3 : 0
+  const info = CARD_INFO[card.type];
+  const makiDots =
+    card.type === 'maki1' ? 1 : card.type === 'maki2' ? 2 : card.type === 'maki3' ? 3 : 0;
 
   if (faceDown) {
     return (
@@ -32,7 +33,7 @@ export function CardView({ card, onClick, selected, small, faceDown, disabled }:
       >
         <span className="text-2xl opacity-50">🍣</span>
       </div>
-    )
+    );
   }
 
   return (
@@ -44,13 +45,17 @@ export function CardView({ card, onClick, selected, small, faceDown, disabled }:
         rounded-xl border-2 transition-all duration-200
         flex flex-col items-center justify-between p-1.5 sm:p-2
         shadow-md hover:shadow-lg
-        ${selected
-          ? 'border-yellow-400 ring-2 ring-yellow-400 scale-110 -translate-y-2'
-          : 'border-zinc-300 dark:border-zinc-600 hover:-translate-y-1'
+        ${
+          selected
+            ? 'border-yellow-400 ring-2 ring-yellow-400 scale-110 -translate-y-2'
+            : 'border-zinc-300 dark:border-zinc-600 hover:-translate-y-1'
         }
         ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:scale-95'}
       `}
-      style={{ backgroundColor: info.color + '22', borderColor: selected ? undefined : info.color + '66' }}
+      style={{
+        backgroundColor: info.color + '22',
+        borderColor: selected ? undefined : info.color + '66',
+      }}
     >
       <span className={`${small ? 'text-xl' : 'text-2xl sm:text-3xl'} leading-none`}>
         {info.emoji}
@@ -62,64 +67,73 @@ export function CardView({ card, onClick, selected, small, faceDown, disabled }:
           ))}
         </div>
       )}
-      <div className={`text-center leading-tight ${small ? 'text-[8px]' : 'text-[10px] sm:text-xs'}`}>
+      <div
+        className={`text-center leading-tight ${small ? 'text-[8px]' : 'text-[10px] sm:text-xs'}`}
+      >
         <div className="font-bold truncate max-w-full">{info.name}</div>
         {!small && <div className="opacity-70 text-[8px] sm:text-[10px]">{info.description}</div>}
       </div>
     </button>
-  )
+  );
 }
 
 // ── Hand Component ──────────────────────────────────────────────────────────
 
 interface HandProps {
-  cards: Card[]
-  onPick: (cardId: number) => void
-  selectedId?: number | null
-  disabled?: boolean
-  chopsticks: ChopsticksState
+  cards: Card[];
+  onPick: (cardId: number) => void;
+  selectedId?: number | null;
+  disabled?: boolean;
+  chopsticks: ChopsticksState;
 }
 
 export function Hand({ cards, onPick, selectedId, disabled, chopsticks }: HandProps) {
   return (
     <div className="flex flex-wrap justify-center gap-2 sm:gap-3 p-2">
-      {cards.map(card => (
+      {cards.map((card) => (
         <CardView
           key={card.id}
           card={card}
           onClick={() => onPick(card.id)}
-          selected={card.id === selectedId || (chopsticks.using && card.id === chopsticks.firstCardId)}
+          selected={
+            card.id === selectedId || (chopsticks.using && card.id === chopsticks.firstCardId)
+          }
           disabled={disabled}
         />
       ))}
     </div>
-  )
+  );
 }
 
 // ── Played Cards Area ───────────────────────────────────────────────────────
 
 interface PlayedAreaProps {
-  player: Player
-  showCards?: boolean
-  highlight?: boolean
+  player: Player;
+  showCards?: boolean;
+  highlight?: boolean;
 }
 
 export function PlayedArea({ player, showCards = true, highlight }: PlayedAreaProps) {
-  const makiCount = countMaki(player.played)
+  const makiCount = countMaki(player.played);
 
   return (
-    <div className={`
+    <div
+      className={`
       rounded-xl p-3 transition-all
-      ${highlight
-        ? 'bg-yellow-500/10 border border-yellow-500/30'
-        : 'bg-zinc-100 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700'
+      ${
+        highlight
+          ? 'bg-yellow-500/10 border border-yellow-500/30'
+          : 'bg-zinc-100 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700'
       }
-    `}>
+    `}
+    >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span className="font-bold text-sm">{player.name}</span>
           {player.isHuman && (
-            <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full">YOU</span>
+            <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full">
+              YOU
+            </span>
           )}
         </div>
         <div className="flex items-center gap-3 text-xs opacity-70">
@@ -130,7 +144,7 @@ export function PlayedArea({ player, showCards = true, highlight }: PlayedAreaPr
       </div>
       {showCards && player.played.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {player.played.map(card => (
+          {player.played.map((card) => (
             <CardView key={card.id} card={card} small disabled />
           ))}
         </div>
@@ -139,16 +153,16 @@ export function PlayedArea({ player, showCards = true, highlight }: PlayedAreaPr
         <div className="text-xs opacity-40 italic">No cards played yet</div>
       )}
     </div>
-  )
+  );
 }
 
 // ── Scoreboard ──────────────────────────────────────────────────────────────
 
 interface ScoreboardProps {
-  players: Player[]
-  round: number
-  turnInRound: number
-  totalTurns: number
+  players: Player[];
+  round: number;
+  turnInRound: number;
+  totalTurns: number;
 }
 
 export function Scoreboard({ players, round, turnInRound, totalTurns }: ScoreboardProps) {
@@ -156,14 +170,18 @@ export function Scoreboard({ players, round, turnInRound, totalTurns }: Scoreboa
     <div className="bg-zinc-100 dark:bg-zinc-800/70 rounded-xl p-3 border border-zinc-200 dark:border-zinc-700">
       <div className="flex items-center justify-between mb-2">
         <span className="font-bold text-sm">Round {round} / 3</span>
-        <span className="text-xs opacity-60">Turn {turnInRound} / {totalTurns}</span>
+        <span className="text-xs opacity-60">
+          Turn {turnInRound} / {totalTurns}
+        </span>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {players.map(p => (
+        {players.map((p) => (
           <div
             key={p.id}
             className={`text-center p-2 rounded-lg ${
-              p.isHuman ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-zinc-200/50 dark:bg-zinc-700/50'
+              p.isHuman
+                ? 'bg-blue-500/10 border border-blue-500/20'
+                : 'bg-zinc-200/50 dark:bg-zinc-700/50'
             }`}
           >
             <div className="text-xs font-medium">{p.name}</div>
@@ -173,19 +191,19 @@ export function Scoreboard({ players, round, turnInRound, totalTurns }: Scoreboa
         ))}
       </div>
     </div>
-  )
+  );
 }
 
 // ── Round Summary ───────────────────────────────────────────────────────────
 
 interface RoundSummaryProps {
-  players: Player[]
-  round: number
-  onNext: () => void
+  players: Player[];
+  round: number;
+  onNext: () => void;
 }
 
 export function RoundSummary({ players, round, onNext }: RoundSummaryProps) {
-  const sorted = [...players].sort((a, b) => b.score - a.score)
+  const sorted = [...players].sort((a, b) => b.score - a.score);
 
   return (
     <div className="flex flex-col items-center gap-6 p-6">
@@ -217,26 +235,24 @@ export function RoundSummary({ players, round, onNext }: RoundSummaryProps) {
         Start Round {round + 1}
       </button>
     </div>
-  )
+  );
 }
 
 // ── Game Over ───────────────────────────────────────────────────────────────
 
 interface GameOverProps {
-  players: Player[]
-  onPlayAgain: () => void
+  players: Player[];
+  onPlayAgain: () => void;
 }
 
 export function GameOver({ players, onPlayAgain }: GameOverProps) {
-  const sorted = [...players].sort((a, b) => b.score - a.score)
-  const winner = sorted[0]
-  const humanWon = winner.isHuman
+  const sorted = [...players].sort((a, b) => b.score - a.score);
+  const winner = sorted[0];
+  const humanWon = winner.isHuman;
 
   return (
     <div className="flex flex-col items-center gap-6 p-6">
-      <h2 className="text-3xl font-bold">
-        {humanWon ? 'You Win!' : `${winner.name} Wins!`}
-      </h2>
+      <h2 className="text-3xl font-bold">{humanWon ? 'You Win!' : `${winner.name} Wins!`}</h2>
       <div className="text-6xl">{humanWon ? '🎉' : '🍣'}</div>
       <div className="w-full max-w-md space-y-3">
         {sorted.map((p, i) => (
@@ -249,9 +265,7 @@ export function GameOver({ players, onPlayAgain }: GameOverProps) {
             `}
           >
             <div className="flex items-center gap-3">
-              <span className="text-xl font-bold opacity-40">
-                {i === 0 ? '🏆' : `#${i + 1}`}
-              </span>
+              <span className="text-xl font-bold opacity-40">{i === 0 ? '🏆' : `#${i + 1}`}</span>
               <div>
                 <span className="font-medium">{p.name}</span>
                 <div className="text-xs opacity-60">{p.puddings} puddings</div>
@@ -268,17 +282,17 @@ export function GameOver({ players, onPlayAgain }: GameOverProps) {
         Play Again
       </button>
     </div>
-  )
+  );
 }
 
 // ── Setup Screen ────────────────────────────────────────────────────────────
 
 interface SetupScreenProps {
-  onStart: (playerCount: number) => void
+  onStart: (playerCount: number) => void;
 }
 
 export function SetupScreen({ onStart }: SetupScreenProps) {
-  const [count, setCount] = React.useState(3)
+  const [count, setCount] = React.useState(3);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] gap-8 p-6">
@@ -292,15 +306,16 @@ export function SetupScreen({ onStart }: SetupScreenProps) {
         <div>
           <label className="block text-sm font-medium mb-3 text-center">Number of Players</label>
           <div className="flex justify-center gap-3">
-            {[2, 3, 4, 5].map(n => (
+            {[2, 3, 4, 5].map((n) => (
               <button
                 key={n}
                 onClick={() => setCount(n)}
                 className={`
                   w-14 h-14 rounded-xl font-bold text-lg transition-all
-                  ${count === n
-                    ? 'bg-blue-600 text-white scale-110 shadow-lg'
-                    : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
+                  ${
+                    count === n
+                      ? 'bg-blue-600 text-white scale-110 shadow-lg'
+                      : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
                   }
                 `}
               >
@@ -328,14 +343,14 @@ export function SetupScreen({ onStart }: SetupScreenProps) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 // ── Chopsticks Prompt ───────────────────────────────────────────────────────
 
 interface ChopsticksPromptProps {
-  onUse: () => void
-  onSkip: () => void
+  onUse: () => void;
+  onSkip: () => void;
 }
 
 export function ChopsticksPrompt({ onUse, onSkip }: ChopsticksPromptProps) {
@@ -356,5 +371,5 @@ export function ChopsticksPrompt({ onUse, onSkip }: ChopsticksPromptProps) {
         Skip
       </button>
     </div>
-  )
+  );
 }
