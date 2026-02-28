@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { TextField, Button, List, ListItem, ListItemText, CircularProgress } from '@mui/material';
 import axios from 'axios';
-import OpenAI from "openai";
+import OpenAI from 'openai';
 import { ApiRoutes, buildApiRoute } from '@/lib/api-routes';
 
 interface Message {
@@ -31,13 +31,13 @@ const ChatGPT: React.FC = () => {
       const openai = new OpenAI();
 
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: 'gpt-4o-mini',
         messages: [
-          { role: "system", content: "You are a helpful assistant." },
-            {
-              role: "user",
-              content: "Write a haiku about recursion in programming.",
-            },
+          { role: 'system', content: 'You are a helpful assistant.' },
+          {
+            role: 'user',
+            content: 'Write a haiku about recursion in programming.',
+          },
         ],
       });
 
@@ -46,7 +46,10 @@ const ChatGPT: React.FC = () => {
       // const response = await axios.post(gptApiRoute, { message: input });
       // const assistantMessage: Message = { role: 'assistant', content: response.data.message };
       if (responseMsg) {
-        const assistantMessage: Message = { role: 'assistant', content: responseMsg?.content?.toString() ?? '' };
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: responseMsg?.content?.toString() ?? '',
+        };
         setMessages([...messages, userMessage, assistantMessage]);
       }
     } catch (error) {
@@ -78,7 +81,7 @@ const ChatGPT: React.FC = () => {
       {/* <div className="h-1/5 flex space-x-2 p-4"> */}
       <div className="h-1/5 w-4/5 flex mx-auto space-x-2">
         <TextField
-        className="flex-grow w-4/5"
+          className="flex-grow w-4/5"
           label="Type a message"
           fullWidth
           variant="outlined"
@@ -91,17 +94,17 @@ const ChatGPT: React.FC = () => {
           }}
           disabled={loading}
         />
-        <div className='w-1/5'>
-        <Button
-          className='mt-2'
-          onClick={handleSendMessage}
-          variant="contained"
-          // fullWidth
-          size='medium'
-          // disabled={loading}
-        >
-          Send
-        </Button>
+        <div className="w-1/5">
+          <Button
+            className="mt-2"
+            onClick={handleSendMessage}
+            variant="contained"
+            // fullWidth
+            size="medium"
+            // disabled={loading}
+          >
+            Send
+          </Button>
         </div>
       </div>
     </div>

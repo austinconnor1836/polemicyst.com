@@ -1,52 +1,105 @@
 import { NextRequest } from 'next/server';
-import { buffer } from 'micro';
-import Stripe from 'stripe';
 import { prisma } from '../../../../../shared/lib/prisma';
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-04-30.basil',
-});
+import { getStripeClient, planIdFromPriceId } from '@/lib/stripe';
 
 export async function POST(req: NextRequest) {
+  const stripe = getStripeClient();
   const rawBody = await req.text();
   const signature = req.headers.get('stripe-signature') || '';
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    return new Response('Missing STRIPE_WEBHOOK_SECRET', { status: 500 });
+  }
 
   let event;
   try {
-    event = stripe.webhooks.constructEvent(rawBody, signature, process.env.STRIPE_WEBHOOK_SECRET!);
-  } catch (err: any) {
-    console.error('❌ Stripe webhook signature verification failed.', err.message);
-    return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+    event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Stripe webhook signature verification failed.', message);
+    return new Response(`Webhook Error: ${message}`, { status: 400 });
   }
 
-  const subscription = event.data.object;
-
   switch (event.type) {
+    case 'checkout.session.completed': {
+      const session = event.data.object;
+      const customerId = session.customer as string;
+      const userEmail = session.customer_details?.email;
+
+      // Safety net: link customer and set plan from the checkout session
+      if (userEmail && customerId) {
+        const subscriptionId = session.subscription as string | null;
+        let planId = 'free';
+
+        if (subscriptionId) {
+          const sub = await stripe.subscriptions.retrieve(subscriptionId);
+          const priceId = sub.items.data[0]?.price?.id;
+          if (priceId) {
+            planId = planIdFromPriceId(priceId);
+          }
+        }
+
+        await prisma.user.updateMany({
+          where: { email: userEmail },
+          data: { stripeCustomerId: customerId, subscriptionPlan: planId },
+        });
+      }
+      break;
+    }
+
     case 'customer.subscription.created':
     case 'customer.subscription.updated': {
+      const subscription = event.data.object;
       const customerId = subscription.customer as string;
-      const plan = subscription.items.data[0].price.nickname || 'free';
+      const subStatus = subscription.status;
 
-      await prisma.user.updateMany({
-        where: { stripeCustomerId: customerId },
-        data: { subscriptionPlan: plan },
-      });
+      // If subscription is no longer active/trialing, downgrade to free
+      if (subStatus !== 'active' && subStatus !== 'trialing') {
+        await prisma.user.updateMany({
+          where: { stripeCustomerId: customerId },
+          data: { subscriptionPlan: 'free' },
+        });
+        console.log(`Downgraded customer ${customerId} to free (status: ${subStatus})`);
+      } else {
+        const priceId = subscription.items.data[0]?.price?.id;
+        const planId = priceId ? planIdFromPriceId(priceId) : 'free';
+
+        await prisma.user.updateMany({
+          where: { stripeCustomerId: customerId },
+          data: { subscriptionPlan: planId },
+        });
+      }
       break;
     }
 
     case 'customer.subscription.deleted': {
+      const subscription = event.data.object;
       const customerId = subscription.customer as string;
 
       await prisma.user.updateMany({
         where: { stripeCustomerId: customerId },
         data: { subscriptionPlan: 'free' },
       });
+      break;
+    }
+
+    case 'invoice.payment_failed': {
+      const invoice = event.data.object as { subscription?: string | null } & Record<string, any>;
+      const subscriptionId = invoice.subscription ?? null;
+      if (subscriptionId) {
+        const sub = await stripe.subscriptions.retrieve(subscriptionId);
+        const subStatus = sub.status;
+        if (subStatus === 'past_due' || subStatus === 'unpaid' || subStatus === 'canceled') {
+          const customerId = sub.customer as string;
+          await prisma.user.updateMany({
+            where: { stripeCustomerId: customerId },
+            data: { subscriptionPlan: 'free' },
+          });
+          console.log(
+            `Payment failed: downgraded customer ${customerId} to free (status: ${subStatus})`
+          );
+        }
+      }
       break;
     }
 

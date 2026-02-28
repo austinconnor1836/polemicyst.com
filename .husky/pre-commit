@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+if [ "$HUSKY" = "0" ]; then
+  exit 0
+fi
+
+echo "Running Prettier across repository..."
+if ! npm run format; then
+  echo "Prettier failed, but continuing with commit."
+fi
+
+echo "Running ESLint with auto-fix across repository..."
+if ! npm run lint -- --fix; then
+  echo "ESLint failed, but continuing with commit."
+fi

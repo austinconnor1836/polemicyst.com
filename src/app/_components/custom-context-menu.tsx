@@ -8,11 +8,7 @@ interface ContextMenuProps {
   onCopyUpperCase: () => void;
 }
 
-const ContextMenu: React.FC<ContextMenuProps> = ({
-  visible,
-  onCopy,
-  onCopyUpperCase,
-}) => {
+const ContextMenu: React.FC<ContextMenuProps> = ({ visible, onCopy, onCopyUpperCase }) => {
   const [subMenuVisible, setSubMenuVisible] = useState(false);
 
   const toggleSubMenu = (e: React.MouseEvent) => {

@@ -1,36 +1,35 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "../../../../../auth";
-import { prisma } from "@shared/lib/prisma";
-
-const PLAN_LIMITS: Record<string, { feeds: number; clipsPerMonth: number; allowedProviders: string[] }> = {
-  free: { feeds: 3, clipsPerMonth: 10, allowedProviders: ["openai"] },
-  pro: { feeds: 25, clipsPerMonth: 200, allowedProviders: ["openai", "anthropic", "google"] },
-  enterprise: { feeds: -1, clipsPerMonth: -1, allowedProviders: ["openai", "anthropic", "google", "ollama"] },
-};
+import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../../../../auth';
+import { prisma } from '@shared/lib/prisma';
+import { resolvePlan } from '@/lib/plans';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
-    include: {
-      videoFeeds: { select: { id: true } },
+    select: {
+      id: true,
+      subscriptionPlan: true,
+      stripeCustomerId: true,
+      _count: { select: { videoFeeds: true } },
     },
   });
 
   if (!user) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
-  const plan = user.subscriptionPlan || "free";
-  const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
+  const plan = resolvePlan(user.subscriptionPlan);
 
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  // Count clips generated this month
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
 
   const clipsThisMonth = await prisma.video.count({
     where: {
@@ -40,18 +39,34 @@ export async function GET() {
     },
   });
 
+  // Cost tracking summary for the current month
+  let costThisMonth: { totalUsd: number; eventCount: number } = { totalUsd: 0, eventCount: 0 };
+  try {
+    const costAgg = await prisma.costEvent.aggregate({
+      where: { userId: user.id, createdAt: { gte: startOfMonth } },
+      _sum: { estimatedCostUsd: true },
+      _count: true,
+    });
+    costThisMonth = {
+      totalUsd: costAgg._sum.estimatedCostUsd ?? 0,
+      eventCount: costAgg._count,
+    };
+  } catch {
+    // CostEvent table may not exist yet in some environments
+  }
+
   return NextResponse.json({
-    plan,
-    limits: {
-      feeds: limits.feeds,
-      clipsPerMonth: limits.clipsPerMonth,
-      allowedProviders: limits.allowedProviders,
+    plan: {
+      id: plan.id,
+      name: plan.name,
+      limits: plan.limits,
+      features: plan.features,
     },
     usage: {
-      feeds: user.videoFeeds.length,
+      feeds: user._count.videoFeeds,
       clipsThisMonth,
+      costThisMonth,
     },
-    stripeCustomerId: user.stripeCustomerId ?? null,
-    billingPortalUrl: process.env.STRIPE_BILLING_PORTAL_URL ?? null,
+    hasStripeCustomer: !!user.stripeCustomerId,
   });
 }

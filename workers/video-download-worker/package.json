@@ -1,0 +1,30 @@
+{
+  "name": "video-download-worker",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "nodemon --watch './**/*.ts' --exec 'ts-node -r tsconfig-paths/register' index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.500.0",
+    "@aws-sdk/lib-storage": "^3.500.0",
+    "@prisma/client": "^6.19.0",
+    "aws-sdk": "^2.1692.0",
+    "bullmq": "^5.65.0",
+    "ioredis": "^5.8.2",
+    "module-alias": "^2.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.0.0",
+    "prisma": "^6.19.0"
+  },
+  "_moduleAliases": {
+    "@shared": "dist/shared"
+  }
+}

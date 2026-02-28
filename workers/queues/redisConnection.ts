@@ -2,6 +2,6 @@
 import { RedisOptions } from 'bullmq';
 
 export const redisConnection: RedisOptions = {
-  host: 'redis',  // 👈 The service name in docker-compose.yml
+  host: process.env.REDIS_HOST || 'localhost',
   port: 6379,
 };

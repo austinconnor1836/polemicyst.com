@@ -1,0 +1,26 @@
+/* AUTO-GENERATED — do not edit. Run `npm run tokens` to regenerate. */
+
+:root {
+  --color-primary: 26 26 46;
+  --color-accent: 233 69 96;
+  --color-background: 249 249 249;
+  --color-surface: 255 255 255;
+  --color-text: 46 46 46;
+  --color-text-muted: 98 91 113;
+  --color-border: 229 231 235;
+  --color-success: 0 112 243;
+  --color-destructive: 220 38 38;
+}
+
+.dark,
+[data-mode='dark'] {
+  --color-primary: 208 188 255;
+  --color-accent: 255 107 129;
+  --color-background: 18 18 18;
+  --color-surface: 41 44 53;
+  --color-text: 224 224 224;
+  --color-text-muted: 204 194 220;
+  --color-border: 63 63 70;
+  --color-success: 50 145 255;
+  --color-destructive: 255 107 107;
+}

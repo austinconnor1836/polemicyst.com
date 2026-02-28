@@ -1,14 +1,21 @@
-import React from 'react'
-import './hamburger.css'
+import React from 'react';
+import './hamburger.css';
 import { useHamburger } from '../../context/HamburgerContext';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 const HamburgerMenu: React.FC = () => {
-  const { isOpen, toggleMenu } = useHamburger()
+  const { isOpen, toggleMenu } = useHamburger();
 
   return (
-    <button
-      className={`menu ${isOpen ? 'opened' : ''} focus:outline-none`} // Add 'opened' class if isOpen is true
-      onClick={toggleMenu} // Use React's event handler
+    <Button
+      variant="ghost"
+      size="icon"
+      className={cn(
+        'menu bg-transparent hover:bg-transparent dark:hover:bg-transparent',
+        isOpen ? 'opened' : ''
+      )}
+      onClick={toggleMenu}
       aria-expanded={isOpen}
       aria-label="Main Menu"
     >
@@ -30,8 +37,8 @@ const HamburgerMenu: React.FC = () => {
           stroke="currentColor"
         />
       </svg>
-    </button>
-  )
-}
+    </Button>
+  );
+};
 
-export default HamburgerMenu
+export default HamburgerMenu;

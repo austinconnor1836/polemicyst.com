@@ -15,7 +15,9 @@ const PrivacyPolicy: React.FC = () => {
           1. Information We Collect
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
-          When you log in using Google OAuth, we collect your <strong>name, email address, and profile picture</strong>. We do not store your password or sensitive authentication details.
+          When you log in using Google OAuth, we collect your{' '}
+          <strong>name, email address, and profile picture</strong>. We do not store your password
+          or sensitive authentication details.
         </p>
       </section>
 
@@ -24,7 +26,9 @@ const PrivacyPolicy: React.FC = () => {
           2. How We Use Your Information
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
-          We use your <strong>email and profile information</strong> to authenticate your login and enhance your experience. Your information is <strong>never shared, sold, or distributed</strong> to third parties.
+          We use your <strong>email and profile information</strong> to authenticate your login and
+          enhance your experience. Your information is{' '}
+          <strong>never shared, sold, or distributed</strong> to third parties.
         </p>
       </section>
 
@@ -33,10 +37,17 @@ const PrivacyPolicy: React.FC = () => {
           3. Third-Party Services
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
-          Our website includes integrations with Google OAuth. Google OAuth authentication follows Google’s{' '}
-          <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+          Our website includes integrations with Google OAuth. Google OAuth authentication follows
+          Google’s{' '}
+          <a
+            href="https://policies.google.com/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-500 hover:underline"
+          >
             Privacy Policy
-          </a>.
+          </a>
+          .
         </p>
       </section>
 
@@ -45,7 +56,9 @@ const PrivacyPolicy: React.FC = () => {
           4. Data Security
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
-          We use <strong>industry-standard security measures</strong> to protect your data. If you have any concerns about your data, contact us at <strong>[your-email@polemicyst.com]</strong>.
+          We use <strong>industry-standard security measures</strong> to protect your data. If you
+          have any concerns about your data, contact us at{' '}
+          <strong>[your-email@polemicyst.com]</strong>.
         </p>
       </section>
 
@@ -57,8 +70,15 @@ const PrivacyPolicy: React.FC = () => {
           If you have any questions, please contact us:
         </p>
         <ul className="list-disc list-inside text-gray-700 dark:text-gray-300">
-          <li>📧 Email: <strong>[your-email@polemicyst.com]</strong></li>
-          <li>🌐 Website: <a href="https://polemicyst.com" className="text-blue-500 hover:underline">https://polemicyst.com</a></li>
+          <li>
+            📧 Email: <strong>[your-email@polemicyst.com]</strong>
+          </li>
+          <li>
+            🌐 Website:{' '}
+            <a href="https://polemicyst.com" className="text-blue-500 hover:underline">
+              https://polemicyst.com
+            </a>
+          </li>
         </ul>
       </section>
     </div>

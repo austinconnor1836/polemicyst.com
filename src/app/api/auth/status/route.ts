@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-import { getServerSession } from "next-auth";
-import { authOptions } from "../../../../../auth";
+import { NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../../../../auth';
 
 const prisma = new PrismaClient();
 
@@ -18,14 +18,17 @@ export async function GET(req: Request) {
     });
 
     // Convert accounts array into an object like { bluesky: true, google: true, ... }
-    const isAuthenticated = accounts.reduce((acc, { provider }) => {
-      acc[provider] = true;
-      return acc;
-    }, {} as Record<string, boolean>);
+    const isAuthenticated = accounts.reduce(
+      (acc, { provider }) => {
+        acc[provider] = true;
+        return acc;
+      },
+      {} as Record<string, boolean>
+    );
 
     return NextResponse.json({ isAuthenticated });
   } catch (error) {
-    console.error("Error fetching authentication status:", error);
+    console.error('Error fetching authentication status:', error);
     return NextResponse.json({ isAuthenticated: {} }, { status: 500 });
   }
 }

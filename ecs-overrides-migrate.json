@@ -1,0 +1,12 @@
+{
+  "containerOverrides": [
+    {
+      "name": "web",
+      "command": [
+        "sh",
+        "-c",
+        "node -e \"const{S3Client,GetObjectCommand}=require('@aws-sdk/client-s3');const{PrismaClient}=require('@prisma/client');const s3=new S3Client({region:'us-east-1'});const p=new PrismaClient();(async()=>{const r=await s3.send(new GetObjectCommand({Bucket:'polemicyst-uploads-prod',Key:'migrations/migrate-all.sql'}));const sql=await r.Body.transformToString();const stmts=sql.split(';\\n').map(s=>s.trim()).filter(s=>s.length>0);for(let i=0;i<stmts.length;i++){console.log('Stmt',i+1,'/',stmts.length);await p['\\$executeRawUnsafe'](stmts[i])}console.log('All migrations complete')})().then(()=>process.exit(0)).catch(e=>{console.error(String(e));process.exit(1)})\""
+      ]
+    }
+  ]
+}

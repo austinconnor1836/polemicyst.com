@@ -1,10 +1,5 @@
-import React from "react";
+import React from 'react';
 
 export default function Home() {
-  return (
-    <div>
-        Playground Home
-    </div>
-  );
-
+  return <div>Playground Home</div>;
 }

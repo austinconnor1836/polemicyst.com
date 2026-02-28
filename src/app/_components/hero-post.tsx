@@ -1,26 +1,19 @@
-import Avatar from '../_components/avatar'
-import CoverImage from '../_components/cover-image'
-import { type Author } from '../../interfaces/author'
-import Link from 'next/link'
-import DateFormatter from './date-formatter'
+import Avatar from '../_components/avatar';
+import CoverImage from '../_components/cover-image';
+import { type Author } from '../../interfaces/author';
+import Link from 'next/link';
+import DateFormatter from './date-formatter';
 
 type Props = {
-  title: string
-  coverImage: string
-  date: string
-  excerpt: string
-  author: Author
-  slug: string
-}
+  title: string;
+  coverImage: string;
+  date: string;
+  excerpt: string;
+  author: Author;
+  slug: string;
+};
 
-export function HeroPost({
-  title,
-  coverImage,
-  date,
-  excerpt,
-  author,
-  slug,
-}: Props) {
+export function HeroPost({ title, coverImage, date, excerpt, author, slug }: Props) {
   return (
     <section>
       {/* <div className="mb-8 md:mb-16">
@@ -43,5 +36,5 @@ export function HeroPost({
         </div>
       </div>
     </section>
-  )
+  );
 }
