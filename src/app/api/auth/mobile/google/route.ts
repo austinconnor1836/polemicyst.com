@@ -30,10 +30,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing idToken' }, { status: 400 });
     }
 
-    const audience = [
-      process.env.GOOGLE_CLIENT_ID!,
-      process.env.GOOGLE_IOS_CLIENT_ID!,
-    ].filter(Boolean);
+    const audience = [process.env.GOOGLE_CLIENT_ID!, process.env.GOOGLE_IOS_CLIENT_ID!].filter(
+      Boolean
+    );
     const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
     const ticket = await client.verifyIdToken({
       idToken,

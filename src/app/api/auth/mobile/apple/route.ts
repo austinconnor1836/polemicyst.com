@@ -5,12 +5,9 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 const prisma = new PrismaClient();
 
-const APPLE_JWKS = createRemoteJWKSet(
-  new URL('https://appleid.apple.com/auth/keys')
-);
+const APPLE_JWKS = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
 
-const APPLE_CLIENT_ID =
-  process.env.APPLE_CLIENT_ID || 'com.polemicyst.app';
+const APPLE_CLIENT_ID = process.env.APPLE_CLIENT_ID || 'com.polemicyst.app';
 
 const AUTH_ALLOWLIST_ENABLED = process.env.AUTH_ALLOWLIST_ENABLED === 'true';
 const AUTH_ALLOWED_EMAILS = (process.env.AUTH_ALLOWED_EMAILS ?? '')
@@ -26,8 +23,7 @@ function isAllowed(email: string): boolean {
   if (!AUTH_ALLOWLIST_ENABLED) return true;
   if (!AUTH_ALLOWED_EMAILS.length) return false;
   return (
-    AUTH_ALLOWED_EMAILS.includes(email.toLowerCase()) &&
-    AUTH_ALLOWED_PROVIDERS.includes('apple')
+    AUTH_ALLOWED_EMAILS.includes(email.toLowerCase()) && AUTH_ALLOWED_PROVIDERS.includes('apple')
   );
 }
 
@@ -35,10 +31,7 @@ export async function POST(req: NextRequest) {
   try {
     const { identityToken, fullName } = await req.json();
     if (!identityToken) {
-      return NextResponse.json(
-        { error: 'Missing identityToken' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing identityToken' }, { status: 400 });
     }
 
     // Verify Apple identity token
@@ -74,10 +67,7 @@ export async function POST(req: NextRequest) {
     } else if (email) {
       // First sign-in: try to match by email
       if (!isAllowed(email)) {
-        return NextResponse.json(
-          { error: 'Email not allowed' },
-          { status: 403 }
-        );
+        return NextResponse.json({ error: 'Email not allowed' }, { status: 403 });
       }
 
       user = await prisma.user.findUnique({ where: { email } });
@@ -86,7 +76,7 @@ export async function POST(req: NextRequest) {
         const displayName =
           fullName?.givenName && fullName?.familyName
             ? `${fullName.givenName} ${fullName.familyName}`
-            : fullName?.givenName ?? null;
+            : (fullName?.givenName ?? null);
 
         user = await prisma.user.create({
           data: {
@@ -136,9 +126,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error('[mobile-apple-auth] Error:', error.message);
-    return NextResponse.json(
-      { error: 'Authentication failed' },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: 'Authentication failed' }, { status: 401 });
   }
 }
