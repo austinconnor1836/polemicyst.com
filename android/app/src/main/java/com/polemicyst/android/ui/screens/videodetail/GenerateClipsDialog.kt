@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.polemicyst.android.ui.common.QuotaIndicator
 import com.polemicyst.android.ui.components.AspectRatio
 import com.polemicyst.android.ui.components.AspectRatioSelector
 import com.polemicyst.android.ui.components.ViralitySettingsPanel
@@ -28,6 +29,9 @@ import com.polemicyst.android.ui.components.ViralitySettingsState
 fun GenerateClipsDialog(
     onDismiss: () -> Unit,
     onGenerate: (aspectRatio: AspectRatio, viralitySettings: ViralitySettingsState) -> Unit,
+    clipsUsed: Int = 0,
+    clipsLimit: Int = -1,
+    allowedProviders: List<String> = emptyList(),
 ) {
     var aspectRatio by remember { mutableStateOf(AspectRatio.PORTRAIT) }
     var viralityState by remember { mutableStateOf(ViralitySettingsState()) }
@@ -43,6 +47,14 @@ fun GenerateClipsDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                if (clipsLimit != -1) {
+                    QuotaIndicator(
+                        label = "Clips this month",
+                        used = clipsUsed,
+                        limit = clipsLimit,
+                    )
+                }
+
                 Text(
                     text = "Aspect Ratio",
                     style = MaterialTheme.typography.titleSmall,
@@ -57,6 +69,7 @@ fun GenerateClipsDialog(
                 ViralitySettingsPanel(
                     state = viralityState,
                     onStateChange = { viralityState = it },
+                    allowedProviders = allowedProviders,
                 )
             }
         },

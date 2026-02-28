@@ -1,6 +1,8 @@
 package com.polemicyst.android.data.repository
 
+import com.polemicyst.android.data.api.safeApiCall
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Moshi
 import retrofit2.Retrofit
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -93,7 +95,10 @@ interface ClipsApi {
 }
 
 @Singleton
-class ClipsRepository @Inject constructor(retrofit: Retrofit) {
+class ClipsRepository @Inject constructor(
+    retrofit: Retrofit,
+    private val moshi: Moshi,
+) {
 
     private val api = retrofit.create(ClipsApi::class.java)
 
@@ -117,9 +122,8 @@ class ClipsRepository @Inject constructor(retrofit: Retrofit) {
         api.exportClip(clipId)
     }
 
-    suspend fun triggerClip(request: TriggerClipRequest): Result<TriggerClipResponse> = runCatching {
-        api.triggerClip(request)
-    }
+    suspend fun triggerClip(request: TriggerClipRequest): Result<TriggerClipResponse> =
+        safeApiCall(moshi) { api.triggerClip(request) }
 
     suspend fun getClipJobs(): Result<List<ClipJobSummary>> = runCatching {
         api.getClipJobs()
