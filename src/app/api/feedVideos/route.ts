@@ -20,10 +20,7 @@ export async function GET() {
   const videos = await prisma.feedVideo.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: 'desc' },
-    include: {
-      feed: true,
-      _count: { select: { generatedClips: true } },
-    },
+    include: { feed: true },
   });
   return NextResponse.json(videos);
 }
