@@ -35,6 +35,23 @@ components:
         idToken:
           type: string
 
+    MobileAppleAuthRequest:
+      type: object
+      required: [identityToken]
+      properties:
+        identityToken:
+          type: string
+        fullName:
+          type: object
+          nullable: true
+          properties:
+            givenName:
+              type: string
+              nullable: true
+            familyName:
+              type: string
+              nullable: true
+
     MobileGoogleAuthResponse:
       type: object
       required: [token, user]
@@ -445,6 +462,32 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/MobileGoogleAuthRequest'
+      responses:
+        '200':
+          description: JWT token and user info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileGoogleAuthResponse'
+        '401':
+          description: Invalid token or not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/mobile/apple:
+    post:
+      operationId: mobileAppleAuth
+      summary: Exchange Apple identity token for JWT
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MobileAppleAuthRequest'
       responses:
         '200':
           description: JWT token and user info

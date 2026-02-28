@@ -1,8 +1,7 @@
 // src/app/api/feeds/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../auth'; // adjust path if needed
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { checkFeedQuota, checkAutoGenerateAccess } from '@/lib/plans';
 
 function detectSourceType(sourceUrlRaw: string): 'youtube' | 'cspan' {
@@ -31,18 +30,10 @@ function detectSourceType(sourceUrlRaw: string): 'youtube' | 'cspan' {
   throw new Error('UNSUPPORTED_SOURCE');
 }
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-  });
-
+export async function GET(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
   if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const feeds = await prisma.videoFeed.findMany({
@@ -52,18 +43,10 @@ export async function GET() {
   return NextResponse.json(feeds);
 }
 
-export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-  });
-
+export async function POST(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
   if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   // Check feed quota before proceeding

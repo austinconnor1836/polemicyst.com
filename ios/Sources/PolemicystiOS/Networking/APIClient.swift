@@ -5,13 +5,28 @@ public struct APIClient {
     public var session: URLSession
     public var decoder: JSONDecoder
     public var encoder: JSONEncoder
+    public var tokenStorage: TokenStorage?
 
-    public init(baseURL: URL, session: URLSession = .shared) {
+    public init(baseURL: URL, session: URLSession = .shared, tokenStorage: TokenStorage? = nil) {
         self.baseURL = baseURL
         self.session = session
         self.decoder = JSONDecoder()
         self.decoder.dateDecodingStrategy = .iso8601
         self.encoder = JSONEncoder()
+        self.tokenStorage = tokenStorage
+    }
+
+    // MARK: Auth
+
+    public func authenticateWithGoogle(idToken: String) async throws -> MobileAuthResponse {
+        try await post(path: "/api/auth/mobile/google", body: MobileGoogleAuthRequest(idToken: idToken))
+    }
+
+    public func authenticateWithApple(identityToken: String, fullName: AppleFullName?) async throws -> MobileAuthResponse {
+        try await post(
+            path: "/api/auth/mobile/apple",
+            body: MobileAppleAuthRequest(identityToken: identityToken, fullName: fullName)
+        )
     }
 
     // MARK: Feeds
@@ -43,7 +58,7 @@ public struct APIClient {
     }
 
     public func deleteClip(id: String) async throws {
-        var urlRequest = URLRequest(url: baseURL.appending(path: "/api/clips/\(id)"))
+        var urlRequest = authorizedRequest(url: baseURL.appending(path: "/api/clips/\(id)"))
         urlRequest.httpMethod = "DELETE"
         let (_, response) = try await session.data(for: urlRequest)
         try ensureSuccess(response)
@@ -51,14 +66,23 @@ public struct APIClient {
 
     // MARK: - Internal helpers
 
-    private func get<T: Decodable>(path: String) async throws -> T {
-        let (data, response) = try await session.data(from: baseURL.appending(path: path))
+    func authorizedRequest(url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        if let token = tokenStorage?.getToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
+    func get<T: Decodable>(path: String) async throws -> T {
+        let request = authorizedRequest(url: baseURL.appending(path: path))
+        let (data, response) = try await session.data(for: request)
         try ensureSuccess(response)
         return try decoder.decode(T.self, from: data)
     }
 
-    private func post<Body: Encodable, Response: Decodable>(path: String, body: Body) async throws -> Response {
-        var request = URLRequest(url: baseURL.appending(path: path))
+    func post<Body: Encodable, Response: Decodable>(path: String, body: Body) async throws -> Response {
+        var request = authorizedRequest(url: baseURL.appending(path: path))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(body)
