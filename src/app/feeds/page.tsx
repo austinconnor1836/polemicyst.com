@@ -359,8 +359,7 @@ export default function FeedsPage() {
       localStorage.removeItem('pending-upload-meta');
       await idbDel('pending-upload-file');
 
-      await Promise.all([fetchFeeds(), fetchVideos()]);
-      setTimeout(() => setVideoFeedFilter('all'), 500);
+      await fetchVideos();
     } catch (err) {
       console.error('Resume failed:', err);
       toast.error('Resume failed');
@@ -466,14 +465,9 @@ export default function FeedsPage() {
       }
 
       toast.success('Imported successfully!', { id: toastId });
-      await Promise.all([fetchFeeds(), fetchVideos()]);
+      await fetchVideos();
       setImportUrl('');
       setIsAddVideoOpen(false);
-
-      // Switch filter to Manual Uploads
-      setTimeout(() => {
-        setVideoFeedFilter('all');
-      }, 500);
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || 'Import failed', { id: toastId });

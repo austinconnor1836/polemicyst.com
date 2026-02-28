@@ -46,7 +46,7 @@ export async function GET() {
   }
 
   const feeds = await prisma.videoFeed.findMany({
-    where: { userId: user.id },
+    where: { userId: user.id, sourceType: { not: 'manual' } },
     orderBy: { createdAt: 'desc' },
   });
   return NextResponse.json(feeds);
