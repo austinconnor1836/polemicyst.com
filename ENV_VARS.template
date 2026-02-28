@@ -1,0 +1,56 @@
+# Local environment variables (template)
+#
+# Create two files locally (NOT committed):
+# - .env
+# - .env.local
+#
+# Then paste the needed variables from below and fill in secrets.
+#
+# --- Database (local dev) ---
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/clips-genie
+#
+# --- Redis (local dev) ---
+REDIS_HOST=localhost
+#
+# --- Optional: AWS (only needed for S3 upload/download flows) ---
+AWS_REGION=us-east-1
+# S3 bucket used by uploads/feeds (set per environment)
+S3_BUCKET=
+# Some parts of the codebase read S3_REGION (fallbacks vary), so set both for consistency.
+S3_REGION=us-east-1
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+#
+# --- Optional: model APIs (only if using external scoring/models) ---
+GOOGLE_API_KEY=
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+LLM_PROVIDER=gemini
+# Acts as the fallback default provider; users can set their own preference in-app.
+GEMINI_MODEL=
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=llama3
+
+# --- Optional: auth debug logging (DANGER: may log OAuth tokens if enabled) ---
+# Default is off. Only set this temporarily for local debugging and avoid sharing logs.
+NEXTAUTH_DEBUG=false
+
+# --- Optional: auth allowlist (lockdown mode) ---
+# When enabled, only the allowed emails/providers can sign in.
+AUTH_ALLOWLIST_ENABLED=true
+# Comma-separated list of allowed emails (lower/upper case ok).
+AUTH_ALLOWED_EMAILS=
+# Comma-separated list of allowed providers (default used in code: google).
+AUTH_ALLOWED_PROVIDERS=google
+
+# --- Admin (cost dashboard access) ---
+ADMIN_EMAIL=aconnor731@gmail.com
+NEXT_PUBLIC_ADMIN_EMAIL=aconnor731@gmail.com
+
+# --- Stripe (billing & subscriptions) ---
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+# Price IDs from your Stripe dashboard (Products → Pricing)
+STRIPE_PRO_PRICE_ID=
+STRIPE_BUSINESS_PRICE_ID=

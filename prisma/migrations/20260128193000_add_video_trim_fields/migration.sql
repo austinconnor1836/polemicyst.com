@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Video" ADD COLUMN     "trimStartS" DOUBLE PRECISION;
+ALTER TABLE "Video" ADD COLUMN     "trimEndS" DOUBLE PRECISION;

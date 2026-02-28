@@ -1,0 +1,80 @@
+resource "aws_route53_zone" "primary" {
+  name = var.domain_name
+}
+
+resource "aws_route53_record" "root_a" {
+  zone_id = aws_route53_zone.primary.zone_id
+  name    = var.domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.web.dns_name
+    zone_id                = aws_lb.web.zone_id
+    evaluate_target_health = true
+  }
+}
+
+resource "aws_route53_record" "root_aaaa" {
+  zone_id = aws_route53_zone.primary.zone_id
+  name    = var.domain_name
+  type    = "AAAA"
+
+  alias {
+    name                   = aws_lb.web.dns_name
+    zone_id                = aws_lb.web.zone_id
+    evaluate_target_health = true
+  }
+}
+
+resource "aws_route53_record" "www_a" {
+  zone_id = aws_route53_zone.primary.zone_id
+  name    = "www.${var.domain_name}"
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.web.dns_name
+    zone_id                = aws_lb.web.zone_id
+    evaluate_target_health = true
+  }
+}
+
+resource "aws_route53_record" "www_aaaa" {
+  zone_id = aws_route53_zone.primary.zone_id
+  name    = "www.${var.domain_name}"
+  type    = "AAAA"
+
+  alias {
+    name                   = aws_lb.web.dns_name
+    zone_id                = aws_lb.web.zone_id
+    evaluate_target_health = true
+  }
+}
+
+# Environment-specific subdomains
+resource "aws_route53_record" "environment_a" {
+  for_each = { for env_name, env_config in var.environments : env_name => env_config if env_config.domain != var.domain_name }
+
+  zone_id = aws_route53_zone.primary.zone_id
+  name    = each.value.domain
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.web.dns_name
+    zone_id                = aws_lb.web.zone_id
+    evaluate_target_health = true
+  }
+}
+
+resource "aws_route53_record" "environment_aaaa" {
+  for_each = { for env_name, env_config in var.environments : env_name => env_config if env_config.domain != var.domain_name }
+
+  zone_id = aws_route53_zone.primary.zone_id
+  name    = each.value.domain
+  type    = "AAAA"
+
+  alias {
+    name                   = aws_lb.web.dns_name
+    zone_id                = aws_lb.web.zone_id
+    evaluate_target_health = true
+  }
+}

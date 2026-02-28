@@ -15,7 +15,8 @@ const TermsOfService: React.FC = () => {
           1. Acceptance of Terms
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
-          By accessing and using Polemicyst, you agree to comply with these Terms of Service. If you do not agree, please do not use our website or services.
+          By accessing and using Polemicyst, you agree to comply with these Terms of Service. If you
+          do not agree, please do not use our website or services.
         </p>
       </section>
 
@@ -24,7 +25,8 @@ const TermsOfService: React.FC = () => {
           2. Use of the Service
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
-          You agree to use Polemicyst for lawful purposes only. Misuse of the platform, including spamming, harassment, or unlawful activity, is strictly prohibited.
+          You agree to use Polemicyst for lawful purposes only. Misuse of the platform, including
+          spamming, harassment, or unlawful activity, is strictly prohibited.
         </p>
       </section>
 
@@ -33,7 +35,8 @@ const TermsOfService: React.FC = () => {
           3. User Accounts
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
-          You may be required to create an account to access certain features. You are responsible for maintaining the security of your account credentials.
+          You may be required to create an account to access certain features. You are responsible
+          for maintaining the security of your account credentials.
         </p>
       </section>
 
@@ -42,7 +45,8 @@ const TermsOfService: React.FC = () => {
           4. Content Ownership
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
-          Users retain ownership of any content they submit. However, by submitting content, you grant Polemicyst a license to use, modify, and display the content as necessary.
+          Users retain ownership of any content they submit. However, by submitting content, you
+          grant Polemicyst a license to use, modify, and display the content as necessary.
         </p>
       </section>
 
@@ -51,7 +55,8 @@ const TermsOfService: React.FC = () => {
           5. Termination
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
-          We reserve the right to terminate or suspend access to our services at our discretion if we believe you have violated these terms.
+          We reserve the right to terminate or suspend access to our services at our discretion if
+          we believe you have violated these terms.
         </p>
       </section>
 
@@ -60,7 +65,8 @@ const TermsOfService: React.FC = () => {
           6. Changes to These Terms
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
-          We may update these Terms of Service from time to time. Users will be notified of significant changes.
+          We may update these Terms of Service from time to time. Users will be notified of
+          significant changes.
         </p>
       </section>
 
@@ -72,8 +78,15 @@ const TermsOfService: React.FC = () => {
           If you have any questions about these Terms of Service, please contact us:
         </p>
         <ul className="list-disc list-inside text-gray-700 dark:text-gray-300">
-          <li>📧 Email: <strong>[your-email@polemicyst.com]</strong></li>
-          <li>🌐 Website: <a href="https://polemicyst.com" className="text-blue-500 hover:underline">https://polemicyst.com</a></li>
+          <li>
+            📧 Email: <strong>[your-email@polemicyst.com]</strong>
+          </li>
+          <li>
+            🌐 Website:{' '}
+            <a href="https://polemicyst.com" className="text-blue-500 hover:underline">
+              https://polemicyst.com
+            </a>
+          </li>
         </ul>
       </section>
     </div>

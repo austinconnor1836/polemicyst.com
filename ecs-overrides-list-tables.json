@@ -1,0 +1,12 @@
+{
+  "containerOverrides": [
+    {
+      "name": "web",
+      "command": [
+        "node",
+        "-e",
+        "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.$queryRawUnsafe(\"SELECT tablename FROM pg_tables WHERE schemaname='public'\").then(r=>{console.log(JSON.stringify(r,null,2));process.exit(0)}).catch(e=>{console.error(String(e));process.exit(1)})"
+      ]
+    }
+  ]
+}
