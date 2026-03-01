@@ -80,7 +80,11 @@ const SignIn = () => {
                     onKeyDown={(e) => e.key === 'Enter' && handleDevLogin()}
                   />
                 </div>
-                <Button onClick={handleDevLogin} disabled={loading || !devEmail.trim()} className="w-full">
+                <Button
+                  onClick={handleDevLogin}
+                  disabled={loading || !devEmail.trim()}
+                  className="w-full"
+                >
                   {loading ? 'Signing in…' : 'Dev Sign In'}
                 </Button>
                 <div className="relative my-3">

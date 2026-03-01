@@ -24,15 +24,7 @@ import {
 } from '@shared/virality';
 import { ThemedToaster } from '@/components/themed-toaster';
 import toast from 'react-hot-toast';
-import {
-  Zap,
-  Captions,
-  Crop,
-  Send,
-  Loader2,
-  Save,
-  Info,
-} from 'lucide-react';
+import { Zap, Captions, Crop, Send, Loader2, Save, Info } from 'lucide-react';
 
 type AutomationState = {
   enabled: boolean;
@@ -243,7 +235,9 @@ export default function AutomationSettingsPage() {
                 </div>
                 <div>
                   <CardTitle>Clip Generation</CardTitle>
-                  <CardDescription>Default scoring and selection settings for new clips</CardDescription>
+                  <CardDescription>
+                    Default scoring and selection settings for new clips
+                  </CardDescription>
                 </div>
               </div>
               <Switch
@@ -366,9 +360,7 @@ export default function AutomationSettingsPage() {
               </div>
               <Switch
                 checked={state.autoPublish}
-                onCheckedChange={(checked) =>
-                  setState((p) => ({ ...p, autoPublish: !!checked }))
-                }
+                onCheckedChange={(checked) => setState((p) => ({ ...p, autoPublish: !!checked }))}
               />
             </div>
           </CardHeader>
