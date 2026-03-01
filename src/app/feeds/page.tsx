@@ -52,6 +52,9 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
+import { UpgradePrompt, parseApiError, type ApiErrorBody } from '@/components/upgrade-prompt';
+import { QuotaIndicator } from '@/components/quota-indicator';
+import { useSubscription } from '@/hooks/use-subscription';
 
 function youtubeHandleUrlFromName(name: string) {
   const trimmed = (name || '').trim();
@@ -106,6 +109,8 @@ export default function FeedsPage() {
   const [defaultLLMProvider, setDefaultLLMProvider] = useState<LLMProvider>(
     DEFAULT_VIRALITY_SETTINGS.llmProvider
   );
+  const [upgradeError, setUpgradeError] = useState<ApiErrorBody | null>(null);
+  const { data: subscription, refetch: refetchSubscription } = useSubscription();
 
   useEffect(() => {
     let cancelled = false;
@@ -169,20 +174,30 @@ export default function FeedsPage() {
   const addFeed = async () => {
     setIsCreatingFeed(true);
     setPageError(null);
+    setUpgradeError(null);
     try {
       const res = await fetch('/api/feeds', {
         method: 'POST',
         body: JSON.stringify(form),
         headers: { 'Content-Type': 'application/json' },
       });
-      if (!res.ok) throw new Error('Failed to create feed');
+      if (!res.ok) {
+        const body = await parseApiError(res);
+        if (res.status === 403 && (body.code === 'QUOTA_EXCEEDED' || body.code === 'PLAN_RESTRICTED')) {
+          setUpgradeError(body);
+          setIsAddFeedOpen(false);
+          toast.error(body.error);
+          return;
+        }
+        throw new Error(body.error || 'Failed to create feed');
+      }
       setForm({ name: '', sourceUrl: '', pollingInterval: 60 });
-      await fetchFeeds();
+      await Promise.all([fetchFeeds(), refetchSubscription()]);
       toast.success('Feed added');
       setIsAddFeedOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setPageError('Couldn’t add feed. Check the URL and try again.');
+      setPageError(err.message || 'Couldn’t add feed. Check the URL and try again.');
       toast.error('Couldn’t add feed');
     } finally {
       setIsCreatingFeed(false);
@@ -506,13 +521,22 @@ export default function FeedsPage() {
         body: JSON.stringify(updates),
         headers: { 'Content-Type': 'application/json' },
       });
-      if (!res.ok) throw new Error('Failed to update feed');
+      if (!res.ok) {
+        const body = await parseApiError(res);
+        if (res.status === 403 && (body.code === 'QUOTA_EXCEEDED' || body.code === 'PLAN_RESTRICTED')) {
+          setUpgradeError(body);
+          setIsFeedSettingsOpen(false);
+          toast.error(body.error);
+          return;
+        }
+        throw new Error(body.error || 'Failed to update feed');
+      }
       await fetchFeeds();
       toast.success('Settings saved');
       setIsFeedSettingsOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error('Failed to update settings');
+      toast.error(err.message || 'Failed to update settings');
     }
   };
 
@@ -630,6 +654,29 @@ export default function FeedsPage() {
               {pageError}
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {upgradeError && (
+        <div className="mb-6">
+          <UpgradePrompt message={upgradeError.error} />
+        </div>
+      )}
+
+      {subscription && (
+        <div className="mb-6 flex flex-wrap gap-4">
+          <QuotaIndicator
+            label="Sources"
+            current={subscription.usage.feeds}
+            limit={subscription.plan.limits.maxFeeds}
+            className="min-w-[140px] flex-1"
+          />
+          <QuotaIndicator
+            label="Clips this month"
+            current={subscription.usage.clipsThisMonth}
+            limit={subscription.plan.limits.maxClipsPerMonth}
+            className="min-w-[140px] flex-1"
+          />
         </div>
       )}
 

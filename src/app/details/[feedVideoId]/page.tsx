@@ -32,6 +32,7 @@ import SpeakerTranscript from '@/components/SpeakerTranscript';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { formatRelativeTime } from '@/app/feeds/util/time';
+import { UpgradePrompt, parseApiError, type ApiErrorBody } from '@/components/upgrade-prompt';
 import {
   DEFAULT_VIRALITY_SETTINGS,
   getStrictnessConfig,
@@ -121,6 +122,7 @@ export default function ClipGroupPage() {
   const [transcribeMessage, setTranscribeMessage] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [deletingClipId, setDeletingClipId] = useState<string | null>(null);
+  const [upgradeError, setUpgradeError] = useState<ApiErrorBody | null>(null);
 
   const fetchSummary = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -206,7 +208,13 @@ export default function ClipGroupPage() {
         body: JSON.stringify({ llmProvider: provider }),
       });
       if (!res.ok) {
-        throw new Error('Failed to update default');
+        const body = await parseApiError(res);
+        if (res.status === 403 && body.code === 'PLAN_RESTRICTED') {
+          toast.error(body.error);
+          setUpgradeError(body);
+          return;
+        }
+        throw new Error(body.error || 'Failed to update default');
       }
       setDefaultLLMProvider(provider);
     } catch (err) {
@@ -241,7 +249,12 @@ export default function ClipGroupPage() {
     });
 
     if (!res.ok) {
-      throw new Error('Failed to trigger clip');
+      const body = await parseApiError(res);
+      if (res.status === 403 && (body.code === 'QUOTA_EXCEEDED' || body.code === 'PLAN_RESTRICTED')) {
+        setUpgradeError(body);
+        throw body;
+      }
+      throw new Error(body.error || 'Failed to trigger clip');
     }
 
     return res.json();
@@ -250,12 +263,18 @@ export default function ClipGroupPage() {
   const handleGenerateClip = async () => {
     setIsGeneratingClip(true);
     setGenerateMessage(null);
+    setUpgradeError(null);
     try {
       await triggerClip();
       setGenerateMessage('Clip job enqueued.');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setGenerateMessage('Failed to enqueue clip job.');
+      if (err?.code === 'QUOTA_EXCEEDED' || err?.code === 'PLAN_RESTRICTED') {
+        toast.error(err.error);
+        setGenerateMessage(null);
+      } else {
+        setGenerateMessage(err?.message || 'Failed to enqueue clip job.');
+      }
     } finally {
       setIsGeneratingClip(false);
     }
@@ -330,6 +349,12 @@ export default function ClipGroupPage() {
           Refresh
         </Button>
       </div>
+
+      {upgradeError && (
+        <div className="mb-4">
+          <UpgradePrompt message={upgradeError.error} />
+        </div>
+      )}
 
       {loading ? (
         <Card className="border-dashed">
@@ -412,7 +437,9 @@ export default function ClipGroupPage() {
                         onPersistLLMProvider={persistDefaultLLMProvider}
                         isPersistingLLMProvider={isPersistingDefaultLLM}
                       />
-                      {generateMessage ? (
+                      {upgradeError ? (
+                        <UpgradePrompt message={upgradeError.error} />
+                      ) : generateMessage ? (
                         <div className="text-xs text-muted-foreground">{generateMessage}</div>
                       ) : null}
                     </div>
