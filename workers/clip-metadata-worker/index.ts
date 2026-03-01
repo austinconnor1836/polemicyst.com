@@ -16,6 +16,7 @@ import { generateClipFromS3 } from '@shared/util/ffmpegUtils';
 import { scorePhilosophicalRhetoric } from '@shared/lib/scoring/philosophy-ranker';
 import { checkClipQuota } from '@shared/lib/plans';
 import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
+import { logJob } from '@shared/lib/job-logger';
 
 const redisConnection = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
@@ -51,6 +52,14 @@ new Worker(
     } = job.data;
 
     const costTracker = new CostTracker(userId, feedVideoId);
+
+    const jobStartMs = Date.now();
+    await logJob({
+      feedVideoId,
+      jobType: 'clip-generation',
+      status: 'started',
+      message: 'Worker picked up clip-generation job',
+    });
 
     console.log(`📥 Processing clip-generation job for FeedVideo: ${feedVideoId}`);
 
@@ -289,6 +298,14 @@ new Worker(
         console.log(`✅ Clip created and registered: ${s3Url}`);
       }
 
+      await logJob({
+        feedVideoId,
+        jobType: 'clip-generation',
+        status: 'completed',
+        message: `Clip generation finished — ${philosophyWeightedCandidates.length} clips created`,
+        durationMs: Date.now() - jobStartMs,
+      });
+
       console.log(`🏁 Job complete for ${feedVideoId}`);
     } catch (err: unknown) {
       const maybePrismaError = err as { code?: string; meta?: Record<string, any> } | null;
@@ -302,6 +319,16 @@ new Worker(
         );
         return;
       }
+      const errorMessage = err instanceof Error ? (err as Error).message : String(err);
+      await logJob({
+        feedVideoId,
+        jobType: 'clip-generation',
+        status: 'failed',
+        message: 'Clip generation failed',
+        error: errorMessage,
+        durationMs: Date.now() - jobStartMs,
+      });
+
       console.error('❌ Error processing job:', err);
       throw err;
     } finally {

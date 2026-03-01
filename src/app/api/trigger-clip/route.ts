@@ -3,6 +3,7 @@ import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import { prisma } from '@shared/lib/prisma';
 import { checkClipQuota } from '@/lib/plans';
+import { logJob } from '@shared/lib/job-logger';
 
 let redis: Redis | null = null;
 let clipGenerationQueue: Queue | null = null;
@@ -121,6 +122,13 @@ export async function POST(req: NextRequest) {
       },
       { jobId: feedVideoId, removeOnComplete: true, removeOnFail: true }
     );
+
+    await logJob({
+      feedVideoId,
+      jobType: 'clip-generation',
+      status: 'queued',
+      message: 'Clip-generation job queued via API',
+    });
 
     return NextResponse.json({ message: 'Clip-generation job enqueued', jobId: job.id });
   } catch (err) {

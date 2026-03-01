@@ -12,6 +12,7 @@ import MovieIcon from '@mui/icons-material/Movie';
 import PaymentIcon from '@mui/icons-material/Payment';
 import SportsBasketballIcon from '@mui/icons-material/SportsBasketball';
 import BarChartIcon from '@mui/icons-material/BarChart';
+import ListAltIcon from '@mui/icons-material/ListAlt';
 import { useSession } from 'next-auth/react';
 
 interface SidePanelProps {
@@ -34,7 +35,11 @@ const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
   const isAdmin = session?.user?.email === adminEmail;
 
   const navItems = isAdmin
-    ? [...sideNavItems, { label: 'Costs', element: <BarChartIcon />, href: '/admin/costs' }]
+    ? [
+        ...sideNavItems,
+        { label: 'Costs', element: <BarChartIcon />, href: '/admin/costs' },
+        { label: 'Logs', element: <ListAltIcon />, href: '/admin/logs' },
+      ]
     : sideNavItems;
 
   return (

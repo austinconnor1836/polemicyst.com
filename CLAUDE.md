@@ -133,6 +133,15 @@ In the Feeds modal, users can set:
 
 ## Change log
 
+### 2026-03-01
+
+- Added **job log tracking** for transcription, clip-generation, and speaker-transcription jobs.
+- New `JobLog` Prisma model + migration: records `queued`, `started`, `completed`, `failed` events with duration, error messages, and metadata.
+- `logJob()` helper (`shared/lib/job-logger.ts`): non-fatal writes so pipeline continues even if logging fails.
+- Transcription API (`POST /api/feedVideos/:id/transcribe`), trigger-clip API (`POST /api/trigger-clip`), transcription worker, speaker-transcription worker, and clip-metadata worker all emit job logs.
+- Admin-only logs dashboard at `/admin/logs` with per-job-type summary cards, status/type/date filters, expandable log entries showing error details and metadata.
+- Sidenav conditionally shows "Logs" link for admin user.
+
 ### 2026-02-27
 
 - Added **iOS authentication** (Google Sign-In + Sign in with Apple) and unified backend Bearer JWT auth.

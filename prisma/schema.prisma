@@ -118,6 +118,7 @@ model FeedVideo {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   generatedClips Video[] @relation("FeedVideoClips")
+  jobLogs        JobLog[]
 
   @@unique([feedId, videoId])
 }
@@ -225,6 +226,24 @@ model CostEvent {
 
   @@index([userId])
   @@index([jobId])
+  @@index([createdAt])
+}
+
+model JobLog {
+  id          String   @id @default(cuid())
+  feedVideoId String
+  feedVideo   FeedVideo @relation(fields: [feedVideoId], references: [id], onDelete: Cascade)
+  jobType     String   // transcription | speaker-transcription | clip-generation | download
+  status      String   // queued | started | completed | failed
+  message     String?
+  error       String?  @db.Text
+  durationMs  Int?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([feedVideoId])
+  @@index([jobType])
+  @@index([status])
   @@index([createdAt])
 }
 
