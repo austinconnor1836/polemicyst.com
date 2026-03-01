@@ -158,15 +158,15 @@ This gives testers access to dev builds without going through the Play Store.
 
 Go to your GitHub repo → **Settings** → **Secrets and variables** → **Actions** → add:
 
-| Secret | Value |
-|---|---|
-| `ANDROID_KEYSTORE_BASE64` | `base64 -w 0 upload-keystore.jks` (the base64-encoded keystore) |
-| `ANDROID_KEYSTORE_PASSWORD` | The `-storepass` you used |
-| `ANDROID_KEY_ALIAS` | `polemicyst` (or whatever alias you used) |
-| `ANDROID_KEY_PASSWORD` | The `-keypass` you used |
-| `PLAY_SERVICE_ACCOUNT_JSON` | Paste the full JSON content of the GCP service account key |
-| `FIREBASE_APP_ID_DEV` | The Firebase App ID for the dev flavor |
-| `FIREBASE_SERVICE_ACCOUNT` | Paste the full JSON content of the Firebase service account key |
+| Secret                      | Value                                                           |
+| --------------------------- | --------------------------------------------------------------- |
+| `ANDROID_KEYSTORE_BASE64`   | `base64 -w 0 upload-keystore.jks` (the base64-encoded keystore) |
+| `ANDROID_KEYSTORE_PASSWORD` | The `-storepass` you used                                       |
+| `ANDROID_KEY_ALIAS`         | `polemicyst` (or whatever alias you used)                       |
+| `ANDROID_KEY_PASSWORD`      | The `-keypass` you used                                         |
+| `PLAY_SERVICE_ACCOUNT_JSON` | Paste the full JSON content of the GCP service account key      |
+| `FIREBASE_APP_ID_DEV`       | The Firebase App ID for the dev flavor                          |
+| `FIREBASE_SERVICE_ACCOUNT`  | Paste the full JSON content of the Firebase service account key |
 
 ### Step 9: Fix the `versionCode` (Required Before Second Upload)
 
@@ -279,16 +279,16 @@ This lets Fastlane upload builds without your Apple ID password (which doesn't w
 
 ### Step 7: Store GitHub Secrets
 
-| Secret | Value |
-|---|---|
-| `ASC_KEY_ID` | The Key ID from step 5 |
-| `ASC_ISSUER_ID` | The Issuer ID from step 5 |
-| `ASC_KEY_CONTENT` | The base64-encoded `.p8` file content |
-| `APPLE_TEAM_ID` | Your 10-character Team ID |
-| `APPLE_CERTIFICATE_BASE64` | The base64-encoded `.p12` certificate |
-| `APPLE_CERTIFICATE_PASSWORD` | The export password you set for the `.p12` |
-| `APPLE_PROVISIONING_PROFILE_BASE64` | The base64-encoded `.mobileprovision` file |
-| `APPLE_PROVISIONING_PROFILE_NAME` | The exact name of the profile (e.g., `Polemicyst App Store`) |
+| Secret                              | Value                                                        |
+| ----------------------------------- | ------------------------------------------------------------ |
+| `ASC_KEY_ID`                        | The Key ID from step 5                                       |
+| `ASC_ISSUER_ID`                     | The Issuer ID from step 5                                    |
+| `ASC_KEY_CONTENT`                   | The base64-encoded `.p8` file content                        |
+| `APPLE_TEAM_ID`                     | Your 10-character Team ID                                    |
+| `APPLE_CERTIFICATE_BASE64`          | The base64-encoded `.p12` certificate                        |
+| `APPLE_CERTIFICATE_PASSWORD`        | The export password you set for the `.p12`                   |
+| `APPLE_PROVISIONING_PROFILE_BASE64` | The base64-encoded `.mobileprovision` file                   |
+| `APPLE_PROVISIONING_PROFILE_NAME`   | The exact name of the profile (e.g., `Polemicyst App Store`) |
 
 ### Step 8: Upload a First Build
 
@@ -331,21 +331,21 @@ All of this lives in `.github/workflows/deploy.yml`. Here's what triggers on eac
 
 ### On push to `develop`
 
-| Job | What it does | Gated on secret |
-|---|---|---|
-| `android-test` | Runs `./gradlew testDevDebugUnitTest` | — |
+| Job                 | What it does                                               | Gated on secret       |
+| ------------------- | ---------------------------------------------------------- | --------------------- |
+| `android-test`      | Runs `./gradlew testDevDebugUnitTest`                      | —                     |
 | `build-android-dev` | Builds dev debug APK, uploads to Firebase App Distribution | `FIREBASE_APP_ID_DEV` |
-| `ios-test` | Runs `xcodebuild test` on macOS 15 | — |
-| `build-ios-dev` | Builds IPA via Fastlane `beta`, uploads to TestFlight | `ASC_KEY_CONTENT` |
+| `ios-test`          | Runs `xcodebuild test` on macOS 15                         | —                     |
+| `build-ios-dev`     | Builds IPA via Fastlane `beta`, uploads to TestFlight      | `ASC_KEY_CONTENT`     |
 
 ### On push to `main`
 
-| Job | What it does | Gated on secret |
-|---|---|---|
-| `android-test` | Runs unit tests | — |
-| `build-android-release` | Builds signed prod AAB, uploads to Play Store `internal` track | `PLAY_SERVICE_ACCOUNT_JSON` |
-| `ios-test` | Runs unit tests | — |
-| `build-ios-release` | Builds IPA via Fastlane `release`, uploads to App Store Connect | `ASC_KEY_CONTENT` |
+| Job                     | What it does                                                    | Gated on secret             |
+| ----------------------- | --------------------------------------------------------------- | --------------------------- |
+| `android-test`          | Runs unit tests                                                 | —                           |
+| `build-android-release` | Builds signed prod AAB, uploads to Play Store `internal` track  | `PLAY_SERVICE_ACCOUNT_JSON` |
+| `ios-test`              | Runs unit tests                                                 | —                           |
+| `build-ios-release`     | Builds IPA via Fastlane `release`, uploads to App Store Connect | `ASC_KEY_CONTENT`           |
 
 ### What CI does NOT do (manual steps)
 
@@ -361,34 +361,34 @@ Complete list of secrets needed for full CI/CD:
 
 ### Android
 
-| Secret | Where to get it | Used by |
-|---|---|---|
-| `ANDROID_KEYSTORE_BASE64` | `base64 -w 0 upload-keystore.jks` | `build-android-release` |
-| `ANDROID_KEYSTORE_PASSWORD` | You set this when creating the keystore | `build-android-release` |
-| `ANDROID_KEY_ALIAS` | You set this (default: `polemicyst`) | `build-android-release` |
-| `ANDROID_KEY_PASSWORD` | You set this when creating the keystore | `build-android-release` |
-| `PLAY_SERVICE_ACCOUNT_JSON` | GCP service account JSON | `build-android-release` |
-| `FIREBASE_APP_ID_DEV` | Firebase Console → Project Settings → Your App | `build-android-dev` |
-| `FIREBASE_SERVICE_ACCOUNT` | GCP service account JSON with Firebase access | `build-android-dev` |
+| Secret                      | Where to get it                                | Used by                 |
+| --------------------------- | ---------------------------------------------- | ----------------------- |
+| `ANDROID_KEYSTORE_BASE64`   | `base64 -w 0 upload-keystore.jks`              | `build-android-release` |
+| `ANDROID_KEYSTORE_PASSWORD` | You set this when creating the keystore        | `build-android-release` |
+| `ANDROID_KEY_ALIAS`         | You set this (default: `polemicyst`)           | `build-android-release` |
+| `ANDROID_KEY_PASSWORD`      | You set this when creating the keystore        | `build-android-release` |
+| `PLAY_SERVICE_ACCOUNT_JSON` | GCP service account JSON                       | `build-android-release` |
+| `FIREBASE_APP_ID_DEV`       | Firebase Console → Project Settings → Your App | `build-android-dev`     |
+| `FIREBASE_SERVICE_ACCOUNT`  | GCP service account JSON with Firebase access  | `build-android-dev`     |
 
 ### iOS
 
-| Secret | Where to get it | Used by |
-|---|---|---|
-| `ASC_KEY_ID` | App Store Connect → API Keys | Both iOS jobs |
-| `ASC_ISSUER_ID` | App Store Connect → API Keys (top of page) | Both iOS jobs |
-| `ASC_KEY_CONTENT` | Base64 of the `.p8` key file | Both iOS jobs |
-| `APPLE_TEAM_ID` | developer.apple.com → Membership | Both iOS jobs |
-| `APPLE_CERTIFICATE_BASE64` | Base64 of exported `.p12` distribution cert | Both iOS jobs |
-| `APPLE_CERTIFICATE_PASSWORD` | Password you set during `.p12` export | Both iOS jobs |
-| `APPLE_PROVISIONING_PROFILE_BASE64` | Base64 of `.mobileprovision` file | Both iOS jobs |
-| `APPLE_PROVISIONING_PROFILE_NAME` | Exact name from Developer Portal | Both iOS jobs |
+| Secret                              | Where to get it                             | Used by       |
+| ----------------------------------- | ------------------------------------------- | ------------- |
+| `ASC_KEY_ID`                        | App Store Connect → API Keys                | Both iOS jobs |
+| `ASC_ISSUER_ID`                     | App Store Connect → API Keys (top of page)  | Both iOS jobs |
+| `ASC_KEY_CONTENT`                   | Base64 of the `.p8` key file                | Both iOS jobs |
+| `APPLE_TEAM_ID`                     | developer.apple.com → Membership            | Both iOS jobs |
+| `APPLE_CERTIFICATE_BASE64`          | Base64 of exported `.p12` distribution cert | Both iOS jobs |
+| `APPLE_CERTIFICATE_PASSWORD`        | Password you set during `.p12` export       | Both iOS jobs |
+| `APPLE_PROVISIONING_PROFILE_BASE64` | Base64 of `.mobileprovision` file           | Both iOS jobs |
+| `APPLE_PROVISIONING_PROFILE_NAME`   | Exact name from Developer Portal            | Both iOS jobs |
 
 ### Shared / Web (already configured)
 
-| Secret | Used by |
-|---|---|
-| `AWS_ACCESS_KEY_ID` | Web + worker deploy |
+| Secret                  | Used by             |
+| ----------------------- | ------------------- |
+| `AWS_ACCESS_KEY_ID`     | Web + worker deploy |
 | `AWS_SECRET_ACCESS_KEY` | Web + worker deploy |
 
 ---
@@ -444,6 +444,7 @@ The upload step is gated on `PLAY_SERVICE_ACCOUNT_JSON` being non-empty. Check t
 ### iOS: Fastlane build fails with "No signing certificate"
 
 The certificate and provisioning profile are decoded from base64 secrets in CI. Verify:
+
 - `APPLE_CERTIFICATE_BASE64` is the full base64 output (no line breaks)
 - `APPLE_CERTIFICATE_PASSWORD` matches the export password
 - The provisioning profile matches the bundle ID `com.polemicyst.app` and the distribution certificate
@@ -459,6 +460,7 @@ The Fastlane `set_build_number` lane uses `GITHUB_RUN_NUMBER`. If you re-run a f
 ### Either: "How do I test without going through CI?"
 
 **Android local build:**
+
 ```bash
 cd android
 ./gradlew assembleDevDebug     # Dev flavor, debug build
@@ -466,6 +468,7 @@ cd android
 ```
 
 **iOS local build:**
+
 ```bash
 cd ios
 xcodegen generate

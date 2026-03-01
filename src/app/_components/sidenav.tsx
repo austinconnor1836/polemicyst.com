@@ -11,6 +11,7 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import MovieIcon from '@mui/icons-material/Movie';
 import PaymentIcon from '@mui/icons-material/Payment';
 import SportsBasketballIcon from '@mui/icons-material/SportsBasketball';
+import WorkIcon from '@mui/icons-material/Work';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import { useSession } from 'next-auth/react';
@@ -25,6 +26,7 @@ const sideNavItems: SideNavItem[] = [
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
   { label: 'NCAA Seeds', element: <SportsBasketballIcon />, href: '/ncaa-seed-probability' },
   { label: 'Billing', element: <PaymentIcon />, href: '/billing' },
+  { label: 'Jobs', element: <WorkIcon />, href: '/jobs' },
 ];
 
 const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
