@@ -30,12 +30,27 @@ See `Sources/Models/Models.swift` for DTOs:
 
 `Sources/Networking/APIClient.swift` wraps JSON fetch/encode with ISO8601 dates. Inject a `baseURL` per environment (dev: `https://localhost:3000` hitting the Next dev server).
 
-## Auth (decision needed)
+## Auth
 
-- Web uses NextAuth JWT sessions with providers (Google/Facebook/Twitter/Bluesky). Mobile options:
-  1. Reuse NextAuth cookies via a webview sign-in and shared `URLSession` cookie storage (quickest).
-  2. Add a mobile-friendly token endpoint and pass bearer tokens (cleaner native UX).
-- For now, Feeds + FeedVideos can run unauthenticated; Clips require the session or a token.
+The iOS app uses native sign-in (Google Sign-In SDK + Sign in with Apple) and exchanges provider tokens for a Polemicyst JWT via backend endpoints:
+
+- **Google**: `GIDSignIn` → `POST /api/auth/mobile/google` with Google ID token → JWT
+- **Apple**: `SignInWithAppleButton` → `POST /api/auth/mobile/apple` with Apple identity token → JWT
+
+The JWT is stored in Keychain (`TokenStorage`) and sent as `Authorization: Bearer <jwt>` on all API requests via `APIClient`.
+
+### Key files
+
+- `Sources/PolemicystiOS/Auth/TokenStorage.swift` — Keychain wrapper
+- `Sources/PolemicystiOS/Auth/AuthModels.swift` — Request/response DTOs
+- `Sources/PolemicystiOS/Auth/AuthService.swift` — `@MainActor ObservableObject` managing sign-in/sign-out state
+- `Sources/PolemicystiOS/Features/Login/LoginView.swift` — Login screen with Apple + Google buttons
+
+### Setup requirements
+
+1. **Google Cloud Console**: Create an iOS OAuth client ID with bundle ID `com.polemicyst.app`. Set `GOOGLE_CLIENT_ID` build setting to the client ID and `GOOGLE_CLIENT_ID_REVERSED` to its reversed form (e.g., `com.googleusercontent.apps.123456`).
+2. **Apple Developer Portal**: Enable "Sign in with Apple" capability on App ID `com.polemicyst.app`.
+3. **Backend env vars**: Set `NEXTAUTH_SECRET`, `APPLE_CLIENT_ID` (`com.polemicyst.app`), and `GOOGLE_IOS_CLIENT_ID` in your `.env`.
 
 ## Quick-start slice
 

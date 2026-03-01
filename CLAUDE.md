@@ -133,6 +133,17 @@ In the Feeds modal, users can set:
 
 ## Change log
 
+### 2026-02-27
+
+- Added **iOS authentication** (Google Sign-In + Sign in with Apple) and unified backend Bearer JWT auth.
+- Fixed JWT secret mismatch bug: mobile Google auth was signing with `AUTH_SECRET` but bearer decoder uses `NEXTAUTH_SECRET`.
+- New unified auth helper `shared/lib/auth-helpers.ts` (`getAuthenticatedUser()`) — tries web session first, falls back to mobile Bearer JWT.
+- Updated API routes (`feeds`, `feedVideos`, `clips`, `clips/[id]`, `user/subscription`) to accept Bearer tokens via `getAuthenticatedUser()`.
+- New `POST /api/auth/mobile/apple` endpoint — verifies Apple identity tokens using `jose` + Apple JWKS.
+- Updated `POST /api/auth/mobile/google` to accept iOS client ID (array audience).
+- iOS: Added Google Sign-In SPM dependency, Keychain token storage, `AuthService`, `LoginView`, and auth-gated `App.swift`.
+- New env vars: `APPLE_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID`, `NEXTAUTH_SECRET` (documented in `ENV_VARS.template`).
+
 ### 2026-02-25
 
 - Added **per-clip cost instrumentation** across the full pipeline (download → transcription → LLM scoring → FFmpeg → S3 upload).

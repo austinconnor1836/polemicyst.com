@@ -31,6 +31,16 @@ GEMINI_MODEL=
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=llama3
 
+# --- Auth secrets ---
+# NextAuth JWT secret (used for encoding/decoding session JWTs, including mobile Bearer tokens)
+NEXTAUTH_SECRET=
+
+# --- Mobile auth ---
+# Apple Sign-In: bundle ID used as audience for identity token verification
+APPLE_CLIENT_ID=com.polemicyst.app
+# Google iOS OAuth client ID (created in Google Cloud Console for iOS bundle)
+GOOGLE_IOS_CLIENT_ID=
+
 # --- Optional: auth debug logging (DANGER: may log OAuth tokens if enabled) ---
 # Default is off. Only set this temporarily for local debugging and avoid sharing logs.
 NEXTAUTH_DEBUG=false
