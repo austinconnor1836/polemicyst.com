@@ -1,27 +1,27 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
 import { encode } from 'next-auth/jwt';
 
 const DEV_USER_EMAIL = process.env.DEV_USER_EMAIL;
-const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET;
+const DEV_LOGIN_SECRET = process.env.DEV_LOGIN_SECRET;
+const jwtSecret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: 'Not available in production' }, { status: 403 });
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  if (!DEV_USER_EMAIL) {
-    return NextResponse.json(
-      { error: 'Set DEV_USER_EMAIL env var to the email of the account to log in as' },
-      { status: 400 }
-    );
+  if (!DEV_USER_EMAIL || !DEV_LOGIN_SECRET) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  if (!secret) {
-    return NextResponse.json(
-      { error: 'NEXTAUTH_SECRET or AUTH_SECRET must be set' },
-      { status: 500 }
-    );
+  const token = req.nextUrl.searchParams.get('token');
+  if (!token || token !== DEV_LOGIN_SECRET) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  if (!jwtSecret) {
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
   }
 
   let user = await prisma.user.findUnique({ where: { email: DEV_USER_EMAIL } });
@@ -35,14 +35,14 @@ export async function GET() {
     });
   }
 
-  const token = await encode({
+  const sessionToken = await encode({
     token: {
       sub: user.id,
       email: user.email,
       name: user.name,
       picture: user.image,
     },
-    secret,
+    secret: jwtSecret,
     maxAge: 30 * 24 * 60 * 60,
   });
 
@@ -53,7 +53,7 @@ export async function GET() {
     new URL('/', process.env.NEXTAUTH_URL || 'http://localhost:3000')
   );
 
-  response.cookies.set(cookieName, token, {
+  response.cookies.set(cookieName, sessionToken, {
     httpOnly: true,
     secure: !!secureCookie,
     sameSite: 'lax',

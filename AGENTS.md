@@ -19,17 +19,19 @@ The app uses Google OAuth, which cloud agents can't complete. A dev-only login e
 
 1. Ensure these env vars are set (add as Cursor Cloud Agent secrets if not):
    - `DEV_USER_EMAIL` — the email of the user account to log in as
+   - `DEV_LOGIN_SECRET` — a random secret token (e.g. `openssl rand -hex 32`)
    - `NEXTAUTH_SECRET` — the NextAuth JWT secret (any random string works for local dev)
    - `DATABASE_URL` — Postgres connection string (required for Prisma)
 2. Start the dev server: `npx next dev --port 3000`
-3. In the `computerUse` subagent, navigate to `http://localhost:3000/api/auth/dev-login`
+3. In the `computerUse` subagent, navigate to `http://localhost:3000/api/auth/dev-login?token=$DEV_LOGIN_SECRET`
 4. The browser will be redirected to `/` with a valid session cookie. All authenticated pages now work.
 
-This endpoint only works when `NODE_ENV !== 'production'` and `DEV_USER_EMAIL` is set. It creates the user in the DB if they don't exist.
+Security: The endpoint requires three conditions to function — `NODE_ENV !== 'production'`, both `DEV_USER_EMAIL` and `DEV_LOGIN_SECRET` env vars set, and the correct secret passed as a `?token=` query parameter. Without the secret, the endpoint returns 404. It creates the user in the DB if they don't exist.
 
 ### GitHub authentication (PRs, CI triggers)
 
 Add a GitHub PAT as the `GH_TOKEN` Cursor Cloud Agent secret. The startup script should run:
+
 ```bash
 if [ -n "$GH_TOKEN" ]; then
   echo "$GH_TOKEN" | gh auth login --with-token
