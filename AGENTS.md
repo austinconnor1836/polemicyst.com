@@ -68,13 +68,15 @@ Cloud agents run in an isolated VM without Docker. You MUST start services manua
 
 1. **Start PostgreSQL and Redis:** `sudo service postgresql start && sudo service redis-server start`
 2. **Set postgres password:** `sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';"`
-3. **Run Prisma migrations:** Use the `DATABASE_URL` from `.env` and run `npx prisma migrate deploy`
-4. **Clear stale cache and start dev server:** `rm -rf .next && npm run dev &`
-5. **Wait ~15s, then verify** the server responds on port 3000.
+3. **Fix DATABASE_URL:** The cloud agent VM may inject a `DATABASE_URL` env var pointing to `db:5432` (Docker service name). You MUST override it to point to localhost: `export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/clips-genie"`
+4. **Run Prisma migrations:** `npx prisma migrate deploy`
+5. **Clear stale cache and start dev server:** `rm -rf .next && npm run dev &`
+6. **Wait ~15s, then verify** the server responds on HTTPS port 3000.
 
 ### Why this is needed
 
-- The `.env` file has `DATABASE_URL` pointing to the local PostgreSQL instance, but PostgreSQL and Redis are not auto-started in cloud agent VMs.
+- The cloud agent VM may have `DATABASE_URL` set to `db:5432` (Docker DNS) as a shell env var, which overrides the `.env` file. You must `export` the correct value before starting the server or Prisma will fail with "Can't reach database server at db:5432".
+- PostgreSQL and Redis are not auto-started in cloud agent VMs.
 - A stale `.next` cache can cause CSS/Tailwind to not render (the CSS file returns 404). Always `rm -rf .next` before starting the dev server if styles look broken.
 - The SWC binary for linux may need to be installed: `npm install @next/swc-linux-x64-gnu`.
 - **You MUST use `npm run dev`** (not `npx next dev`). The dev script includes `--experimental-https` which generates a self-signed SSL cert. Google OAuth callbacks redirect to `https://` so the server must serve HTTPS.
