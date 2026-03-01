@@ -16,7 +16,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 - [x] Auto-generate clips gating (pro+ only)
 - [x] Payment failure webhook (downgrade on failed invoice)
 - [x] Billing page with usage display (feeds + clips/month)
-- [ ] Stripe Customer Portal integration for plan changes/cancellation (verify working end-to-end)
+- [x] Stripe Customer Portal integration for plan changes/cancellation (verify working end-to-end)
 
 ### Deployment
 
@@ -92,7 +92,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 ## API Contract
 
 - [ ] Update `openapi/spec.yaml` with new quota error responses (403 with `QUOTA_EXCEEDED`, `PLAN_RESTRICTED` codes)
-- [ ] Update `openapi/spec.yaml` with `/api/user/subscription` endpoint (new `clipsThisMonth` field)
+- [x] Update `openapi/spec.yaml` with `/api/user/subscription` endpoint (new `clipsThisMonth` field)
 - [ ] Verify Android Retrofit interfaces match current API spec
 - [x] Verify iOS APIClient models match current API spec
 
