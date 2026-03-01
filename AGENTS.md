@@ -62,28 +62,49 @@ All three clients (Web, Android, iOS) share a single color palette defined in `t
 
 ## Cursor Cloud specific instructions
 
-Cloud agents run in an isolated VM without Docker. You MUST start services manually before the dev server will work.
+Cloud agents run in an isolated VM. Docker is **not available** (the VM kernel lacks iptables NAT support). You MUST start all services natively.
 
 ### Environment setup (run at session start)
 
-1. **Start PostgreSQL and Redis:** `sudo service postgresql start && sudo service redis-server start`
-2. **Set postgres password:** `sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';"`
-3. **Fix DATABASE_URL:** The cloud agent VM may inject a `DATABASE_URL` env var pointing to `db:5432` (Docker service name). You MUST override it to point to localhost: `export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/clips-genie"`
+Steps (run in order):
+
+1. **Fix `DATABASE_URL`:** The VM may inject a value pointing to `db:5432` (Docker DNS). Export the correct value from `.env` which points to `localhost:5432`. Read the value from `.env` and `export` it.
+2. **Start PostgreSQL and Redis:** `sudo service postgresql start && sudo service redis-server start`
+3. **Set postgres password:** `sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';" 2>/dev/null`
 4. **Run Prisma migrations:** `npx prisma migrate deploy`
-5. **Clear stale cache and start dev server:** `rm -rf .next && npm run dev &`
-6. **Wait ~15s, then verify** the server responds on HTTPS port 3000.
+5. **Install faster-whisper if missing:** `pip3 show faster-whisper >/dev/null 2>&1 || pip3 install faster-whisper`
+6. **Start Next.js dev server:** `rm -rf .next && npm run dev > /tmp/nextdev.log 2>&1 &`
+7. **Start all 4 workers** (each with `DATABASE_URL` and `REDIS_HOST=localhost` set):
+   - `npx tsx watch workers/transcription-worker/index.ts > /tmp/transcription-worker.log 2>&1 &`
+   - `npx tsx watch workers/clip-metadata-worker/index.ts > /tmp/clip-metadata-worker.log 2>&1 &`
+   - `npx tsx watch workers/video-download-worker/index.ts > /tmp/download-worker.log 2>&1 &`
+   - `npx tsx watch workers/poller-worker/index.ts > /tmp/poller-worker.log 2>&1 &`
+8. **Wait ~15s, then verify** the server responds with HTTPS 200 on port 3000.
 
-### Why this is needed
+### What's running and why
 
-- The cloud agent VM may have `DATABASE_URL` set to `db:5432` (Docker DNS) as a shell env var, which overrides the `.env` file. You must `export` the correct value before starting the server or Prisma will fail with "Can't reach database server at db:5432".
-- PostgreSQL and Redis are not auto-started in cloud agent VMs.
-- A stale `.next` cache can cause CSS/Tailwind to not render (the CSS file returns 404). Always `rm -rf .next` before starting the dev server if styles look broken.
-- The SWC binary for linux may need to be installed: `npm install @next/swc-linux-x64-gnu`.
-- **You MUST use `npm run dev`** (not `npx next dev`). The dev script includes `--experimental-https` which generates a self-signed SSL cert. Google OAuth callbacks redirect to `https://` so the server must serve HTTPS.
+| Service | How it runs | Notes |
+|---------|------------|-------|
+| PostgreSQL | `sudo service postgresql start` | Pre-installed in VM |
+| Redis | `sudo service redis-server start` | Pre-installed in VM |
+| Next.js web app | `npm run dev` | HTTPS via `--experimental-https` (required for Google OAuth) |
+| Transcription worker | `tsx watch workers/transcription-worker/index.ts` | Needs `faster-whisper` Python package |
+| Clip-metadata worker | `tsx watch workers/clip-metadata-worker/index.ts` | Needs `ffmpeg` (pre-installed) |
+| Download worker | `tsx watch workers/video-download-worker/index.ts` | Downloads videos from S3/YouTube |
+| Poller worker | `tsx watch workers/poller-worker/index.ts` | Polls feeds for new videos |
+
+### Common pitfalls
+
+- **`DATABASE_URL` override:** The VM injects a `DATABASE_URL` pointing to Docker DNS (`db:5432`) as a shell env var, which overrides `.env`. You MUST `export` the correct localhost value (from `.env`) before starting anything or Prisma will fail with "Can't reach database server at db:5432".
+- **Stale `.next` cache:** Can cause CSS/Tailwind to not render (CSS file returns 404). Always `rm -rf .next` before starting the dev server.
+- **Missing SWC binary:** If the dev server warns about missing SWC dependencies, run `npm install @next/swc-linux-x64-gnu`.
+- **HTTP vs HTTPS:** `npm run dev` serves HTTPS with a self-signed cert. Always use `https://` in the browser. The browser will show a cert warning — click "Advanced" then "Proceed" to accept it.
+- **Docker does not work** in cloud agent VMs — the kernel does not support iptables NAT. Do not attempt `docker compose up`.
+- **Worker logs** are at `/tmp/transcription-worker.log`, `/tmp/clip-metadata-worker.log`, `/tmp/download-worker.log`, `/tmp/poller-worker.log`.
 
 ### Testing UI changes
 
-After starting the dev server, use the `computerUse` subagent to open the app in Chrome via HTTPS on port 3000. The browser will show a self-signed certificate warning — click "Advanced" → "Proceed" to accept it. Verify the page renders with proper Tailwind CSS styling (not unstyled bullet points / plain text).
+After starting all services, use the `computerUse` subagent to open the app in Chrome via HTTPS on port 3000. Accept the self-signed certificate warning. Verify the page renders with proper Tailwind CSS styling (not unstyled bullet points / plain text).
 
 ## UI conventions (quick reminders)
 
