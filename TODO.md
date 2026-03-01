@@ -147,7 +147,7 @@ These block all revenue. Each item is independently executable by a cloud agent.
 
 The current landing page is a particle animation with zero product messaging. This is the single biggest conversion blocker.
 
-- [ ] **Replace landing page** — Replace `src/app/page.tsx` with a product-focused page that explains what Polemicyst does: "Turn long-form videos into viral clips for every platform — automatically." Include:
+- [x] **Replace landing page** — Replace `src/app/page.tsx` with a product-focused page that explains what Polemicyst does: "Turn long-form videos into viral clips for every platform — automatically." Include:
   - Clear value proposition headline
   - Feature highlights (AI clipping, multi-platform publishing, feed monitoring)
   - Pricing tier summary (link to `/pricing` or inline)
