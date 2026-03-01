@@ -28,6 +28,34 @@ components:
         error:
           type: string
 
+    QuotaExceededError:
+      type: object
+      required: [error, code, limit, usage]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          enum: [QUOTA_EXCEEDED]
+        limit:
+          type: integer
+        usage:
+          type: integer
+
+    PlanRestrictedError:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          enum: [PLAN_RESTRICTED]
+        allowedProviders:
+          type: array
+          items:
+            type: string
+
     MobileGoogleAuthRequest:
       type: object
       required: [idToken]
@@ -313,11 +341,9 @@ components:
 
     TriggerClipRequest:
       type: object
-      required: [feedVideoId, userId]
+      required: [feedVideoId]
       properties:
         feedVideoId:
-          type: string
-        userId:
           type: string
         aspectRatio:
           type: string
@@ -481,6 +507,16 @@ components:
               type: integer
             maxClipsPerMonth:
               type: integer
+            maxStorageGb:
+              type: integer
+            llmProviders:
+              type: array
+              items:
+                type: string
+            autoGenerateClips:
+              type: boolean
+            prioritySupport:
+              type: boolean
         features:
           type: array
           items:
@@ -672,6 +708,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          description: Feed quota exceeded or plan-restricted feature
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/QuotaExceededError'
+                  - $ref: '#/components/schemas/PlanRestrictedError'
 
   /api/feeds/{id}:
     patch:
@@ -703,6 +747,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          description: Plan-restricted feature (auto-generate or LLM provider)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanRestrictedError'
         '404':
           description: Feed not found or not owned by user
           content:
@@ -773,7 +823,6 @@ paths:
       operationId: getFeedVideoClips
       summary: Get clips and job status for a feed video
       tags: [FeedVideos]
-      security: []
       parameters:
         - name: id
           in: path
@@ -898,7 +947,6 @@ paths:
       operationId: triggerClipGeneration
       summary: Enqueue a clip generation job
       tags: [Clips]
-      security: []
       requestBody:
         required: true
         content:
@@ -912,13 +960,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TriggerClipResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Clip quota exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaExceededError'
 
   /api/clip-jobs:
     get:
       operationId: getClipJobs
-      summary: List active clip generation jobs
+      summary: List active clip generation jobs for the authenticated user
       tags: [Clips]
-      security: []
       responses:
         '200':
           description: List of job summaries
@@ -1078,6 +1137,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LlmProviderResponse'
+        '403':
+          description: LLM provider not available on current plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanRestrictedError'
 
   /api/user/subscription:
     get:
