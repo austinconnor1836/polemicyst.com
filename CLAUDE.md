@@ -1,5 +1,13 @@
 # Polemicyst — Claude Code Instructions
 
+## Task pickup — READ THIS FIRST
+
+1. Read `TODO.md` at the start of every session.
+2. Pick the **highest-priority unchecked item** you can act on (Priority 1 → 2 → 3 → 4).
+3. If an item needs secrets, production access, or env vars you don't have, **skip it** and move to the next one.
+4. When you finish an item, mark it `[x]` in `TODO.md`, commit, and push.
+5. Only work on **one item per session** unless the user asks otherwise.
+
 ## Git workflow
 
 - **Always create a new branch from `develop`** before starting work on a new task. Run `git checkout develop && git pull origin develop && git checkout -b <branch-name>` first.
