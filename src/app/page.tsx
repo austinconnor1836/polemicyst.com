@@ -6,7 +6,10 @@ import Particles from './_components/particles';
 import HomeHeroBackground from './_components/HomeHeroBackground';
 import { lusitana } from './ui/fonts';
 
-const navigation = [{ name: 'Blog', href: '/posts' }];
+const navigation = [
+  { name: 'Blog', href: '/posts' },
+  { name: 'Sushi Go!', href: '/sushi-go' },
+];
 
 export default function Home() {
   return (
