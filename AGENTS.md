@@ -69,18 +69,19 @@ Cloud agents run in an isolated VM without Docker. You MUST start services manua
 1. **Start PostgreSQL and Redis:** `sudo service postgresql start && sudo service redis-server start`
 2. **Set postgres password:** `sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';"`
 3. **Run Prisma migrations:** Use the `DATABASE_URL` from `.env` and run `npx prisma migrate deploy`
-4. **Clear stale cache and start dev server:** `rm -rf .next && npx next dev --port 3000 &`
-5. **Wait ~15s, then verify** the server responds with HTTP 200 on port 3000.
+4. **Clear stale cache and start dev server:** `rm -rf .next && npm run dev &`
+5. **Wait ~15s, then verify** the server responds on port 3000.
 
 ### Why this is needed
 
 - The `.env` file has `DATABASE_URL` pointing to the local PostgreSQL instance, but PostgreSQL and Redis are not auto-started in cloud agent VMs.
 - A stale `.next` cache can cause CSS/Tailwind to not render (the CSS file returns 404). Always `rm -rf .next` before starting the dev server if styles look broken.
 - The SWC binary for linux may need to be installed: `npm install @next/swc-linux-x64-gnu`.
+- **You MUST use `npm run dev`** (not `npx next dev`). The dev script includes `--experimental-https` which generates a self-signed SSL cert. Google OAuth callbacks redirect to `https://` so the server must serve HTTPS.
 
 ### Testing UI changes
 
-After starting the dev server, use the `computerUse` subagent to open the app in Chrome (port 3000) and verify the page renders with proper Tailwind CSS styling (not unstyled bullet points / plain text).
+After starting the dev server, use the `computerUse` subagent to open the app in Chrome via HTTPS on port 3000. The browser will show a self-signed certificate warning — click "Advanced" → "Proceed" to accept it. Verify the page renders with proper Tailwind CSS styling (not unstyled bullet points / plain text).
 
 ## UI conventions (quick reminders)
 
