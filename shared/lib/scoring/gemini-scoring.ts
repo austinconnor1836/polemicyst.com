@@ -4,6 +4,7 @@ import path from 'path';
 import { createWriteStream } from 'fs';
 import { spawn } from 'child_process';
 import type { LLMScoreResult } from './llm-types';
+import { estimateGeminiCost } from '../cost-tracking';
 
 export type GeminiScoreResult = LLMScoreResult;
 
@@ -310,6 +311,11 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
     throw new Error(`Gemini generateContent failed (${res.status}): ${JSON.stringify(json)}`);
   }
 
+  // Extract usage metadata for cost tracking
+  const usageMetadata = json?.usageMetadata;
+  const actualInputTokens = usageMetadata?.promptTokenCount as number | undefined;
+  const actualOutputTokens = usageMetadata?.candidatesTokenCount as number | undefined;
+
   const text =
     json?.candidates?.[0]?.content?.parts
       ?.map((p: any) => p.text)
@@ -327,6 +333,26 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
     (() => {
       throw new Error(`Gemini returned non-JSON: ${text.slice(0, 200)}`);
     })();
+
+  // Compute cost: use actual tokens from API if available, otherwise estimate
+  const audioSeconds = audioMp3Base64 ? Math.min(18, tEndS - tStartS) : 0;
+  const costEstimate = estimateGeminiCost({
+    numFrames: framesJpegBase64.length,
+    audioSeconds,
+    transcriptChars: transcriptText.length,
+    outputTokens: actualOutputTokens,
+  });
+
+  const costMeta = {
+    inputTokens: actualInputTokens ?? costEstimate.inputTokens,
+    outputTokens: actualOutputTokens ?? costEstimate.outputTokens,
+    inputImages: framesJpegBase64.length,
+    audioSeconds,
+    estimatedCostUsd: actualInputTokens
+      ? (actualInputTokens / 1_000_000) * 0.075 + ((actualOutputTokens ?? 200) / 1_000_000) * 0.3
+      : costEstimate.estimatedCostUsd,
+    modelName: chosenModel,
+  };
 
   return {
     score: clamp(Number(parsed.score), 0, 10),
@@ -352,6 +378,7 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
     hasViralMoment: typeof parsed.hasViralMoment === 'boolean' ? parsed.hasViralMoment : undefined,
     confidence: parsed.confidence != null ? clamp(Number(parsed.confidence), 0, 1) : undefined,
     rationale: String(parsed.rationale || '').slice(0, 400),
+    _cost: costMeta,
   };
 }
 

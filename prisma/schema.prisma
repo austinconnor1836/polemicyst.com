@@ -199,6 +199,28 @@ model SegmentRhetoricLabel {
   @@index([segmentId])
 }
 
+model CostEvent {
+  id               String   @id @default(cuid())
+  userId           String
+  jobId            String   // feedVideoId — groups events per video run
+  stage            String   // download | transcription | llm_scoring | ffmpeg_render | s3_upload
+  provider         String?  // gemini | ollama | whisper | s3 | ffmpeg
+  model            String?
+  inputTokens      Int?
+  outputTokens     Int?
+  inputImages      Int?
+  inputAudioS      Float?
+  durationMs       Int?
+  fileSizeBytes    BigInt?
+  estimatedCostUsd Float    @default(0)
+  metadata         Json?
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+  @@index([jobId])
+  @@index([createdAt])
+}
+
 model ClipCropTemplate {
   id         String   @id @default(uuid())
   userId     String

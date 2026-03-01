@@ -18,8 +18,19 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { Download, ExternalLink, Loader2, RefreshCw, ArrowLeft, Pencil } from 'lucide-react';
+import {
+  ChevronDown,
+  Download,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+  ArrowLeft,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 import SpeakerTranscript from '@/components/SpeakerTranscript';
+import toast from 'react-hot-toast';
+import { ThemedToaster } from '@/components/themed-toaster';
 import { formatRelativeTime } from '@/app/feeds/util/time';
 import {
   DEFAULT_VIRALITY_SETTINGS,
@@ -106,8 +117,10 @@ export default function ClipGroupPage() {
   const [isGeneratingClip, setIsGeneratingClip] = useState(false);
   const [generateMessage, setGenerateMessage] = useState<string | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
   const [transcribeMessage, setTranscribeMessage] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [deletingClipId, setDeletingClipId] = useState<string | null>(null);
 
   const fetchSummary = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -281,8 +294,27 @@ export default function ClipGroupPage() {
     }
   }, [feedVideoId, fetchSummary]);
 
+  const deleteClip = async (clipId: string) => {
+    if (!confirm('Delete this clip?')) return;
+    setDeletingClipId(clipId);
+    try {
+      const res = await fetch(`/api/clips/${clipId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete clip');
+      setSummary((prev) =>
+        prev ? { ...prev, clips: prev.clips.filter((c) => c.id !== clipId) } : prev
+      );
+      toast.success('Clip deleted');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to delete clip');
+    } finally {
+      setDeletingClipId(null);
+    }
+  };
+
   return (
     <div className="mx-auto w-full max-w-screen-xl px-4 py-6 sm:px-6 lg:px-8">
+      <ThemedToaster />
       <div className="mb-4 flex items-center gap-2">
         <Button variant="ghost" size="sm" onClick={() => router.push('/feeds')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -402,32 +434,50 @@ export default function ClipGroupPage() {
           </Card>
 
           <Card className="mb-6">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Transcript</CardTitle>
-              <CardDescription>Scroll to review the transcript for this video.</CardDescription>
+            <CardHeader
+              className="cursor-pointer select-none pb-3"
+              onClick={() => setIsTranscriptOpen((o) => !o)}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">Transcript</CardTitle>
+                  <CardDescription>Scroll to review the transcript for this video.</CardDescription>
+                </div>
+                <ChevronDown
+                  className={cn(
+                    'h-5 w-5 text-muted-foreground transition-transform duration-200',
+                    isTranscriptOpen && 'rotate-180'
+                  )}
+                />
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {summary.feedVideo.transcript?.trim() ? (
-                <div className="max-h-[360px] overflow-y-auto rounded-md border p-3 text-sm whitespace-pre-wrap leading-relaxed">
-                  {summary.feedVideo.transcript}
-                </div>
-              ) : (
-                <div className="space-y-3 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                  <div>Transcript not available yet.</div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={requestTranscription}
-                      disabled={isTranscribing}
-                    >
-                      {isTranscribing ? 'Queuing...' : 'Transcribe now'}
-                    </Button>
-                    {transcribeMessage ? <span>{transcribeMessage}</span> : null}
+            {isTranscriptOpen && (
+              <CardContent className="space-y-3">
+                {summary.feedVideo.transcript?.trim() ? (
+                  <div className="max-h-[360px] overflow-y-auto rounded-md border p-3 text-sm whitespace-pre-wrap leading-relaxed">
+                    {summary.feedVideo.transcript}
                   </div>
-                </div>
-              )}
-            </CardContent>
+                ) : (
+                  <div className="space-y-3 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                    <div>Transcript not available yet.</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          requestTranscription();
+                        }}
+                        disabled={isTranscribing}
+                      >
+                        {isTranscribing ? 'Queuing...' : 'Transcribe now'}
+                      </Button>
+                      {transcribeMessage ? <span>{transcribeMessage}</span> : null}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            )}
           </Card>
 
           <div className="mb-6">
@@ -462,7 +512,11 @@ export default function ClipGroupPage() {
               </div>
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
                 {summary.clips.map((clip) => (
-                  <Card key={clip.id} className="overflow-hidden shadow-sm">
+                  <Card
+                    key={clip.id}
+                    className="relative cursor-pointer overflow-hidden shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20"
+                    onClick={() => router.push(`/details/${feedVideoId}/clips/${clip.id}`)}
+                  >
                     <CardContent className="p-0">
                       <video
                         src={clip.s3Url || undefined}
@@ -488,7 +542,11 @@ export default function ClipGroupPage() {
                             </span>
                           ) : null}
                         </div>
-                        <div className="flex flex-wrap gap-2 pt-2">
+                        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+                        <div
+                          className="flex flex-wrap gap-2 pt-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {clip.s3Url ? (
                             <>
                               <Button asChild size="sm">
@@ -501,12 +559,6 @@ export default function ClipGroupPage() {
                                   Edit
                                 </a>
                               </Button>
-                              <Button asChild size="sm" variant="secondary">
-                                <a href={clip.s3Url} target="_blank" rel="noreferrer">
-                                  <ExternalLink className="mr-2 h-4 w-4" />
-                                  Open
-                                </a>
-                              </Button>
                               <Button asChild size="sm" variant="outline">
                                 <a href={clip.s3Url} download>
                                   <Download className="mr-2 h-4 w-4" />
@@ -515,9 +567,27 @@ export default function ClipGroupPage() {
                               </Button>
                             </>
                           ) : null}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive glass:!text-[rgb(var(--color-destructive))] glass:hover:!bg-red-500/10"
+                            onClick={() => deleteClip(clip.id)}
+                            disabled={deletingClipId === clip.id}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </Button>
                         </div>
                       </div>
                     </CardContent>
+                    {deletingClipId === clip.id && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/80 backdrop-blur-sm dark:bg-black/60 glass:!bg-black/50">
+                        <div className="flex items-center gap-2 text-sm font-medium text-foreground dark:text-white glass:!text-white">
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                          Deleting…
+                        </div>
+                      </div>
+                    )}
                   </Card>
                 ))}
               </div>

@@ -13,6 +13,7 @@ export async function GET() {
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
     select: {
+      id: true,
       subscriptionPlan: true,
       stripeCustomerId: true,
       _count: { select: { videoFeeds: true } },
@@ -25,6 +26,35 @@ export async function GET() {
 
   const plan = resolvePlan(user.subscriptionPlan);
 
+  // Count clips generated this month
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const clipsThisMonth = await prisma.video.count({
+    where: {
+      userId: user.id,
+      sourceVideoId: { not: null },
+      createdAt: { gte: startOfMonth },
+    },
+  });
+
+  // Cost tracking summary for the current month
+  let costThisMonth: { totalUsd: number; eventCount: number } = { totalUsd: 0, eventCount: 0 };
+  try {
+    const costAgg = await prisma.costEvent.aggregate({
+      where: { userId: user.id, createdAt: { gte: startOfMonth } },
+      _sum: { estimatedCostUsd: true },
+      _count: true,
+    });
+    costThisMonth = {
+      totalUsd: costAgg._sum.estimatedCostUsd ?? 0,
+      eventCount: costAgg._count,
+    };
+  } catch {
+    // CostEvent table may not exist yet in some environments
+  }
+
   return NextResponse.json({
     plan: {
       id: plan.id,
@@ -34,6 +64,8 @@ export async function GET() {
     },
     usage: {
       feeds: user._count.videoFeeds,
+      clipsThisMonth,
+      costThisMonth,
     },
     hasStripeCustomer: !!user.stripeCustomerId,
   });

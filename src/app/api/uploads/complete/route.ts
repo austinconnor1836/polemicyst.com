@@ -10,6 +10,7 @@ import {
   mergeViralitySettings,
   type ViralitySettingsValue,
 } from '@shared/virality';
+import { checkClipQuota } from '@/lib/plans';
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
@@ -86,32 +87,38 @@ export async function POST(req: NextRequest) {
 
     // 3. Auto-trigger clip generation if enabled
     if (manualFeed.autoGenerateClips && manualFeed.viralitySettings) {
-      try {
-        const rawSettings = manualFeed.viralitySettings as Partial<ViralitySettingsValue>;
-        const settings = mergeViralitySettings(rawSettings);
-        const strictnessConfig = getStrictnessConfig(settings.strictnessPreset);
+      // Check clip quota before auto-enqueuing
+      const clipQuota = await checkClipQuota(user.id, user.subscriptionPlan);
+      if (!clipQuota.allowed) {
+        console.warn(`[Auto-Gen] Clip quota exceeded for user ${user.id}. Skipping.`);
+      } else {
+        try {
+          const rawSettings = manualFeed.viralitySettings as Partial<ViralitySettingsValue>;
+          const settings = mergeViralitySettings(rawSettings);
+          const strictnessConfig = getStrictnessConfig(settings.strictnessPreset);
 
-        const queue = getClipGenerationQueue();
-        await queue.add(
-          'clip-generation',
-          {
-            feedVideoId: newVideo.id,
-            userId: user.id,
-            aspectRatio: '9:16', // Default for auto-gen, or could be stored in settings
-            scoringMode: settings.scoringMode || 'hybrid',
-            includeAudio: settings.includeAudio || false,
-            saferClips: settings.saferClips ?? true,
-            targetPlatform: settings.targetPlatform || 'reels',
-            contentStyle: settings.contentStyle || 'auto',
-            llmProvider: settings.llmProvider,
-            ...strictnessConfig,
-          },
-          { jobId: newVideo.id, removeOnComplete: true, removeOnFail: true }
-        );
-        console.log(`[Auto-Gen] Enqueued job for video ${newVideo.id}`);
-      } catch (err) {
-        console.error('[Auto-Gen] Failed to enqueue job:', err);
-        // Don't fail the request, just log error
+          const queue = getClipGenerationQueue();
+          await queue.add(
+            'clip-generation',
+            {
+              feedVideoId: newVideo.id,
+              userId: user.id,
+              aspectRatio: '9:16', // Default for auto-gen, or could be stored in settings
+              scoringMode: settings.scoringMode || 'hybrid',
+              includeAudio: settings.includeAudio || false,
+              saferClips: settings.saferClips ?? true,
+              targetPlatform: settings.targetPlatform || 'reels',
+              contentStyle: settings.contentStyle || 'auto',
+              llmProvider: settings.llmProvider,
+              ...strictnessConfig,
+            },
+            { jobId: newVideo.id, removeOnComplete: true, removeOnFail: true }
+          );
+          console.log(`[Auto-Gen] Enqueued job for video ${newVideo.id}`);
+        } catch (err) {
+          console.error('[Auto-Gen] Failed to enqueue job:', err);
+          // Don't fail the request, just log error
+        }
       }
     }
 

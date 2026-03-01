@@ -7,16 +7,17 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
+import { ThemedToaster } from '@/components/themed-toaster';
 
 interface SubscriptionData {
   plan: {
     id: string;
     name: string;
-    limits: { maxFeeds: number };
+    limits: { maxFeeds: number; maxClipsPerMonth: number };
     features: string[];
   };
-  usage: { feeds: number };
+  usage: { feeds: number; clipsThisMonth: number };
   hasStripeCustomer: boolean;
 }
 
@@ -74,7 +75,7 @@ function BillingContent() {
 
   return (
     <div className="min-h-screen px-4 py-16 glass:bg-transparent">
-      <Toaster position="top-center" />
+      <ThemedToaster position="top-center" />
       <div className="mx-auto max-w-2xl space-y-6">
         <h1 className="text-3xl font-bold">Billing</h1>
 
@@ -90,6 +91,12 @@ function BillingContent() {
               <p className="text-sm text-muted">Sources (feeds)</p>
               <p className="text-lg font-medium">
                 {data.usage.feeds} / {plan.limits.maxFeeds}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted">Clips this month</p>
+              <p className="text-lg font-medium">
+                {data.usage.clipsThisMonth} / {plan.limits.maxClipsPerMonth}
               </p>
             </div>
             <ul className="space-y-1">

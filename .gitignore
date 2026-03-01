@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# IDE
+.vscode/
+
 # Android signing
 *.jks
 *.keystore
@@ -95,3 +98,15 @@ android/.idea/
 android/*.iml
 android/app/*.iml
 android/captures/
+
+# iOS
+ios/*.xcodeproj/
+ios/build/
+ios/.build/
+ios/.derived/
+ios/Supporting/Info.plist
+ios/fastlane/cert.p12
+ios/fastlane/profile.mobileprovision
+ios/fastlane/report.xml
+ios/vendor/
+nul

@@ -52,12 +52,12 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_WEB:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_WEB:$IMAGE_TAG
 
-      - name: Build and push Clip Worker image
+      - name: Build and push Clip Metadata Worker image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.env.outputs.environment }}
         run: |
-          docker build -f workers/clip-worker/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG .
+          docker build -f workers/clip-metadata-worker/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG
 
       - name: Build and push LLM Worker image
@@ -78,7 +78,7 @@ jobs:
             --service polemicyst-${ENVIRONMENT}-web \
             --force-new-deployment
 
-          # Update clip worker service
+          # Update clip worker service (now runs clip-metadata-worker code)
           aws ecs update-service \
             --cluster $ECS_CLUSTER \
             --service ${ENVIRONMENT}-clip-worker \
@@ -135,7 +135,9 @@ jobs:
           path: android/app/build/outputs/apk/dev/debug/*.apk
 
       - name: Upload to Firebase App Distribution
-        if: ${{ secrets.FIREBASE_APP_ID_DEV != '' }}
+        if: ${{ env.FIREBASE_APP_ID_DEV != '' }}
+        env:
+          FIREBASE_APP_ID_DEV: ${{ secrets.FIREBASE_APP_ID_DEV }}
         uses: wzieba/Firebase-Distribution-Github-Action@v1
         with:
           appId: ${{ secrets.FIREBASE_APP_ID_DEV }}
@@ -184,10 +186,137 @@ jobs:
           path: android/app/build/outputs/bundle/prodRelease/*.aab
 
       - name: Upload to Play Store
-        if: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        if: ${{ env.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.polemicyst.android
           releaseFiles: android/app/build/outputs/bundle/prodRelease/*.aab
           track: internal
+
+  ios-test:
+    name: iOS Tests
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Run tests
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Polemicyst.xcodeproj \
+            -scheme PolemicystApp \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            | xcpretty --color
+
+  build-ios-dev:
+    name: Build iOS Dev (TestFlight)
+    runs-on: macos-15
+    needs: ios-test
+    if: github.ref == 'refs/heads/develop'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Decode signing certificate
+        if: ${{ env.APPLE_CERTIFICATE_BASE64 != '' }}
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+        working-directory: ios
+        run: echo "$APPLE_CERTIFICATE_BASE64" | base64 -d > fastlane/cert.p12
+
+      - name: Decode provisioning profile
+        if: ${{ env.APPLE_PROVISIONING_PROFILE_BASE64 != '' }}
+        env:
+          APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+        working-directory: ios
+        run: echo "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 -d > fastlane/profile.mobileprovision
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          working-directory: ios
+
+      - name: Build and upload to TestFlight
+        if: ${{ env.ASC_KEY_CONTENT != '' }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROVISIONING_PROFILE_NAME: ${{ secrets.APPLE_PROVISIONING_PROFILE_NAME }}
+        working-directory: ios
+        run: bundle exec fastlane beta
+
+  build-ios-release:
+    name: Build iOS Production Release
+    runs-on: macos-15
+    needs: ios-test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Decode signing certificate
+        if: ${{ env.APPLE_CERTIFICATE_BASE64 != '' }}
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+        working-directory: ios
+        run: echo "$APPLE_CERTIFICATE_BASE64" | base64 -d > fastlane/cert.p12
+
+      - name: Decode provisioning profile
+        if: ${{ env.APPLE_PROVISIONING_PROFILE_BASE64 != '' }}
+        env:
+          APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+        working-directory: ios
+        run: echo "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 -d > fastlane/profile.mobileprovision
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          working-directory: ios
+
+      - name: Build and upload to App Store Connect
+        if: ${{ env.ASC_KEY_CONTENT != '' }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROVISIONING_PROFILE_NAME: ${{ secrets.APPLE_PROVISIONING_PROFILE_NAME }}
+        working-directory: ios
+        run: bundle exec fastlane release

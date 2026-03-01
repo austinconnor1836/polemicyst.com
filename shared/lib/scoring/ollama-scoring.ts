@@ -29,6 +29,54 @@ function coerceArray(value: unknown): string[] {
   return [];
 }
 
+/** Attempt to repair truncated JSON from an LLM by closing open strings, arrays, and objects. */
+function repairTruncatedJson(raw: string): object | null {
+  const start = raw.indexOf('{');
+  if (start === -1) return null;
+  let text = raw.slice(start);
+
+  // If it already parses, return it
+  try {
+    return JSON.parse(text);
+  } catch {}
+
+  // Strip any trailing incomplete key/value (e.g. `"riskFlags": ["Hate`)
+  // Close open strings, arrays, objects in reverse nesting order
+  let inString = false;
+  let escape = false;
+  const stack: string[] = [];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === '\\' && inString) {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === '{') stack.push('}');
+    else if (ch === '[') stack.push(']');
+    else if (ch === '}' || ch === ']') stack.pop();
+  }
+
+  // If we ended inside a string, close it
+  if (inString) text += '"';
+  // Close all open brackets/braces
+  while (stack.length) text += stack.pop();
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 async function runFfmpegAndCapture(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
@@ -264,7 +312,7 @@ export async function scoreSegmentWithOllama(params: {
           model,
           prompt,
           stream: false,
-          options: { temperature: 0.2 },
+          options: { temperature: 0.2, num_predict: 1024 },
         }),
       });
     } catch (err) {
@@ -278,7 +326,7 @@ export async function scoreSegmentWithOllama(params: {
             model,
             prompt,
             stream: false,
-            options: { temperature: 0.2 },
+            options: { temperature: 0.2, num_predict: 1024 },
           }),
         });
       } else {
@@ -302,23 +350,61 @@ export async function scoreSegmentWithOllama(params: {
   }
 
   const rawText = (data?.response ?? '').toString();
-  const start = rawText.indexOf('{');
-  const end = rawText.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error(`Ollama returned non-JSON response: ${rawText.slice(0, 200)}`);
-  }
+  const jsonStart = rawText.indexOf('{');
+  const jsonEnd = rawText.lastIndexOf('}');
 
   let parsed: any;
-  try {
-    parsed = JSON.parse(rawText.slice(start, end + 1));
-  } catch (err) {
+  if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+    try {
+      parsed = JSON.parse(rawText.slice(jsonStart, jsonEnd + 1));
+    } catch {
+      // Normal parse failed — try repair
+      parsed = repairTruncatedJson(rawText);
+    }
+  } else {
+    // No closing brace — likely truncated
+    parsed = repairTruncatedJson(rawText);
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    // Detect LLM content-safety refusal and return a zero-score fallback instead of crashing
+    const refusalPatterns =
+      /\b(cannot|can't|I'm unable|I am unable|not able to|refuse)\b.*\b(content|create|generate|score|help)\b/i;
+    if (refusalPatterns.test(rawText)) {
+      console.warn(
+        `[ollama] LLM refused to score segment (safety filter) durationMs=${Date.now() - startedAt} raw=${rawText.slice(0, 200)}`
+      );
+      return {
+        score: 0,
+        rationale: 'LLM refused to score this segment (content safety filter)',
+        hookScore: 0,
+        contextScore: 0,
+        captionabilityScore: 0,
+        comedicScore: 0,
+        provocativeScore: 0,
+        visualEnergyScore: 0,
+        audioEnergyScore: 0,
+        riskScore: 10,
+        riskFlags: ['llm-refusal'],
+        hasViralMoment: false,
+        confidence: 0,
+      };
+    }
     console.error(
-      `[ollama] scoring parse error durationMs=${Date.now() - startedAt} raw=${rawText.slice(0, 200)}`
+      `[ollama] scoring parse error durationMs=${Date.now() - startedAt} raw=${rawText.slice(0, 300)}`
     );
-    throw new Error(`Failed to parse Ollama JSON: ${(err as Error).message}`);
+    throw new Error(`Ollama returned unparseable response: ${rawText.slice(0, 200)}`);
+  }
+
+  if (jsonEnd === -1 || jsonEnd <= jsonStart) {
+    console.warn(`[ollama] repaired truncated JSON response (raw length=${rawText.length})`);
   }
 
   const score = coerceScore(parsed.score, 0);
+
+  const durationMs = Date.now() - startedAt;
+  const ollamaInputTokens = data?.prompt_eval_count as number | undefined;
+  const ollamaOutputTokens = data?.eval_count as number | undefined;
 
   const result = {
     score,
@@ -334,6 +420,13 @@ export async function scoreSegmentWithOllama(params: {
     riskFlags: coerceArray(parsed.riskFlags),
     hasViralMoment: coerceBool(parsed.hasViralMoment, score >= 6),
     confidence: clamp(Number(parsed.confidence) || 0, 0, 1),
+    _cost: {
+      inputTokens: ollamaInputTokens,
+      outputTokens: ollamaOutputTokens,
+      estimatedCostUsd: 0, // local inference
+      modelName: model,
+      durationMs,
+    },
   };
 
   console.log(
