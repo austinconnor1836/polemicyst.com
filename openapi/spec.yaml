@@ -512,7 +512,63 @@ components:
         hasStripeCustomer:
           type: boolean
 
+    VersionCheckResponse:
+      type: object
+      required: [updateRequired, minimumVersion, latestVersion, storeUrl]
+      properties:
+        updateRequired:
+          type: boolean
+          description: True if the client must update before continuing
+        minimumVersion:
+          type: string
+          description: Minimum supported version (semver)
+          example: '1.2.0'
+        latestVersion:
+          type: string
+          description: Latest available version (semver)
+          example: '1.3.0'
+        storeUrl:
+          type: string
+          description: URL to the app store listing
+          example: 'https://play.google.com/store/apps/details?id=com.polemicyst.android'
+
 paths:
+  /api/app/version-check:
+    get:
+      operationId: checkAppVersion
+      summary: Check if the running app version meets the minimum requirement
+      description: >
+        Public endpoint (no auth). Returns whether the client should force-update,
+        the minimum supported version, the latest version, and a store URL.
+      tags: [App]
+      security: []
+      parameters:
+        - name: platform
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [android, ios]
+        - name: currentVersion
+          in: query
+          required: true
+          schema:
+            type: string
+            example: '1.0.0'
+      responses:
+        '200':
+          description: Version check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionCheckResponse'
+        '400':
+          description: Missing or invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/auth/mobile/google:
     post:
       operationId: mobileGoogleAuth

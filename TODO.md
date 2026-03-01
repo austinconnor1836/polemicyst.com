@@ -125,7 +125,7 @@ _CI/CD pipelines exist in `.github/workflows/deploy.yml` for both platforms but 
 
 These must be fixed before any production release reaches end users.
 
-- [ ] **Android: Auto-increment `versionCode` in CI** — `versionCode` is hardcoded to `1` in `android/app/build.gradle.kts`. The Play Store rejects uploads with a duplicate `versionCode`. Use `GITHUB_RUN_NUMBER` (like iOS already does) or a timestamp-based code. Update `build.gradle.kts` to read from an env var or gradle property with a fallback for local builds.
+- [x] **Android: Auto-increment `versionCode` in CI** — `versionCode` is hardcoded to `1` in `android/app/build.gradle.kts`. The Play Store rejects uploads with a duplicate `versionCode`. Use `GITHUB_RUN_NUMBER` (like iOS already does) or a timestamp-based code. Update `build.gradle.kts` to read from an env var or gradle property with a fallback for local builds.
 - [ ] **Verify Android CI secrets are configured** — The `build-android-release` and `build-android-dev` jobs silently skip uploads when secrets are missing. Verify these GitHub Secrets exist and are valid: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `PLAY_SERVICE_ACCOUNT_JSON`, `FIREBASE_APP_ID_DEV`, `FIREBASE_SERVICE_ACCOUNT`.
 - [ ] **Verify iOS CI secrets are configured** — The `build-ios-dev` and `build-ios-release` jobs gate on `ASC_KEY_CONTENT`. Verify these GitHub Secrets exist and are valid: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_CONTENT`, `APPLE_TEAM_ID`, `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_PROVISIONING_PROFILE_BASE64`, `APPLE_PROVISIONING_PROFILE_NAME`.
 
@@ -133,40 +133,40 @@ These must be fixed before any production release reaches end users.
 
 Semantic version names should be tied to git tags so store listings show meaningful versions, not perpetual `1.0.0`.
 
-- [ ] **Centralize version name in a single source of truth** — Create a `version.json` (or use git tags) as the canonical version. Both `android/app/build.gradle.kts` (`versionName`) and `ios/project.yml` (`MARKETING_VERSION`) should read from it during CI. Local builds can fall back to a default.
+- [x] **Centralize version name in a single source of truth** — Create a `version.json` (or use git tags) as the canonical version. Both `android/app/build.gradle.kts` (`versionName`) and `ios/project.yml` (`MARKETING_VERSION`) should read from it during CI. Local builds can fall back to a default.
 - [ ] **Add a CI step or script to bump version from git tags** — On `main` pushes, derive the version name from the latest `vX.Y.Z` git tag (aligning with the existing GitHub Releases workflow in `CLAUDE.md`). On `develop` pushes, append a pre-release suffix (e.g., `1.2.0-dev.47`).
-- [ ] **iOS: Wire `MARKETING_VERSION` to CI** — The Fastlane `set_build_number` lane sets `CURRENT_PROJECT_VERSION` but never updates `MARKETING_VERSION`. Add `increment_version_number` or `xcargs` override so the IPA carries the correct semver.
+- [x] **iOS: Wire `MARKETING_VERSION` to CI** — The Fastlane `set_build_number` lane sets `CURRENT_PROJECT_VERSION` but never updates `MARKETING_VERSION`. Add `increment_version_number` or `xcargs` override so the IPA carries the correct semver.
 
 ### Tier 3 — Store Track Promotion
 
 Currently builds land on internal/test tracks and require manual promotion. Automate the path to end users.
 
-- [ ] **Android: Promote from `internal` to `production` track** — Add a manual-trigger GitHub Actions workflow (`workflow_dispatch`) that promotes the latest internal release to production (or to a beta track first). Use `r0adkll/upload-google-play` with `status: completed` and `track: production`, or add a Fastlane `supply` lane.
+- [x] **Android: Promote from `internal` to `production` track** — Add a manual-trigger GitHub Actions workflow (`workflow_dispatch`) that promotes the latest internal release to production (or to a beta track first). Use `r0adkll/upload-google-play` with `status: completed` and `track: production`, or add a Fastlane `supply` lane.
 - [ ] **Android: Consider staged rollouts** — When promoting to production, use a staged rollout percentage (e.g., 10% → 50% → 100%) to catch regressions before full release. The `upload-google-play` action supports `userFraction`.
-- [ ] **iOS: Add option to submit for App Store review** — The Fastlane `release` lane uploads to App Store Connect with `submit_for_review: false`. Add a separate `promote` lane (or a `workflow_dispatch` workflow) that submits the latest build for review, optionally with `automatic_release: true` for auto-publish on approval.
+- [x] **iOS: Add option to submit for App Store review** — The Fastlane `release` lane uploads to App Store Connect with `submit_for_review: false`. Add a separate `promote` lane (or a `workflow_dispatch` workflow) that submits the latest build for review, optionally with `automatic_release: true` for auto-publish on approval.
 - [ ] **iOS: Add phased release support** — When submitting for review, set `phased_release: true` so Apple rolls out over 7 days. This gives time to catch crash spikes before 100% of users get the update.
 
 ### Tier 4 — Minimum Version Enforcement (Force Update)
 
 Breaking API changes (e.g., new auth flow, changed response shapes) can crash old app versions. A server-side minimum version check is the industry-standard solution.
 
-- [ ] **Add `GET /api/app/version-check` endpoint** — Accepts `platform` (android/ios) and `currentVersion` query params. Returns `{ updateRequired: boolean, minimumVersion: string, latestVersion: string, storeUrl: string }`. Store minimum versions in env vars or a DB table.
-- [ ] **Android: Check version on app startup** — Call the version-check endpoint on launch. If `updateRequired` is true, show a blocking dialog with a "Update Now" button that opens the Play Store listing. No dismiss option for required updates.
-- [ ] **iOS: Check version on app startup** — Same as Android but opens the App Store listing. Use a non-dismissible `fullScreenCover` in SwiftUI.
-- [ ] **Update `openapi/spec.yaml`** with the version-check endpoint.
+- [x] **Add `GET /api/app/version-check` endpoint** — Accepts `platform` (android/ios) and `currentVersion` query params. Returns `{ updateRequired: boolean, minimumVersion: string, latestVersion: string, storeUrl: string }`. Store minimum versions in env vars or a DB table.
+- [x] **Android: Check version on app startup** — Call the version-check endpoint on launch. If `updateRequired` is true, show a blocking dialog with a "Update Now" button that opens the Play Store listing. No dismiss option for required updates.
+- [x] **iOS: Check version on app startup** — Same as Android but opens the App Store listing. Use a non-dismissible `fullScreenCover` in SwiftUI.
+- [x] **Update `openapi/spec.yaml`** with the version-check endpoint.
 
 ### Tier 5 — In-App Update Prompts (Soft Updates)
 
 For non-breaking updates, prompt users to update without forcing them.
 
-- [ ] **Android: Integrate Play Core In-App Updates API** — Use the `com.google.android.play:app-update` library. On launch, check for available updates. Use `AppUpdateType.FLEXIBLE` for background downloads with a snackbar prompt, or `AppUpdateType.IMMEDIATE` for critical updates. This only works for Play Store builds (not Firebase App Distribution).
+- [x] **Android: Integrate Play Core In-App Updates API** — Use the `com.google.android.play:app-update` library. On launch, check for available updates. Use `AppUpdateType.FLEXIBLE` for background downloads with a snackbar prompt, or `AppUpdateType.IMMEDIATE` for critical updates. This only works for Play Store builds (not Firebase App Distribution).
 - [ ] **iOS: Add optional update prompt** — Query the version-check endpoint. If `latestVersion` is newer than the running version but `updateRequired` is false, show a dismissible alert suggesting the user update. Respect a "remind me later" cooldown (e.g., 3 days).
 
 ### Tier 6 — Crash Reporting & Release Health
 
 Never promote a release without knowing its crash-free rate.
 
-- [ ] **Android: Enable Firebase Crashlytics** — Uncomment the Crashlytics dependencies in `build.gradle.kts` and the `google-services` plugin. Add a valid `google-services.json` to `android/app/src/dev/` and `android/app/src/prod/`. Verify crash reports appear in Firebase Console.
+- [x] **Android: Enable Firebase Crashlytics** — Uncomment the Crashlytics dependencies in `build.gradle.kts` and the `google-services` plugin. Add a valid `google-services.json` to `android/app/src/dev/` and `android/app/src/prod/`. Verify crash reports appear in Firebase Console.
 - [ ] **iOS: Add crash reporting** — Integrate Firebase Crashlytics via SPM (or Sentry). Initialize in `App.swift`. Verify crash reports appear in the console.
 - [ ] **Add crash-free rate gate to promotion workflows** — Before promoting a build from internal/beta to production, check the crash-free rate in Firebase (or equivalent). Fail the promotion if below threshold (e.g., 99.5%).
 
