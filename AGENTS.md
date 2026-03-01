@@ -11,6 +11,36 @@ This package contains the **Next.js app** plus **workers** used in local dev via
 - Full stack (db/redis/workers hot reload):  
   `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build`
 
+## Cursor Cloud specific instructions
+
+### Authenticating in the web app (manual testing)
+
+The app uses Google OAuth, which cloud agents can't complete. A dev-only login endpoint bypasses this:
+
+1. Ensure these env vars are set (add as Cursor Cloud Agent secrets if not):
+   - `DEV_USER_EMAIL` — the email of the user account to log in as
+   - `DEV_LOGIN_SECRET` — a random secret token (e.g. `openssl rand -hex 32`)
+   - `NEXTAUTH_SECRET` — the NextAuth JWT secret (any random string works for local dev)
+   - `DATABASE_URL` — Postgres connection string (required for Prisma)
+2. Start the dev server: `npx next dev --port 3000`
+3. In the `computerUse` subagent, navigate to `http://localhost:3000/api/auth/dev-login?token=$DEV_LOGIN_SECRET`
+4. The browser will be redirected to `/` with a valid session cookie. All authenticated pages now work.
+
+Security: The endpoint requires three conditions to function — `NODE_ENV !== 'production'`, both `DEV_USER_EMAIL` and `DEV_LOGIN_SECRET` env vars set, and the correct secret passed as a `?token=` query parameter. Without the secret, the endpoint returns 404. It creates the user in the DB if they don't exist.
+
+### GitHub authentication (PRs, CI triggers)
+
+Add a GitHub PAT as the `GH_TOKEN` Cursor Cloud Agent secret. The startup script should run:
+
+```bash
+if [ -n "$GH_TOKEN" ]; then
+  echo "$GH_TOKEN" | gh auth login --with-token
+  git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+fi
+```
+
+Without this, the agent can push code but cannot create PRs, close/reopen PRs, or trigger CI workflows.
+
 ## Key files
 
 - Next App Router: `src/app/*`

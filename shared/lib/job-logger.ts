@@ -1,10 +1,6 @@
 import { prisma } from './prisma';
 
-export type JobType =
-  | 'transcription'
-  | 'speaker-transcription'
-  | 'clip-generation'
-  | 'download';
+export type JobType = 'transcription' | 'speaker-transcription' | 'clip-generation' | 'download';
 
 export type JobStatus = 'queued' | 'started' | 'completed' | 'failed';
 
