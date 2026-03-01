@@ -1,6 +1,8 @@
 package com.polemicyst.android.data.repository
 
+import com.polemicyst.android.data.api.safeApiCall
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Moshi
 import retrofit2.Retrofit
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -60,23 +62,22 @@ interface FeedVideosApi {
 }
 
 @Singleton
-class FeedVideosRepository @Inject constructor(retrofit: Retrofit) {
+class FeedVideosRepository @Inject constructor(
+    retrofit: Retrofit,
+    private val moshi: Moshi,
+) {
 
     private val api = retrofit.create(FeedVideosApi::class.java)
 
-    suspend fun getFeedVideos(): Result<List<FeedVideo>> = runCatching {
-        api.getFeedVideos()
-    }
+    suspend fun getFeedVideos(): Result<List<FeedVideo>> =
+        safeApiCall(moshi) { api.getFeedVideos() }
 
-    suspend fun getFeedVideoClips(feedVideoId: String): Result<FeedVideoClipsResponse> = runCatching {
-        api.getFeedVideoClips(feedVideoId)
-    }
+    suspend fun getFeedVideoClips(feedVideoId: String): Result<FeedVideoClipsResponse> =
+        safeApiCall(moshi) { api.getFeedVideoClips(feedVideoId) }
 
-    suspend fun transcribe(feedVideoId: String): Result<Unit> = runCatching {
-        api.transcribeFeedVideo(feedVideoId)
-    }
+    suspend fun transcribe(feedVideoId: String): Result<Unit> =
+        safeApiCall(moshi) { api.transcribeFeedVideo(feedVideoId) }
 
-    suspend fun delete(feedVideoId: String): Result<Unit> = runCatching {
-        api.deleteFeedVideo(feedVideoId)
-    }
+    suspend fun delete(feedVideoId: String): Result<Unit> =
+        safeApiCall(moshi) { api.deleteFeedVideo(feedVideoId) }
 }
