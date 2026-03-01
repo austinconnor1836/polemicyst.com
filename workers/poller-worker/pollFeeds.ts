@@ -22,7 +22,9 @@ function inferSourceTypeFromUrl(sourceUrlRaw: string): 'youtube' | 'cspan' | nul
 
 export async function pollFeeds() {
   const now = new Date();
-  const feeds = await prisma.videoFeed.findMany();
+  const feeds = await prisma.videoFeed.findMany({
+    where: { sourceType: { not: 'manual' } },
+  });
 
   for (const feed of feeds) {
     const minutesSinceLastCheck = feed.lastCheckedAt
