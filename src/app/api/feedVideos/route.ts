@@ -1,4 +1,3 @@
-// src/app/api/feedVideos/route.ts
 import { prisma } from '@shared/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';

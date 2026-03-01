@@ -518,7 +518,7 @@ paths:
   /api/feeds:
     get:
       operationId: getFeeds
-      summary: List all video feeds
+      summary: List user-created video feeds (excludes auto-created manual-upload feeds)
       tags: [Feeds]
       security: []
       responses:

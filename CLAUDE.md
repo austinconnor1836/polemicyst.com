@@ -6,9 +6,46 @@
 - PRs should target `develop`, not `main`.
 - Use descriptive branch names: `feature/<name>`, `fix/<name>`, `chore/<name>`.
 
+## Release process
+
+We follow **semantic versioning** (`vMAJOR.MINOR.PATCH`) and use GitHub Releases as the source of truth.
+
+### Steps to cut a release
+
+1. **Create a PR from `develop` → `main`** with a title like `Release v0.2.0`.
+   - The PR body should summarize highlights, bug fixes, and breaking changes.
+2. **Wait for required CI checks** (`Lint & Build`) to pass.
+3. **Merge with a merge commit** (not squash) — this preserves the full commit history on `main`.
+   ```
+   gh pr merge <PR_NUMBER> --merge
+   ```
+4. **Create a GitHub Release** targeting `main` with the same version tag:
+   ```
+   gh release create v0.2.0 --target main --title "v0.2.0" --notes "..."
+   ```
+   This creates the git tag automatically and publishes release notes on GitHub.
+
+### Versioning guidelines
+
+- **Patch** (`v0.1.1`): bug fixes, dependency updates, formatting
+- **Minor** (`v0.2.0`): new features, non-breaking API changes
+- **Major** (`v1.0.0`): breaking changes, major architectural shifts
+
+### What NOT to do
+
+- Don't push directly to `main` — always go through a PR from `develop`.
+- Don't create tags manually — let `gh release create` handle it.
+- Don't squash-merge release PRs — merge commits keep history traceable.
+
 ---
 
 # LLM / Claude Notes
+
+## Commit rules
+
+Every commit **must** pass lint (`npm run lint`) and build (`npx next build`) before being created. Do not commit code that fails either step.
+
+## Overview
 
 This file is the **canonical log** for structural changes to the viral clip generation system, especially anything related to **LLM scoring, prompts, model orchestration, and safety**.
 

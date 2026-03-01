@@ -48,14 +48,14 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 - [x] Auth-gated App.swift (LoginView when unauthenticated, TabView when authenticated)
 - [ ] Token refresh (re-authenticate when JWT expires)
 - [ ] Sign-out UI (settings screen or profile menu)
-- [ ] Add structured error response parsing in `APIClient.swift` (decode JSON error body, not just status code)
-- [ ] Handle HTTP 403 specifically — show upgrade prompt
-- [ ] Add billing/subscription screen
-- [ ] Show quota usage indicators
-- [ ] Wire up clip generation UI (currently `triggerClip` exists in APIClient but no UI)
-- [ ] Add clips list/detail screens
-- [ ] Add virality settings UI for feed creation
-- [ ] Add LLM provider / auto-generate access gating in UI
+- [x] Add structured error response parsing in `APIClient.swift` (decode JSON error body, not just status code)
+- [x] Handle HTTP 403 specifically — show upgrade prompt
+- [x] Add billing/subscription screen
+- [x] Show quota usage indicators
+- [x] Wire up clip generation UI (currently `triggerClip` exists in APIClient but no UI)
+- [x] Add clips list/detail screens
+- [x] Add virality settings UI for feed creation
+- [x] Add LLM provider / auto-generate access gating in UI
 
 ---
 
@@ -99,7 +99,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 - [ ] Update `openapi/spec.yaml` with new quota error responses (403 with `QUOTA_EXCEEDED`, `PLAN_RESTRICTED` codes)
 - [ ] Update `openapi/spec.yaml` with `/api/user/subscription` endpoint (new `clipsThisMonth` field)
 - [ ] Verify Android Retrofit interfaces match current API spec
-- [ ] Verify iOS APIClient models match current API spec
+- [x] Verify iOS APIClient models match current API spec
 
 ---
 
@@ -126,6 +126,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 - [ ] Push notifications for clip generation completion (mobile)
 
 ## Random Features
-- Some way to view admin 
+
+- Some way to view admin
 - If youtube video is the type of video added, use youtube embed in details page rather than from aws
 - add already used refresh button to transcript section to refresh retrieivng transcript

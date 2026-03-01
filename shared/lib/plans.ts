@@ -90,7 +90,9 @@ export function resolvePlan(subscriptionPlan?: string | null): PlanDefinition {
 
 export async function checkFeedQuota(userId: string, subscriptionPlan?: string | null) {
   const plan = resolvePlan(subscriptionPlan);
-  const currentUsage = await prisma.videoFeed.count({ where: { userId } });
+  const currentUsage = await prisma.videoFeed.count({
+    where: { userId, sourceType: { not: 'manual' } },
+  });
   const limit = plan.limits.maxFeeds;
 
   return {
