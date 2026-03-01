@@ -1,6 +1,8 @@
 package com.polemicyst.android.data.repository
 
+import com.polemicyst.android.data.api.safeApiCall
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Moshi
 import retrofit2.Retrofit
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -39,15 +41,16 @@ interface ClipTemplatesApi {
 }
 
 @Singleton
-class ClipTemplatesRepository @Inject constructor(retrofit: Retrofit) {
+class ClipTemplatesRepository @Inject constructor(
+    retrofit: Retrofit,
+    private val moshi: Moshi,
+) {
 
     private val api = retrofit.create(ClipTemplatesApi::class.java)
 
-    suspend fun getTemplates(): Result<List<ClipTemplate>> = runCatching {
-        api.getTemplates()
-    }
+    suspend fun getTemplates(): Result<List<ClipTemplate>> =
+        safeApiCall(moshi) { api.getTemplates() }
 
-    suspend fun createTemplate(request: CreateClipTemplateRequest): Result<ClipTemplate> = runCatching {
-        api.createTemplate(request)
-    }
+    suspend fun createTemplate(request: CreateClipTemplateRequest): Result<ClipTemplate> =
+        safeApiCall(moshi) { api.createTemplate(request) }
 }

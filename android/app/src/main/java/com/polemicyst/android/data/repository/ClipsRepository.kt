@@ -102,30 +102,24 @@ class ClipsRepository @Inject constructor(
 
     private val api = retrofit.create(ClipsApi::class.java)
 
-    suspend fun getClips(): Result<List<ClipRecord>> = runCatching {
-        api.getClips()
-    }
+    suspend fun getClips(): Result<List<ClipRecord>> =
+        safeApiCall(moshi) { api.getClips() }
 
-    suspend fun updateClip(clipId: String, request: UpdateClipRequest): Result<Unit> = runCatching {
-        api.updateClip(clipId, request)
-    }
+    suspend fun updateClip(clipId: String, request: UpdateClipRequest): Result<Unit> =
+        safeApiCall(moshi) { api.updateClip(clipId, request) }
 
-    suspend fun updateTrim(clipId: String, startS: Double, endS: Double): Result<Unit> = runCatching {
-        api.updateClip(clipId, UpdateClipRequest(trimStartS = startS, trimEndS = endS))
-    }
+    suspend fun updateTrim(clipId: String, startS: Double, endS: Double): Result<Unit> =
+        safeApiCall(moshi) { api.updateClip(clipId, UpdateClipRequest(trimStartS = startS, trimEndS = endS)) }
 
-    suspend fun deleteClip(clipId: String): Result<Unit> = runCatching {
-        api.deleteClip(clipId)
-    }
+    suspend fun deleteClip(clipId: String): Result<Unit> =
+        safeApiCall(moshi) { api.deleteClip(clipId) }
 
-    suspend fun exportClip(clipId: String): Result<ExportClipResponse> = runCatching {
-        api.exportClip(clipId)
-    }
+    suspend fun exportClip(clipId: String): Result<ExportClipResponse> =
+        safeApiCall(moshi) { api.exportClip(clipId) }
 
     suspend fun triggerClip(request: TriggerClipRequest): Result<TriggerClipResponse> =
         safeApiCall(moshi) { api.triggerClip(request) }
 
-    suspend fun getClipJobs(): Result<List<ClipJobSummary>> = runCatching {
-        api.getClipJobs()
-    }
+    suspend fun getClipJobs(): Result<List<ClipJobSummary>> =
+        safeApiCall(moshi) { api.getClipJobs() }
 }

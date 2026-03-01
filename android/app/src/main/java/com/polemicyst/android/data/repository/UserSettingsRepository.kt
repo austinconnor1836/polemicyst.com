@@ -1,6 +1,8 @@
 package com.polemicyst.android.data.repository
 
+import com.polemicyst.android.data.api.safeApiCall
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Moshi
 import retrofit2.Retrofit
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -27,15 +29,16 @@ interface UserSettingsApi {
 }
 
 @Singleton
-class UserSettingsRepository @Inject constructor(retrofit: Retrofit) {
+class UserSettingsRepository @Inject constructor(
+    retrofit: Retrofit,
+    private val moshi: Moshi,
+) {
 
     private val api = retrofit.create(UserSettingsApi::class.java)
 
-    suspend fun getLlmProvider(): Result<String> = runCatching {
-        api.getLlmProvider().llmProvider
-    }
+    suspend fun getLlmProvider(): Result<String> =
+        safeApiCall(moshi) { api.getLlmProvider().llmProvider }
 
-    suspend fun updateLlmProvider(provider: String): Result<String> = runCatching {
-        api.updateLlmProvider(UpdateLlmProviderRequest(provider)).llmProvider
-    }
+    suspend fun updateLlmProvider(provider: String): Result<String> =
+        safeApiCall(moshi) { api.updateLlmProvider(UpdateLlmProviderRequest(provider)).llmProvider }
 }
