@@ -29,6 +29,9 @@ import {
   Trash2,
 } from 'lucide-react';
 import SpeakerTranscript from '@/components/SpeakerTranscript';
+import ProgressButton from '@/components/ProgressButton';
+import JobProgressBar from '@/components/JobProgressBar';
+import { useJobProgress } from '@/hooks/useJobProgress';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { formatRelativeTime } from '@/app/feeds/util/time';
@@ -121,6 +124,10 @@ export default function ClipGroupPage() {
   const [transcribeMessage, setTranscribeMessage] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [deletingClipId, setDeletingClipId] = useState<string | null>(null);
+  const { progress: jobProgress, refetch: refetchProgress } = useJobProgress(feedVideoId);
+
+  const prevTranscriptionStatus = useRef(jobProgress?.transcription.status);
+  const prevClipStatus = useRef(jobProgress?.clipGeneration.status);
 
   const fetchSummary = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -176,6 +183,23 @@ export default function ClipGroupPage() {
     };
   }, []);
 
+  // Auto-refresh page data when a job transitions to completed
+  useEffect(() => {
+    const tStatus = jobProgress?.transcription.status;
+    const cStatus = jobProgress?.clipGeneration.status;
+
+    if (prevTranscriptionStatus.current !== 'completed' && tStatus === 'completed') {
+      fetchSummary({ silent: true });
+    }
+    if (prevClipStatus.current !== 'completed' && cStatus === 'completed') {
+      fetchSummary({ silent: true });
+    }
+
+    prevTranscriptionStatus.current = tStatus;
+    prevClipStatus.current = cStatus;
+  }, [jobProgress, fetchSummary]);
+
+  // Keep existing polling for BullMQ job state (clips appearing)
   useEffect(() => {
     if (!summary) return;
     const shouldPoll =
@@ -253,6 +277,7 @@ export default function ClipGroupPage() {
     try {
       await triggerClip();
       setGenerateMessage('Clip job enqueued.');
+      refetchProgress();
     } catch (err) {
       console.error(err);
       setGenerateMessage('Failed to enqueue clip job.');
@@ -284,7 +309,8 @@ export default function ClipGroupPage() {
         setTranscribeMessage('Transcript already exists. Refreshing...');
         await fetchSummary({ silent: true });
       } else {
-        setTranscribeMessage('Transcription queued. Refresh in a moment.');
+        setTranscribeMessage(null);
+        refetchProgress();
       }
     } catch (err) {
       console.error(err);
@@ -292,7 +318,7 @@ export default function ClipGroupPage() {
     } finally {
       setIsTranscribing(false);
     }
-  }, [feedVideoId, fetchSummary]);
+  }, [feedVideoId, fetchSummary, refetchProgress]);
 
   const deleteClip = async (clipId: string) => {
     if (!confirm('Delete this clip?')) return;
@@ -415,6 +441,10 @@ export default function ClipGroupPage() {
                       {generateMessage ? (
                         <div className="text-xs text-muted-foreground">{generateMessage}</div>
                       ) : null}
+                      <JobProgressBar
+                        jobProgress={jobProgress?.clipGeneration ?? null}
+                        label="Clip generation"
+                      />
                     </div>
                     <DialogFooter className="gap-2 pt-4 sm:gap-2">
                       <Button onClick={handleGenerateClip} disabled={isGeneratingClip}>
@@ -461,17 +491,17 @@ export default function ClipGroupPage() {
                   <div className="space-y-3 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
                     <div>Transcript not available yet.</div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={(e) => {
+                      <ProgressButton
+                        jobProgress={jobProgress?.transcription ?? null}
+                        idleLabel="Transcribe now"
+                        completedLabel="Transcribed"
+                        failedLabel="Retry transcription"
+                        onClick={(e: React.MouseEvent) => {
                           e.stopPropagation();
                           requestTranscription();
                         }}
                         disabled={isTranscribing}
-                      >
-                        {isTranscribing ? 'Queuing...' : 'Transcribe now'}
-                      </Button>
+                      />
                       {transcribeMessage ? <span>{transcribeMessage}</span> : null}
                     </div>
                   </div>
@@ -483,6 +513,8 @@ export default function ClipGroupPage() {
           <div className="mb-6">
             <SpeakerTranscript
               feedVideoId={feedVideoId}
+              jobProgress={jobProgress?.speakerTranscription ?? null}
+              onJobStarted={refetchProgress}
               onSeek={(time) => {
                 if (videoRef.current) {
                   videoRef.current.currentTime = time;
@@ -494,14 +526,39 @@ export default function ClipGroupPage() {
 
           {summary.clips.length === 0 ? (
             <Card className="border-dashed">
-              <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                <div className="text-sm font-medium text-foreground">
-                  Clip generation in progress…
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  This page will refresh automatically when clips are ready.
-                </div>
+              <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+                {jobProgress?.clipGeneration &&
+                (jobProgress.clipGeneration.status === 'queued' ||
+                  jobProgress.clipGeneration.status === 'processing') ? (
+                  <>
+                    <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                    <div className="text-sm font-medium text-foreground">
+                      {jobProgress.clipGeneration.stage || 'Generating clips…'}
+                    </div>
+                    <div className="w-full max-w-xs">
+                      <div className="mb-1 text-center text-xs font-medium text-muted-foreground">
+                        {jobProgress.clipGeneration.progress}%
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-blue-500 transition-all duration-500 ease-out"
+                          style={{
+                            width: `${Math.max(jobProgress.clipGeneration.progress, 2)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      This page will refresh automatically when clips are ready.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-sm text-muted-foreground">
+                      No clips yet. Click &ldquo;Generate clips&rdquo; to get started.
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           ) : (

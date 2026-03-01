@@ -8,6 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { Loader2, RefreshCw, Copy, Check } from 'lucide-react';
+import ProgressButton from '@/components/ProgressButton';
+import JobProgressBar from '@/components/JobProgressBar';
+import type { SingleJobProgress } from '@/hooks/useJobProgress';
 
 interface SpeakerSegment {
   start: number;
@@ -26,6 +29,8 @@ interface SpeakerTranscriptProps {
   feedVideoId: string;
   initialData?: SpeakerTranscriptData | null;
   onSeek?: (timeSeconds: number) => void;
+  jobProgress?: SingleJobProgress | null;
+  onJobStarted?: () => void;
 }
 
 const SPEAKER_STYLES: Record<string, { bg: string; text: string; badge: string }> = {
@@ -103,6 +108,8 @@ export default function SpeakerTranscript({
   feedVideoId,
   initialData,
   onSeek,
+  jobProgress,
+  onJobStarted,
 }: SpeakerTranscriptProps) {
   const [data, setData] = useState<SpeakerTranscriptData | null>(initialData ?? null);
   const [loading, setLoading] = useState(false);
@@ -126,7 +133,7 @@ export default function SpeakerTranscript({
       if (result.alreadyTranscribed && result.data) {
         setData(result.data);
       } else if (result.enqueued) {
-        setError('Speaker transcription queued. Refresh in a moment to see results.');
+        onJobStarted?.();
       } else {
         setData(result);
       }
@@ -135,7 +142,7 @@ export default function SpeakerTranscript({
     } finally {
       setLoading(false);
     }
-  }, [feedVideoId, numSpeakers]);
+  }, [feedVideoId, numSpeakers, onJobStarted]);
 
   const fetchExisting = useCallback(async () => {
     setLoading(true);
@@ -191,28 +198,28 @@ export default function SpeakerTranscript({
               />
             </div>
             <div className="flex items-end gap-2 pt-5">
-              <Button onClick={generateTranscript} disabled={loading} size="sm">
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Transcribing...
-                  </>
-                ) : (
-                  'Generate'
-                )}
-              </Button>
+              <ProgressButton
+                jobProgress={jobProgress ?? null}
+                idleLabel="Generate"
+                completedLabel="Generated"
+                failedLabel="Retry"
+                onClick={generateTranscript}
+                disabled={loading}
+              />
               <Button onClick={fetchExisting} disabled={loading} variant="outline" size="sm">
                 Load Existing
               </Button>
             </div>
           </div>
 
-          {loading && (
+          {loading && !jobProgress?.stage && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Speaker identification may take a few minutes for longer videos.
             </div>
           )}
+
+          <JobProgressBar jobProgress={jobProgress ?? null} />
 
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         </CardContent>

@@ -110,8 +110,23 @@ model FeedVideo {
   transcript            String?
   transcriptJson        Json?
   speakerTranscriptJson Json?
+
+  // Transcription progress tracking
+  transcriptionStatus   String    @default("idle") // idle | queued | processing | completed | failed
+  transcriptionProgress Int       @default(0) // 0–100
+  transcriptionStage    String?   // human-readable stage label
+
+  // Clip generation progress tracking
   clipGenerationStatus  String    @default("idle") // idle | queued | processing | completed | failed
+  clipGenerationProgress Int      @default(0) // 0–100
+  clipGenerationStage   String?   // human-readable stage label
   clipGenerationError   String?
+
+  // Speaker transcription progress tracking
+  speakerTranscriptionStatus   String @default("idle") // idle | queued | processing | completed | failed
+  speakerTranscriptionProgress Int    @default(0) // 0–100
+  speakerTranscriptionStage    String? // human-readable stage label
+
   createdAt             DateTime  @default(now())
 
   userId String

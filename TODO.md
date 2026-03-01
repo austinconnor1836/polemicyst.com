@@ -72,7 +72,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 
 - [ ] Show quota warnings before user hits limit (e.g., "9/10 clips used this month")
 - [ ] Show upgrade prompts inline when 403 is returned on the web app (feeds page, clip generation)
-- [ ] Add loading/progress states for clip generation on feeds page
+- [x] Add loading/progress states for clip generation on feeds page
 - [ ] Error handling for Stripe portal session failures
 
 ### Security & Auth
@@ -241,7 +241,7 @@ These improve retention and reduce churn once users are paying.
 
 - [ ] **Quota warning banners** — Show a warning when user reaches 80% of their clip or feed quota (e.g., "9/10 clips used this month — upgrade for more").
 - [ ] **Inline upgrade prompts on 403** — When the web app receives a 403 on feeds page or clip generation, show an inline upgrade CTA instead of a generic error.
-- [ ] **Clip generation progress states** — Add loading/progress indicators on the feeds page when clips are being generated in the background.
+- [x] **Clip generation progress states** — Add loading/progress indicators on the feeds page when clips are being generated in the background.
 - [ ] **Stripe portal error handling** — Handle failures when creating a Stripe portal session (e.g., Stripe is down) with a user-friendly message.
 - [ ] **Verify social platform export flows** — Test Bluesky, Meta/Instagram, YouTube, and Twitter publishing end-to-end. Fix any broken OAuth flows or API changes.
 - [ ] **Verify AI description generation** — Test the `generateDescription` endpoint and ensure it produces usable output for each platform.

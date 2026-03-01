@@ -28,6 +28,21 @@ components:
         error:
           type: string
 
+    JobProgress:
+      type: object
+      required: [status, progress]
+      properties:
+        status:
+          type: string
+          enum: [idle, queued, processing, completed, failed]
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        stage:
+          type: string
+          nullable: true
+
     MobileGoogleAuthRequest:
       type: object
       required: [idToken]
@@ -813,6 +828,44 @@ paths:
                     type: boolean
                   enqueued:
                     type: boolean
+
+  /api/feedVideos/{id}/progress:
+    get:
+      operationId: getFeedVideoJobProgress
+      summary: Get progress for all long-running jobs on a feed video
+      tags: [FeedVideos]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Progress for transcription, clip generation, and speaker transcription
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transcription:
+                    $ref: '#/components/schemas/JobProgress'
+                  clipGeneration:
+                    allOf:
+                      - $ref: '#/components/schemas/JobProgress'
+                      - type: object
+                        properties:
+                          error:
+                            type: string
+                            nullable: true
+                  speakerTranscription:
+                    $ref: '#/components/schemas/JobProgress'
+        '404':
+          description: Feed video not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/clips:
     get:

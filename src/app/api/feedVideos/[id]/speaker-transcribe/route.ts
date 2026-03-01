@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../../auth';
 import { prisma } from '@shared/lib/prisma';
 import { getSpeakerTranscriptionQueue } from '@shared/queues';
+import { updateJobProgress } from '@shared/lib/job-progress';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,6 +59,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     { feedVideoId: feedVideo.id, numSpeakers: body.numSpeakers },
     { jobId: `speaker-${feedVideo.id}`, removeOnComplete: true, removeOnFail: true }
   );
+
+  await updateJobProgress({
+    feedVideoId: feedVideo.id,
+    jobType: 'speaker-transcription',
+    status: 'queued',
+    progress: 0,
+    stage: 'Queued',
+  });
 
   return NextResponse.json({ ok: true, enqueued: true });
 }

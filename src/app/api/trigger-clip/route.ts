@@ -4,6 +4,7 @@ import Redis from 'ioredis';
 import { prisma } from '@shared/lib/prisma';
 import { checkClipQuota } from '@/lib/plans';
 import { logJob } from '@shared/lib/job-logger';
+import { updateJobProgress } from '@shared/lib/job-progress';
 
 let redis: Redis | null = null;
 let clipGenerationQueue: Queue | null = null;
@@ -90,10 +91,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Track clip generation status
+    // Track clip generation status + progress
     await prisma.feedVideo.update({
       where: { id: feedVideoId },
-      data: { clipGenerationStatus: 'queued', clipGenerationError: null },
+      data: {
+        clipGenerationStatus: 'queued',
+        clipGenerationError: null,
+        clipGenerationProgress: 0,
+        clipGenerationStage: 'Queued',
+      },
     });
 
     const resolvedProvider =
