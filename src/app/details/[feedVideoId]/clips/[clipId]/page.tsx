@@ -22,6 +22,7 @@ import { ArrowLeft, Download, Loader2, Save, Sparkles, Trash2 } from 'lucide-rea
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { formatRelativeTime } from '@/app/feeds/util/time';
+import TrimTimeline from '@/components/TrimTimeline';
 
 type ClipRecord = {
   id: string;
@@ -126,11 +127,11 @@ export default function ClipEditorPage() {
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
   const [isDeletingClip, setIsDeletingClip] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
 
   const previewRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const clipDurationRef = useRef<HTMLVideoElement | null>(null);
-  const timelineRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const textDragRef = useRef<{
     id: string;
@@ -138,12 +139,7 @@ export default function ClipEditorPage() {
     startY: number;
     startPos: { x: number; y: number };
   } | null>(null);
-  const timelineDragRef = useRef<{
-    handle: 'start' | 'end';
-    startX: number;
-    startStart: number;
-    startEnd: number;
-  } | null>(null);
+  const trimTimelineRef = useRef<import('@/components/TrimTimeline').TrimTimelineHandle | null>(null);
 
   const fetchSummary = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -314,20 +310,6 @@ export default function ClipEditorPage() {
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
-      if (timelineDragRef.current && timelineRef.current) {
-        const state = timelineDragRef.current;
-        const rect = timelineRef.current.getBoundingClientRect();
-        if (rect.width > 0) {
-          const dx = (event.clientX - state.startX) / rect.width;
-          const deltaS = dx * (durationOriginalS ?? 0);
-          if (state.handle === 'start') {
-            handleTrimStartChange(state.startStart + deltaS);
-          } else {
-            handleTrimEndChange(state.startEnd + deltaS);
-          }
-        }
-        return;
-      }
       if (textDragRef.current && previewRef.current) {
         const state = textDragRef.current;
         const rect = previewRef.current.getBoundingClientRect();
@@ -387,7 +369,6 @@ export default function ClipEditorPage() {
     const handlePointerUp = () => {
       dragStateRef.current = null;
       textDragRef.current = null;
-      timelineDragRef.current = null;
     };
 
     window.addEventListener('pointermove', handlePointerMove);
@@ -428,19 +409,6 @@ export default function ClipEditorPage() {
     setSelectedOverlayId((current) => (current === id ? null : current));
   };
 
-  const formatTime = (seconds: number) => {
-    if (!Number.isFinite(seconds)) return '--:--';
-    const clamped = Math.max(0, seconds);
-    const hours = Math.floor(clamped / 3600);
-    const minutes = Math.floor((clamped % 3600) / 60);
-    const secs = clamped % 60;
-    const formattedSecs = secs.toFixed(1).padStart(4, '0');
-    if (hours > 0) {
-      return `${hours}:${String(minutes).padStart(2, '0')}:${formattedSecs}`;
-    }
-    return `${minutes}:${formattedSecs}`;
-  };
-
   const clampTrim = (start: number, end: number) => {
     const max = durationOriginalS ?? Math.max(end, start);
     const safeStart = Math.max(0, Math.min(start, max));
@@ -466,50 +434,6 @@ export default function ClipEditorPage() {
     setTrimStartS(next.start);
     setTrimEndS(next.end);
     setTrimDirty(true);
-  };
-
-  const handleTimelinePointerDown = (event: PointerEvent, handle: 'start' | 'end') => {
-    if (!timelineRef.current) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.currentTarget instanceof HTMLElement) {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    }
-    timelineDragRef.current = {
-      handle,
-      startX: event.clientX,
-      startStart: trimStartS,
-      startEnd: trimEndS,
-    };
-  };
-
-  const handleTimelineTrackPointerDown = (event: PointerEvent) => {
-    if (!timelineRef.current || !durationOriginalS) return;
-    event.preventDefault();
-    const rect = timelineRef.current.getBoundingClientRect();
-    if (!rect.width) return;
-    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
-    const target = ratio * durationOriginalS;
-    const distanceToStart = Math.abs(target - trimStartS);
-    const distanceToEnd = Math.abs(target - trimEndS);
-    if (distanceToStart <= distanceToEnd) {
-      handleTrimStartChange(target);
-      timelineDragRef.current = {
-        handle: 'start',
-        startX: event.clientX,
-        startStart: target,
-        startEnd: trimEndS,
-      };
-    } else {
-      handleTrimEndChange(target);
-      timelineDragRef.current = {
-        handle: 'end',
-        startX: event.clientX,
-        startStart: trimStartS,
-        startEnd: target,
-      };
-    }
-    timelineRef.current.setPointerCapture(event.pointerId);
   };
 
   const handleSaveTrim = async () => {
@@ -565,6 +489,41 @@ export default function ClipEditorPage() {
       setExportMessage('Failed to export clip.');
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!clip) return;
+    setIsSavingDraft(true);
+    setSaveMessage(null);
+    try {
+      const payload: Record<string, unknown> = {
+        videoTitle: clipTitle,
+        sharedDescription: description,
+      };
+      if (trimDirty) {
+        payload.trimStartS = trimStartS;
+        payload.trimEndS = trimEndS;
+      }
+      const res = await fetch(`/api/clips/${clip.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setSaveMessage(data?.error || 'Failed to save.');
+        return;
+      }
+      setTrimDirty(false);
+      setSaveMessage('Saved.');
+      toast.success('Draft saved');
+    } catch (err) {
+      console.error(err);
+      setSaveMessage('Failed to save.');
+      toast.error('Failed to save');
+    } finally {
+      setIsSavingDraft(false);
     }
   };
 
@@ -632,16 +591,8 @@ export default function ClipEditorPage() {
     return clip.videoTitle?.trim() || 'Generated clip';
   }, [clip]);
 
-  const startPercent = durationOriginalS
-    ? Math.max(0, Math.min(100, (trimStartS / durationOriginalS) * 100))
-    : 0;
-  const endPercent = durationOriginalS
-    ? Math.max(0, Math.min(100, (trimEndS / durationOriginalS) * 100))
-    : 0;
-  const rangePercent = Math.max(0, endPercent - startPercent);
-
   return (
-    <div className="mx-auto w-full max-w-[2200px] px-4 py-6 sm:px-6 lg:px-8 lg:h-[calc(100vh-var(--navbar-height))] lg:overflow-hidden lg:flex lg:flex-col lg:min-h-0 lg:pb-52">
+    <div className="mx-auto w-full max-w-[2200px] px-4 py-6 pb-72 sm:px-6 sm:pb-64 lg:px-8 lg:h-[calc(100vh-var(--navbar-height))] lg:overflow-hidden lg:flex lg:flex-col lg:min-h-0 lg:pb-52">
       <ThemedToaster />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="sm" onClick={() => router.push(`/details/${feedVideoId}`)}>
@@ -680,9 +631,13 @@ export default function ClipEditorPage() {
       ) : (
         <div className="space-y-6 lg:flex-1 lg:overflow-hidden lg:min-h-0">
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button variant="secondary" onClick={() => setSaveMessage('Draft saved locally.')}>
-              <Save className="mr-2 h-4 w-4" />
-              Save draft
+            <Button variant="secondary" onClick={handleSaveDraft} disabled={isSavingDraft}>
+              {isSavingDraft ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              {isSavingDraft ? 'Saving…' : 'Save draft'}
             </Button>
             <Button onClick={handleExport} disabled={!clip.s3Url || isExporting}>
               <Download className="mr-2 h-4 w-4" />
@@ -1182,106 +1137,40 @@ export default function ClipEditorPage() {
         </div>
       )}
       {clip ? (
-        <div className="hidden lg:block">
-          <Card className="fixed inset-x-6 bottom-6 z-30 shadow-xl">
-            <CardHeader className="flex flex-col gap-3 pb-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-1">
-                <CardTitle className="text-base">Timeline</CardTitle>
-                <CardDescription>Trim the clip or move the hook window.</CardDescription>
-              </div>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setTimelineOpen((prev) => !prev)}
-              >
-                {timelineOpen ? 'Collapse' : 'Expand'}
-              </Button>
-            </CardHeader>
-            {timelineOpen ? (
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{formatTime(trimStartS)}</span>
-                    <span>{formatTime(trimEndS)}</span>
-                  </div>
-                  <div
-                    ref={timelineRef}
-                    className="relative h-16 overflow-hidden rounded-lg border bg-muted/40"
-                    onPointerDown={handleTimelineTrackPointerDown}
-                  >
-                    <div className="absolute inset-0 flex gap-1 p-2 pointer-events-none">
-                      {Array.from({ length: 24 }).map((_, index) => (
-                        <div
-                          key={`segment-${index}`}
-                          className={cn(
-                            'h-full flex-1 rounded-sm',
-                            index % 3 === 0
-                              ? 'bg-emerald-200/80 dark:bg-emerald-500/30'
-                              : 'bg-slate-200/80 dark:bg-slate-700/40'
-                          )}
-                        />
-                      ))}
-                    </div>
-                    {durationOriginalS ? (
-                      <>
-                        <div
-                          className="absolute inset-y-0 rounded bg-white/10"
-                          style={{
-                            left: `${startPercent}%`,
-                            width: `${rangePercent}%`,
-                          }}
-                        />
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          className="absolute inset-y-0 w-4 -translate-x-1/2 cursor-ew-resize rounded bg-white/90 shadow-sm"
-                          style={{ left: `${startPercent}%` }}
-                          onPointerDown={(event) => handleTimelinePointerDown(event, 'start')}
-                          onPointerUp={(event) => {
-                            if (event.currentTarget instanceof HTMLElement) {
-                              event.currentTarget.releasePointerCapture(event.pointerId);
-                            }
-                            timelineDragRef.current = null;
-                          }}
-                        />
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          className="absolute inset-y-0 w-4 -translate-x-1/2 cursor-ew-resize rounded bg-white/90 shadow-sm"
-                          style={{ left: `${endPercent}%` }}
-                          onPointerDown={(event) => handleTimelinePointerDown(event, 'end')}
-                          onPointerUp={(event) => {
-                            if (event.currentTarget instanceof HTMLElement) {
-                              event.currentTarget.releasePointerCapture(event.pointerId);
-                            }
-                            timelineDragRef.current = null;
-                          }}
-                        />
-                      </>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                    <span>{formatTime(0)}</span>
-                    <span>{formatTime(durationOriginalS ?? 0)}</span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={handleSaveTrim}
-                    disabled={!trimDirty || isSavingTrim}
-                  >
-                    {isSavingTrim ? 'Saving...' : 'Save trim'}
-                  </Button>
-                  {trimMessage ? (
-                    <span className="text-xs text-muted-foreground">{trimMessage}</span>
-                  ) : null}
-                </div>
-              </CardContent>
-            ) : null}
-          </Card>
-        </div>
+        <Card className="fixed inset-x-3 bottom-3 z-30 shadow-xl sm:inset-x-6 sm:bottom-6">
+          <CardHeader className="flex flex-col gap-3 px-3 pb-3 sm:px-6 sm:pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-1">
+              <CardTitle className="text-base">Timeline</CardTitle>
+              <CardDescription className="hidden sm:block">
+                Trim the clip or move the hook window.
+              </CardDescription>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setTimelineOpen((prev) => !prev)}
+            >
+              {timelineOpen ? 'Collapse' : 'Expand'}
+            </Button>
+          </CardHeader>
+          {timelineOpen ? (
+            <CardContent className="px-3 sm:px-6">
+              <TrimTimeline
+                ref={trimTimelineRef}
+                videoRef={videoRef}
+                durationS={durationOriginalS}
+                trimStartS={trimStartS}
+                trimEndS={trimEndS}
+                trimDirty={trimDirty}
+                isSaving={isSavingTrim}
+                message={trimMessage}
+                onTrimStartChange={handleTrimStartChange}
+                onTrimEndChange={handleTrimEndChange}
+                onSave={handleSaveTrim}
+              />
+            </CardContent>
+          ) : null}
+        </Card>
       ) : null}
     </div>
   );
