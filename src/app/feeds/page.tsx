@@ -52,6 +52,8 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
+import { useSubscription } from '@/hooks/useSubscription';
+import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
 
 function youtubeHandleUrlFromName(name: string) {
   const trimmed = (name || '').trim();
@@ -100,6 +102,8 @@ export default function FeedsPage() {
   const [videoQuery, setVideoQuery] = useState('');
   const [videoFeedFilter, setVideoFeedFilter] = useState<string>('all');
   const [videoSort, setVideoSort] = useState<'newest' | 'oldest' | 'title'>('newest');
+
+  const { quota, data: subscriptionData } = useSubscription();
 
   const [selectedFeedSettings, setSelectedFeedSettings] = useState<VideoFeed | null>(null);
   const [isFeedSettingsOpen, setIsFeedSettingsOpen] = useState(false);
@@ -632,6 +636,21 @@ export default function FeedsPage() {
           </Card>
         </div>
       )}
+
+      {quota &&
+        subscriptionData &&
+        (quota.feeds.warning ||
+          quota.feeds.exceeded ||
+          quota.clips.warning ||
+          quota.clips.exceeded) && (
+          <div className="mb-6">
+            <QuotaWarningBanner
+              quota={quota}
+              planName={subscriptionData.plan.name}
+              planId={subscriptionData.plan.id}
+            />
+          </div>
+        )}
 
       {/* Hidden file input for uploads */}
       <input

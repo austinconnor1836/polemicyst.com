@@ -31,6 +31,8 @@ import {
 import SpeakerTranscript from '@/components/SpeakerTranscript';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
+import { useSubscription } from '@/hooks/useSubscription';
+import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
 import { formatRelativeTime } from '@/app/feeds/util/time';
 import {
   DEFAULT_VIRALITY_SETTINGS,
@@ -121,6 +123,7 @@ export default function ClipGroupPage() {
   const [transcribeMessage, setTranscribeMessage] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [deletingClipId, setDeletingClipId] = useState<string | null>(null);
+  const { quota, data: subscriptionData, refresh: refreshSubscription } = useSubscription();
 
   const fetchSummary = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -253,6 +256,7 @@ export default function ClipGroupPage() {
     try {
       await triggerClip();
       setGenerateMessage('Clip job enqueued.');
+      refreshSubscription();
     } catch (err) {
       console.error(err);
       setGenerateMessage('Failed to enqueue clip job.');
@@ -404,6 +408,16 @@ export default function ClipGroupPage() {
                       </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
+                      {quota &&
+                        subscriptionData &&
+                        (quota.clips.warning || quota.clips.exceeded) && (
+                          <QuotaWarningBanner
+                            quota={quota}
+                            planName={subscriptionData.plan.name}
+                            planId={subscriptionData.plan.id}
+                            show="clips"
+                          />
+                        )}
                       <AspectRatioSelect value={aspectRatio} onChange={setAspectRatio} />
                       <ViralitySettings
                         value={viralitySettings}
@@ -417,7 +431,10 @@ export default function ClipGroupPage() {
                       ) : null}
                     </div>
                     <DialogFooter className="gap-2 pt-4 sm:gap-2">
-                      <Button onClick={handleGenerateClip} disabled={isGeneratingClip}>
+                      <Button
+                        onClick={handleGenerateClip}
+                        disabled={isGeneratingClip || (quota?.clips.exceeded ?? false)}
+                      >
                         {isGeneratingClip ? 'Generating...' : 'Generate clip'}
                       </Button>
                       <Button
