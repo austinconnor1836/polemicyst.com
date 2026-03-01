@@ -799,6 +799,94 @@ paths:
               schema:
                 $ref: '#/components/schemas/ClipCropTemplate'
 
+  /api/admin/logs:
+    get:
+      operationId: getAdminLogs
+      summary: Get job logs (admin only)
+      tags: [Admin]
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 7
+        - name: jobType
+          in: query
+          schema:
+            type: string
+            enum: [transcription, speaker-transcription, clip-generation, download]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [queued, started, completed, failed]
+        - name: feedVideoId
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Job logs with summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        feedVideoId:
+                          type: string
+                        jobType:
+                          type: string
+                        status:
+                          type: string
+                        message:
+                          type: string
+                          nullable: true
+                        error:
+                          type: string
+                          nullable: true
+                        durationMs:
+                          type: integer
+                          nullable: true
+                        createdAt:
+                          type: string
+                          format: date-time
+                  total:
+                    type: integer
+                  summary:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        jobType:
+                          type: string
+                        status:
+                          type: string
+                        count:
+                          type: integer
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/user/llm-provider:
     get:
       operationId: getLlmProvider

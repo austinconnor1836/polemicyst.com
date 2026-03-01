@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../../auth';
 import { prisma } from '@shared/lib/prisma';
 import { getTranscriptionQueue } from '@shared/queues';
+import { logJob } from '@shared/lib/job-logger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,6 +42,13 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     { feedVideoId: feedVideo.id },
     { jobId: feedVideo.id, removeOnComplete: true, removeOnFail: true }
   );
+
+  await logJob({
+    feedVideoId: feedVideo.id,
+    jobType: 'transcription',
+    status: 'queued',
+    message: 'Transcription job queued via API',
+  });
 
   return NextResponse.json({ ok: true, enqueued: true });
 }
