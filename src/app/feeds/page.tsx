@@ -49,6 +49,7 @@ import {
   Upload,
   Settings,
   Loader2,
+  LogIn,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
@@ -103,11 +104,15 @@ export default function FeedsPage() {
 
   const [selectedFeedSettings, setSelectedFeedSettings] = useState<VideoFeed | null>(null);
   const [isFeedSettingsOpen, setIsFeedSettingsOpen] = useState(false);
+  const [showSignUpGate, setShowSignUpGate] = useState(false);
   const [defaultLLMProvider, setDefaultLLMProvider] = useState<LLMProvider>(
     DEFAULT_VIRALITY_SETTINGS.llmProvider
   );
 
+  const isAuthenticated = sessionStatus === 'authenticated';
+
   useEffect(() => {
+    if (!isAuthenticated) return;
     let cancelled = false;
     const fetchDefaultProvider = async () => {
       try {
@@ -130,7 +135,7 @@ export default function FeedsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAuthenticated]);
 
   const fetchFeeds = async () => {
     setIsLoadingFeeds(true);
@@ -347,11 +352,22 @@ export default function FeedsPage() {
 
       if (!completeMultiRes.ok) throw new Error('Failed to complete multipart upload');
 
-      await fetch('/api/uploads/complete', {
+      const registerRes = await fetch('/api/uploads/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: meta.key, filename: meta.filename }),
       });
+
+      if (!registerRes.ok) {
+        const body = await registerRes.json().catch(() => ({}));
+        if (body.code === 'ANON_LIMIT') {
+          setShowSignUpGate(true);
+          localStorage.removeItem('pending-upload-meta');
+          await idbDel('pending-upload-file');
+          return;
+        }
+        throw new Error(body.error || 'Failed to register upload');
+      }
 
       toast.success('Upload complete!');
 
@@ -460,8 +476,14 @@ export default function FeedsPage() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to import');
+        const body = await res.json().catch(() => ({}));
+        if (body.code === 'ANON_LIMIT') {
+          toast.dismiss(toastId);
+          setIsAddVideoOpen(false);
+          setShowSignUpGate(true);
+          return;
+        }
+        throw new Error(body.error || 'Failed to import');
       }
 
       toast.success('Imported successfully!', { id: toastId });
@@ -539,11 +561,16 @@ export default function FeedsPage() {
     fetchVideos();
   }, []);
 
-  // Clear server-fetched data when the user logs out
+  // Merge anonymous uploads after sign-in, clear data on sign-out
   const wasAuthenticated = useRef(false);
   useEffect(() => {
     if (sessionStatus === 'authenticated') {
-      wasAuthenticated.current = true;
+      if (!wasAuthenticated.current) {
+        wasAuthenticated.current = true;
+        fetch('/api/auth/merge-anonymous', { method: 'POST' })
+          .then(() => Promise.all([fetchFeeds(), fetchVideos()]))
+          .catch(() => {});
+      }
     } else if (sessionStatus === 'unauthenticated' && wasAuthenticated.current) {
       wasAuthenticated.current = false;
       setFeeds([]);
@@ -642,8 +669,9 @@ export default function FeedsPage() {
         onChange={handleFileUpload}
       />
 
-      <div className="grid gap-6 lg:grid-cols-12">
-        {/* Left: feed management */}
+      <div className={cn('grid gap-6', isAuthenticated && 'lg:grid-cols-12')}>
+        {/* Left: feed management (authenticated only) */}
+        {isAuthenticated && (
         <div className="space-y-6 lg:col-span-4">
           {/* Feed List */}
           <Card className="relative overflow-hidden glass:!bg-transparent glass:!shadow-none glass:!border-[var(--glass-border-prominent)] glass:glass-spectral-edge">
@@ -772,9 +800,10 @@ export default function FeedsPage() {
             </CardContent>
           </Card>
         </div>
+        )}
 
         {/* Right: feed videos */}
-        <div className="space-y-4 lg:col-span-8">
+        <div className={cn('space-y-4', isAuthenticated && 'lg:col-span-8')}>
           <Card className="relative h-full overflow-hidden border-muted/60 shadow-sm glass:!bg-transparent glass:!shadow-none glass:!border-[var(--glass-border-prominent)] glass:glass-spectral-edge">
             <CardGridBackground className="absolute inset-0" />
             <div className="pointer-events-none absolute inset-0 bg-surface/85 glass:!bg-[#0a0a1a]/15 glass:backdrop-blur-sm" />
@@ -1248,6 +1277,32 @@ export default function FeedsPage() {
                 </div>
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sign-Up Gate Dialog */}
+      <Dialog open={showSignUpGate} onOpenChange={setShowSignUpGate}>
+        <DialogContent className="max-w-sm text-center">
+          <DialogHeader>
+            <DialogTitle>Free upload limit reached</DialogTitle>
+            <DialogDescription>
+              You&apos;ve used your 2 free video uploads. Create an account to keep going and unlock
+              all features.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 pt-2">
+            <Button className="w-full" onClick={() => router.push('/auth/signin')}>
+              <LogIn className="mr-2 h-4 w-4" />
+              Sign up / Sign in
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setShowSignUpGate(false)}
+            >
+              Maybe later
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

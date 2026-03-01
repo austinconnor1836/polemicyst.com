@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../../../../../../auth';
 import { S3Client, ListPartsCommand } from '@aws-sdk/client-s3';
+import { resolveUser, withAnonCookie } from '@/lib/anonymous-session';
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
@@ -19,10 +18,7 @@ const s3 = new S3Client({
 });
 
 export async function POST(req: NextRequest) {
-  const session = (await getServerSession(authOptions)) as any;
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { newAnonId } = await resolveUser();
 
   try {
     const { uploadId, key } = await req.json();
@@ -35,7 +31,6 @@ export async function POST(req: NextRequest) {
 
     const { Parts } = await s3.send(command);
 
-    // Return simple array of uploaded parts
     const uploadedParts =
       Parts?.map((p) => ({
         PartNumber: p.PartNumber,
@@ -43,9 +38,12 @@ export async function POST(req: NextRequest) {
         Size: p.Size,
       })) || [];
 
-    return NextResponse.json({ parts: uploadedParts });
+    return withAnonCookie(NextResponse.json({ parts: uploadedParts }), newAnonId);
   } catch (error) {
     console.error('List parts error:', error);
-    return NextResponse.json({ error: 'Failed to list parts' }, { status: 500 });
+    return withAnonCookie(
+      NextResponse.json({ error: 'Failed to list parts' }, { status: 500 }),
+      newAnonId
+    );
   }
 }

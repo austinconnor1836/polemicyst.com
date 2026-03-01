@@ -799,6 +799,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/ClipCropTemplate'
 
+  /api/auth/merge-anonymous:
+    post:
+      operationId: mergeAnonymous
+      summary: Transfer anonymous session uploads to the authenticated user
+      description: >
+        Called after sign-in. Reads the `anon_session` cookie, moves any
+        videos from the anonymous user to the real user, then clears the cookie.
+      tags: [Auth]
+      responses:
+        '200':
+          description: Number of videos merged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  merged:
+                    type: integer
+        '401':
+          description: Unauthorized
+
   /api/user/llm-provider:
     get:
       operationId: getLlmProvider

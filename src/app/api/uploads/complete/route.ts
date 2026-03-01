@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../auth';
 import { prisma } from '@shared/lib/prisma';
 import { randomUUID } from 'crypto';
 import { Queue } from 'bullmq';
@@ -11,6 +9,7 @@ import {
   type ViralitySettingsValue,
 } from '@shared/virality';
 import { checkClipQuota } from '@/lib/plans';
+import { resolveUser, withAnonCookie, checkAnonUploadLimit } from '@/lib/anonymous-session';
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
@@ -35,28 +34,31 @@ function getClipGenerationQueue() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { user, newAnonId } = await resolveUser();
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-  });
-
-  if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  if (user.isAnonymous) {
+    const quota = await checkAnonUploadLimit(user.id);
+    if (!quota.allowed) {
+      return withAnonCookie(
+        NextResponse.json(
+          {
+            error: `You've used your ${quota.limit} free uploads. Sign up to continue.`,
+            code: 'ANON_LIMIT',
+            limit: quota.limit,
+            count: quota.count,
+          },
+          { status: 403 }
+        ),
+        newAnonId
+      );
+    }
   }
 
   try {
     const { key, filename } = await req.json();
 
-    // 1. Find or create the "Manual Uploads" feed
     let manualFeed = await prisma.videoFeed.findFirst({
-      where: {
-        userId: user.id,
-        sourceType: 'manual',
-      },
+      where: { userId: user.id, sourceType: 'manual' },
     });
 
     if (!manualFeed) {
@@ -66,28 +68,24 @@ export async function POST(req: NextRequest) {
           name: 'Manual Uploads',
           sourceType: 'manual',
           sourceUrl: 'manual://uploads',
-          pollingInterval: 0, // No polling for manual uploads
+          pollingInterval: 0,
         },
       });
     }
 
-    // 2. Create the FeedVideo record
-    // We use the S3 URL format consistent with the rest of the app
     const s3Url = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
 
     const newVideo = await prisma.feedVideo.create({
       data: {
         feedId: manualFeed.id,
         userId: user.id,
-        videoId: randomUUID(), // Internal ID
+        videoId: randomUUID(),
         title: filename || 'Untitled Upload',
         s3Url: s3Url,
       },
     });
 
-    // 3. Auto-trigger clip generation if enabled
-    if (manualFeed.autoGenerateClips && manualFeed.viralitySettings) {
-      // Check clip quota before auto-enqueuing
+    if (!user.isAnonymous && manualFeed.autoGenerateClips && manualFeed.viralitySettings) {
       const clipQuota = await checkClipQuota(user.id, user.subscriptionPlan);
       if (!clipQuota.allowed) {
         console.warn(`[Auto-Gen] Clip quota exceeded for user ${user.id}. Skipping.`);
@@ -103,7 +101,7 @@ export async function POST(req: NextRequest) {
             {
               feedVideoId: newVideo.id,
               userId: user.id,
-              aspectRatio: '9:16', // Default for auto-gen, or could be stored in settings
+              aspectRatio: '9:16',
               scoringMode: settings.scoringMode || 'hybrid',
               includeAudio: settings.includeAudio || false,
               saferClips: settings.saferClips ?? true,
@@ -117,14 +115,16 @@ export async function POST(req: NextRequest) {
           console.log(`[Auto-Gen] Enqueued job for video ${newVideo.id}`);
         } catch (err) {
           console.error('[Auto-Gen] Failed to enqueue job:', err);
-          // Don't fail the request, just log error
         }
       }
     }
 
-    return NextResponse.json(newVideo);
+    return withAnonCookie(NextResponse.json(newVideo), newAnonId);
   } catch (error) {
     console.error('Upload completion error:', error);
-    return NextResponse.json({ error: 'Failed to register upload' }, { status: 500 });
+    return withAnonCookie(
+      NextResponse.json({ error: 'Failed to register upload' }, { status: 500 }),
+      newAnonId
+    );
   }
 }

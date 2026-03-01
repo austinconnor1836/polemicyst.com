@@ -1,18 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../auth';
 import { prisma } from '@shared/lib/prisma';
 import { randomUUID } from 'crypto';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
-import {
-  getStrictnessConfig,
-  mergeViralitySettings,
-  type ViralitySettingsValue,
-} from '@shared/virality';
+import { resolveUser, withAnonCookie, checkAnonUploadLimit } from '@/lib/anonymous-session';
 
 let redis: Redis | null = null;
-let clipGenerationQueue: Queue | null = null;
 let downloadQueue: Queue | null = null;
 
 function getRedisConnection() {
@@ -25,12 +18,6 @@ function getRedisConnection() {
   return redis;
 }
 
-function getClipGenerationQueue() {
-  if (clipGenerationQueue) return clipGenerationQueue;
-  clipGenerationQueue = new Queue('clip-generation', { connection: getRedisConnection() });
-  return clipGenerationQueue;
-}
-
 function getDownloadQueue() {
   if (downloadQueue) return downloadQueue;
   downloadQueue = new Queue('feed-download', { connection: getRedisConnection() });
@@ -38,32 +25,38 @@ function getDownloadQueue() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { user, newAnonId } = await resolveUser();
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-  });
-
-  if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  if (user.isAnonymous) {
+    const quota = await checkAnonUploadLimit(user.id);
+    if (!quota.allowed) {
+      return withAnonCookie(
+        NextResponse.json(
+          {
+            error: `You've used your ${quota.limit} free uploads. Sign up to continue.`,
+            code: 'ANON_LIMIT',
+            limit: quota.limit,
+            count: quota.count,
+          },
+          { status: 403 }
+        ),
+        newAnonId
+      );
+    }
   }
 
   try {
     const { url, filename } = await req.json();
 
     if (!url || !String(url).startsWith('http')) {
-      return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
+      return withAnonCookie(
+        NextResponse.json({ error: 'Invalid URL' }, { status: 400 }),
+        newAnonId
+      );
     }
 
-    // 1. Find or create the "Manual Uploads" feed
     let manualFeed = await prisma.videoFeed.findFirst({
-      where: {
-        userId: user.id,
-        sourceType: 'manual',
-      },
+      where: { userId: user.id, sourceType: 'manual' },
     });
 
     if (!manualFeed) {
@@ -78,19 +71,17 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 2. Create the FeedVideo record as "pending" and enqueue download
     const newVideo = await prisma.feedVideo.create({
       data: {
         feedId: manualFeed.id,
         userId: user.id,
-        videoId: randomUUID(), // Internal ID
+        videoId: randomUUID(),
         title: filename || url.split('/').pop() || 'Imported Video',
-        s3Url: url, // temporary; will be replaced after download
+        s3Url: url,
         status: 'pending',
       },
     });
 
-    // 3. Enqueue download job
     const queue = getDownloadQueue();
     await queue.add('download', {
       feedVideoId: newVideo.id,
@@ -100,9 +91,12 @@ export async function POST(req: NextRequest) {
       userId: user.id,
     });
 
-    return NextResponse.json(newVideo);
+    return withAnonCookie(NextResponse.json(newVideo), newAnonId);
   } catch (error) {
     console.error('Import from URL error:', error);
-    return NextResponse.json({ error: 'Failed to register video' }, { status: 500 });
+    return withAnonCookie(
+      NextResponse.json({ error: 'Failed to register video' }, { status: 500 }),
+      newAnonId
+    );
   }
 }

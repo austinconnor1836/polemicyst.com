@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../../../../../../auth';
 import { S3Client, CreateMultipartUploadCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
+import { resolveUser, withAnonCookie } from '@/lib/anonymous-session';
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
@@ -20,16 +19,14 @@ const s3 = new S3Client({
 });
 
 export async function POST(req: NextRequest) {
-  const session = (await getServerSession(authOptions)) as any;
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { user, newAnonId } = await resolveUser();
 
   try {
     const { filename, contentType } = await req.json();
 
     const fileExt = filename.split('.').pop() || 'mp4';
-    const key = `uploads/${session.user.email}/${randomUUID()}.${fileExt}`;
+    const ownerPrefix = user.isAnonymous ? `anon/${user.id}` : user.email;
+    const key = `uploads/${ownerPrefix}/${randomUUID()}.${fileExt}`;
 
     const command = new CreateMultipartUploadCommand({
       Bucket: S3_BUCKET,
@@ -39,9 +36,12 @@ export async function POST(req: NextRequest) {
 
     const { UploadId } = await s3.send(command);
 
-    return NextResponse.json({ uploadId: UploadId, key });
+    return withAnonCookie(NextResponse.json({ uploadId: UploadId, key }), newAnonId);
   } catch (error) {
     console.error('Initiate multipart error:', error);
-    return NextResponse.json({ error: 'Failed to initiate upload' }, { status: 500 });
+    return withAnonCookie(
+      NextResponse.json({ error: 'Failed to initiate upload' }, { status: 500 }),
+      newAnonId
+    );
   }
 }

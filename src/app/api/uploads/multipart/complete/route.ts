@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../../../../../../auth';
 import { S3Client, CompleteMultipartUploadCommand } from '@aws-sdk/client-s3';
+import { resolveUser, withAnonCookie } from '@/lib/anonymous-session';
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
@@ -19,15 +18,11 @@ const s3 = new S3Client({
 });
 
 export async function POST(req: NextRequest) {
-  const session = (await getServerSession(authOptions)) as any;
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { newAnonId } = await resolveUser();
 
   try {
     const { uploadId, key, parts } = await req.json();
 
-    // parts should be sorted by PartNumber
     const sortedParts = parts.sort((a: any, b: any) => a.PartNumber - b.PartNumber);
 
     const command = new CompleteMultipartUploadCommand({
@@ -41,9 +36,12 @@ export async function POST(req: NextRequest) {
 
     await s3.send(command);
 
-    return NextResponse.json({ success: true, key });
+    return withAnonCookie(NextResponse.json({ success: true, key }), newAnonId);
   } catch (error) {
     console.error('Complete multipart error:', error);
-    return NextResponse.json({ error: 'Failed to complete upload' }, { status: 500 });
+    return withAnonCookie(
+      NextResponse.json({ error: 'Failed to complete upload' }, { status: 500 }),
+      newAnonId
+    );
   }
 }
