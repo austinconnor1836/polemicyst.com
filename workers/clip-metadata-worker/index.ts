@@ -284,9 +284,11 @@ new Worker(
             videoTitle: `Viral Clip ${c.score.toFixed(1)}`,
             s3Url: s3Url,
             s3Key: s3Key,
-            sourceVideoId: video.id, // Link to parent
+            sourceVideoId: video.id,
             fileName: `${segment.id}.mp4`,
             sharedDescription: (c.features as Record<string, any>)?.rationale || '',
+            trimStartS: c.tStartS,
+            trimEndS: c.tEndS,
             facebookTemplate: '',
             instagramTemplate: '',
             youtubeTemplate: '',
