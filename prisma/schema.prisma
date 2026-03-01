@@ -31,6 +31,7 @@ model User {
   clipCropTemplates   ClipCropTemplate[]
   videoFeeds          VideoFeed[]
   feedVideos          FeedVideo[]
+  automationRule      AutomationRule?
 }
 
 model TemplatePreferences {
@@ -263,4 +264,23 @@ model ClipCropTemplate {
 
   @@unique([userId, name])
   @@index([userId])
+}
+
+model AutomationRule {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  enabled          Boolean  @default(false)
+  autoGenerateClips Boolean @default(true)
+  viralitySettings Json?
+  captionsEnabled  Boolean  @default(true)
+  captionStyle     String   @default("default")
+  aspectRatio      String   @default("9:16")
+  cropTemplateId   String?
+  autoPublish      Boolean  @default(false)
+  publishPlatforms Json?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }

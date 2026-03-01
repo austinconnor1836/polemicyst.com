@@ -117,6 +117,7 @@ Clips Genie (branded "POLEMICYST") is a social media video clip generation and d
 
 - **Docker is NOT available** — the VM kernel lacks iptables NAT support. All services (PostgreSQL, Redis) run natively.
 - The VM may inject a `DATABASE_URL` env var pointing to `db:5432` (Docker hostname). This is **wrong**. Always export the correct value pointing to `localhost:5432` before running any Prisma or backend commands.
+- The VM may inject `NEXTAUTH_URL` as `https://localhost:3000`. Override to `http://localhost:3000` for local dev (no TLS).
 
 ### Required services
 
@@ -124,7 +125,7 @@ Clips Genie (branded "POLEMICYST") is a social media video clip generation and d
 |---|---|---|
 | PostgreSQL 16 | `sudo service postgresql start` | 5432 |
 | Redis | `sudo service redis-server start` (if it fails because port is occupied, first run `redis-cli shutdown` then retry) | 6379 |
-| Next.js frontend | `npx next dev --port 3000` (from repo root) | 3000 |
+| Next.js frontend | `DATABASE_URL="postgresql://postgres:postgres@localhost:5432/clips-genie" NEXTAUTH_URL="http://localhost:3000" npx next dev --port 3000` | 3000 |
 | Express backend | `cd backend && npx tsc && node index.js` | 3001 |
 
 ### Database setup (one-time, already done in snapshot)
@@ -133,6 +134,25 @@ Clips Genie (branded "POLEMICYST") is a social media video clip generation and d
 sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';"
 sudo -u postgres createdb clips-genie   # ignore "already exists" error
 ```
+
+To push the latest Prisma schema:
+
+```bash
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/clips-genie" \
+  npx prisma db push
+```
+
+(If Prisma asks for consent, add `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="yes"`.)
+
+### Authenticate (dev login)
+
+A dev-only credentials provider is available when `NODE_ENV !== 'production'`. No OAuth setup required.
+
+1. Navigate to `http://localhost:3000/auth/signin`.
+2. Enter any email (e.g. `dev@test.com`) in the **Email** field.
+3. Click **Dev Sign In**.
+
+This creates (or reuses) a real `User` row in the database. The resulting JWT session works identically to a production OAuth session for all API routes. The session persists in cookies across page navigations.
 
 ### Key caveats
 

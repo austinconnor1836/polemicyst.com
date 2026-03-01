@@ -449,6 +449,60 @@ components:
           type: string
           enum: [gemini, ollama]
 
+    AutomationSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        autoGenerateClips:
+          type: boolean
+        viralitySettings:
+          $ref: '#/components/schemas/ViralitySettings'
+        captionsEnabled:
+          type: boolean
+        captionStyle:
+          type: string
+          enum: [default, bold, minimal, none]
+        aspectRatio:
+          type: string
+          enum: ['9:16', '16:9', '1:1', '4:5']
+        cropTemplateId:
+          type: string
+          nullable: true
+        autoPublish:
+          type: boolean
+        publishPlatforms:
+          type: array
+          items:
+            type: string
+
+    AutomationSettingsUpdate:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        autoGenerateClips:
+          type: boolean
+        viralitySettings:
+          $ref: '#/components/schemas/ViralitySettings'
+        captionsEnabled:
+          type: boolean
+        captionStyle:
+          type: string
+          enum: [default, bold, minimal, none]
+        aspectRatio:
+          type: string
+          enum: ['9:16', '16:9', '1:1', '4:5']
+        cropTemplateId:
+          type: string
+          nullable: true
+        autoPublish:
+          type: boolean
+        publishPlatforms:
+          type: array
+          items:
+            type: string
+
     CreateCheckoutSessionRequest:
       type: object
       required: [planId]
@@ -1137,6 +1191,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LlmProviderResponse'
+
+  /api/user/automation:
+    get:
+      operationId: getAutomationSettings
+      summary: Get user automation rule settings
+      tags: [Settings]
+      responses:
+        '200':
+          description: Current automation settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationSettings'
+    put:
+      operationId: updateAutomationSettings
+      summary: Create or update user automation rule settings
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationSettingsUpdate'
+      responses:
+        '200':
+          description: Updated automation settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationSettings'
 
   /api/user/subscription:
     get:

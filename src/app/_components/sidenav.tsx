@@ -14,6 +14,7 @@ import SportsBasketballIcon from '@mui/icons-material/SportsBasketball';
 import WorkIcon from '@mui/icons-material/Work';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import ListAltIcon from '@mui/icons-material/ListAlt';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { useSession } from 'next-auth/react';
 
 interface SidePanelProps {
@@ -23,6 +24,7 @@ interface SidePanelProps {
 const sideNavItems: SideNavItem[] = [
   { label: 'Home', element: <HomeIcon />, href: '/' },
   { label: 'Details', element: <MovieIcon />, href: '/details' },
+  { label: 'Automation', element: <SettingsIcon />, href: '/settings/automation' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
   { label: 'NCAA Seeds', element: <SportsBasketballIcon />, href: '/ncaa-seed-probability' },
   { label: 'Billing', element: <PaymentIcon />, href: '/billing' },
