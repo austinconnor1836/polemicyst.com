@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "android": {
+    "minVersion": "1.0.0"
+  },
+  "ios": {
+    "minVersion": "1.0.0"
+  }
+}

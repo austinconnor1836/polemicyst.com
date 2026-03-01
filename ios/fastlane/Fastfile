@@ -1,3 +1,5 @@
+require 'json'
+
 default_platform(:ios)
 
 XCODEPROJ = "Polemicyst.xcodeproj"
@@ -22,6 +24,7 @@ platform :ios do
   lane :beta do
     setup_signing
     set_build_number
+    set_marketing_version
 
     build_app(
       project: XCODEPROJ,
@@ -51,6 +54,7 @@ platform :ios do
   lane :release do
     setup_signing
     set_build_number
+    set_marketing_version
 
     build_app(
       project: XCODEPROJ,
@@ -123,6 +127,45 @@ platform :ios do
     increment_build_number(
       build_number: build_number,
       xcodeproj: XCODEPROJ
+    )
+  end
+
+  private_lane :set_marketing_version do
+    version_file = File.join(Dir.pwd, "..", "..", "version.json")
+    if File.exist?(version_file)
+      version_data = JSON.parse(File.read(version_file))
+      version = version_data["version"]
+      increment_version_number(
+        version_number: version,
+        xcodeproj: XCODEPROJ
+      )
+      UI.message("Set MARKETING_VERSION to #{version} from version.json")
+    else
+      UI.important("version.json not found, keeping default MARKETING_VERSION")
+    end
+  end
+
+  desc "Submit latest build for App Store review"
+  lane :promote do
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_KEY_CONTENT"],
+      is_key_content_base64: true,
+      in_house: false
+    )
+
+    upload_to_app_store(
+      api_key: api_key,
+      submit_for_review: true,
+      automatic_release: ENV["AUTO_RELEASE"] == "true",
+      phased_release: true,
+      skip_binary_upload: true,
+      skip_metadata: true,
+      skip_screenshots: true,
+      submission_information: {
+        add_id_info_uses_idfa: false
+      }
     )
   end
 end

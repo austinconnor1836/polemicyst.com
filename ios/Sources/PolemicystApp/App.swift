@@ -5,6 +5,8 @@ import PolemicystiOS
 struct PolemicystApp: App {
     @StateObject private var authService: AuthService
     @State private var tabSelection = 0
+    @State private var forceUpdateRequired = false
+    @State private var forceUpdateStoreUrl = ""
 
     private let apiClient: APIClient
 
@@ -20,41 +22,61 @@ struct PolemicystApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if authService.isAuthenticated {
-                TabView(selection: $tabSelection) {
-                    HomeView(selection: $tabSelection)
+            Group {
+                if forceUpdateRequired {
+                    ForceUpdateView(storeUrl: forceUpdateStoreUrl)
+                } else if authService.isAuthenticated {
+                    TabView(selection: $tabSelection) {
+                        HomeView(selection: $tabSelection)
+                            .tabItem {
+                                Label("Home", systemImage: "house.fill")
+                            }
+                            .tag(0)
+
+                    FeedsView(viewModel: FeedsViewModel(api: apiClient))
                         .tabItem {
-                            Label("Home", systemImage: "house.fill")
+                            Label("Feeds", systemImage: "antenna.radiowaves.left.and.right")
                         }
-                        .tag(0)
+                        .tag(1)
 
-                FeedsView(viewModel: FeedsViewModel(api: apiClient))
-                    .tabItem {
-                        Label("Feeds", systemImage: "antenna.radiowaves.left.and.right")
-                    }
-                    .tag(1)
+                    FeedVideosView(viewModel: FeedVideosViewModel(api: apiClient))
+                        .tabItem {
+                            Label("Videos", systemImage: "list.bullet")
+                        }
+                        .tag(2)
 
-                FeedVideosView(viewModel: FeedVideosViewModel(api: apiClient))
-                    .tabItem {
-                        Label("Videos", systemImage: "list.bullet")
-                    }
-                    .tag(2)
+                    ClipsListView(viewModel: ClipsViewModel(api: apiClient))
+                        .tabItem {
+                            Label("Clips", systemImage: "film.stack")
+                        }
+                        .tag(3)
 
-                ClipsListView(viewModel: ClipsViewModel(api: apiClient))
-                    .tabItem {
-                        Label("Clips", systemImage: "film.stack")
+                    SettingsTabView(apiClient: apiClient)
+                        .tabItem {
+                            Label("Settings", systemImage: "gearshape.fill")
+                        }
+                        .tag(4)
                     }
-                    .tag(3)
-
-                SettingsTabView(apiClient: apiClient)
-                    .tabItem {
-                        Label("Settings", systemImage: "gearshape.fill")
-                    }
-                    .tag(4)
+                } else {
+                    LoginView(authService: authService)
                 }
-            } else {
-                LoginView(authService: authService)
             }
+            .task {
+                await checkAppVersion()
+            }
+        }
+    }
+
+    private func checkAppVersion() async {
+        let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+        do {
+            let response = try await apiClient.checkVersion(currentVersion: currentVersion)
+            if response.updateRequired {
+                forceUpdateStoreUrl = response.storeUrl
+                forceUpdateRequired = true
+            }
+        } catch {
+            // Version check is non-fatal — let the app continue if the server is unreachable
         }
     }
 }

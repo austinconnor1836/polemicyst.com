@@ -173,6 +173,7 @@ jobs:
       - name: Build production release AAB
         working-directory: android
         env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
           KEYSTORE_PATH: upload-keystore.jks
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}

@@ -1,0 +1,43 @@
+name: Submit iOS for App Store Review
+
+on:
+  workflow_dispatch:
+    inputs:
+      auto_release:
+        description: 'Automatically release after approval'
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  promote:
+    name: Submit for Review
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          working-directory: ios
+
+      - name: Submit for App Store Review
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          AUTO_RELEASE: ${{ inputs.auto_release }}
+        working-directory: ios
+        run: bundle exec fastlane promote

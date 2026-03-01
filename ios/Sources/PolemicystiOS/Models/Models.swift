@@ -1,5 +1,14 @@
 import Foundation
 
+// MARK: - Version Check
+
+public struct VersionCheckResponse: Codable {
+    public let updateRequired: Bool
+    public let minimumVersion: String
+    public let latestVersion: String
+    public let storeUrl: String
+}
+
 // MARK: - Feeds
 
 public struct VideoFeed: Identifiable, Codable {

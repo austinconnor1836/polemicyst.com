@@ -85,6 +85,20 @@ public struct APIClient {
         try await put(path: "/api/user/llm-provider", body: request)
     }
 
+    // MARK: Version Check
+
+    public func checkVersion(currentVersion: String) async throws -> VersionCheckResponse {
+        let url = baseURL.appending(path: "/api/app/version-check")
+            .appending(queryItems: [
+                URLQueryItem(name: "platform", value: "ios"),
+                URLQueryItem(name: "currentVersion", value: currentVersion)
+            ])
+        let request = URLRequest(url: url)
+        let (data, response) = try await session.data(for: request)
+        try ensureSuccess(response, data: data)
+        return try decoder.decode(VersionCheckResponse.self, from: data)
+    }
+
     // MARK: - Internal helpers
 
     func authorizedRequest(url: URL) -> URLRequest {

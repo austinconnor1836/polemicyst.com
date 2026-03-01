@@ -1,3 +1,5 @@
+import groovy.json.JsonSlurper
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,10 +8,13 @@ plugins {
     alias(libs.plugins.ksp)
     // OpenAPI codegen disabled — all API calls use manual Retrofit interfaces
     // alias(libs.plugins.openapi.generator)
-    // Uncomment when you have a real google-services.json from Firebase Console:
-    // alias(libs.plugins.google.services)
-    // alias(libs.plugins.firebase.crashlytics)
+    alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
 }
+
+val versionFile = rootProject.file("../version.json")
+val versionJson = JsonSlurper().parseText(versionFile.readText()) as Map<*, *>
+val appVersionName = versionJson["version"] as String
 
 android {
     namespace = "com.polemicyst.android"
@@ -19,8 +24,8 @@ android {
         applicationId = "com.polemicyst.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+        versionName = appVersionName
 
         buildConfigField("String", "GOOGLE_CLIENT_ID", "\"${project.findProperty("GOOGLE_CLIENT_ID") ?: ""}\"")
 
@@ -166,10 +171,14 @@ dependencies {
     implementation(libs.googleid)
     implementation(libs.security.crypto)
 
-    // Firebase — uncomment when you have a real google-services.json:
-    // implementation(platform(libs.firebase.bom))
-    // implementation(libs.firebase.crashlytics)
-    // implementation(libs.firebase.analytics)
+    // In-App Updates
+    implementation(libs.play.app.update)
+    implementation(libs.play.app.update.ktx)
+
+    // Firebase
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.crashlytics)
+    implementation(libs.firebase.analytics)
 
     // Testing
     testImplementation(libs.junit)
