@@ -1,31 +1,51 @@
-'use client'
+'use client';
 
-import React from 'react'
-import cn from 'classnames'
-import { useHamburger } from '../context/HamburgerContext' // Import context
-import { IconButton } from '@mui/material'
-import { SideNavItem } from '../ui/types'
-import Link from 'next/link'
-import HomeIcon from '@mui/icons-material/Home'
-import DescriptionIcon from '@mui/icons-material/Description'
+import React from 'react';
+import cn from 'classnames';
+import { useHamburger } from '../context/HamburgerContext'; // Import context
+import { IconButton } from '@mui/material';
+import { SideNavItem } from '../ui/types';
+import Link from 'next/link';
+import HomeIcon from '@mui/icons-material/Home';
+import DescriptionIcon from '@mui/icons-material/Description';
+import MovieIcon from '@mui/icons-material/Movie';
+import PaymentIcon from '@mui/icons-material/Payment';
+import SportsBasketballIcon from '@mui/icons-material/SportsBasketball';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import ListAltIcon from '@mui/icons-material/ListAlt';
+import { useSession } from 'next-auth/react';
 
 interface SidePanelProps {
-  onSelectItem?: (item: string) => void
+  onSelectItem?: (item: string) => void;
 }
 
 const sideNavItems: SideNavItem[] = [
   { label: 'Home', element: <HomeIcon />, href: '/' },
+  { label: 'Details', element: <MovieIcon />, href: '/details' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
-  // Add other items as needed
-]
+  { label: 'NCAA Seeds', element: <SportsBasketballIcon />, href: '/ncaa-seed-probability' },
+  { label: 'Billing', element: <PaymentIcon />, href: '/billing' },
+];
 
 const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
-  const { isOpen } = useHamburger() // Use the isOpen state from context
+  const { isOpen } = useHamburger(); // Use the isOpen state from context
+  const { data: session } = useSession();
+
+  const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
+  const isAdmin = session?.user?.email === adminEmail;
+
+  const navItems = isAdmin
+    ? [
+        ...sideNavItems,
+        { label: 'Costs', element: <BarChartIcon />, href: '/admin/costs' },
+        { label: 'Logs', element: <ListAltIcon />, href: '/admin/logs' },
+      ]
+    : sideNavItems;
 
   return (
     <div
       className={cn(
-        'h-screen shadow-lg transition-all duration-500 ease-in-out fixed left-0 z-40 dark:bg-[#121212] dark:text-slate-400 bg-[#F9F9F9] text-[#2E2E2E]', // Tailwind transition and fixed positioning
+        'h-screen shadow-lg transition-all duration-500 ease-in-out fixed left-0 z-40 bg-background text-foreground glass:bg-transparent glass:shadow-none glass:glass-surface glass:border-r glass:border-white/10', // Tailwind transition and fixed positioning
 
         {
           'w-auto min-w-[200px]': isOpen, // Large width when opened
@@ -35,7 +55,7 @@ const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
       style={{ marginTop: 'var(--navbar-height)' }} // Adjust margin to be below the navbar
     >
       <ul className="flex flex-col">
-        {sideNavItems.map((item, index) => (
+        {navItems.map((item, index) => (
           <Link key={item.label} href={item.href} passHref>
             <li
               key={index}
@@ -61,7 +81,7 @@ const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
         ))}
       </ul>
     </div>
-  )
-}
+  );
+};
 
-export default SidePanel
+export default SidePanel;

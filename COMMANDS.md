@@ -1,0 +1,1 @@
+yt-dlp -f "bv+ba/b" --merge-output-format mp4 --add-header "Referer:https://www.c-span.org/congress/?chamber=house" --add-header "User-Agent:Mozilla/5.0" "https://www.c-span.org/program/house-committee/former-special-counsel-jack-smith-testifies-on-trump-investigations-part-1/671835"

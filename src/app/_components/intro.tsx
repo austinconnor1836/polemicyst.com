@@ -1,4 +1,4 @@
-import { CMS_NAME } from '@/lib/constants'
+import { CMS_NAME } from '@/lib/constants';
 
 export function Intro() {
   return (
@@ -7,5 +7,5 @@ export function Intro() {
         Welcome to the blog of Polemicyst.
       </h1>
     </section>
-  )
+  );
 }

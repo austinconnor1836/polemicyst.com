@@ -1,0 +1,1194 @@
+openapi: 3.0.3
+info:
+  title: Polemicyst API
+  description: API for the Polemicyst viral clip generation platform
+  version: 1.0.0
+
+servers:
+  - url: http://10.0.2.2:3000
+    description: Android emulator (local dev)
+  - url: https://polemicyst.com
+    description: Production
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    MobileGoogleAuthRequest:
+      type: object
+      required: [idToken]
+      properties:
+        idToken:
+          type: string
+
+    MobileAppleAuthRequest:
+      type: object
+      required: [identityToken]
+      properties:
+        identityToken:
+          type: string
+        fullName:
+          type: object
+          nullable: true
+          properties:
+            givenName:
+              type: string
+              nullable: true
+            familyName:
+              type: string
+              nullable: true
+
+    MobileGoogleAuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/AuthUser'
+
+    AuthUser:
+      type: object
+      required: [id, email]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+          nullable: true
+        image:
+          type: string
+          nullable: true
+
+    AuthStatus:
+      type: object
+      required: [isAuthenticated]
+      properties:
+        isAuthenticated:
+          type: object
+          additionalProperties:
+            type: boolean
+
+    ViralitySettings:
+      type: object
+      properties:
+        targetPlatform:
+          type: string
+          enum: [all, reels, shorts, youtube]
+        contentStyle:
+          type: string
+          enum: [auto, politics, comedy, education, podcast, gaming, vlog, other]
+        saferClips:
+          type: boolean
+        scoringMode:
+          type: string
+          enum: [heuristic, hybrid, gemini]
+        strictnessPreset:
+          type: string
+          enum: [loose, balanced, strict]
+        includeAudio:
+          type: boolean
+        llmProvider:
+          type: string
+          enum: [gemini, ollama]
+
+    VideoFeed:
+      type: object
+      required: [id, name, sourceUrl, sourceType, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        sourceUrl:
+          type: string
+        sourceType:
+          type: string
+          enum: [youtube, cspan]
+        pollingInterval:
+          type: integer
+          nullable: true
+        lastCheckedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastVideoId:
+          type: string
+          nullable: true
+        autoGenerateClips:
+          type: boolean
+        viralitySettings:
+          $ref: '#/components/schemas/ViralitySettings'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        userId:
+          type: string
+          nullable: true
+
+    CreateFeedRequest:
+      type: object
+      required: [name, sourceUrl]
+      properties:
+        name:
+          type: string
+        sourceUrl:
+          type: string
+        pollingInterval:
+          type: integer
+        autoGenerateClips:
+          type: boolean
+        viralitySettings:
+          $ref: '#/components/schemas/ViralitySettings'
+
+    UpdateFeedRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        pollingInterval:
+          type: integer
+        autoGenerateClips:
+          type: boolean
+        viralitySettings:
+          $ref: '#/components/schemas/ViralitySettings'
+
+    FeedSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    FeedVideo:
+      type: object
+      required: [id, feedId, videoId, title, s3Url, createdAt]
+      properties:
+        id:
+          type: string
+        feedId:
+          type: string
+        videoId:
+          type: string
+        title:
+          type: string
+        thumbnailUrl:
+          type: string
+          nullable: true
+        s3Url:
+          type: string
+        status:
+          type: string
+          enum: [pending, ready, failed]
+          nullable: true
+        transcript:
+          type: string
+          nullable: true
+        transcriptJson:
+          type: object
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        userId:
+          type: string
+          nullable: true
+        feed:
+          $ref: '#/components/schemas/FeedSummary'
+
+    ClipRecord:
+      type: object
+      required: [id, createdAt]
+      properties:
+        id:
+          type: string
+        videoTitle:
+          type: string
+          nullable: true
+        sharedDescription:
+          type: string
+          nullable: true
+        s3Url:
+          type: string
+          nullable: true
+        s3Key:
+          type: string
+          nullable: true
+        trimStartS:
+          type: number
+          nullable: true
+        trimEndS:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        sourceVideoId:
+          type: string
+          nullable: true
+        sourceVideo:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            videoTitle:
+              type: string
+            s3Url:
+              type: string
+
+    JobMeta:
+      type: object
+      properties:
+        enqueuedAt:
+          type: number
+          nullable: true
+        startedAt:
+          type: number
+          nullable: true
+        finishedAt:
+          type: number
+          nullable: true
+
+    FeedVideoClipsResponse:
+      type: object
+      required: [feedVideo, clips]
+      properties:
+        feedVideo:
+          $ref: '#/components/schemas/FeedVideo'
+        jobState:
+          type: string
+          nullable: true
+        jobMeta:
+          $ref: '#/components/schemas/JobMeta'
+        clips:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClipRecord'
+
+    ClipJobSummary:
+      type: object
+      required: [jobId, feedVideoId, state, title]
+      properties:
+        jobId:
+          type: string
+        feedVideoId:
+          type: string
+        state:
+          type: string
+        enqueuedAt:
+          type: number
+          nullable: true
+        startedAt:
+          type: number
+          nullable: true
+        feedName:
+          type: string
+          nullable: true
+        title:
+          type: string
+        clipSourceVideoId:
+          type: string
+          nullable: true
+
+    TriggerClipRequest:
+      type: object
+      required: [feedVideoId, userId]
+      properties:
+        feedVideoId:
+          type: string
+        userId:
+          type: string
+        aspectRatio:
+          type: string
+          nullable: true
+        scoringMode:
+          type: string
+          enum: [heuristic, hybrid, gemini]
+        includeAudio:
+          type: boolean
+        saferClips:
+          type: boolean
+        targetPlatform:
+          type: string
+          enum: [all, reels, shorts, youtube]
+        contentStyle:
+          type: string
+          enum: [auto, politics, comedy, education, podcast, gaming, vlog, other]
+        llmProvider:
+          type: string
+          enum: [gemini, ollama]
+        clipLength:
+          type: string
+        minCandidates:
+          type: integer
+        maxCandidates:
+          type: integer
+        minScore:
+          type: number
+        percentile:
+          type: number
+        maxGeminiCandidates:
+          type: integer
+
+    TriggerClipResponse:
+      type: object
+      required: [message, jobId]
+      properties:
+        message:
+          type: string
+        jobId:
+          type: string
+
+    UpdateClipTrimRequest:
+      type: object
+      required: [trimStartS, trimEndS]
+      properties:
+        trimStartS:
+          type: number
+        trimEndS:
+          type: number
+
+    UpdateClipTrimResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        trimStartS:
+          type: number
+        trimEndS:
+          type: number
+
+    ExportClipResponse:
+      type: object
+      properties:
+        url:
+          type: string
+        s3Key:
+          type: string
+        size:
+          type: integer
+        durationS:
+          type: number
+
+    ClipCropTemplate:
+      type: object
+      required: [id, name, aspectRatio, cropX, cropY, cropWidth, cropHeight]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        aspectRatio:
+          type: string
+          enum: ['9:16', '1:1', '16:9']
+        cropX:
+          type: number
+        cropY:
+          type: number
+        cropWidth:
+          type: number
+        cropHeight:
+          type: number
+        isDefault:
+          type: boolean
+        userId:
+          type: string
+
+    CreateClipCropTemplateRequest:
+      type: object
+      required: [name, aspectRatio, cropX, cropY, cropWidth, cropHeight]
+      properties:
+        name:
+          type: string
+        aspectRatio:
+          type: string
+          enum: ['9:16', '1:1', '16:9']
+        cropX:
+          type: number
+        cropY:
+          type: number
+        cropWidth:
+          type: number
+        cropHeight:
+          type: number
+
+    LlmProviderResponse:
+      type: object
+      required: [llmProvider]
+      properties:
+        llmProvider:
+          type: string
+          enum: [gemini, ollama]
+
+    LlmProviderUpdateRequest:
+      type: object
+      required: [llmProvider]
+      properties:
+        llmProvider:
+          type: string
+          enum: [gemini, ollama]
+
+    CreateCheckoutSessionRequest:
+      type: object
+      required: [planId]
+      properties:
+        planId:
+          type: string
+          enum: [pro, business]
+
+    StripeSessionResponse:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          description: Stripe-hosted URL to redirect the user to
+
+    SubscriptionPlan:
+      type: object
+      required: [id, name, limits, features]
+      properties:
+        id:
+          type: string
+          enum: [free, pro, business]
+        name:
+          type: string
+        limits:
+          type: object
+          properties:
+            maxFeeds:
+              type: integer
+            maxClipsPerMonth:
+              type: integer
+        features:
+          type: array
+          items:
+            type: string
+
+    SubscriptionUsage:
+      type: object
+      properties:
+        feeds:
+          type: integer
+        clipsThisMonth:
+          type: integer
+        costThisMonth:
+          type: object
+          properties:
+            totalUsd:
+              type: number
+            eventCount:
+              type: integer
+
+    SubscriptionResponse:
+      type: object
+      required: [plan, usage, hasStripeCustomer]
+      properties:
+        plan:
+          $ref: '#/components/schemas/SubscriptionPlan'
+        usage:
+          $ref: '#/components/schemas/SubscriptionUsage'
+        hasStripeCustomer:
+          type: boolean
+
+    VersionCheckResponse:
+      type: object
+      required: [updateRequired, minimumVersion, latestVersion, storeUrl]
+      properties:
+        updateRequired:
+          type: boolean
+          description: True if the client must update before continuing
+        minimumVersion:
+          type: string
+          description: Minimum supported version (semver)
+          example: '1.2.0'
+        latestVersion:
+          type: string
+          description: Latest available version (semver)
+          example: '1.3.0'
+        storeUrl:
+          type: string
+          description: URL to the app store listing
+          example: 'https://play.google.com/store/apps/details?id=com.polemicyst.android'
+
+paths:
+  /api/app/version-check:
+    get:
+      operationId: checkAppVersion
+      summary: Check if the running app version meets the minimum requirement
+      description: >
+        Public endpoint (no auth). Returns whether the client should force-update,
+        the minimum supported version, the latest version, and a store URL.
+      tags: [App]
+      security: []
+      parameters:
+        - name: platform
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [android, ios]
+        - name: currentVersion
+          in: query
+          required: true
+          schema:
+            type: string
+            example: '1.0.0'
+      responses:
+        '200':
+          description: Version check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionCheckResponse'
+        '400':
+          description: Missing or invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/mobile/google:
+    post:
+      operationId: mobileGoogleAuth
+      summary: Exchange Google ID token for JWT
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MobileGoogleAuthRequest'
+      responses:
+        '200':
+          description: JWT token and user info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileGoogleAuthResponse'
+        '401':
+          description: Invalid token or not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/mobile/apple:
+    post:
+      operationId: mobileAppleAuth
+      summary: Exchange Apple identity token for JWT
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MobileAppleAuthRequest'
+      responses:
+        '200':
+          description: JWT token and user info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileGoogleAuthResponse'
+        '401':
+          description: Invalid token or not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/status:
+    get:
+      operationId: getAuthStatus
+      summary: Check connected auth providers
+      tags: [Auth]
+      responses:
+        '200':
+          description: Map of provider to connected status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthStatus'
+
+  /api/feeds:
+    get:
+      operationId: getFeeds
+      summary: List user-created video feeds (excludes auto-created manual-upload feeds)
+      tags: [Feeds]
+      security: []
+      responses:
+        '200':
+          description: List of feeds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VideoFeed'
+    post:
+      operationId: createFeed
+      summary: Create a new feed
+      tags: [Feeds]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFeedRequest'
+      responses:
+        '200':
+          description: Created feed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoFeed'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/feeds/{id}:
+    patch:
+      operationId: updateFeed
+      summary: Update feed settings (auto-generate clips, virality settings, etc.)
+      tags: [Feeds]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFeedRequest'
+      responses:
+        '200':
+          description: Updated feed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoFeed'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Feed not found or not owned by user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      operationId: deleteFeed
+      summary: Delete a feed and all associated videos
+      tags: [Feeds]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /api/feedVideos:
+    get:
+      operationId: getFeedVideos
+      summary: List all feed videos
+      tags: [FeedVideos]
+      security: []
+      responses:
+        '200':
+          description: List of feed videos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FeedVideo'
+
+  /api/feedVideos/{id}:
+    delete:
+      operationId: deleteFeedVideo
+      summary: Delete a feed video
+      tags: [FeedVideos]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /api/feedVideos/{id}/clips:
+    get:
+      operationId: getFeedVideoClips
+      summary: Get clips and job status for a feed video
+      tags: [FeedVideos]
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Clips with job state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedVideoClipsResponse'
+
+  /api/feedVideos/{id}/transcribe:
+    post:
+      operationId: transcribeFeedVideo
+      summary: Trigger transcription for a feed video
+      tags: [FeedVideos]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transcription status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  alreadyTranscribed:
+                    type: boolean
+                  enqueued:
+                    type: boolean
+
+  /api/clips:
+    get:
+      operationId: getClips
+      summary: List all clips for authenticated user
+      tags: [Clips]
+      responses:
+        '200':
+          description: List of clips
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClipRecord'
+
+  /api/clips/{id}:
+    patch:
+      operationId: updateClipTrim
+      summary: Update trim points for a clip
+      tags: [Clips]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateClipTrimRequest'
+      responses:
+        '200':
+          description: Updated trim points
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateClipTrimResponse'
+    delete:
+      operationId: deleteClip
+      summary: Delete a clip
+      tags: [Clips]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/clips/{id}/export:
+    post:
+      operationId: exportClip
+      summary: Export a trimmed clip as MP4
+      tags: [Clips]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Exported clip info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportClipResponse'
+
+  /api/trigger-clip:
+    post:
+      operationId: triggerClipGeneration
+      summary: Enqueue a clip generation job
+      tags: [Clips]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TriggerClipRequest'
+      responses:
+        '200':
+          description: Job enqueued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TriggerClipResponse'
+
+  /api/clip-jobs:
+    get:
+      operationId: getClipJobs
+      summary: List active clip generation jobs
+      tags: [Clips]
+      security: []
+      responses:
+        '200':
+          description: List of job summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClipJobSummary'
+
+  /api/clip-templates:
+    get:
+      operationId: getClipTemplates
+      summary: List crop templates
+      tags: [Clips]
+      responses:
+        '200':
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClipCropTemplate'
+    post:
+      operationId: createClipTemplate
+      summary: Create a crop template
+      tags: [Clips]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateClipCropTemplateRequest'
+      responses:
+        '200':
+          description: Created template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClipCropTemplate'
+
+  /api/admin/logs:
+    get:
+      operationId: getAdminLogs
+      summary: Get job logs (admin only)
+      tags: [Admin]
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 7
+        - name: jobType
+          in: query
+          schema:
+            type: string
+            enum: [transcription, speaker-transcription, clip-generation, download]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [queued, started, completed, failed]
+        - name: feedVideoId
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Job logs with summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        feedVideoId:
+                          type: string
+                        jobType:
+                          type: string
+                        status:
+                          type: string
+                        message:
+                          type: string
+                          nullable: true
+                        error:
+                          type: string
+                          nullable: true
+                        durationMs:
+                          type: integer
+                          nullable: true
+                        createdAt:
+                          type: string
+                          format: date-time
+                  total:
+                    type: integer
+                  summary:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        jobType:
+                          type: string
+                        status:
+                          type: string
+                        count:
+                          type: integer
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/user/llm-provider:
+    get:
+      operationId: getLlmProvider
+      summary: Get user LLM provider preference
+      tags: [Settings]
+      responses:
+        '200':
+          description: Current provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LlmProviderResponse'
+    put:
+      operationId: setLlmProvider
+      summary: Set user LLM provider preference
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LlmProviderUpdateRequest'
+      responses:
+        '200':
+          description: Updated provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LlmProviderResponse'
+
+  /api/user/subscription:
+    get:
+      operationId: getSubscription
+      summary: Get current plan, usage, and billing status
+      tags: [Billing]
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/stripe/create-checkout-session:
+    post:
+      operationId: createCheckoutSession
+      summary: Create a Stripe Checkout session for a paid plan
+      tags: [Billing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCheckoutSessionRequest'
+      responses:
+        '200':
+          description: Checkout session URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StripeSessionResponse'
+        '400':
+          description: Invalid plan or request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/stripe/create-portal-session:
+    post:
+      operationId: createPortalSession
+      summary: Create a Stripe Customer Portal session for managing subscription
+      description: >
+        Returns a URL to the Stripe-hosted Customer Portal where the user can
+        upgrade, downgrade, or cancel their subscription. Requires an existing
+        Stripe customer (i.e. the user must have subscribed to a paid plan at
+        least once).
+      tags: [Billing]
+      responses:
+        '200':
+          description: Portal session URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StripeSessionResponse'
+        '400':
+          description: No Stripe customer found for the user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/webhooks/stripe:
+    post:
+      operationId: stripeWebhook
+      summary: Stripe webhook receiver
+      description: >
+        Handles Stripe webhook events including checkout.session.completed,
+        customer.subscription.created, customer.subscription.updated,
+        customer.subscription.deleted, and invoice.payment_failed. Verifies
+        the webhook signature using STRIPE_WEBHOOK_SECRET.
+      tags: [Billing]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Event received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+        '400':
+          description: Invalid webhook signature
+          content:
+            text/plain:
+              schema:
+                type: string

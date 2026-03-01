@@ -2,6 +2,7 @@
 'use client';
 
 import React from 'react';
+import { Button } from '@/components/ui/button';
 
 interface ChatBarProps {
   openChats: number[];
@@ -12,13 +13,14 @@ const ChatBar: React.FC<ChatBarProps> = ({ openChats, onSelectChat }) => {
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-gray-800 text-white p-2 flex justify-center space-x-4">
       {openChats.map((chatId) => (
-        <button
+        <Button
           key={chatId}
           onClick={() => onSelectChat(chatId)}
-          className="bg-blue-500 px-3 py-1 rounded-full hover:bg-blue-600 transition"
+          size="sm"
+          className="rounded-full bg-blue-500 px-3 py-1 text-white hover:bg-blue-600"
         >
           Chat #{chatId}
-        </button>
+        </Button>
       ))}
     </div>
   );

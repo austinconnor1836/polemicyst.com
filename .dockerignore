@@ -1,25 +1,37 @@
-# Ignore all files
-*
+# Dependencies / build output
+**/node_modules
+.next
+dist
+out
 
-# Unignore specific directories
-!_posts/
-!.next/
-!public/
-!src/
-!.gitignore
-!package.json
-!package-lock.json
-!tsconfig.json
-!tsconfig.base.json
-!postcss.config.js
-!tailwind.config.ts
-!next.config.js
-!shared/
-!prisma/
-!backend/
-!clip-worker/
-!workers/
-!.env
+# VCS
+.git
+.gitignore
 
-backend/node_modules
-clip-worker/node_modules
+# Env / secrets
+.env*
+certificates/
+
+# Large repo-only folders
+ios/
+docs/
+infrastructure/
+models/
+scripts/
+clip-worker/
+
+# Terraform state
+**/.terraform
+infrastructure/state-backups
+*.tfstate
+*.tfstate.backup
+*.tfvars
+
+# Local data caches
+faster-whisper-data
+
+# Local logs / temp files
+*.log
+log*.txt
+build_log*.txt
+tmp*.js
