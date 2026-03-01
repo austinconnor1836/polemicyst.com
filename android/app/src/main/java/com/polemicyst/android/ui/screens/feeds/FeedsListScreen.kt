@@ -38,7 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.polemicyst.android.data.repository.SubscriptionRepository
+import com.polemicyst.android.data.repository.SubscriptionInfo
 import com.polemicyst.android.data.repository.VideoFeed
 import com.polemicyst.android.ui.common.QuotaIndicator
 import com.polemicyst.android.ui.common.UpgradePromptDialog
@@ -126,8 +126,9 @@ fun FeedsListScreen(
             onDismiss = { viewModel.dismissQuotaError() },
             onUpgrade = {
                 viewModel.dismissQuotaError()
-                val url = uiState.subscription?.billingPortalUrl ?: "https://polemicyst.com/pricing"
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(SubscriptionInfo.PRICING_URL))
+                )
             },
         )
     }

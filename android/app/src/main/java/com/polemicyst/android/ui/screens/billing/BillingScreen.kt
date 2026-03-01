@@ -123,10 +123,12 @@ private fun BillingContent(subscription: SubscriptionInfo) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        subscription.billingPortalUrl?.let { url ->
+        if (subscription.hasStripeCustomer) {
             Button(
                 onClick = {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(SubscriptionInfo.PRICING_URL))
+                    )
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -139,8 +141,9 @@ private fun BillingContent(subscription: SubscriptionInfo) {
         if (subscription.plan == "free") {
             Button(
                 onClick = {
-                    val upgradeUrl = subscription.billingPortalUrl ?: "https://polemicyst.com/pricing"
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(upgradeUrl)))
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(SubscriptionInfo.PRICING_URL))
+                    )
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {

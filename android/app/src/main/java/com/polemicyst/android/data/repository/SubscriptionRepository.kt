@@ -11,31 +11,94 @@ import retrofit2.http.GET
 import javax.inject.Inject
 import javax.inject.Singleton
 
+// ---------------------------------------------------------------------------
+// API response models — match the JSON from GET /api/user/subscription
+// ---------------------------------------------------------------------------
+
 @JsonClass(generateAdapter = true)
+data class SubscriptionApiResponse(
+    val plan: PlanApiResponse = PlanApiResponse(),
+    val usage: UsageApiResponse = UsageApiResponse(),
+    val hasStripeCustomer: Boolean = false,
+)
+
+@JsonClass(generateAdapter = true)
+data class PlanApiResponse(
+    val id: String = "free",
+    val name: String = "Free",
+    val limits: PlanLimitsApiResponse = PlanLimitsApiResponse(),
+    val features: List<String> = emptyList(),
+)
+
+@JsonClass(generateAdapter = true)
+data class PlanLimitsApiResponse(
+    val maxFeeds: Int = 2,
+    val maxClipsPerMonth: Int = 10,
+    val maxStorageGb: Int = 1,
+    val llmProviders: List<String> = listOf("ollama"),
+    val autoGenerateClips: Boolean = false,
+    val prioritySupport: Boolean = false,
+)
+
+@JsonClass(generateAdapter = true)
+data class UsageApiResponse(
+    val feeds: Int = 0,
+    val clipsThisMonth: Int = 0,
+)
+
+// ---------------------------------------------------------------------------
+// UI models — consumed by ViewModels and Composables
+// ---------------------------------------------------------------------------
+
 data class SubscriptionInfo(
     val plan: String = "free",
+    val planName: String = "Free",
     val limits: PlanLimits = PlanLimits(),
+    val features: List<String> = emptyList(),
     val usage: PlanUsage = PlanUsage(),
-    val stripeCustomerId: String? = null,
-    val billingPortalUrl: String? = null,
-)
+    val hasStripeCustomer: Boolean = false,
+) {
+    companion object {
+        const val PRICING_URL = "https://polemicyst.com/pricing"
+    }
+}
 
-@JsonClass(generateAdapter = true)
 data class PlanLimits(
-    val feeds: Int = 3,
+    val feeds: Int = 2,
     val clipsPerMonth: Int = 10,
-    val allowedProviders: List<String> = listOf("openai"),
+    val allowedProviders: List<String> = listOf("ollama"),
+    val autoGenerateClips: Boolean = false,
 )
 
-@JsonClass(generateAdapter = true)
 data class PlanUsage(
     val feeds: Int = 0,
     val clipsThisMonth: Int = 0,
 )
 
+fun SubscriptionApiResponse.toSubscriptionInfo() = SubscriptionInfo(
+    plan = plan.id,
+    planName = plan.name,
+    limits = PlanLimits(
+        feeds = plan.limits.maxFeeds,
+        clipsPerMonth = plan.limits.maxClipsPerMonth,
+        allowedProviders = plan.limits.llmProviders,
+        autoGenerateClips = plan.limits.autoGenerateClips,
+    ),
+    features = plan.features,
+    usage = PlanUsage(
+        feeds = usage.feeds,
+        clipsThisMonth = usage.clipsThisMonth,
+    ),
+    hasStripeCustomer = hasStripeCustomer,
+)
+
+// ---------------------------------------------------------------------------
+// Retrofit API + Repository
+// ---------------------------------------------------------------------------
+
 interface SubscriptionApi {
     @GET("api/user/subscription")
-    suspend fun getSubscription(): SubscriptionInfo
+    suspend fun getSubscription(): SubscriptionApiResponse
 }
 
 @Singleton
@@ -50,11 +113,12 @@ class SubscriptionRepository @Inject constructor(
 
     val currentPlan: String get() = _subscription.value?.plan ?: "free"
     val isFreeUser: Boolean get() = currentPlan == "free"
-    val allowedProviders: List<String> get() = _subscription.value?.limits?.allowedProviders ?: listOf("openai")
+    val allowedProviders: List<String> get() = _subscription.value?.limits?.allowedProviders ?: listOf("ollama")
 
     suspend fun refresh(): Result<SubscriptionInfo> {
         val result = safeApiCall(moshi) { api.getSubscription() }
-        result.onSuccess { _subscription.value = it }
-        return result
+        return result.map { it.toSubscriptionInfo() }.also { mapped ->
+            mapped.onSuccess { _subscription.value = it }
+        }
     }
 }

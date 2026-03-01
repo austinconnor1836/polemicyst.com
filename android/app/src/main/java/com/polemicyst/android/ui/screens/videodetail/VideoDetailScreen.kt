@@ -43,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.polemicyst.android.data.repository.SubscriptionInfo
 import com.polemicyst.android.ui.common.UpgradePromptDialog
 import com.polemicyst.android.ui.components.ClipGalleryGrid
 import com.polemicyst.android.ui.components.ErrorBanner
@@ -222,8 +223,9 @@ fun VideoDetailScreen(
             onDismiss = { viewModel.dismissQuotaError() },
             onUpgrade = {
                 viewModel.dismissQuotaError()
-                val url = uiState.subscription?.billingPortalUrl ?: "https://polemicyst.com/pricing"
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(SubscriptionInfo.PRICING_URL))
+                )
             },
         )
     }

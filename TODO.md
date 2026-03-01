@@ -33,13 +33,13 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 
 ### Android (`android/`)
 
-- [ ] Add structured error response parsing (decode JSON error body with `code`, `message`, `allowedProviders` fields)
-- [ ] Handle HTTP 403 specifically — show upgrade prompt with plan info instead of generic error
-- [ ] Add billing/subscription screen (show current plan, usage meters, link to web billing portal)
-- [ ] Show quota usage on feeds list (e.g., "2/10 feeds") and clip generation dialog
-- [ ] Disable/gray out LLM provider options the user's plan doesn't allow in `ViralitySettingsPanel`
-- [ ] Disable auto-generate toggle for free users in `FeedSettingsSheet`
-- [ ] Add "Upgrade Plan" CTA when quota errors are hit
+- [x] Add structured error response parsing (decode JSON error body with `code`, `message`, `allowedProviders` fields)
+- [x] Handle HTTP 403 specifically — show upgrade prompt with plan info instead of generic error
+- [x] Add billing/subscription screen (show current plan, usage meters, link to web billing portal)
+- [x] Show quota usage on feeds list (e.g., "2/10 feeds") and clip generation dialog
+- [x] Disable/gray out LLM provider options the user's plan doesn't allow in `ViralitySettingsPanel`
+- [x] Disable auto-generate toggle for free users in `FeedSettingsSheet`
+- [x] Add "Upgrade Plan" CTA when quota errors are hit
 
 ### iOS (`ios/`)
 
@@ -228,12 +228,12 @@ The current landing page is a particle animation with zero product messaging. Th
 
 iOS has full quota handling and billing UI. Android has none. Each item below is a standalone agent task.
 
-- [ ] **Android: Structured error parsing** — Update API response handling to decode JSON error bodies with `code`, `message`, `allowedProviders` fields instead of treating all errors as generic failures.
-- [ ] **Android: 403 upgrade prompt** — When HTTP 403 is returned with `QUOTA_EXCEEDED` or `PLAN_RESTRICTED` codes, show a specific upgrade dialog with plan info and a link to the web billing portal.
-- [ ] **Android: Billing/subscription screen** — Add a screen showing current plan, usage meters (feeds used / limit, clips generated this month / limit), and a button to open the Stripe billing portal in a browser.
-- [ ] **Android: Quota usage indicators** — Show "2/10 feeds" on the feeds list and remaining clips on the clip generation dialog.
-- [ ] **Android: LLM provider gating** — Disable/gray out LLM provider options in `ViralitySettingsPanel` that the user's plan doesn't allow.
-- [ ] **Android: Auto-generate toggle gating** — Disable auto-generate toggle for free users in `FeedSettingsSheet`.
+- [x] **Android: Structured error parsing** — Update API response handling to decode JSON error bodies with `code`, `message`, `allowedProviders` fields instead of treating all errors as generic failures.
+- [x] **Android: 403 upgrade prompt** — When HTTP 403 is returned with `QUOTA_EXCEEDED` or `PLAN_RESTRICTED` codes, show a specific upgrade dialog with plan info and a link to the web billing portal.
+- [x] **Android: Billing/subscription screen** — Add a screen showing current plan, usage meters (feeds used / limit, clips generated this month / limit), and a button to open the Stripe billing portal in a browser.
+- [x] **Android: Quota usage indicators** — Show "2/10 feeds" on the feeds list and remaining clips on the clip generation dialog.
+- [x] **Android: LLM provider gating** — Disable/gray out LLM provider options in `ViralitySettingsPanel` that the user's plan doesn't allow.
+- [x] **Android: Auto-generate toggle gating** — Disable auto-generate toggle for free users in `FeedSettingsSheet`.
 
 ### Priority 4: Web App UX & Revenue Protection
 
