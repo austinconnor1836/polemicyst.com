@@ -10,6 +10,7 @@ import HomeIcon from '@mui/icons-material/Home';
 import DescriptionIcon from '@mui/icons-material/Description';
 import MovieIcon from '@mui/icons-material/Movie';
 import PaymentIcon from '@mui/icons-material/Payment';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import SportsBasketballIcon from '@mui/icons-material/SportsBasketball';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import ListAltIcon from '@mui/icons-material/ListAlt';
@@ -24,6 +25,7 @@ const sideNavItems: SideNavItem[] = [
   { label: 'Details', element: <MovieIcon />, href: '/details' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
   { label: 'NCAA Seeds', element: <SportsBasketballIcon />, href: '/ncaa-seed-probability' },
+  { label: 'Pricing', element: <LocalOfferIcon />, href: '/pricing' },
   { label: 'Billing', element: <PaymentIcon />, href: '/billing' },
 ];
 

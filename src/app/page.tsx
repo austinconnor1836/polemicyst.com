@@ -7,6 +7,7 @@ import HomeHeroBackground from './_components/HomeHeroBackground';
 import { lusitana } from './ui/fonts';
 
 const navigation = [
+  { name: 'Pricing', href: '/pricing' },
   { name: 'Blog', href: '/posts' },
   { name: 'NCAA Seeds', href: '/ncaa-seed-probability' },
   { name: 'Sushi Go!', href: '/sushi-go' },
