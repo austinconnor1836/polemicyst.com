@@ -8,6 +8,7 @@ import { lusitana } from './ui/fonts';
 
 const navigation = [
   { name: 'Blog', href: '/posts' },
+  { name: 'NCAA Seeds', href: '/ncaa-seed-probability' },
   { name: 'Sushi Go!', href: '/sushi-go' },
 ];
 
