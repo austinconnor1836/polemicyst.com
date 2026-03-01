@@ -362,22 +362,38 @@ components:
 
     UpdateClipTrimRequest:
       type: object
-      required: [trimStartS, trimEndS]
+      description: At least one field must be provided. If trimStartS is set, trimEndS is also required and vice versa.
       properties:
         trimStartS:
           type: number
+          description: Trim start in seconds (requires trimEndS)
         trimEndS:
           type: number
+          description: Trim end in seconds (requires trimStartS)
+        videoTitle:
+          type: string
+          maxLength: 500
+        sharedDescription:
+          type: string
+          maxLength: 5000
 
     UpdateClipTrimResponse:
       type: object
       properties:
         id:
           type: string
+        videoTitle:
+          type: string
+          nullable: true
+        sharedDescription:
+          type: string
+          nullable: true
         trimStartS:
           type: number
+          nullable: true
         trimEndS:
           type: number
+          nullable: true
 
     ExportClipResponse:
       type: object
@@ -890,8 +906,8 @@ paths:
 
   /api/clips/{id}:
     patch:
-      operationId: updateClipTrim
-      summary: Update trim points for a clip
+      operationId: updateClip
+      summary: Update clip metadata and/or trim points
       tags: [Clips]
       parameters:
         - name: id

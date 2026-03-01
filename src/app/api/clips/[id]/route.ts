@@ -32,23 +32,45 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const body = await req.json();
-  const trimStartS = body?.trimStartS;
-  const trimEndS = body?.trimEndS;
+  const data: Record<string, unknown> = {};
 
-  if (trimStartS == null || trimEndS == null) {
-    return NextResponse.json({ error: 'Trim start and end are required.' }, { status: 400 });
+  if (body?.trimStartS != null || body?.trimEndS != null) {
+    const trimStartS = body.trimStartS;
+    const trimEndS = body.trimEndS;
+    if (trimStartS == null || trimEndS == null) {
+      return NextResponse.json({ error: 'Trim start and end are both required.' }, { status: 400 });
+    }
+    if (typeof trimStartS !== 'number' || typeof trimEndS !== 'number') {
+      return NextResponse.json({ error: 'Trim values must be numbers.' }, { status: 400 });
+    }
+    if (trimStartS < 0 || trimEndS <= trimStartS) {
+      return NextResponse.json({ error: 'Invalid trim range.' }, { status: 400 });
+    }
+    data.trimStartS = trimStartS;
+    data.trimEndS = trimEndS;
   }
-  if (typeof trimStartS !== 'number' || typeof trimEndS !== 'number') {
-    return NextResponse.json({ error: 'Trim values must be numbers.' }, { status: 400 });
+
+  if (typeof body?.videoTitle === 'string') {
+    data.videoTitle = body.videoTitle.slice(0, 500);
   }
-  if (trimStartS < 0 || trimEndS <= trimStartS) {
-    return NextResponse.json({ error: 'Invalid trim range.' }, { status: 400 });
+  if (typeof body?.sharedDescription === 'string') {
+    data.sharedDescription = body.sharedDescription.slice(0, 5000);
+  }
+
+  if (Object.keys(data).length === 0) {
+    return NextResponse.json({ error: 'No valid fields to update.' }, { status: 400 });
   }
 
   const updated = await prisma.video.update({
     where: { id },
-    data: { trimStartS, trimEndS },
-    select: { id: true, trimStartS: true, trimEndS: true },
+    data,
+    select: {
+      id: true,
+      videoTitle: true,
+      sharedDescription: true,
+      trimStartS: true,
+      trimEndS: true,
+    },
   });
 
   return NextResponse.json(updated);
