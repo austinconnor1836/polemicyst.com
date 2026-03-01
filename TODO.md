@@ -155,7 +155,7 @@ The current landing page is a particle animation with zero product messaging. Th
   - Demo GIF or screenshot of the ClipsGenie interface
 - [ ] **Add pricing section to landing page or dedicated `/pricing` route** — Display Free / Pro / Business tiers with limits and pricing. Link to Stripe checkout.
 - [x] **Remove or gate playground routes** — `/playground/*` pages (read-line-by-line, scotus-scraper) are dev experiments. Either remove them or put them behind auth so they don't confuse visitors.
-- [ ] **Clean up duplicate components** — Remove `chat-gpt copy.tsx` and `hamburger copy.tsx` from `src/app/_components/`.
+- [x] **Clean up duplicate components** — Remove `chat-gpt copy.tsx` and `hamburger copy.tsx` from `src/app/_components/`.
 
 ### Priority 3: Android Parity with iOS
 
