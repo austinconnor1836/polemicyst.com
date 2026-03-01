@@ -449,6 +449,69 @@ components:
           type: string
           enum: [gemini, ollama]
 
+    CreateCheckoutSessionRequest:
+      type: object
+      required: [planId]
+      properties:
+        planId:
+          type: string
+          enum: [pro, business]
+
+    StripeSessionResponse:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          description: Stripe-hosted URL to redirect the user to
+
+    SubscriptionPlan:
+      type: object
+      required: [id, name, limits, features]
+      properties:
+        id:
+          type: string
+          enum: [free, pro, business]
+        name:
+          type: string
+        limits:
+          type: object
+          properties:
+            maxFeeds:
+              type: integer
+            maxClipsPerMonth:
+              type: integer
+        features:
+          type: array
+          items:
+            type: string
+
+    SubscriptionUsage:
+      type: object
+      properties:
+        feeds:
+          type: integer
+        clipsThisMonth:
+          type: integer
+        costThisMonth:
+          type: object
+          properties:
+            totalUsd:
+              type: number
+            eventCount:
+              type: integer
+
+    SubscriptionResponse:
+      type: object
+      required: [plan, usage, hasStripeCustomer]
+      properties:
+        plan:
+          $ref: '#/components/schemas/SubscriptionPlan'
+        usage:
+          $ref: '#/components/schemas/SubscriptionUsage'
+        hasStripeCustomer:
+          type: boolean
+
 paths:
   /api/auth/mobile/google:
     post:
@@ -871,3 +934,117 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LlmProviderResponse'
+
+  /api/user/subscription:
+    get:
+      operationId: getSubscription
+      summary: Get current plan, usage, and billing status
+      tags: [Billing]
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/stripe/create-checkout-session:
+    post:
+      operationId: createCheckoutSession
+      summary: Create a Stripe Checkout session for a paid plan
+      tags: [Billing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCheckoutSessionRequest'
+      responses:
+        '200':
+          description: Checkout session URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StripeSessionResponse'
+        '400':
+          description: Invalid plan or request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/stripe/create-portal-session:
+    post:
+      operationId: createPortalSession
+      summary: Create a Stripe Customer Portal session for managing subscription
+      description: >
+        Returns a URL to the Stripe-hosted Customer Portal where the user can
+        upgrade, downgrade, or cancel their subscription. Requires an existing
+        Stripe customer (i.e. the user must have subscribed to a paid plan at
+        least once).
+      tags: [Billing]
+      responses:
+        '200':
+          description: Portal session URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StripeSessionResponse'
+        '400':
+          description: No Stripe customer found for the user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/webhooks/stripe:
+    post:
+      operationId: stripeWebhook
+      summary: Stripe webhook receiver
+      description: >
+        Handles Stripe webhook events including checkout.session.completed,
+        customer.subscription.created, customer.subscription.updated,
+        customer.subscription.deleted, and invoice.payment_failed. Verifies
+        the webhook signature using STRIPE_WEBHOOK_SECRET.
+      tags: [Billing]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Event received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+        '400':
+          description: Invalid webhook signature
+          content:
+            text/plain:
+              schema:
+                type: string
