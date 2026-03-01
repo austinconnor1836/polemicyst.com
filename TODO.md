@@ -56,6 +56,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 - [x] Add clips list/detail screens
 - [x] Add virality settings UI for feed creation
 - [x] Add LLM provider / auto-generate access gating in UI
+- [ ] Add pricing page link to `UpgradePromptView` and `SubscriptionView` (open `https://polemicyst.com/pricing` in Safari)
 
 ---
 
