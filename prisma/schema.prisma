@@ -109,6 +109,7 @@ model FeedVideo {
   status                String    @default("ready") // pending | ready | failed
   transcript            String?
   transcriptJson        Json?
+  speakerTranscriptJson Json?
   clipGenerationStatus  String    @default("idle") // idle | queued | processing | completed | failed
   clipGenerationError   String?
   createdAt             DateTime  @default(now())

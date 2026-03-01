@@ -16,4 +16,5 @@ sealed class Screen(val route: String) {
         fun createRoute(clipId: String) = "clips/$clipId/edit"
     }
     data object ClipsGenie : Screen("clips-genie")
+    data object Billing : Screen("billing")
 }

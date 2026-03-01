@@ -10,6 +10,7 @@ import HomeIcon from '@mui/icons-material/Home';
 import DescriptionIcon from '@mui/icons-material/Description';
 import MovieIcon from '@mui/icons-material/Movie';
 import PaymentIcon from '@mui/icons-material/Payment';
+import SportsBasketballIcon from '@mui/icons-material/SportsBasketball';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import { useSession } from 'next-auth/react';
 
@@ -21,6 +22,7 @@ const sideNavItems: SideNavItem[] = [
   { label: 'Home', element: <HomeIcon />, href: '/' },
   { label: 'Details', element: <MovieIcon />, href: '/details' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
+  { label: 'NCAA Seeds', element: <SportsBasketballIcon />, href: '/ncaa-seed-probability' },
   { label: 'Billing', element: <PaymentIcon />, href: '/billing' },
 ];
 

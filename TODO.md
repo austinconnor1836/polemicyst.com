@@ -119,3 +119,9 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 - [ ] Multi-region deployment for global performance
 - [ ] Offline mode for mobile apps
 - [ ] Push notifications for clip generation completion (mobile)
+
+## Random Features
+
+- Some way to view admin
+- If youtube video is the type of video added, use youtube embed in details page rather than from aws
+- add already used refresh button to transcript section to refresh retrieivng transcript

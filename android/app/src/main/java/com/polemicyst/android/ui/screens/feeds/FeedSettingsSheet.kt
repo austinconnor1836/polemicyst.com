@@ -36,9 +36,11 @@ fun FeedSettingsSheet(
     feed: VideoFeed,
     onDismiss: () -> Unit,
     onSave: (autoGenerateClips: Boolean, viralitySettings: ViralitySettingsState) -> Unit,
+    isFreeUser: Boolean = false,
+    allowedProviders: List<String> = emptyList(),
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var autoGenerate by remember { mutableStateOf(feed.autoGenerateClips) }
+    var autoGenerate by remember { mutableStateOf(if (isFreeUser) false else feed.autoGenerateClips) }
     var viralityState by remember { mutableStateOf(feed.viralitySettings.toState()) }
 
     ModalBottomSheet(
@@ -71,13 +73,25 @@ fun FeedSettingsSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "Auto-generate Clips",
-                    style = MaterialTheme.typography.bodyLarge,
-                )
+                Column {
+                    Text(
+                        text = "Auto-generate Clips",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (isFreeUser) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                else MaterialTheme.colorScheme.onSurface,
+                    )
+                    if (isFreeUser) {
+                        Text(
+                            text = "Upgrade to Pro to enable",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
                 Switch(
                     checked = autoGenerate,
                     onCheckedChange = { autoGenerate = it },
+                    enabled = !isFreeUser,
                 )
             }
 
@@ -86,6 +100,7 @@ fun FeedSettingsSheet(
             ViralitySettingsPanel(
                 state = viralityState,
                 onStateChange = { viralityState = it },
+                allowedProviders = allowedProviders,
             )
 
             Spacer(modifier = Modifier.height(8.dp))

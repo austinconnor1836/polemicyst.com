@@ -1,5 +1,7 @@
 package com.polemicyst.android.ui.screens.feeds
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -32,10 +34,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.polemicyst.android.data.repository.SubscriptionRepository
 import com.polemicyst.android.data.repository.VideoFeed
+import com.polemicyst.android.ui.common.QuotaIndicator
+import com.polemicyst.android.ui.common.UpgradePromptDialog
 import com.polemicyst.android.ui.components.ErrorBanner
 import com.polemicyst.android.ui.components.LoadingIndicator
 
@@ -48,10 +54,24 @@ fun FeedsListScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showAddDialog by remember { mutableStateOf(false) }
     var settingsFeed by remember { mutableStateOf<VideoFeed?>(null) }
+    val context = LocalContext.current
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Feeds") })
+            TopAppBar(
+                title = {
+                    Column {
+                        Text("Feeds")
+                        uiState.subscription?.let { sub ->
+                            QuotaIndicator(
+                                label = "Feeds",
+                                used = sub.usage.feeds,
+                                limit = sub.limits.feeds,
+                            )
+                        }
+                    }
+                },
+            )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = { showAddDialog = true }) {
@@ -100,6 +120,18 @@ fun FeedsListScreen(
         )
     }
 
+    uiState.quotaError?.let { apiError ->
+        UpgradePromptDialog(
+            apiError = apiError,
+            onDismiss = { viewModel.dismissQuotaError() },
+            onUpgrade = {
+                viewModel.dismissQuotaError()
+                val url = uiState.subscription?.billingPortalUrl ?: "https://polemicyst.com/pricing"
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            },
+        )
+    }
+
     settingsFeed?.let { feed ->
         FeedSettingsSheet(
             feed = feed,
@@ -108,6 +140,8 @@ fun FeedsListScreen(
                 viewModel.updateFeedSettings(feed.id, autoGenerate, viralityState)
                 settingsFeed = null
             },
+            isFreeUser = uiState.subscription?.plan == "free",
+            allowedProviders = uiState.subscription?.limits?.allowedProviders ?: listOf("openai"),
         )
     }
 }
