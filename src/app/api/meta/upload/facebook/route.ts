@@ -1,9 +1,10 @@
 // /api/meta/upload/facebook/route.ts
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import FormData from 'form-data';
 import { PrismaClient } from '@prisma/client';
 import AWS from 'aws-sdk';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 
 const prisma = new PrismaClient();
 
@@ -17,14 +18,25 @@ const s3 = new AWS.S3({
 });
 
 export async function POST(req: NextRequest) {
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
-    const { videoId, description, userId } = await req.json();
-    if (!videoId || !description || !userId) {
+    const { videoId, description } = await req.json();
+    if (!videoId || !description) {
       return new Response('Missing required fields', { status: 400 });
     }
 
+    const userId = authUser.id;
+
     const video = await prisma.video.findUnique({ where: { id: videoId } });
     if (!video || !video.s3Key) return new Response('Video not found', { status: 404 });
+
+    if (video.userId !== userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const fbAccount = await prisma.account.findFirst({
       where: { userId, provider: 'facebook' },

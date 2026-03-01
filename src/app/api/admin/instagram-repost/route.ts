@@ -1,6 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { IgApiClient } from 'instagram-private-api';
 import axios from 'axios';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
+import { isAdmin } from '@shared/lib/admin';
 
 // Helper to get buffer from url
 async function getBuffer(url: string) {
@@ -8,7 +10,12 @@ async function getBuffer(url: string) {
   return Buffer.from(response.data, 'binary');
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const user = await getAuthenticatedUser(request);
+  if (!user || !isAdmin(user.email)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   try {
     const {
       IG_SOURCE_USERNAME,

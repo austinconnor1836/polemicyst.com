@@ -1,10 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { Queue } from 'bullmq';
 import { redisConnection } from '@workers/queues/redisConnection';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 import { prisma } from '@shared/lib/prisma';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 
 type ClipJobSummary = {
   jobId: string | number;
@@ -17,7 +18,12 @@ type ClipJobSummary = {
   clipSourceVideoId: string | null;
 };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const queue = new Queue('clip-generation', { connection: redisConnection });
   const now = Date.now();
   const staleMs = 2 * 60 * 60 * 1000;
@@ -41,7 +47,7 @@ export async function GET() {
     }
 
     const feedVideos = await prisma.feedVideo.findMany({
-      where: { id: { in: feedVideoIds } },
+      where: { id: { in: feedVideoIds }, userId: user.id },
       select: {
         id: true,
         title: true,

@@ -4,6 +4,7 @@ import Redis from 'ioredis';
 import { prisma } from '@shared/lib/prisma';
 import { checkClipQuota } from '@/lib/plans';
 import { logJob } from '@shared/lib/job-logger';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 
 let redis: Redis | null = null;
 let clipGenerationQueue: Queue | null = null;
@@ -26,9 +27,13 @@ function getClipGenerationQueue() {
 
 export async function POST(req: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const {
       feedVideoId,
-      userId,
       aspectRatio,
       scoringMode,
       includeAudio,
@@ -44,16 +49,21 @@ export async function POST(req: NextRequest) {
       clipLength,
     } = await req.json();
 
-    if (!feedVideoId || !userId) {
-      return NextResponse.json({ error: 'Missing feedVideoId or userId' }, { status: 400 });
+    const userId = authUser.id;
+
+    if (!feedVideoId) {
+      return NextResponse.json({ error: 'Missing feedVideoId' }, { status: 400 });
     }
 
-    // Check clip quota
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { subscriptionPlan: true },
+    const feedVideo = await prisma.feedVideo.findUnique({
+      where: { id: feedVideoId },
+      select: { userId: true },
     });
-    const clipQuota = await checkClipQuota(userId, user?.subscriptionPlan);
+    if (!feedVideo || feedVideo.userId !== userId) {
+      return NextResponse.json({ error: 'Feed video not found' }, { status: 404 });
+    }
+
+    const clipQuota = await checkClipQuota(userId, authUser.subscriptionPlan);
     if (!clipQuota.allowed) {
       return NextResponse.json(
         {

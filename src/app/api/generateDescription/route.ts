@@ -1,9 +1,15 @@
 // /src/app/api/generateDescription/route.ts
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
 import { generateMetadataWithOllama } from '@shared/lib/metadata-generation';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 
 export async function POST(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { videoId } = await req.json();
 
   if (!videoId) {
@@ -11,10 +17,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // ✅ Get video + transcript directly from Prisma
     const video = await prisma.video.findUnique({
       where: { id: videoId },
       select: {
+        userId: true,
         transcript: true,
         user: {
           select: {
@@ -30,6 +36,10 @@ export async function POST(req: NextRequest) {
 
     if (!video || !video.transcript) {
       return new Response('Transcript not found for video', { status: 404 });
+    }
+
+    if (video.userId !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // ✅ Generate metadata using shared logic

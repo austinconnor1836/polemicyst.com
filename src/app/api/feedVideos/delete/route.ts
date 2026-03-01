@@ -1,15 +1,24 @@
 import { prisma } from '@shared/lib/prisma';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { deleteFromS3 } from '@shared/lib/s3';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
   try {
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { id } = await request.json();
     if (!id) return NextResponse.json({ error: 'Missing video id' }, { status: 400 });
 
-    // Find the video to get the S3 key
     const video = await prisma.feedVideo.findUnique({ where: { id } });
     if (!video) return NextResponse.json({ error: 'Video not found' }, { status: 404 });
+
+    if (video.userId !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     // Try to extract the S3 key from the s3Url
     let s3Key: string | undefined;

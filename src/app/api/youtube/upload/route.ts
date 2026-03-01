@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { PrismaClient } from '@prisma/client';
 import AWS from 'aws-sdk';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 
 const prisma = new PrismaClient();
 
@@ -15,21 +16,32 @@ const s3 = new AWS.S3({
   signatureVersion: 'v4',
 });
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   if (!req.headers.get('content-type')?.includes('application/json')) {
     return NextResponse.json({ error: 'Only JSON requests are supported' }, { status: 400 });
   }
 
   try {
-    const { videoId, title, description, userId } = await req.json();
+    const { videoId, title, description } = await req.json();
 
-    if (!videoId || !title || !description || !userId) {
+    if (!videoId || !title || !description) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+
+    const userId = authUser.id;
 
     const video = await prisma.video.findUnique({ where: { id: videoId } });
     if (!video?.s3Key) {
       return NextResponse.json({ error: 'Video not found or missing s3Key' }, { status: 404 });
+    }
+
+    if (video.userId !== userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const account = await prisma.account.findFirst({

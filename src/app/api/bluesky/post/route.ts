@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { BskyAgent, RichText } from '@atproto/api';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 
 const prisma = new PrismaClient();
 
@@ -39,13 +40,15 @@ async function waitForValidThumbnail(
   return null;
 }
 
-export async function POST(req: Request) {
-  try {
-    const { youtubeUrl, description, userId } = await req.json();
+export async function POST(req: NextRequest) {
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
+    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+  }
 
-    if (!userId) {
-      return NextResponse.json({ message: 'Missing user ID.' }, { status: 400 });
-    }
+  try {
+    const { youtubeUrl, description } = await req.json();
+    const userId = authUser.id;
 
     const account = await prisma.account.findFirst({
       where: { userId, provider: 'bluesky' },
