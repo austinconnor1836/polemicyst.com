@@ -1,4 +1,4 @@
-﻿# Polemicyst web/app package - agent entrypoint
+# Polemicyst web/app package - agent entrypoint
 
 This file is the repo-level guide for `polemicyst.com/`.
 
@@ -59,6 +59,28 @@ All three clients (Web, Android, iOS) share a single color palette defined in `t
   - **iOS:** `ios/Polemicyst/Theme/Tokens.swift` — SwiftUI `Color` extensions
 - **Tailwind usage:** Token colors are available as `bg-background`, `text-foreground`, `border-border`, `bg-surface`, `bg-primary`, `text-muted`, `bg-accent`, `bg-success`, `bg-destructive`, etc. They auto-switch between light and dark mode — no `dark:` prefix needed.
 - **Rule:** When changing a color, edit `tokens/colors.json` and run `npm run tokens`. Never edit the generated files directly.
+
+## Cursor Cloud specific instructions
+
+Cloud agents run in an isolated VM without Docker. You MUST start services manually before the dev server will work.
+
+### Environment setup (run at session start)
+
+1. **Start PostgreSQL and Redis:** `sudo service postgresql start && sudo service redis-server start`
+2. **Set postgres password:** `sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';"`
+3. **Run Prisma migrations:** Use the `DATABASE_URL` from `.env` and run `npx prisma migrate deploy`
+4. **Clear stale cache and start dev server:** `rm -rf .next && npx next dev --port 3000 &`
+5. **Wait ~15s, then verify** the server responds with HTTP 200 on port 3000.
+
+### Why this is needed
+
+- The `.env` file has `DATABASE_URL` pointing to the local PostgreSQL instance, but PostgreSQL and Redis are not auto-started in cloud agent VMs.
+- A stale `.next` cache can cause CSS/Tailwind to not render (the CSS file returns 404). Always `rm -rf .next` before starting the dev server if styles look broken.
+- The SWC binary for linux may need to be installed: `npm install @next/swc-linux-x64-gnu`.
+
+### Testing UI changes
+
+After starting the dev server, use the `computerUse` subagent to open the app in Chrome (port 3000) and verify the page renders with proper Tailwind CSS styling (not unstyled bullet points / plain text).
 
 ## UI conventions (quick reminders)
 
