@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { ArrowLeftIcon } from '@heroicons/react/24/solid';
+import { useSubscription } from '@/hooks/useSubscription';
+import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
 
 type GeneratedClip = {
   id: string;
@@ -39,6 +41,7 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
   const [isTriggering, setIsTriggering] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previousClipCountRef = useRef(0);
+  const { quota, data: subscriptionData, refresh: refreshSubscription } = useSubscription();
 
   const fetchFeedVideo = useCallback(async () => {
     try {
@@ -108,6 +111,7 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
       setFeedVideo((prev) =>
         prev ? { ...prev, clipGenerationStatus: 'queued', clipGenerationError: null } : prev
       );
+      refreshSubscription();
     } catch {
       setError('Failed to trigger clip generation');
     } finally {
@@ -164,6 +168,17 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
       <div className="bg-white dark:bg-[#292c35] rounded-lg shadow-md p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">Clip Generation</h2>
 
+        {quota && subscriptionData && (quota.clips.warning || quota.clips.exceeded) && (
+          <div className="mb-4">
+            <QuotaWarningBanner
+              quota={quota}
+              planName={subscriptionData.plan.name}
+              planId={subscriptionData.plan.id}
+              show="clips"
+            />
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-4">
           <div>
             <label className="block text-sm font-medium mb-1">Aspect Ratio</label>
@@ -182,7 +197,7 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
           <div className="flex items-center gap-3">
             <button
               onClick={handleGenerateClips}
-              disabled={isTriggering || isActiveGeneration}
+              disabled={isTriggering || isActiveGeneration || (quota?.clips.exceeded ?? false)}
               className="bg-green-600 text-white px-5 py-2 rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
             >
               {isTriggering
