@@ -68,14 +68,21 @@ fun ViralitySettingsState.toModel(): ViralitySettings = ViralitySettings(
     clipLength = clipLength,
 )
 
+/**
+ * @param allowedProviders LLM providers the user's plan permits. Empty = all allowed (no restrictions).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ViralitySettingsPanel(
     state: ViralitySettingsState,
     onStateChange: (ViralitySettingsState) -> Unit,
     modifier: Modifier = Modifier,
+    allowedProviders: List<String> = emptyList(),
 ) {
     var showAdvanced by remember { mutableStateOf(false) }
+
+    val allProviderOptions = listOf("gemini", "ollama", "openai", "anthropic", "google")
+    val allProviderLabels = listOf("Gemini", "Ollama", "OpenAI", "Anthropic", "Google")
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -86,7 +93,6 @@ fun ViralitySettingsPanel(
             style = MaterialTheme.typography.titleSmall,
         )
 
-        // Target Platform
         DropdownSelector(
             label = "Target Platform",
             selected = state.targetPlatform,
@@ -95,7 +101,6 @@ fun ViralitySettingsPanel(
             onSelect = { onStateChange(state.copy(targetPlatform = it)) },
         )
 
-        // Content Style
         DropdownSelector(
             label = "Content Style",
             selected = state.contentStyle,
@@ -104,7 +109,6 @@ fun ViralitySettingsPanel(
             onSelect = { onStateChange(state.copy(contentStyle = it)) },
         )
 
-        // Scoring Mode
         DropdownSelector(
             label = "Scoring Mode",
             selected = state.scoringMode,
@@ -113,7 +117,6 @@ fun ViralitySettingsPanel(
             onSelect = { onStateChange(state.copy(scoringMode = it)) },
         )
 
-        // Safer Clips toggle
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -129,7 +132,6 @@ fun ViralitySettingsPanel(
             )
         }
 
-        // Advanced section
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -152,16 +154,19 @@ fun ViralitySettingsPanel(
 
         AnimatedVisibility(visible = showAdvanced) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // LLM Provider
                 DropdownSelector(
                     label = "LLM Provider",
                     selected = state.llmProvider,
-                    options = listOf("gemini", "ollama"),
-                    labels = listOf("Gemini", "Ollama"),
+                    options = allProviderOptions,
+                    labels = allProviderLabels,
                     onSelect = { onStateChange(state.copy(llmProvider = it)) },
+                    disabledOptions = if (allowedProviders.isNotEmpty()) {
+                        allProviderOptions.filter { it !in allowedProviders }.toSet()
+                    } else {
+                        emptySet()
+                    },
                 )
 
-                // Strictness
                 DropdownSelector(
                     label = "Strictness",
                     selected = state.strictness,
@@ -170,7 +175,6 @@ fun ViralitySettingsPanel(
                     onSelect = { onStateChange(state.copy(strictness = it)) },
                 )
 
-                // Clip Length
                 DropdownSelector(
                     label = "Clip Length",
                     selected = state.clipLength,
@@ -179,7 +183,6 @@ fun ViralitySettingsPanel(
                     onSelect = { onStateChange(state.copy(clipLength = it)) },
                 )
 
-                // Include Audio toggle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -207,6 +210,7 @@ private fun DropdownSelector(
     options: List<String>,
     labels: List<String>,
     onSelect: (String) -> Unit,
+    disabledOptions: Set<String> = emptySet(),
 ) {
     var expanded by remember { mutableStateOf(false) }
     val selectedLabel = labels.getOrElse(options.indexOf(selected)) { selected }
@@ -230,12 +234,25 @@ private fun DropdownSelector(
             onDismissRequest = { expanded = false },
         ) {
             options.forEachIndexed { index, option ->
+                val isDisabled = option in disabledOptions
                 DropdownMenuItem(
-                    text = { Text(labels[index]) },
-                    onClick = {
-                        onSelect(option)
-                        expanded = false
+                    text = {
+                        Text(
+                            text = if (isDisabled) "${labels[index]} (Pro)" else labels[index],
+                            color = if (isDisabled) {
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        )
                     },
+                    onClick = {
+                        if (!isDisabled) {
+                            onSelect(option)
+                            expanded = false
+                        }
+                    },
+                    enabled = !isDisabled,
                 )
             }
         }

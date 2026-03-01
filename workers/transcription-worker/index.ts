@@ -2,6 +2,7 @@ import { Worker, Queue } from 'bullmq';
 import { prisma } from '@shared/lib/prisma';
 import { getTranscriptionQueue } from '@shared/queues';
 import { transcribeFeedVideo } from './transcription';
+import { transcribeFeedVideoWithSpeakers } from './speaker-transcription';
 import { checkClipQuota } from '@shared/lib/plans';
 
 const clipGenerationQueue = new Queue('clip-generation', {
@@ -128,6 +129,29 @@ new Worker(
         }
       }
       console.error('❌ Transcription failed:', transcriptionError);
+    }
+  },
+  { connection: getTranscriptionQueue().opts.connection as any }
+);
+
+// Speaker-identified transcription worker
+new Worker(
+  'speaker-transcription',
+  async (job) => {
+    const { feedVideoId, numSpeakers } = job.data ?? {};
+    if (!feedVideoId) {
+      console.warn(`Skipping speaker-transcription job ${job.id}: missing feedVideoId`);
+      return;
+    }
+    console.log(`Speaker-transcribing video for feed video id ${feedVideoId}`);
+    try {
+      await transcribeFeedVideoWithSpeakers(feedVideoId, {
+        numSpeakers: numSpeakers ?? undefined,
+      });
+      console.log('Speaker transcription complete.');
+    } catch (err: any) {
+      console.error('Speaker transcription failed:', err);
+      throw err;
     }
   },
   { connection: getTranscriptionQueue().opts.connection as any }

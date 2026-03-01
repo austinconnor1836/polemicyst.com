@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y python3 python3-pip curl python3-venv f
 ENV PATH="/venv/bin:$PATH"
 
 RUN pip3 install --upgrade pip --break-system-packages
-RUN pip3 install --no-cache-dir faster-whisper
+RUN pip3 install --no-cache-dir faster-whisper pyannote.audio
 
 WORKDIR /app
 COPY ./workers/transcription-worker .
