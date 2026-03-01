@@ -5,6 +5,7 @@ import { prisma } from '@shared/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../auth';
 import { deleteFromS3 } from '@shared/lib/s3';
+import { checkLlmProviderAccess, checkAutoGenerateAccess } from '@/lib/plans';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -25,6 +26,35 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const data = await req.json();
   const { autoGenerateClips, viralitySettings, name, pollingInterval } = data;
+
+  // Enforce auto-generate access
+  if (autoGenerateClips === true) {
+    const autoAccess = checkAutoGenerateAccess(user.subscriptionPlan);
+    if (!autoAccess.allowed) {
+      return NextResponse.json(
+        { error: autoAccess.message, code: 'PLAN_RESTRICTED' },
+        { status: 403 }
+      );
+    }
+  }
+
+  // Enforce LLM provider access if changing virality settings
+  if (viralitySettings?.llmProvider) {
+    const providerAccess = checkLlmProviderAccess(
+      viralitySettings.llmProvider,
+      user.subscriptionPlan
+    );
+    if (!providerAccess.allowed) {
+      return NextResponse.json(
+        {
+          error: providerAccess.message,
+          code: 'PLAN_RESTRICTED',
+          allowedProviders: providerAccess.allowedProviders,
+        },
+        { status: 403 }
+      );
+    }
+  }
 
   const updated = await prisma.videoFeed.update({
     where: { id },

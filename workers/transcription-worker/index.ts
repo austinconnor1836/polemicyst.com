@@ -1,10 +1,11 @@
 import { Worker, Queue } from 'bullmq';
 import { prisma } from '@shared/lib/prisma';
-import { transcriptionQueue } from '@shared/queues';
+import { getTranscriptionQueue } from '@shared/queues';
 import { transcribeFeedVideo } from './transcription';
+import { checkClipQuota } from '@shared/lib/plans';
 
 const clipGenerationQueue = new Queue('clip-generation', {
-  connection: transcriptionQueue.opts.connection as any,
+  connection: getTranscriptionQueue().opts.connection as any,
 });
 
 new Worker(
@@ -54,38 +55,62 @@ new Worker(
         include: { feed: true },
       });
       if (feedVideo?.feed?.autoGenerateClips && feedVideo.feed.viralitySettings) {
-        const settings = feedVideo.feed.viralitySettings as Record<string, any>;
-        const strictnessPreset = settings.strictnessPreset || 'balanced';
-        const strictnessConfig = {
-          minScore: 6.5,
-          percentile: 0.85,
-          minCandidates: 3,
-          maxCandidates: 20,
-          maxGeminiCandidates: 24,
-          ...(strictnessPreset === 'strict'
-            ? { minScore: 7.0, percentile: 0.9, minCandidates: 3, maxCandidates: 12, maxGeminiCandidates: 18 }
-            : strictnessPreset === 'loose'
-              ? { minScore: 6.0, percentile: 0.75, minCandidates: 5, maxCandidates: 24, maxGeminiCandidates: 36 }
-              : {}),
-        };
+        // Check clip quota before auto-enqueuing clip generation
+        const feedUser = await prisma.user.findUnique({
+          where: { id: feedVideo.feed.userId },
+          select: { subscriptionPlan: true },
+        });
+        const clipQuota = await checkClipQuota(feedVideo.feed.userId, feedUser?.subscriptionPlan);
+        if (!clipQuota.allowed) {
+          console.warn(
+            `⚠️ Clip quota exceeded for user ${feedVideo.feed.userId}. Skipping auto clip generation.`
+          );
+        } else {
+          const settings = feedVideo.feed.viralitySettings as Record<string, any>;
+          const strictnessPreset = settings.strictnessPreset || 'balanced';
+          const strictnessConfig = {
+            minScore: 6.5,
+            percentile: 0.85,
+            minCandidates: 3,
+            maxCandidates: 20,
+            maxGeminiCandidates: 24,
+            ...(strictnessPreset === 'strict'
+              ? {
+                  minScore: 7.0,
+                  percentile: 0.9,
+                  minCandidates: 3,
+                  maxCandidates: 12,
+                  maxGeminiCandidates: 18,
+                }
+              : strictnessPreset === 'loose'
+                ? {
+                    minScore: 6.0,
+                    percentile: 0.75,
+                    minCandidates: 5,
+                    maxCandidates: 24,
+                    maxGeminiCandidates: 36,
+                  }
+                : {}),
+          };
 
-        await clipGenerationQueue.add(
-          'clip-generation',
-          {
-            feedVideoId: resolvedFeedVideoId,
-            userId: feedVideo.feed.userId,
-            aspectRatio: '9:16',
-            scoringMode: settings.scoringMode || 'hybrid',
-            includeAudio: settings.includeAudio || false,
-            saferClips: settings.saferClips ?? true,
-            targetPlatform: settings.targetPlatform || 'reels',
-            contentStyle: settings.contentStyle || 'auto',
-            llmProvider: settings.llmProvider,
-            ...strictnessConfig,
-          },
-          { jobId: resolvedFeedVideoId, removeOnComplete: true, removeOnFail: true }
-        );
-        console.log(`transcription: auto enqueued clip-generation for ${resolvedFeedVideoId}`);
+          await clipGenerationQueue.add(
+            'clip-generation',
+            {
+              feedVideoId: resolvedFeedVideoId,
+              userId: feedVideo.feed.userId,
+              aspectRatio: '9:16',
+              scoringMode: settings.scoringMode || 'hybrid',
+              includeAudio: settings.includeAudio || false,
+              saferClips: settings.saferClips ?? true,
+              targetPlatform: settings.targetPlatform || 'reels',
+              contentStyle: settings.contentStyle || 'auto',
+              llmProvider: settings.llmProvider,
+              ...strictnessConfig,
+            },
+            { jobId: resolvedFeedVideoId, removeOnComplete: true, removeOnFail: true }
+          );
+          console.log(`transcription: auto enqueued clip-generation for ${resolvedFeedVideoId}`);
+        }
       }
     } catch (transcriptionError: any) {
       if (
@@ -105,5 +130,5 @@ new Worker(
       console.error('❌ Transcription failed:', transcriptionError);
     }
   },
-  { connection: transcriptionQueue.opts.connection as any }
+  { connection: getTranscriptionQueue().opts.connection as any }
 );

@@ -23,23 +23,31 @@ resource "aws_db_subnet_group" "main" {
   subnet_ids = aws_subnet.private[*].id
 }
 
-resource "aws_db_instance" "main" {
-  identifier              = "${var.app_name}-${var.environment}-db"
+resource "aws_db_instance" "db" {
+  for_each = var.environments
+
+  identifier              = "${var.app_name}-${each.key}-db"
   engine                  = "postgres"
   engine_version          = var.db_engine_version != "" ? var.db_engine_version : null
-  instance_class          = var.db_instance_class
-  allocated_storage       = var.db_allocated_storage
+  instance_class          = each.value.db_instance_class
+  allocated_storage       = each.value.db_allocated_storage
   storage_type            = "gp3"
   storage_encrypted       = true
-  db_name                 = var.db_name
+  db_name                 = each.value.db_name
   username                = var.db_username
   password                = var.db_password
-  multi_az                = var.db_multi_az
+  multi_az                = each.value.db_multi_az
   publicly_accessible     = false
   db_subnet_group_name    = aws_db_subnet_group.main.name
   vpc_security_group_ids  = [aws_security_group.rds.id]
-  backup_retention_period = var.db_backup_retention_days
-  deletion_protection     = var.db_deletion_protection
-  skip_final_snapshot     = var.db_skip_final_snapshot
+  backup_retention_period = each.value.db_backup_retention
+  deletion_protection     = each.value.db_deletion_protection
+  skip_final_snapshot     = each.value.db_skip_final_snapshot
   apply_immediately       = true
+}
+
+# Migrate existing prod RDS instance into the new for_each address
+moved {
+  from = aws_db_instance.main
+  to   = aws_db_instance.db["prod"]
 }
