@@ -89,6 +89,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Track clip generation status
+    await prisma.feedVideo.update({
+      where: { id: feedVideoId },
+      data: { clipGenerationStatus: 'queued', clipGenerationError: null },
+    });
+
     const resolvedProvider =
       typeof llmProvider === 'string' && llmProvider.toLowerCase() === 'ollama'
         ? 'ollama'

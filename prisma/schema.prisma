@@ -63,15 +63,18 @@ model Video {
   trimEndS            Float?
   createdAt           DateTime @default(now())
 
-  // ✅ Clip relationship (self-referencing)
+  // Clip relationship (self-referencing)
   sourceVideo   Video?  @relation("ClipSource", fields: [sourceVideoId], references: [id])
   sourceVideoId String?
-
   generatedClips Video[] @relation("ClipSource")
+
+  // Link back to the source FeedVideo that spawned this clip
+  feedVideo   FeedVideo? @relation("FeedVideoClips", fields: [feedVideoId], references: [id])
+  feedVideoId String?
 
   // Added relation for pipeline segments
   segments        Segment[]
-  feedVideo       FeedVideo? @relation("FeedVideoClipSource")
+  clipSourceFeedVideo FeedVideo? @relation("FeedVideoClipSource")
 }
 
 model VideoFeed {
@@ -94,23 +97,27 @@ model VideoFeed {
 }
 
 model FeedVideo {
-  id             String    @id @default(uuid())
-  feedId         String
-  feed           VideoFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
-  videoId        String
-  clipSourceVideoId String? @unique
-  clipSourceVideo   Video?    @relation("FeedVideoClipSource", fields: [clipSourceVideoId], references: [id], onDelete: SetNull)
-  title          String
-  thumbnailUrl   String?
-  s3Url          String
-  status         String    @default("ready") // pending | ready | failed
-  transcript     String?
-  transcriptJson Json?
+  id                    String    @id @default(uuid())
+  feedId                String
+  feed                  VideoFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  videoId               String
+  clipSourceVideoId     String?   @unique
+  clipSourceVideo       Video?    @relation("FeedVideoClipSource", fields: [clipSourceVideoId], references: [id], onDelete: SetNull)
+  title                 String
+  thumbnailUrl          String?
+  s3Url                 String
+  status                String    @default("ready") // pending | ready | failed
+  transcript            String?
+  transcriptJson        Json?
   speakerTranscriptJson Json?
-  createdAt      DateTime  @default(now())
+  clipGenerationStatus  String    @default("idle") // idle | queued | processing | completed | failed
+  clipGenerationError   String?
+  createdAt             DateTime  @default(now())
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  generatedClips Video[] @relation("FeedVideoClips")
 
   @@unique([feedId, videoId])
 }
