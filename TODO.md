@@ -43,6 +43,11 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 
 ### iOS (`ios/`)
 
+- [x] Add authentication (Google Sign-In + Sign in with Apple) with Bearer JWT flow
+- [x] Keychain-backed token storage
+- [x] Auth-gated App.swift (LoginView when unauthenticated, TabView when authenticated)
+- [ ] Token refresh (re-authenticate when JWT expires)
+- [ ] Sign-out UI (settings screen or profile menu)
 - [x] Add structured error response parsing in `APIClient.swift` (decode JSON error body, not just status code)
 - [x] Handle HTTP 403 specifically — show upgrade prompt
 - [x] Add billing/subscription screen

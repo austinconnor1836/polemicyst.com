@@ -1,6 +1,5 @@
-import { getServerSession } from 'next-auth';
-import { NextResponse } from 'next/server';
-import { authOptions } from '../../../../auth';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
 
 /**
@@ -8,19 +7,10 @@ import { prisma } from '@shared/lib/prisma';
  * Preferred identification: `sourceVideoId != null` (generated clips referencing a source video).
  * Back-compat: older clips may have `sourceVideoId == null` but use an S3 key suffix `-clip.mp4`.
  */
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
-
+export async function GET(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
   if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const clips = await prisma.video.findMany({

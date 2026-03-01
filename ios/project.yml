@@ -12,12 +12,22 @@ settings:
     SWIFT_VERSION: '5.9'
     IPHONEOS_DEPLOYMENT_TARGET: '17.0'
 
+packages:
+  GoogleSignIn-iOS:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: '8.0.0'
+
 targets:
   PolemicystiOS:
     type: framework
     platform: iOS
     sources:
       - path: Sources/PolemicystiOS
+    dependencies:
+      - package: GoogleSignIn-iOS
+        product: GoogleSignIn
+      - package: GoogleSignIn-iOS
+        product: GoogleSignInSwift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.polemicyst.ios
@@ -47,19 +57,26 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: 'UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight'
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: 'UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight'
         API_BASE_URL: 'https://polemicyst.com'
+        GOOGLE_CLIENT_ID: '$(GOOGLE_CLIENT_ID)'
       configs:
         Debug:
           API_BASE_URL: 'http://127.0.0.1:3000'
           CODE_SIGN_STYLE: Automatic
+          GOOGLE_CLIENT_ID: '$(GOOGLE_CLIENT_ID)'
         Release:
           API_BASE_URL: 'https://polemicyst.com'
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: 'Apple Distribution'
           DEVELOPMENT_TEAM: '$(DEVELOPMENT_TEAM)'
+          GOOGLE_CLIENT_ID: '$(GOOGLE_CLIENT_ID)'
     info:
       path: Supporting/Info.plist
       properties:
         API_BASE_URL: '$(API_BASE_URL)'
+        GIDClientID: '$(GOOGLE_CLIENT_ID)'
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              - '$(GOOGLE_CLIENT_ID_REVERSED)'
     scheme:
       testTargets:
         - PolemicystiOSTests

@@ -3,17 +3,30 @@ import PolemicystiOS
 
 @main
 struct PolemicystApp: App {
-    private let apiClient = APIClient(baseURL: AppConfiguration.apiBaseURL)
+    @StateObject private var authService: AuthService
     @State private var tabSelection = 0
+
+    private let apiClient: APIClient
+
+    init() {
+        let storage = TokenStorage()
+        let client = APIClient(
+            baseURL: AppConfiguration.apiBaseURL,
+            tokenStorage: storage
+        )
+        self.apiClient = client
+        _authService = StateObject(wrappedValue: AuthService(api: client, tokenStorage: storage))
+    }
 
     var body: some Scene {
         WindowGroup {
-            TabView(selection: $tabSelection) {
-                HomeView(selection: $tabSelection)
-                    .tabItem {
-                        Label("Home", systemImage: "house.fill")
-                    }
-                    .tag(0)
+            if authService.isAuthenticated {
+                TabView(selection: $tabSelection) {
+                    HomeView(selection: $tabSelection)
+                        .tabItem {
+                            Label("Home", systemImage: "house.fill")
+                        }
+                        .tag(0)
 
                 FeedsView(viewModel: FeedsViewModel(api: apiClient))
                     .tabItem {
@@ -38,6 +51,9 @@ struct PolemicystApp: App {
                         Label("Settings", systemImage: "gearshape.fill")
                     }
                     .tag(4)
+                }
+            } else {
+                LoginView(authService: authService)
             }
         }
     }
