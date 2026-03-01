@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import SwiftUI
 import UIKit
 import AuthenticationServices
@@ -108,3 +109,4 @@ public final class AuthService: ObservableObject {
         isAuthenticated = false
     }
 }
+#endif
