@@ -85,6 +85,30 @@ function redactSecrets(input: unknown): unknown {
   return walk(input);
 }
 
+const IS_DEV = process.env.NODE_ENV !== 'production';
+
+const devCredentialsProvider = IS_DEV
+  ? CredentialsProvider({
+      id: 'dev',
+      name: 'Dev Login',
+      credentials: {
+        email: { label: 'Email', type: 'email', placeholder: 'you@example.com' },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email) return null;
+        const email = credentials.email.trim().toLowerCase();
+
+        let user = await prisma.user.findUnique({ where: { email } });
+        if (!user) {
+          user = await prisma.user.create({
+            data: { email, name: email.split('@')[0] },
+          });
+        }
+        return user;
+      },
+    })
+  : null;
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma), // PostgreSQL persistence
   // Never log OAuth tokens / secrets unless explicitly enabled.
@@ -103,6 +127,7 @@ export const authOptions: NextAuthOptions = {
     },
   },
   providers: [
+    ...(devCredentialsProvider ? [devCredentialsProvider] : []),
     FacebookProvider({
       clientId: process.env.AUTH_FACEBOOK_ID!,
       clientSecret: process.env.AUTH_FACEBOOK_SECRET!,
@@ -246,6 +271,7 @@ export const authOptions: NextAuthOptions = {
     },
     async signIn({ user, account }) {
       if (!user.email || !account) return false;
+      if (IS_DEV && account.provider === 'dev') return true;
       if (!isAllowedEmail(user.email) || !isAllowedProvider(account.provider)) return false;
 
       const existingUser = await prisma.user.findUnique({

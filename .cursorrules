@@ -1,0 +1,25 @@
+# Cursor Agent Instructions
+
+## Task pickup — READ THIS FIRST
+
+1. Read `TODO.md` at the start of every session.
+2. Pick the **highest-priority unchecked item** you can act on (Priority 1 → 2 → 3 → 4).
+3. If an item needs secrets, production access, or env vars you don't have, **skip it** and move to the next one.
+4. When you finish an item, mark it `[x]` in `TODO.md`, commit, and push.
+5. Only work on **one item per session** unless the user asks otherwise.
+
+## Git workflow
+
+- Always branch from `develop`: `git checkout develop && git pull origin develop && git checkout -b <branch-name>`
+- PRs target `develop`, not `main`.
+- Branch names: `feature/<name>`, `fix/<name>`, `chore/<name>`.
+
+## Quality gates
+
+Every commit **must** pass lint (`npm run lint`) and build (`npx next build`) before being created. Do not commit code that fails either step.
+
+## Project context
+
+- See `CLAUDE.md` for full architecture docs (LLM scoring, cost tracking, release process).
+- See `TODO.md` for the prioritized task list.
+- See `docs/NEXT_STEPS.md` for deployment details.

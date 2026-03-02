@@ -3,6 +3,7 @@ package com.polemicyst.android.ui.navigation
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -23,6 +24,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import com.polemicyst.android.ui.screens.clipeditor.ClipEditorScreen
 import com.polemicyst.android.ui.screens.clips.ClipListScreen
+import com.polemicyst.android.ui.screens.billing.BillingScreen
 import com.polemicyst.android.ui.screens.clipsgenie.ClipsGenieScreen
 import com.polemicyst.android.ui.screens.feeddetail.FeedDetailScreen
 import com.polemicyst.android.ui.screens.feeds.FeedsListScreen
@@ -38,6 +40,7 @@ private data class BottomNavItem(
 private val bottomNavItems = listOf(
     BottomNavItem(Screen.Feeds, "Feeds", Icons.Filled.RssFeed),
     BottomNavItem(Screen.ClipsGenie, "Clips Genie", Icons.Filled.AutoAwesome),
+    BottomNavItem(Screen.Billing, "Plan", Icons.Filled.CreditCard),
 )
 
 @Composable
@@ -48,7 +51,9 @@ fun AppNavGraph() {
 
     // Show bottom bar only on top-level screens after login
     val showBottomBar = currentDestination?.hierarchy?.any { dest ->
-        dest.route == Screen.Feeds.route || dest.route == Screen.ClipsGenie.route
+        dest.route == Screen.Feeds.route ||
+            dest.route == Screen.ClipsGenie.route ||
+            dest.route == Screen.Billing.route
     } == true
 
     Scaffold(
@@ -103,6 +108,10 @@ fun AppNavGraph() {
 
             composable(Screen.ClipsGenie.route) {
                 ClipsGenieScreen()
+            }
+
+            composable(Screen.Billing.route) {
+                BillingScreen()
             }
 
             composable(

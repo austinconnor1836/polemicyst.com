@@ -1,14 +1,59 @@
 # Polemicyst — Claude Code Instructions
 
+## Task pickup — READ THIS FIRST
+
+1. Read `TODO.md` at the start of every session.
+2. Pick the **highest-priority unchecked item** you can act on (Priority 1 → 2 → 3 → 4).
+3. If an item needs secrets, production access, or env vars you don't have, **skip it** and move to the next one.
+4. When you finish an item, mark it `[x]` in `TODO.md`, commit, and push.
+5. Only work on **one item per session** unless the user asks otherwise.
+
 ## Git workflow
 
 - **Always create a new branch from `develop`** before starting work on a new task. Run `git checkout develop && git pull origin develop && git checkout -b <branch-name>` first.
 - PRs should target `develop`, not `main`.
 - Use descriptive branch names: `feature/<name>`, `fix/<name>`, `chore/<name>`.
 
+## Release process
+
+We follow **semantic versioning** (`vMAJOR.MINOR.PATCH`) and use GitHub Releases as the source of truth.
+
+### Steps to cut a release
+
+1. **Create a PR from `develop` → `main`** with a title like `Release v0.2.0`.
+   - The PR body should summarize highlights, bug fixes, and breaking changes.
+2. **Wait for required CI checks** (`Lint & Build`) to pass.
+3. **Merge with a merge commit** (not squash) — this preserves the full commit history on `main`.
+   ```
+   gh pr merge <PR_NUMBER> --merge
+   ```
+4. **Create a GitHub Release** targeting `main` with the same version tag:
+   ```
+   gh release create v0.2.0 --target main --title "v0.2.0" --notes "..."
+   ```
+   This creates the git tag automatically and publishes release notes on GitHub.
+
+### Versioning guidelines
+
+- **Patch** (`v0.1.1`): bug fixes, dependency updates, formatting
+- **Minor** (`v0.2.0`): new features, non-breaking API changes
+- **Major** (`v1.0.0`): breaking changes, major architectural shifts
+
+### What NOT to do
+
+- Don't push directly to `main` — always go through a PR from `develop`.
+- Don't create tags manually — let `gh release create` handle it.
+- Don't squash-merge release PRs — merge commits keep history traceable.
+
 ---
 
 # LLM / Claude Notes
+
+## Commit rules
+
+Every commit **must** pass lint (`npm run lint`) and build (`npx next build`) before being created. Do not commit code that fails either step.
+
+## Overview
 
 This file is the **canonical log** for structural changes to the viral clip generation system, especially anything related to **LLM scoring, prompts, model orchestration, and safety**.
 
@@ -95,6 +140,26 @@ In the Feeds modal, users can set:
 - **`isAdmin()` helper**: `shared/lib/admin.ts`.
 
 ## Change log
+
+### 2026-03-01
+
+- Added **job log tracking** for transcription, clip-generation, and speaker-transcription jobs.
+- New `JobLog` Prisma model + migration: records `queued`, `started`, `completed`, `failed` events with duration, error messages, and metadata.
+- `logJob()` helper (`shared/lib/job-logger.ts`): non-fatal writes so pipeline continues even if logging fails.
+- Transcription API (`POST /api/feedVideos/:id/transcribe`), trigger-clip API (`POST /api/trigger-clip`), transcription worker, speaker-transcription worker, and clip-metadata worker all emit job logs.
+- Admin-only logs dashboard at `/admin/logs` with per-job-type summary cards, status/type/date filters, expandable log entries showing error details and metadata.
+- Sidenav conditionally shows "Logs" link for admin user.
+
+### 2026-02-27
+
+- Added **iOS authentication** (Google Sign-In + Sign in with Apple) and unified backend Bearer JWT auth.
+- Fixed JWT secret mismatch bug: mobile Google auth was signing with `AUTH_SECRET` but bearer decoder uses `NEXTAUTH_SECRET`.
+- New unified auth helper `shared/lib/auth-helpers.ts` (`getAuthenticatedUser()`) — tries web session first, falls back to mobile Bearer JWT.
+- Updated API routes (`feeds`, `feedVideos`, `clips`, `clips/[id]`, `user/subscription`) to accept Bearer tokens via `getAuthenticatedUser()`.
+- New `POST /api/auth/mobile/apple` endpoint — verifies Apple identity tokens using `jose` + Apple JWKS.
+- Updated `POST /api/auth/mobile/google` to accept iOS client ID (array audience).
+- iOS: Added Google Sign-In SPM dependency, Keychain token storage, `AuthService`, `LoginView`, and auth-gated `App.swift`.
+- New env vars: `APPLE_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID`, `NEXTAUTH_SECRET` (documented in `ENV_VARS.template`).
 
 ### 2026-02-25
 

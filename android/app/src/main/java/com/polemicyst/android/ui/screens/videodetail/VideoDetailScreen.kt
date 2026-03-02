@@ -1,5 +1,7 @@
 package com.polemicyst.android.ui.screens.videodetail
 
+import android.content.Intent
+import android.net.Uri
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.polemicyst.android.ui.common.UpgradePromptDialog
 import com.polemicyst.android.ui.components.ClipGalleryGrid
 import com.polemicyst.android.ui.components.ErrorBanner
 import com.polemicyst.android.ui.components.LoadingIndicator
@@ -195,7 +198,7 @@ fun VideoDetailScreen(
             onGenerate = { aspectRatio, viralitySettings ->
                 viewModel.generateClips(
                     feedVideoId = feedVideoId,
-                    userId = "", // The backend derives userId from the JWT token
+                    userId = "",
                     aspectRatio = aspectRatio.value,
                     scoringMode = viralitySettings.scoringMode,
                     includeAudio = viralitySettings.includeAudio,
@@ -206,6 +209,21 @@ fun VideoDetailScreen(
                     clipLength = viralitySettings.clipLength,
                 )
                 showGenerateDialog = false
+            },
+            clipsUsed = uiState.subscription?.usage?.clipsThisMonth ?: 0,
+            clipsLimit = uiState.subscription?.limits?.clipsPerMonth ?: -1,
+            allowedProviders = uiState.subscription?.limits?.allowedProviders ?: emptyList(),
+        )
+    }
+
+    uiState.quotaError?.let { apiError ->
+        UpgradePromptDialog(
+            apiError = apiError,
+            onDismiss = { viewModel.dismissQuotaError() },
+            onUpgrade = {
+                viewModel.dismissQuotaError()
+                val url = uiState.subscription?.billingPortalUrl ?: "https://polemicyst.com/pricing"
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
             },
         )
     }

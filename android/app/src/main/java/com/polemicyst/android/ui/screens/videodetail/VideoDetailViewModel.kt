@@ -7,10 +7,14 @@ import android.net.Uri
 import android.os.Environment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.polemicyst.android.data.api.ApiError
+import com.polemicyst.android.data.api.ApiException
 import com.polemicyst.android.data.repository.ClipRecord
 import com.polemicyst.android.data.repository.ClipsRepository
 import com.polemicyst.android.data.repository.FeedVideo
 import com.polemicyst.android.data.repository.FeedVideosRepository
+import com.polemicyst.android.data.repository.SubscriptionInfo
+import com.polemicyst.android.data.repository.SubscriptionRepository
 import com.polemicyst.android.data.repository.TriggerClipRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -29,12 +33,15 @@ data class VideoDetailUiState(
     val isTranscribing: Boolean = false,
     val isGenerating: Boolean = false,
     val error: String? = null,
+    val subscription: SubscriptionInfo? = null,
+    val quotaError: ApiError? = null,
 )
 
 @HiltViewModel
 class VideoDetailViewModel @Inject constructor(
     private val feedVideosRepository: FeedVideosRepository,
     private val clipsRepository: ClipsRepository,
+    private val subscriptionRepository: SubscriptionRepository,
     private val application: Application,
 ) : ViewModel() {
 
@@ -46,6 +53,9 @@ class VideoDetailViewModel @Inject constructor(
     fun loadVideoDetail(feedVideoId: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+
+            subscriptionRepository.refresh()
+
             feedVideosRepository.getFeedVideoClips(feedVideoId)
                 .onSuccess { response ->
                     _uiState.value = _uiState.value.copy(
@@ -53,8 +63,8 @@ class VideoDetailViewModel @Inject constructor(
                         feedVideo = response.feedVideo,
                         clips = response.clips,
                         jobState = response.jobState,
+                        subscription = subscriptionRepository.subscription.value,
                     )
-                    // Start polling if a job is active
                     if (response.jobState in listOf("waiting", "active", "delayed")) {
                         startPolling(feedVideoId)
                     }
@@ -62,10 +72,14 @@ class VideoDetailViewModel @Inject constructor(
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = e.message ?: "Failed to load video"
+                        error = e.message ?: "Failed to load video",
                     )
                 }
         }
+    }
+
+    fun dismissQuotaError() {
+        _uiState.value = _uiState.value.copy(quotaError = null)
     }
 
     fun transcribe(feedVideoId: String) {
@@ -119,10 +133,17 @@ class VideoDetailViewModel @Inject constructor(
                 )
                 startPolling(feedVideoId)
             }.onFailure { e ->
-                _uiState.value = _uiState.value.copy(
-                    isGenerating = false,
-                    error = e.message ?: "Failed to start clip generation"
-                )
+                if (e is ApiException && e.statusCode == 403) {
+                    _uiState.value = _uiState.value.copy(
+                        isGenerating = false,
+                        quotaError = e.apiError,
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isGenerating = false,
+                        error = e.message ?: "Failed to start clip generation",
+                    )
+                }
             }
         }
     }

@@ -35,6 +35,23 @@ components:
         idToken:
           type: string
 
+    MobileAppleAuthRequest:
+      type: object
+      required: [identityToken]
+      properties:
+        identityToken:
+          type: string
+        fullName:
+          type: object
+          nullable: true
+          properties:
+            givenName:
+              type: string
+              nullable: true
+            familyName:
+              type: string
+              nullable: true
+
     MobileGoogleAuthResponse:
       type: object
       required: [token, user]
@@ -432,7 +449,239 @@ components:
           type: string
           enum: [gemini, ollama]
 
+    AutomationSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        autoGenerateClips:
+          type: boolean
+        viralitySettings:
+          $ref: '#/components/schemas/ViralitySettings'
+        captionsEnabled:
+          type: boolean
+        captionStyle:
+          type: string
+          enum: [default, bold, minimal, none]
+        aspectRatio:
+          type: string
+          enum: ['9:16', '16:9', '1:1', '4:5']
+        cropTemplateId:
+          type: string
+          nullable: true
+        autoPublish:
+          type: boolean
+        publishPlatforms:
+          type: array
+          items:
+            type: string
+
+    AutomationSettingsUpdate:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        autoGenerateClips:
+          type: boolean
+        viralitySettings:
+          $ref: '#/components/schemas/ViralitySettings'
+        captionsEnabled:
+          type: boolean
+        captionStyle:
+          type: string
+          enum: [default, bold, minimal, none]
+        aspectRatio:
+          type: string
+          enum: ['9:16', '16:9', '1:1', '4:5']
+        cropTemplateId:
+          type: string
+          nullable: true
+        autoPublish:
+          type: boolean
+        publishPlatforms:
+          type: array
+          items:
+            type: string
+
+    CreateCheckoutSessionRequest:
+      type: object
+      required: [planId]
+      properties:
+        planId:
+          type: string
+          enum: [pro, business]
+
+    StripeSessionResponse:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          description: Stripe-hosted URL to redirect the user to
+
+    SubscriptionPlan:
+      type: object
+      required: [id, name, limits, features]
+      properties:
+        id:
+          type: string
+          enum: [free, pro, business]
+        name:
+          type: string
+        limits:
+          type: object
+          properties:
+            maxFeeds:
+              type: integer
+            maxClipsPerMonth:
+              type: integer
+        features:
+          type: array
+          items:
+            type: string
+
+    SubscriptionUsage:
+      type: object
+      properties:
+        feeds:
+          type: integer
+        clipsThisMonth:
+          type: integer
+        costThisMonth:
+          type: object
+          properties:
+            totalUsd:
+              type: number
+            eventCount:
+              type: integer
+
+    SubscriptionResponse:
+      type: object
+      required: [plan, usage, hasStripeCustomer]
+      properties:
+        plan:
+          $ref: '#/components/schemas/SubscriptionPlan'
+        usage:
+          $ref: '#/components/schemas/SubscriptionUsage'
+        hasStripeCustomer:
+          type: boolean
+
+    VersionCheckResponse:
+      type: object
+      required: [updateRequired, minimumVersion, latestVersion, storeUrl]
+      properties:
+        updateRequired:
+          type: boolean
+          description: True if the client must update before continuing
+        minimumVersion:
+          type: string
+          description: Minimum supported version (semver)
+          example: '1.2.0'
+        latestVersion:
+          type: string
+          description: Latest available version (semver)
+          example: '1.3.0'
+        storeUrl:
+          type: string
+          description: URL to the app store listing
+          example: 'https://play.google.com/store/apps/details?id=com.polemicyst.android'
+
 paths:
+  /api/app/version-check:
+    get:
+      operationId: checkAppVersion
+      summary: Check if the running app version meets the minimum requirement
+      description: >
+        Public endpoint (no auth). Returns whether the client should force-update,
+        the minimum supported version, the latest version, and a store URL.
+      tags: [App]
+      security: []
+      parameters:
+        - name: platform
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [android, ios]
+        - name: currentVersion
+          in: query
+          required: true
+          schema:
+            type: string
+            example: '1.0.0'
+      responses:
+        '200':
+          description: Version check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionCheckResponse'
+        '400':
+          description: Missing or invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/jobs:
+    get:
+      operationId: getJobs
+      summary: List job logs for the authenticated user
+      description: >
+        Returns job history grouped by feed video, plus any currently active
+        videos (queued/processing). Supports filtering by job type, status, and
+        date range. Auto-refreshable for live monitoring.
+      tags: [Jobs]
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 7
+        - name: jobType
+          in: query
+          schema:
+            type: string
+            enum: [transcription, speaker-transcription, clip-generation, download]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [queued, started, completed, failed]
+      responses:
+        '200':
+          description: Job logs with active videos and summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      type: object
+                  activeVideos:
+                    type: array
+                    items:
+                      type: object
+                  summary:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        jobType:
+                          type: string
+                        status:
+                          type: string
+                        count:
+                          type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/auth/mobile/google:
     post:
       operationId: mobileGoogleAuth
@@ -445,6 +694,32 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/MobileGoogleAuthRequest'
+      responses:
+        '200':
+          description: JWT token and user info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileGoogleAuthResponse'
+        '401':
+          description: Invalid token or not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/mobile/apple:
+    post:
+      operationId: mobileAppleAuth
+      summary: Exchange Apple identity token for JWT
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MobileAppleAuthRequest'
       responses:
         '200':
           description: JWT token and user info
@@ -475,7 +750,7 @@ paths:
   /api/feeds:
     get:
       operationId: getFeeds
-      summary: List all video feeds
+      summary: List user-created video feeds (excludes auto-created manual-upload feeds)
       tags: [Feeds]
       security: []
       responses:
@@ -799,6 +1074,94 @@ paths:
               schema:
                 $ref: '#/components/schemas/ClipCropTemplate'
 
+  /api/admin/logs:
+    get:
+      operationId: getAdminLogs
+      summary: Get job logs (admin only)
+      tags: [Admin]
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 7
+        - name: jobType
+          in: query
+          schema:
+            type: string
+            enum: [transcription, speaker-transcription, clip-generation, download]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [queued, started, completed, failed]
+        - name: feedVideoId
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Job logs with summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        feedVideoId:
+                          type: string
+                        jobType:
+                          type: string
+                        status:
+                          type: string
+                        message:
+                          type: string
+                          nullable: true
+                        error:
+                          type: string
+                          nullable: true
+                        durationMs:
+                          type: integer
+                          nullable: true
+                        createdAt:
+                          type: string
+                          format: date-time
+                  total:
+                    type: integer
+                  summary:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        jobType:
+                          type: string
+                        status:
+                          type: string
+                        count:
+                          type: integer
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/user/llm-provider:
     get:
       operationId: getLlmProvider
@@ -828,3 +1191,147 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LlmProviderResponse'
+
+  /api/user/automation:
+    get:
+      operationId: getAutomationSettings
+      summary: Get user automation rule settings
+      tags: [Settings]
+      responses:
+        '200':
+          description: Current automation settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationSettings'
+    put:
+      operationId: updateAutomationSettings
+      summary: Create or update user automation rule settings
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationSettingsUpdate'
+      responses:
+        '200':
+          description: Updated automation settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationSettings'
+
+  /api/user/subscription:
+    get:
+      operationId: getSubscription
+      summary: Get current plan, usage, and billing status
+      tags: [Billing]
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/stripe/create-checkout-session:
+    post:
+      operationId: createCheckoutSession
+      summary: Create a Stripe Checkout session for a paid plan
+      tags: [Billing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCheckoutSessionRequest'
+      responses:
+        '200':
+          description: Checkout session URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StripeSessionResponse'
+        '400':
+          description: Invalid plan or request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/stripe/create-portal-session:
+    post:
+      operationId: createPortalSession
+      summary: Create a Stripe Customer Portal session for managing subscription
+      description: >
+        Returns a URL to the Stripe-hosted Customer Portal where the user can
+        upgrade, downgrade, or cancel their subscription. Requires an existing
+        Stripe customer (i.e. the user must have subscribed to a paid plan at
+        least once).
+      tags: [Billing]
+      responses:
+        '200':
+          description: Portal session URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StripeSessionResponse'
+        '400':
+          description: No Stripe customer found for the user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/webhooks/stripe:
+    post:
+      operationId: stripeWebhook
+      summary: Stripe webhook receiver
+      description: >
+        Handles Stripe webhook events including checkout.session.completed,
+        customer.subscription.created, customer.subscription.updated,
+        customer.subscription.deleted, and invoice.payment_failed. Verifies
+        the webhook signature using STRIPE_WEBHOOK_SECRET.
+      tags: [Billing]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Event received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+        '400':
+          description: Invalid webhook signature
+          content:
+            text/plain:
+              schema:
+                type: string

@@ -1,17 +1,17 @@
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../auth';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
 import { resolvePlan } from '@/lib/plans';
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
+export async function GET(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
+  // Re-fetch with needed relations (getAuthenticatedUser returns a plain User)
+  const userWithRelations = await prisma.user.findUnique({
+    where: { id: user.id },
     select: {
       id: true,
       subscriptionPlan: true,
@@ -20,11 +20,11 @@ export async function GET() {
     },
   });
 
-  if (!user) {
+  if (!userWithRelations) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
-  const plan = resolvePlan(user.subscriptionPlan);
+  const plan = resolvePlan(userWithRelations.subscriptionPlan);
 
   // Count clips generated this month
   const startOfMonth = new Date();
@@ -33,7 +33,7 @@ export async function GET() {
 
   const clipsThisMonth = await prisma.video.count({
     where: {
-      userId: user.id,
+      userId: userWithRelations.id,
       sourceVideoId: { not: null },
       createdAt: { gte: startOfMonth },
     },
@@ -43,7 +43,7 @@ export async function GET() {
   let costThisMonth: { totalUsd: number; eventCount: number } = { totalUsd: 0, eventCount: 0 };
   try {
     const costAgg = await prisma.costEvent.aggregate({
-      where: { userId: user.id, createdAt: { gte: startOfMonth } },
+      where: { userId: userWithRelations.id, createdAt: { gte: startOfMonth } },
       _sum: { estimatedCostUsd: true },
       _count: true,
     });
@@ -63,10 +63,10 @@ export async function GET() {
       features: plan.features,
     },
     usage: {
-      feeds: user._count.videoFeeds,
+      feeds: userWithRelations._count.videoFeeds,
       clipsThisMonth,
       costThisMonth,
     },
-    hasStripeCustomer: !!user.stripeCustomerId,
+    hasStripeCustomer: !!userWithRelations.stripeCustomerId,
   });
 }

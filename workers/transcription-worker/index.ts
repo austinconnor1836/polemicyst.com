@@ -2,7 +2,9 @@ import { Worker, Queue } from 'bullmq';
 import { prisma } from '@shared/lib/prisma';
 import { getTranscriptionQueue } from '@shared/queues';
 import { transcribeFeedVideo } from './transcription';
+import { transcribeFeedVideoWithSpeakers } from './speaker-transcription';
 import { checkClipQuota } from '@shared/lib/plans';
+import { logJob } from '@shared/lib/job-logger';
 
 const clipGenerationQueue = new Queue('clip-generation', {
   connection: getTranscriptionQueue().opts.connection as any,
@@ -39,15 +41,28 @@ new Worker(
       );
       return;
     }
-    // Download the file from S3
-    // Call your transcription logic (e.g., call the API or run the model)
-    // Save the transcript to the DB
-    // For now, just log the job
+
+    const startMs = Date.now();
+    await logJob({
+      feedVideoId: resolvedFeedVideoId,
+      jobType: 'transcription',
+      status: 'started',
+      message: 'Worker picked up transcription job',
+    });
+
     console.log(`Transcribing video for feed video id ${resolvedFeedVideoId}`);
     try {
       console.log('🔍 Checking for existing transcript...');
       await transcribeFeedVideo(resolvedFeedVideoId);
       console.log('🎤 Transcription complete.');
+
+      await logJob({
+        feedVideoId: resolvedFeedVideoId,
+        jobType: 'transcription',
+        status: 'completed',
+        message: 'Transcription finished successfully',
+        durationMs: Date.now() - startMs,
+      });
 
       // Auto-trigger clip generation if the feed has autoGenerateClips enabled
       const feedVideo = await prisma.feedVideo.findUnique({
@@ -55,7 +70,6 @@ new Worker(
         include: { feed: true },
       });
       if (feedVideo?.feed?.autoGenerateClips && feedVideo.feed.viralitySettings) {
-        // Check clip quota before auto-enqueuing clip generation
         const feedUser = await prisma.user.findUnique({
           where: { id: feedVideo.feed.userId },
           select: { subscriptionPlan: true },
@@ -113,6 +127,20 @@ new Worker(
         }
       }
     } catch (transcriptionError: any) {
+      const errorMessage =
+        transcriptionError instanceof Error
+          ? transcriptionError.message
+          : String(transcriptionError);
+
+      await logJob({
+        feedVideoId: resolvedFeedVideoId,
+        jobType: 'transcription',
+        status: 'failed',
+        message: 'Transcription failed',
+        error: errorMessage,
+        durationMs: Date.now() - startMs,
+      });
+
       if (
         resolvedFeedVideoId &&
         transcriptionError instanceof Error &&
@@ -128,6 +156,56 @@ new Worker(
         }
       }
       console.error('❌ Transcription failed:', transcriptionError);
+    }
+  },
+  { connection: getTranscriptionQueue().opts.connection as any }
+);
+
+// Speaker-identified transcription worker
+new Worker(
+  'speaker-transcription',
+  async (job) => {
+    const { feedVideoId, numSpeakers } = job.data ?? {};
+    if (!feedVideoId) {
+      console.warn(`Skipping speaker-transcription job ${job.id}: missing feedVideoId`);
+      return;
+    }
+
+    const startMs = Date.now();
+    await logJob({
+      feedVideoId,
+      jobType: 'speaker-transcription',
+      status: 'started',
+      message: 'Worker picked up speaker-transcription job',
+    });
+
+    console.log(`Speaker-transcribing video for feed video id ${feedVideoId}`);
+    try {
+      await transcribeFeedVideoWithSpeakers(feedVideoId, {
+        numSpeakers: numSpeakers ?? undefined,
+      });
+      console.log('Speaker transcription complete.');
+
+      await logJob({
+        feedVideoId,
+        jobType: 'speaker-transcription',
+        status: 'completed',
+        message: 'Speaker transcription finished successfully',
+        durationMs: Date.now() - startMs,
+      });
+    } catch (err: any) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      await logJob({
+        feedVideoId,
+        jobType: 'speaker-transcription',
+        status: 'failed',
+        message: 'Speaker transcription failed',
+        error: errorMessage,
+        durationMs: Date.now() - startMs,
+      });
+
+      console.error('Speaker transcription failed:', err);
+      throw err;
     }
   },
   { connection: getTranscriptionQueue().opts.connection as any }

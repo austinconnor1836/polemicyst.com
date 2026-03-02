@@ -1,7 +1,9 @@
 package com.polemicyst.android.data.repository
 
+import com.polemicyst.android.data.api.safeApiCall
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Moshi
 import retrofit2.Retrofit
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -69,23 +71,24 @@ interface FeedsApi {
 }
 
 @Singleton
-class FeedsRepository @Inject constructor(retrofit: Retrofit) {
+class FeedsRepository @Inject constructor(
+    retrofit: Retrofit,
+    private val moshi: Moshi,
+) {
 
     private val api = retrofit.create(FeedsApi::class.java)
 
-    suspend fun getFeeds(): Result<List<VideoFeed>> = runCatching {
-        api.getFeeds()
-    }
+    suspend fun getFeeds(): Result<List<VideoFeed>> =
+        safeApiCall(moshi) { api.getFeeds() }
 
-    suspend fun createFeed(name: String, sourceUrl: String, pollingInterval: Int? = null): Result<VideoFeed> = runCatching {
-        api.createFeed(CreateFeedRequest(name = name, sourceUrl = sourceUrl, pollingInterval = pollingInterval))
-    }
+    suspend fun createFeed(name: String, sourceUrl: String, pollingInterval: Int? = null): Result<VideoFeed> =
+        safeApiCall(moshi) {
+            api.createFeed(CreateFeedRequest(name = name, sourceUrl = sourceUrl, pollingInterval = pollingInterval))
+        }
 
-    suspend fun updateFeed(id: String, request: UpdateFeedRequest): Result<VideoFeed> = runCatching {
-        api.updateFeed(id, request)
-    }
+    suspend fun updateFeed(id: String, request: UpdateFeedRequest): Result<VideoFeed> =
+        safeApiCall(moshi) { api.updateFeed(id, request) }
 
-    suspend fun deleteFeed(id: String): Result<Unit> = runCatching {
-        api.deleteFeed(id)
-    }
+    suspend fun deleteFeed(id: String): Result<Unit> =
+        safeApiCall(moshi) { api.deleteFeed(id) }
 }

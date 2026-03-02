@@ -10,7 +10,11 @@ import HomeIcon from '@mui/icons-material/Home';
 import DescriptionIcon from '@mui/icons-material/Description';
 import MovieIcon from '@mui/icons-material/Movie';
 import PaymentIcon from '@mui/icons-material/Payment';
+import SportsBasketballIcon from '@mui/icons-material/SportsBasketball';
+import WorkIcon from '@mui/icons-material/Work';
 import BarChartIcon from '@mui/icons-material/BarChart';
+import ListAltIcon from '@mui/icons-material/ListAlt';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { useSession } from 'next-auth/react';
 
 interface SidePanelProps {
@@ -20,8 +24,11 @@ interface SidePanelProps {
 const sideNavItems: SideNavItem[] = [
   { label: 'Home', element: <HomeIcon />, href: '/' },
   { label: 'Details', element: <MovieIcon />, href: '/details' },
+  { label: 'Automation', element: <SettingsIcon />, href: '/settings/automation' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
+  { label: 'NCAA Seeds', element: <SportsBasketballIcon />, href: '/ncaa-seed-probability' },
   { label: 'Billing', element: <PaymentIcon />, href: '/billing' },
+  { label: 'Jobs', element: <WorkIcon />, href: '/jobs' },
 ];
 
 const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
@@ -32,7 +39,11 @@ const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
   const isAdmin = session?.user?.email === adminEmail;
 
   const navItems = isAdmin
-    ? [...sideNavItems, { label: 'Costs', element: <BarChartIcon />, href: '/admin/costs' }]
+    ? [
+        ...sideNavItems,
+        { label: 'Costs', element: <BarChartIcon />, href: '/admin/costs' },
+        { label: 'Logs', element: <ListAltIcon />, href: '/admin/logs' },
+      ]
     : sideNavItems;
 
   return (
