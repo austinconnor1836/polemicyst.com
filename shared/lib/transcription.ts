@@ -41,7 +41,7 @@ export async function transcribeFeedVideo(
           where: { id: feedVideoId },
           data: {
             transcript: captions.transcript,
-            transcriptJson: captions.segments,
+            transcriptJson: captions.segments as any,
             transcriptSource: captions.source,
           },
         });
@@ -133,7 +133,7 @@ export async function transcribeFeedVideo(
       where: { id: feedVideoId },
       data: {
         transcript: parsed.transcript,
-        transcriptJson: parsed.segments,
+        transcriptJson: parsed.segments as any,
         transcriptSource: 'whisper',
       },
     });
