@@ -2,6 +2,7 @@ import './ui/global.css';
 import React from 'react';
 import LocalFont from 'next/font/local';
 import { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { Analytics } from './_components/analytics';
 import { HamburgerProvider } from './context/HamburgerContext';
 import { inter } from './ui/fonts';
@@ -9,39 +10,55 @@ import StoreProvider from './StoreProvider';
 import SharedLayout from './SharedLayout';
 import SessionProviderWrapper from './_components/SessionProviderWrapper'; // ✅ Import the wrapper
 
-export const metadata: Metadata = {
-  title: {
-    default: 'polemicyst.com',
-    template: '%s | polemicyst.com',
-  },
-  description: 'Founder of Polemicyst.',
-  openGraph: {
-    title: 'polemicyst.com',
-    description: 'Founder of Tyromaniac.',
-    url: 'https://polemicyst.com',
-    siteName: 'polemicyst.com',
-    locale: 'en-US',
-    type: 'website',
-  },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
+function getSiteLabel(host: string): string {
+  if (host.startsWith('localhost') || host.startsWith('127.0.0.1')) {
+    return 'local:polemicyst';
+  }
+  if (host.startsWith('dev.')) {
+    return 'dev:polemicyst';
+  }
+  return 'polemicyst.com';
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const headersList = await headers();
+  const host = headersList.get('host') ?? '';
+  const siteLabel = getSiteLabel(host);
+
+  return {
+    title: {
+      default: siteLabel,
+      template: `%s | ${siteLabel}`,
+    },
+    description: 'Founder of Polemicyst.',
+    openGraph: {
+      title: siteLabel,
+      description: 'Founder of Tyromaniac.',
+      url: 'https://polemicyst.com',
+      siteName: 'polemicyst.com',
+      locale: 'en-US',
+      type: 'website',
+    },
+    robots: {
       index: true,
       follow: true,
-      'max-video-preview': -1,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
+      googleBot: {
+        index: true,
+        follow: true,
+        'max-video-preview': -1,
+        'max-image-preview': 'large',
+        'max-snippet': -1,
+      },
     },
-  },
-  twitter: {
-    title: 'Polemicyst',
-    card: 'summary_large_image',
-  },
-  icons: {
-    icon: '/favicon/favicon.png',
-  },
-};
+    twitter: {
+      title: siteLabel,
+      card: 'summary_large_image',
+    },
+    icons: {
+      icon: '/favicon/favicon.png',
+    },
+  };
+}
 
 const calSans = LocalFont({
   src: '../../public/fonts/CalSans-SemiBold.ttf',
