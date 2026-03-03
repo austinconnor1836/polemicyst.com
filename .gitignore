@@ -89,6 +89,9 @@ create-dev-db.js
 # claude code
 .claude/
 
+# TODO dispatch tracking (managed by CI cache)
+.dispatched-todos
+
 # Android
 android/.gradle/
 android/build/

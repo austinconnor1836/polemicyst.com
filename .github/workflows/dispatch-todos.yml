@@ -1,0 +1,57 @@
+name: Dispatch TODOs to Cursor Cloud Agents
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_agents:
+        description: "Maximum number of agents to launch (0 = all actionable items)"
+        required: false
+        default: "3"
+      dry_run:
+        description: "Dry run — list what would be dispatched without launching agents"
+        required: false
+        type: boolean
+        default: false
+      source_branch:
+        description: "Branch agents start from"
+        required: false
+        default: "develop"
+
+jobs:
+  dispatch:
+    name: Parse TODOs & Launch Agents
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_branch }}
+
+      - name: Restore dispatch tracking
+        uses: actions/cache/restore@v4
+        with:
+          path: .dispatched-todos
+          key: dispatched-todos-dummy
+          restore-keys: dispatched-todos-
+
+      - name: Dispatch TODO items
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          SOURCE_BRANCH: ${{ inputs.source_branch }}
+        run: |
+          args=()
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          if [[ "${{ inputs.max_agents }}" != "0" ]]; then
+            args+=(--max "${{ inputs.max_agents }}")
+          fi
+          bash scripts/dispatch-todos.sh "${args[@]}"
+
+      - name: Save dispatch tracking
+        if: inputs.dry_run == false
+        uses: actions/cache/save@v4
+        with:
+          path: .dispatched-todos
+          key: dispatched-todos-${{ github.run_id }}
