@@ -10,7 +10,7 @@ COPY prisma ./prisma
 RUN NODE_ENV=development npm ci --ignore-scripts --legacy-peer-deps
 RUN npx prisma generate
 
-COPY next.config.js postcss.config.js tailwind.config.ts tsconfig.json next-auth.d.ts middleware.ts components.json ./
+COPY next.config.js postcss.config.js tailwind.config.ts tsconfig.json next-auth.d.ts components.json ./
 COPY auth.ts ./auth.ts
 COPY public ./public
 COPY src ./src
