@@ -41,6 +41,24 @@ fi
 
 Without this, the agent can push code but cannot create PRs, close/reopen PRs, or trigger CI workflows.
 
+## Release process (semver)
+
+We follow **semantic versioning** (`vMAJOR.MINOR.PATCH`). GitHub Releases are the source of truth for tags.
+
+- **Patch** (`v0.2.1`): bug fixes, dependency updates, formatting
+- **Minor** (`v0.3.0`): new features, non-breaking API changes
+- **Major** (`v1.0.0`): breaking changes, major architectural shifts
+
+### How to cut a release
+
+1. Update `version.json` at the repo root to the new version.
+2. Create a PR from `develop` → `main` with title `Release vX.Y.Z`. Body should summarize highlights, features, bug fixes, and breaking changes.
+3. Wait for CI checks (`Lint & Build`) to pass.
+4. Merge with a **merge commit** (not squash): `gh pr merge <PR_NUMBER> --merge`
+5. Create a GitHub Release targeting `main`: `gh release create vX.Y.Z --target main --title "vX.Y.Z" --notes "..."`
+
+**Rules**: Never push directly to `main`. Never squash-merge release PRs. Never create tags manually.
+
 ## Key files
 
 - Next App Router: `src/app/*`
@@ -121,12 +139,12 @@ Clips Genie (branded "POLEMICYST") is a social media video clip generation and d
 
 ### Required services
 
-| Service | How to start | Port |
-|---|---|---|
-| PostgreSQL 16 | `sudo service postgresql start` | 5432 |
-| Redis | `sudo service redis-server start` (if it fails because port is occupied, first run `redis-cli shutdown` then retry) | 6379 |
+| Service          | How to start                                                                                                                             | Port |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| PostgreSQL 16    | `sudo service postgresql start`                                                                                                          | 5432 |
+| Redis            | `sudo service redis-server start` (if it fails because port is occupied, first run `redis-cli shutdown` then retry)                      | 6379 |
 | Next.js frontend | `DATABASE_URL="postgresql://postgres:postgres@localhost:5432/clips-genie" NEXTAUTH_URL="http://localhost:3000" npx next dev --port 3000` | 3000 |
-| Express backend | `cd backend && npx tsc && node index.js` | 3001 |
+| Express backend  | `cd backend && npx tsc && node index.js`                                                                                                 | 3001 |
 
 ### Database setup (one-time, already done in snapshot)
 
