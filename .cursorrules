@@ -13,10 +13,43 @@
 - Always branch from `develop`: `git checkout develop && git pull origin develop && git checkout -b <branch-name>`
 - PRs target `develop`, not `main`.
 - Branch names: `feature/<name>`, `fix/<name>`, `chore/<name>`.
+- **Never push directly to `main`.** All changes reach `main` via release PRs from `develop`.
 
 ## Quality gates
 
 Every commit **must** pass lint (`npm run lint`) and build (`npx next build`) before being created. Do not commit code that fails either step.
+
+## Release process (semver)
+
+We follow **semantic versioning** (`vMAJOR.MINOR.PATCH`). GitHub Releases are the source of truth for tags.
+
+### Versioning guidelines
+
+- **Patch** (`v0.2.1`): bug fixes, dependency updates, formatting
+- **Minor** (`v0.3.0`): new features, non-breaking API changes
+- **Major** (`v1.0.0`): breaking changes, major architectural shifts
+
+### How to cut a release
+
+1. **Update `version.json`** at the repo root to the new version (also update `android.minVersion` / `ios.minVersion` if needed).
+2. **Create a PR from `develop` → `main`** with title `Release vX.Y.Z`.
+   - The PR body should summarize highlights, new features, bug fixes, and breaking changes.
+3. **Wait for CI checks** (`Lint & Build`) to pass.
+4. **Merge with a merge commit** (not squash — preserves full commit history):
+   ```bash
+   gh pr merge <PR_NUMBER> --merge
+   ```
+5. **Create a GitHub Release** targeting `main`:
+   ```bash
+   gh release create vX.Y.Z --target main --title "vX.Y.Z" --notes "..."
+   ```
+   This creates the git tag automatically.
+
+### What NOT to do
+
+- Don't push directly to `main` — always go through a PR from `develop`.
+- Don't create tags manually — let `gh release create` handle it.
+- Don't squash-merge release PRs — merge commits keep history traceable.
 
 ## Project context
 
