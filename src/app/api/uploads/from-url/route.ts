@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../auth';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
 import { randomUUID } from 'crypto';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
-import {
-  getStrictnessConfig,
-  mergeViralitySettings,
-  type ViralitySettingsValue,
-} from '@shared/virality';
 
 let redis: Redis | null = null;
 let clipGenerationQueue: Queue | null = null;
@@ -38,17 +32,9 @@ function getDownloadQueue() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-  });
-
+  const user = await getAuthenticatedUser(req);
   if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
@@ -83,7 +69,7 @@ export async function POST(req: NextRequest) {
       data: {
         feedId: manualFeed.id,
         userId: user.id,
-        videoId: randomUUID(), // Internal ID
+        videoId: randomUUID(),
         title: filename || url.split('/').pop() || 'Imported Video',
         s3Url: url, // temporary; will be replaced after download
         status: 'pending',
