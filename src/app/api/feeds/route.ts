@@ -31,16 +31,24 @@ function detectSourceType(sourceUrlRaw: string): 'youtube' | 'cspan' {
 }
 
 export async function GET(req: NextRequest) {
-  const user = await getAuthenticatedUser(req);
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-  const feeds = await prisma.videoFeed.findMany({
-    where: { userId: user.id, sourceType: { not: 'manual' } },
-    orderBy: { createdAt: 'desc' },
-  });
-  return NextResponse.json(feeds);
+    const feeds = await prisma.videoFeed.findMany({
+      where: { userId: user.id, sourceType: { not: 'manual' } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return NextResponse.json(feeds);
+  } catch (err) {
+    console.error('[GET /api/feeds] Unhandled error:', err);
+    return NextResponse.json(
+      { error: 'Failed to load feeds' },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {

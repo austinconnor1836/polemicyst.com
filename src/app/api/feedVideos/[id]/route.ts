@@ -5,22 +5,30 @@ import { authOptions } from '../../../../../auth';
 import { deleteFromS3 } from '@shared/lib/s3';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const feedVideo = await prisma.feedVideo.findUnique({
-    where: { id },
-    include: {
-      feed: true,
-      generatedClips: {
-        orderBy: { createdAt: 'desc' },
+  try {
+    const { id } = await params;
+    const feedVideo = await prisma.feedVideo.findUnique({
+      where: { id },
+      include: {
+        feed: true,
+        generatedClips: {
+          orderBy: { createdAt: 'desc' },
+        },
       },
-    },
-  });
+    });
 
-  if (!feedVideo) {
-    return NextResponse.json({ error: 'Feed video not found' }, { status: 404 });
+    if (!feedVideo) {
+      return NextResponse.json({ error: 'Feed video not found' }, { status: 404 });
+    }
+
+    return NextResponse.json(feedVideo);
+  } catch (err) {
+    console.error('[GET /api/feedVideos/:id] Unhandled error:', err);
+    return NextResponse.json(
+      { error: 'Failed to load feed video' },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json(feedVideo);
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

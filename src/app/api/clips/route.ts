@@ -8,29 +8,36 @@ import { prisma } from '@shared/lib/prisma';
  * Back-compat: older clips may have `sourceVideoId == null` but use an S3 key suffix `-clip.mp4`.
  */
 export async function GET(req: NextRequest) {
-  const user = await getAuthenticatedUser(req);
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-  const clips = await prisma.video.findMany({
-    where: {
-      userId: user.id,
-      OR: [
-        { sourceVideoId: { not: null } },
-        // Legacy heuristic for older clips created before `sourceVideoId` was set.
-        {
-          AND: [{ s3Key: { endsWith: '-clip.mp4' } }, { fileName: '' }],
-        },
-      ],
-    },
-    orderBy: { createdAt: 'desc' },
-    include: {
-      sourceVideo: {
-        select: { id: true, videoTitle: true, s3Url: true },
+    const clips = await prisma.video.findMany({
+      where: {
+        userId: user.id,
+        OR: [
+          { sourceVideoId: { not: null } },
+          {
+            AND: [{ s3Key: { endsWith: '-clip.mp4' } }, { fileName: '' }],
+          },
+        ],
       },
-    },
-  });
+      orderBy: { createdAt: 'desc' },
+      include: {
+        sourceVideo: {
+          select: { id: true, videoTitle: true, s3Url: true },
+        },
+      },
+    });
 
-  return NextResponse.json(clips);
+    return NextResponse.json(clips);
+  } catch (err) {
+    console.error('[GET /api/clips] Unhandled error:', err);
+    return NextResponse.json(
+      { error: 'Failed to load clips' },
+      { status: 500 }
+    );
+  }
 }

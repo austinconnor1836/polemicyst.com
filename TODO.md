@@ -20,7 +20,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 
 ### Deployment
 
-- [ ] Run database migrations on production RDS (see `docs/NEXT_STEPS.md`)
+- [x] Run database migrations on production RDS (see `docs/NEXT_STEPS.md`)
 - [ ] Verify ECS services healthy after deploy (web, workers, redis)
 - [ ] Verify SSL certificate and DNS resolution for polemicyst.com
 - [ ] Verify Google OAuth works in production
@@ -202,7 +202,7 @@ The billing & quota infrastructure is largely complete (Stripe checkout, plan de
 
 These block all revenue. Each item is independently executable by a cloud agent.
 
-- [ ] **Run production database migrations** — Execute Prisma migrations against production RDS. Verify all subscription/quota tables exist. (See `docs/NEXT_STEPS.md` for connection details.)
+- [x] **Run production database migrations** — Ran `prisma db push` via ECS task to sync production RDS schema. All missing columns (e.g. `transcriptSource`, `speakerTranscriptJson`, `clipGenerationStatus`, etc.) added. (2026-03-03)
 - [ ] **Verify ECS services are healthy** — Confirm web, clip-worker, and redis containers are running. Check ALB target group health checks pass.
 - [ ] **Verify SSL + DNS** — Confirm `polemicyst.com` resolves and serves HTTPS. Check certificate auto-renewal is configured.
 - [ ] **Verify Google OAuth in production** — Test sign-in flow end-to-end. Ensure callback URLs are registered in Google Cloud Console for the production domain.
