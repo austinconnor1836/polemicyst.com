@@ -6,6 +6,12 @@ const DEV_USER_EMAIL = process.env.DEV_USER_EMAIL;
 const DEV_LOGIN_SECRET = process.env.DEV_LOGIN_SECRET;
 const jwtSecret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET;
 
+const AUTH_ALLOWLIST_ENABLED = process.env.AUTH_ALLOWLIST_ENABLED === 'true';
+const AUTH_ALLOWED_EMAILS = (process.env.AUTH_ALLOWED_EMAILS ?? '')
+  .split(',')
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean);
+
 export async function GET(req: NextRequest) {
   if (process.env.NODE_ENV === 'production') {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -18,6 +24,12 @@ export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get('token');
   if (!token || token !== DEV_LOGIN_SECRET) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  if (AUTH_ALLOWLIST_ENABLED && AUTH_ALLOWED_EMAILS.length > 0) {
+    if (!AUTH_ALLOWED_EMAILS.includes(DEV_USER_EMAIL.toLowerCase())) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
   }
 
   if (!jwtSecret) {

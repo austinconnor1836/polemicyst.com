@@ -271,7 +271,7 @@ export const authOptions: NextAuthOptions = {
     },
     async signIn({ user, account }) {
       if (!user.email || !account) return false;
-      if (IS_DEV && account.provider === 'dev') return true;
+      if (IS_DEV && account.provider === 'dev') return isAllowedEmail(user.email);
       if (!isAllowedEmail(user.email) || !isAllowedProvider(account.provider)) return false;
 
       const existingUser = await prisma.user.findUnique({
