@@ -113,7 +113,7 @@ export async function transcribeFeedVideoWithSpeakers(
     where: { id: feedVideoId },
     data: {
       transcript: parsed.transcript,
-      transcriptJson: parsed.segments,
+      transcriptJson: parsed.segments as any,
       speakerTranscriptJson: parsed as any,
     },
   });
