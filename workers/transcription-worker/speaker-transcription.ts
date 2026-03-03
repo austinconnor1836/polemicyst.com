@@ -108,12 +108,12 @@ export async function transcribeFeedVideoWithSpeakers(
     throw new Error('Failed to parse speaker transcript output');
   }
 
-  // Store in database
   await prisma.feedVideo.update({
     where: { id: feedVideoId },
     data: {
       transcript: parsed.transcript,
       transcriptJson: parsed.segments as any,
+      transcriptSource: 'whisper',
       speakerTranscriptJson: parsed as any,
     },
   });

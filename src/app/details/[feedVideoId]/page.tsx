@@ -60,6 +60,7 @@ type FeedVideoSummary = {
     createdAt?: string | null;
     transcript?: string | null;
     transcriptJson?: { start: number; end: number; text: string }[] | null;
+    transcriptSource?: string | null;
     feed?: { id: string; name: string };
     clipSourceVideoId?: string | null;
     clipSourceVideo?: {
@@ -457,7 +458,18 @@ export default function ClipGroupPage() {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-base">Transcript</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base">Transcript</CardTitle>
+                    {summary.feedVideo.transcriptSource && (
+                      <Badge variant="outline" className="text-xs font-normal">
+                        {summary.feedVideo.transcriptSource === 'youtube-manual'
+                          ? 'YouTube captions'
+                          : summary.feedVideo.transcriptSource === 'youtube-auto'
+                            ? 'YouTube auto-captions'
+                            : 'Whisper'}
+                      </Badge>
+                    )}
+                  </div>
                   <CardDescription>Scroll to review the transcript for this video.</CardDescription>
                 </div>
                 <ChevronDown
