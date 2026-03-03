@@ -1,10 +1,10 @@
 'use client';
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
-// Define the shape of the context
 interface HamburgerContextProps {
   isOpen: boolean;
   toggleMenu: () => void;
+  closeMenu: () => void;
 }
 
 // Create the context
@@ -27,7 +27,13 @@ export const HamburgerProvider: React.FC<{ children: ReactNode }> = ({ children 
     setIsOpen(!isOpen);
   };
 
+  const closeMenu = () => {
+    setIsOpen(false);
+  };
+
   return (
-    <HamburgerContext.Provider value={{ isOpen, toggleMenu }}>{children}</HamburgerContext.Provider>
+    <HamburgerContext.Provider value={{ isOpen, toggleMenu, closeMenu }}>
+      {children}
+    </HamburgerContext.Provider>
   );
 };

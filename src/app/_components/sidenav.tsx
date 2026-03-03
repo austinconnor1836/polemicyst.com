@@ -32,7 +32,7 @@ const sideNavItems: SideNavItem[] = [
 ];
 
 const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
-  const { isOpen } = useHamburger(); // Use the isOpen state from context
+  const { isOpen, closeMenu } = useHamburger();
   const { data: session } = useSession();
 
   const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
@@ -60,7 +60,7 @@ const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
     >
       <ul className="flex flex-col">
         {navItems.map((item, index) => (
-          <Link key={item.label} href={item.href} passHref>
+          <Link key={item.label} href={item.href} passHref onClick={closeMenu}>
             <li
               key={index}
               className="rounded-md cursor-pointer hover:bg-blue-100 transition-colors flex items-center space-x-2 p-2"
