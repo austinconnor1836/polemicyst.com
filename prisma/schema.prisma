@@ -110,6 +110,7 @@ model FeedVideo {
   status                String    @default("ready") // pending | ready | failed
   transcript            String?
   transcriptJson        Json?
+  transcriptSource      String?   // whisper | youtube-manual | youtube-auto
   speakerTranscriptJson Json?
   clipGenerationStatus  String    @default("idle") // idle | queued | processing | completed | failed
   clipGenerationError   String?
