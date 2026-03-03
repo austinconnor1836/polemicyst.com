@@ -1,6 +1,7 @@
 const fetch = require('node-fetch');
 import { prisma } from '@shared/lib/prisma';
 import { spawn } from 'child_process';
+import { fetchYouTubeCaptions, isYouTubeUrl } from '@shared/lib/youtube-captions';
 
 export async function transcribeFeedVideo(
   feedVideoId: string
@@ -21,7 +22,33 @@ export async function transcribeFeedVideo(
     };
   }
 
-  console.info('🎤 Starting transcription...');
+  // Fast path: try YouTube captions before downloading + Whisper
+  const youtubeUrl = findYouTubeUrl(feedVideo);
+  if (youtubeUrl) {
+    console.info('⚡ Attempting YouTube captions fast path...');
+    try {
+      const captions = await fetchYouTubeCaptions(youtubeUrl);
+      if (captions) {
+        console.info(
+          `✅ Got transcript from ${captions.source} (${captions.segments.length} segments)`
+        );
+        await prisma.feedVideo.update({
+          where: { id: feedVideoId },
+          data: {
+            transcript: captions.transcript,
+            transcriptJson: captions.segments as any,
+            transcriptSource: captions.source,
+          },
+        });
+        return { transcript: captions.transcript, segments: captions.segments };
+      }
+      console.info('⚠️ No YouTube captions available, falling back to Whisper...');
+    } catch (err) {
+      console.warn('⚠️ YouTube captions fetch failed, falling back to Whisper:', err);
+    }
+  }
+
+  console.info('🎤 Starting Whisper transcription...');
 
   const videoRes = await fetch(feedVideo.s3Url);
   if (!videoRes.ok || !videoRes.body) {
@@ -32,21 +59,16 @@ export async function transcribeFeedVideo(
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
-  // Robust error handling for EPIPE and stream errors
   let output = '';
   let error = '';
   let streamEnded = false;
-  let processClosed = false;
 
-  // Handle errors on the video stream
   videoRes.body.on('error', (err: NodeJS.ErrnoException) => {
     console.error('Error reading video stream:', err);
     pythonProcess.stdin?.destroy(err);
   });
 
-  // Handle errors on the python process stdin
   pythonProcess.stdin?.on('error', (err) => {
-    // Type guard for 'code' property
     const errorWithCode = err as NodeJS.ErrnoException;
     if (errorWithCode.code === 'EPIPE') {
       console.error('EPIPE: Python process closed stdin early.');
@@ -55,24 +77,21 @@ export async function transcribeFeedVideo(
     }
   });
 
-  // If the process closes before the stream ends, unpipe/destroy
-  pythonProcess.on('close', (code) => {
-    processClosed = true;
+  pythonProcess.on('close', () => {
     if (!streamEnded) {
       videoRes.body.unpipe(pythonProcess.stdin!);
       pythonProcess.stdin?.destroy();
     }
   });
 
-  // Track when the stream ends
   videoRes.body.on('end', () => {
     streamEnded = true;
   });
 
   videoRes.body.pipe(pythonProcess.stdin!);
 
-  pythonProcess.stdout.on('data', (d) => (output += d.toString()));
-  pythonProcess.stderr.on('data', (d) => (error += d.toString()));
+  pythonProcess.stdout.on('data', (d: Buffer) => (output += d.toString()));
+  pythonProcess.stderr.on('data', (d: Buffer) => (error += d.toString()));
 
   const exitCode: number = await new Promise((resolve) => pythonProcess.on('close', resolve));
 
@@ -93,8 +112,27 @@ export async function transcribeFeedVideo(
     data: {
       transcript: parsed.transcript,
       transcriptJson: parsed.segments,
+      transcriptSource: 'whisper',
     },
   });
 
   return parsed;
+}
+
+/**
+ * Find a YouTube URL for the feed video. The s3Url may be either a YouTube URL
+ * directly (pre-download) or an S3 URL. We also check if the videoId looks like
+ * a YouTube ID so we can reconstruct the URL.
+ */
+function findYouTubeUrl(feedVideo: { s3Url: string; videoId?: string }): string | null {
+  if (isYouTubeUrl(feedVideo.s3Url)) {
+    return feedVideo.s3Url;
+  }
+  if (
+    feedVideo.videoId &&
+    /^[a-zA-Z0-9_-]{11}$/.test(feedVideo.videoId)
+  ) {
+    return `https://www.youtube.com/watch?v=${feedVideo.videoId}`;
+  }
+  return null;
 }

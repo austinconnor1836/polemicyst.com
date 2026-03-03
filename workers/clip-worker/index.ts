@@ -137,12 +137,12 @@ new Worker(
       console.log('🎤 Transcribing...');
       const segments = await transcribeVideo(videoPath);
 
-      // Save transcript to DB
       await prisma.feedVideo.update({
         where: { id: feedVideoId },
         data: {
           transcript: segments.map((s) => s.text).join(' '),
           transcriptJson: segments,
+          transcriptSource: 'whisper',
         },
       });
 
