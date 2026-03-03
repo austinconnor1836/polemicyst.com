@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { ArrowLeftIcon } from '@heroicons/react/24/solid';
 import { useSubscription } from '@/hooks/useSubscription';
 import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
+import { UpgradePrompt, type QuotaErrorInfo } from '@/components/UpgradePrompt';
+import { parseQuotaError } from '@/lib/api-errors';
 
 type GeneratedClip = {
   id: string;
@@ -39,6 +41,7 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
   const [error, setError] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState('9:16');
   const [isTriggering, setIsTriggering] = useState(false);
+  const [clipQuotaError, setClipQuotaError] = useState<QuotaErrorInfo | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previousClipCountRef = useRef(0);
   const { quota, data: subscriptionData, refresh: refreshSubscription } = useSubscription();
@@ -94,6 +97,7 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
   const handleGenerateClips = async () => {
     if (!feedVideo) return;
     setIsTriggering(true);
+    setClipQuotaError(null);
 
     try {
       const res = await fetch('/api/trigger-clip', {
@@ -106,7 +110,14 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
         }),
       });
 
-      if (!res.ok) throw new Error('Failed to trigger clip generation');
+      if (!res.ok) {
+        const qe = await parseQuotaError(res);
+        if (qe) {
+          setClipQuotaError(qe);
+          return;
+        }
+        throw new Error('Failed to trigger clip generation');
+      }
 
       setFeedVideo((prev) =>
         prev ? { ...prev, clipGenerationStatus: 'queued', clipGenerationError: null } : prev
@@ -168,16 +179,25 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
       <div className="bg-white dark:bg-[#292c35] rounded-lg shadow-md p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">Clip Generation</h2>
 
-        {quota && subscriptionData && (quota.clips.warning || quota.clips.exceeded) && (
+        {clipQuotaError && (
           <div className="mb-4">
-            <QuotaWarningBanner
-              quota={quota}
-              planName={subscriptionData.plan.name}
-              planId={subscriptionData.plan.id}
-              show="clips"
-            />
+            <UpgradePrompt quotaError={clipQuotaError} onDismiss={() => setClipQuotaError(null)} />
           </div>
         )}
+
+        {quota &&
+          subscriptionData &&
+          !clipQuotaError &&
+          (quota.clips.warning || quota.clips.exceeded) && (
+            <div className="mb-4">
+              <QuotaWarningBanner
+                quota={quota}
+                planName={subscriptionData.plan.name}
+                planId={subscriptionData.plan.id}
+                show="clips"
+              />
+            </div>
+          )}
 
         <div className="flex flex-wrap items-center gap-4">
           <div>

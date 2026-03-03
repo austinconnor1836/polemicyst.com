@@ -33,6 +33,8 @@ import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { useSubscription } from '@/hooks/useSubscription';
 import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
+import { UpgradePrompt, type QuotaErrorInfo } from '@/components/UpgradePrompt';
+import { parseQuotaError } from '@/lib/api-errors';
 import { formatRelativeTime } from '@/app/feeds/util/time';
 import {
   DEFAULT_VIRALITY_SETTINGS,
@@ -118,6 +120,7 @@ export default function ClipGroupPage() {
   const [isPersistingDefaultLLM, setIsPersistingDefaultLLM] = useState(false);
   const [isGeneratingClip, setIsGeneratingClip] = useState(false);
   const [generateMessage, setGenerateMessage] = useState<string | null>(null);
+  const [clipQuotaError, setClipQuotaError] = useState<QuotaErrorInfo | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
   const [transcribeMessage, setTranscribeMessage] = useState<string | null>(null);
@@ -244,6 +247,11 @@ export default function ClipGroupPage() {
     });
 
     if (!res.ok) {
+      const qe = await parseQuotaError(res);
+      if (qe) {
+        setClipQuotaError(qe);
+        return null;
+      }
       throw new Error('Failed to trigger clip');
     }
 
@@ -253,10 +261,13 @@ export default function ClipGroupPage() {
   const handleGenerateClip = async () => {
     setIsGeneratingClip(true);
     setGenerateMessage(null);
+    setClipQuotaError(null);
     try {
-      await triggerClip();
-      setGenerateMessage('Clip job enqueued.');
-      refreshSubscription();
+      const result = await triggerClip();
+      if (result) {
+        setGenerateMessage('Clip job enqueued.');
+        refreshSubscription();
+      }
     } catch (err) {
       console.error(err);
       setGenerateMessage('Failed to enqueue clip job.');
@@ -269,6 +280,7 @@ export default function ClipGroupPage() {
     setIsGenerateDialogOpen(open);
     if (open) {
       setGenerateMessage(null);
+      setClipQuotaError(null);
     }
   };
 
@@ -408,8 +420,15 @@ export default function ClipGroupPage() {
                       </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
+                      {clipQuotaError && (
+                        <UpgradePrompt
+                          quotaError={clipQuotaError}
+                          onDismiss={() => setClipQuotaError(null)}
+                        />
+                      )}
                       {quota &&
                         subscriptionData &&
+                        !clipQuotaError &&
                         (quota.clips.warning || quota.clips.exceeded) && (
                           <QuotaWarningBanner
                             quota={quota}

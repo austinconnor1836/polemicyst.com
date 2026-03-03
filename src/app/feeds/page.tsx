@@ -54,6 +54,8 @@ import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { useSubscription } from '@/hooks/useSubscription';
 import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
+import { UpgradePrompt, type QuotaErrorInfo } from '@/components/UpgradePrompt';
+import { parseQuotaError } from '@/lib/api-errors';
 
 function youtubeHandleUrlFromName(name: string) {
   const trimmed = (name || '').trim();
@@ -91,6 +93,7 @@ export default function FeedsPage() {
   const [deletingFeedId, setDeletingFeedId] = useState<string | null>(null);
   const [deletingVideoId, setDeletingVideoId] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [quotaError, setQuotaError] = useState<QuotaErrorInfo | null>(null);
 
   // Upload state — Map keyed by tracking ID allows concurrent uploads
   const [activeUploads, setActiveUploads] = useState<
@@ -173,13 +176,22 @@ export default function FeedsPage() {
   const addFeed = async () => {
     setIsCreatingFeed(true);
     setPageError(null);
+    setQuotaError(null);
     try {
       const res = await fetch('/api/feeds', {
         method: 'POST',
         body: JSON.stringify(form),
         headers: { 'Content-Type': 'application/json' },
       });
-      if (!res.ok) throw new Error('Failed to create feed');
+      if (!res.ok) {
+        const qe = await parseQuotaError(res);
+        if (qe) {
+          setQuotaError(qe);
+          setIsAddFeedOpen(false);
+          return;
+        }
+        throw new Error('Failed to create feed');
+      }
       setForm({ name: '', sourceUrl: '', pollingInterval: 60 });
       await fetchFeeds();
       toast.success('Feed added');
@@ -504,13 +516,22 @@ export default function FeedsPage() {
   };
 
   const updateFeedSettings = async (feedId: string, updates: any) => {
+    setQuotaError(null);
     try {
       const res = await fetch(`/api/feeds/${feedId}`, {
         method: 'PATCH',
         body: JSON.stringify(updates),
         headers: { 'Content-Type': 'application/json' },
       });
-      if (!res.ok) throw new Error('Failed to update feed');
+      if (!res.ok) {
+        const qe = await parseQuotaError(res);
+        if (qe) {
+          setQuotaError(qe);
+          setIsFeedSettingsOpen(false);
+          return;
+        }
+        throw new Error('Failed to update feed');
+      }
       await fetchFeeds();
       toast.success('Settings saved');
       setIsFeedSettingsOpen(false);
@@ -637,8 +658,15 @@ export default function FeedsPage() {
         </div>
       )}
 
+      {quotaError && (
+        <div className="mb-6">
+          <UpgradePrompt quotaError={quotaError} onDismiss={() => setQuotaError(null)} />
+        </div>
+      )}
+
       {quota &&
         subscriptionData &&
+        !quotaError &&
         (quota.feeds.warning ||
           quota.feeds.exceeded ||
           quota.clips.warning ||
