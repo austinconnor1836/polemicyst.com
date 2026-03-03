@@ -1,6 +1,4 @@
 module.exports = {
-  middleware: true,
-  matcher: ['/protected-path/:path*'], // ✅ Update to match your secured routes
   output: 'standalone',
   eslint: {
     ignoreDuringBuilds: true,
