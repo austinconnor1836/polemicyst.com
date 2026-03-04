@@ -31,7 +31,9 @@ COPY --from=base /app/public ./public
 COPY --from=base /app/prisma ./prisma
 COPY --from=base /app/node_modules/prisma ./node_modules/prisma
 COPY --from=base /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
+RUN mkdir -p node_modules/.bin && ln -s ../prisma/build/index.js node_modules/.bin/prisma && chmod +x node_modules/prisma/build/index.js
 COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
 
 EXPOSE 3000
 CMD ["./docker-entrypoint.sh"]

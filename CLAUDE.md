@@ -141,6 +141,13 @@ In the Feeds modal, users can set:
 
 ## Change log
 
+### 2026-03-04
+
+- **Consolidated transcription into the clip-metadata-worker** — the transcription queue (`transcription`) is now consumed by the same ECS service as clip-generation (`prod-clip-worker` / `dev-clip-worker`). Previously, a standalone `transcription-worker` existed in code but was never deployed as an ECS service, so transcription jobs queued from the API were never processed.
+- The clip-metadata-worker now listens on both `clip-generation` and `transcription` BullMQ queues.
+- Transcription flow: API route (`POST /api/feedVideos/:id/transcribe`) enqueues to Redis → clip-metadata-worker picks it up → tries YouTube captions first (fast, ~100ms HTTP via yt-dlp) → falls back to Whisper if no captions → saves transcript to DB → auto-triggers clip-generation if feed has `autoGenerateClips` enabled.
+- Fixed **`prisma: not found`** in the web Docker image — the standalone Next.js build didn't include `.bin/prisma` symlink. Added explicit symlink creation in the Dockerfile runner stage so `npx prisma migrate deploy` works on container startup.
+
 ### 2026-03-01
 
 - Added **job log tracking** for transcription, clip-generation, and speaker-transcription jobs.
