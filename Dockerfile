@@ -29,6 +29,9 @@ COPY --from=base /app/.next/standalone ./
 COPY --from=base /app/.next/static ./.next/static
 COPY --from=base /app/public ./public
 COPY --from=base /app/prisma ./prisma
+COPY --from=base /app/node_modules/prisma ./node_modules/prisma
+COPY --from=base /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
+COPY docker-entrypoint.sh ./
 
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["./docker-entrypoint.sh"]
