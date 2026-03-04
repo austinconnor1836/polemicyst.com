@@ -35,9 +35,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(clips);
   } catch (err) {
     console.error('[GET /api/clips] Unhandled error:', err);
-    return NextResponse.json(
-      { error: 'Failed to load clips' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to load clips' }, { status: 500 });
   }
 }

@@ -24,10 +24,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json(feedVideo);
   } catch (err) {
     console.error('[GET /api/feedVideos/:id] Unhandled error:', err);
-    return NextResponse.json(
-      { error: 'Failed to load feed video' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to load feed video' }, { status: 500 });
   }
 }
 

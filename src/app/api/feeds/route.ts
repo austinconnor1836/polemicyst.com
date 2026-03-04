@@ -44,10 +44,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(feeds);
   } catch (err) {
     console.error('[GET /api/feeds] Unhandled error:', err);
-    return NextResponse.json(
-      { error: 'Failed to load feeds' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to load feeds' }, { status: 500 });
   }
 }
 

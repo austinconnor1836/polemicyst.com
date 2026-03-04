@@ -17,9 +17,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(videos);
   } catch (err) {
     console.error('[GET /api/feedVideos] Unhandled error:', err);
-    return NextResponse.json(
-      { error: 'Failed to load feed videos' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to load feed videos' }, { status: 500 });
   }
 }
