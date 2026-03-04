@@ -18,6 +18,7 @@ WORKDIR /app
 
 COPY ./workers/clip-metadata-worker/package*.json ./workers/clip-metadata-worker/
 COPY ./shared ./shared
+RUN rm -f ./shared/lib/auth.ts ./shared/lib/auth-helpers.ts
 
 WORKDIR /app/workers/clip-metadata-worker
 RUN npm install

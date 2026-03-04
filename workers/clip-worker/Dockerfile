@@ -15,6 +15,7 @@ WORKDIR /app
 
 COPY ./workers/clip-worker/package*.json ./workers/clip-worker/
 COPY ./shared ./shared
+RUN rm -f ./shared/lib/auth.ts ./shared/lib/auth-helpers.ts
 
 WORKDIR /app/workers/clip-worker
 RUN npm install
