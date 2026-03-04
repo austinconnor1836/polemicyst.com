@@ -10,6 +10,7 @@ WORKDIR /app
 COPY ./workers/video-download-worker/package*.json ./workers/video-download-worker/
 
 COPY ./shared ./shared
+RUN rm -f ./shared/lib/auth.ts ./shared/lib/auth-helpers.ts
 
 
 
