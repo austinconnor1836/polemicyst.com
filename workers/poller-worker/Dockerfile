@@ -13,6 +13,7 @@ WORKDIR /app
 
 COPY ./workers/poller-worker/package.json ./workers/poller-worker/
 COPY ./shared ./shared
+RUN rm -f ./shared/lib/auth.ts ./shared/lib/auth-helpers.ts
 
 
 WORKDIR /app/workers/poller-worker
