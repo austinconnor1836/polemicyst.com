@@ -17,7 +17,8 @@
     "backend": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up",
     "backend:build": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build",
     "openapi:generate": "cd android && ./gradlew openApiGenerate",
-    "tokens": "node scripts/generate-tokens.mjs"
+    "tokens": "node scripts/generate-tokens.mjs",
+    "version:bump": "node scripts/bump-version.mjs"
   },
   "dependencies": {
     "@atproto/api": "^0.14.7",
