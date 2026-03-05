@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
           videoId: newVideo.id,
           title: newVideo.title,
           thumbnailUrl,
-          s3Url: '',
+          s3Url: newVideo.url,
           status: 'pending',
           userId: user.id,
         },
@@ -164,6 +164,13 @@ export async function POST(req: NextRequest) {
         feedId: newFeed.id,
         userId: user.id,
       });
+
+      // For YouTube feeds, enqueue transcription in parallel with download.
+      // YouTube captions resolve in ~100ms while the download takes minutes.
+      if (sourceType === 'youtube') {
+        const { queueTranscriptionJob } = await import('@shared/queues');
+        await queueTranscriptionJob({ feedVideoId: feedVideo.id });
+      }
     }
   } catch (err) {
     // Non-blocking: feed is created even if initial pull fails
