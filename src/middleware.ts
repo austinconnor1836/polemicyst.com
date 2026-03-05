@@ -14,7 +14,13 @@ function isAllowedEmail(email?: string | null): boolean {
   return AUTH_ALLOWED_EMAILS.includes(email.toLowerCase());
 }
 
+const PUBLIC_PATHS = ['/', '/pricing', '/privacy-policy', '/terms-of-service'];
+
 export async function middleware(req: NextRequest) {
+  if (PUBLIC_PATHS.includes(req.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
   const isApiRoute = req.nextUrl.pathname.startsWith('/api/');
 
   const token = await getToken({ req });
