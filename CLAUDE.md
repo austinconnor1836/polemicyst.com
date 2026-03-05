@@ -141,6 +141,14 @@ In the Feeds modal, users can set:
 
 ## Change log
 
+### 2026-03-04 (parallel transcription)
+
+- **Parallel YouTube transcription** — when importing a YouTube URL (via feed creation or URL import), transcription is now enqueued alongside the download job. YouTube captions resolve in ~100ms via HTTP while the download takes minutes, so the transcript is ready by the time the download finishes.
+- Added **status gate** in transcription worker's auto-trigger: clip-generation only enqueues when `feedVideo.status !== 'pending'`, preventing premature triggering during parallel imports.
+- Added `jobId: feedVideoId` dedup to `queueTranscriptionJob` to prevent duplicate transcription jobs.
+- Fixed `s3Url: ''` in feed creation — now set to the YouTube URL so the transcription worker can fetch captions before the S3 download completes.
+- Created `ARCHITECTURE.md` with full system topology, queue architecture, data flow diagrams, and key design decisions.
+
 ### 2026-03-04
 
 - **Consolidated transcription into the clip-metadata-worker** — the transcription queue (`transcription`) is now consumed by the same ECS service as clip-generation (`prod-clip-worker` / `dev-clip-worker`). Previously, a standalone `transcription-worker` existed in code but was never deployed as an ECS service, so transcription jobs queued from the API were never processed.
