@@ -34,6 +34,14 @@ export async function POST(req: NextRequest) {
       userId: user.id,
     });
 
+    // 4. For YouTube URLs, enqueue transcription in parallel with download.
+    // YouTube captions resolve in ~100ms while the download takes minutes.
+    const { isYouTubeUrl } = await import('@shared/lib/youtube-captions');
+    if (isYouTubeUrl(url)) {
+      const { queueTranscriptionJob } = await import('@shared/queues');
+      await queueTranscriptionJob({ feedVideoId: newVideo.id });
+    }
+
     return NextResponse.json(newVideo);
   } catch (error) {
     console.error('Import from URL error:', error);

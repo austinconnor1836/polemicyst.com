@@ -1,0 +1,55 @@
+name: Finalize Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  create-github-release:
+    name: Create GitHub Release
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.title, 'Release v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Extract version from PR title
+        id: version
+        run: |
+          TITLE="${{ github.event.pull_request.title }}"
+          VERSION="${TITLE#Release }"
+          echo "tag=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Verify version.json matches
+        run: |
+          FILE_VERSION=$(node -p "require('./version.json').version")
+          TAG="${{ steps.version.outputs.tag }}"
+          EXPECTED="${TAG#v}"
+          if [ "$FILE_VERSION" != "$EXPECTED" ]; then
+            echo "::warning::version.json ($FILE_VERSION) does not match PR title tag ($EXPECTED)"
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s\n' "$PR_BODY" > /tmp/release-notes.md
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --target main \
+            --title "${{ steps.version.outputs.tag }}" \
+            --notes-file /tmp/release-notes.md
+
+      - name: Summary
+        run: |
+          echo "### Release ${{ steps.version.outputs.tag }} published" >> $GITHUB_STEP_SUMMARY
+          echo "GitHub Release and git tag created on \`main\`." >> $GITHUB_STEP_SUMMARY

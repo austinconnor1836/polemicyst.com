@@ -1,0 +1,164 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version bump type or explicit version (e.g. patch, minor, major, 1.2.3)"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      custom_version:
+        description: "Explicit version override (leave blank to use bump type above)"
+        required: false
+        type: string
+      dry_run:
+        description: "Dry run — print what would happen without creating the PR"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare-release:
+    name: Bump version & open release PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Determine version to use
+        id: version_input
+        run: |
+          if [ -n "${{ inputs.custom_version }}" ]; then
+            echo "bump=${{ inputs.custom_version }}" >> $GITHUB_OUTPUT
+          else
+            echo "bump=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Read current version
+        id: current
+        run: |
+          CURRENT=$(node -p "require('./version.json').version")
+          echo "version=$CURRENT" >> $GITHUB_OUTPUT
+
+      - name: Bump version.json
+        id: bump
+        run: |
+          NEW_VERSION=$(node scripts/bump-version.mjs "${{ steps.version_input.outputs.bump }}")
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "### Version bump" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.current.outputs.version }} → $NEW_VERSION" >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate changelog
+        run: |
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$PREVIOUS_TAG" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${PREVIOUS_TAG}..HEAD"
+          fi
+
+          {
+            echo "## Release v${{ steps.bump.outputs.version }}"
+            echo ""
+            echo "**Previous version:** ${{ steps.current.outputs.version }}"
+            echo ""
+
+            FEATURES=$(git log $RANGE --pretty=format:'%s' --no-merges \
+              | grep -iE '^feat' | sed 's/^/- /' || true)
+            FIXES=$(git log $RANGE --pretty=format:'%s' --no-merges \
+              | grep -iE '^fix' | sed 's/^/- /' || true)
+            CHORES=$(git log $RANGE --pretty=format:'%s' --no-merges \
+              | grep -iE '^(chore|ci|docs|refactor|style|perf|build)' \
+              | sed 's/^/- /' || true)
+            OTHER=$(git log $RANGE --pretty=format:'%s' --no-merges \
+              | grep -viE '^(feat|fix|chore|ci|docs|refactor|style|perf|build|Merge)' \
+              | sed 's/^/- /' || true)
+
+            if [ -n "$FEATURES" ]; then
+              echo "### Features"
+              echo "$FEATURES"
+              echo ""
+            fi
+
+            if [ -n "$FIXES" ]; then
+              echo "### Bug Fixes"
+              echo "$FIXES"
+              echo ""
+            fi
+
+            if [ -n "$CHORES" ]; then
+              echo "### Maintenance"
+              echo "$CHORES"
+              echo ""
+            fi
+
+            if [ -n "$OTHER" ]; then
+              echo "### Other"
+              echo "$OTHER"
+              echo ""
+            fi
+
+            echo "---"
+            echo "_Release prepared by the [Prepare Release](../actions/workflows/release.yml) workflow._"
+          } > /tmp/release-body.md
+
+      - name: Dry run summary
+        if: inputs.dry_run
+        run: |
+          echo "### Dry run — no changes made" >> $GITHUB_STEP_SUMMARY
+          echo "Would bump **${{ steps.current.outputs.version }}** → **v${{ steps.bump.outputs.version }}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Generated PR body" >> $GITHUB_STEP_SUMMARY
+          cat /tmp/release-body.md >> $GITHUB_STEP_SUMMARY
+          git checkout -- version.json
+
+      - name: Commit version bump
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}"
+          git push origin develop
+
+      - name: Create release PR
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING=$(gh pr list --base main --head develop --state open \
+            --json number --jq '.[0].number' || true)
+          if [ -n "$EXISTING" ]; then
+            echo "Updating existing release PR #$EXISTING"
+            gh pr edit "$EXISTING" \
+              --title "Release v${{ steps.bump.outputs.version }}" \
+              --body-file /tmp/release-body.md
+            echo "### Updated PR #$EXISTING" >> $GITHUB_STEP_SUMMARY
+            echo "[View PR](../pull/$EXISTING)" >> $GITHUB_STEP_SUMMARY
+          else
+            PR_URL=$(gh pr create \
+              --base main \
+              --head develop \
+              --title "Release v${{ steps.bump.outputs.version }}" \
+              --body-file /tmp/release-body.md)
+            echo "### Created release PR" >> $GITHUB_STEP_SUMMARY
+            echo "$PR_URL" >> $GITHUB_STEP_SUMMARY
+          fi

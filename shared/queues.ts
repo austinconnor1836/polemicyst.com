@@ -95,6 +95,7 @@ export interface TranscriptionJob {
 
 export function queueTranscriptionJob(data: TranscriptionJob) {
   return getTranscriptionQueue().add('transcribe', data, {
+    jobId: data.feedVideoId,
     removeOnComplete: true,
     removeOnFail: true,
   });

@@ -1,5 +1,5 @@
 import { prisma } from '@shared/lib/prisma';
-import { queueFeedDownloadJob } from '@shared/queues';
+import { queueFeedDownloadJob, queueTranscriptionJob } from '@shared/queues';
 
 export function detectSourceType(sourceUrlRaw: string): 'youtube' | 'cspan' {
   const trimmed = (sourceUrlRaw || '').trim();
@@ -98,7 +98,7 @@ async function pullInitialVideo(
         videoId: newVideo.id,
         title: newVideo.title,
         thumbnailUrl,
-        s3Url: '',
+        s3Url: newVideo.url,
         status: 'pending',
         userId,
       },
@@ -116,5 +116,11 @@ async function pullInitialVideo(
       feedId: feed.id,
       userId,
     });
+
+    // For YouTube feeds, enqueue transcription in parallel with download.
+    // YouTube captions resolve in ~100ms while the download takes minutes.
+    if (sourceType === 'youtube') {
+      await queueTranscriptionJob({ feedVideoId: feedVideo.id });
+    }
   }
 }
