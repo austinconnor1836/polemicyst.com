@@ -1,13 +1,7 @@
 import { Worker, Job } from 'bullmq';
-import Redis from 'ioredis';
 import { prisma } from '@shared/lib/prisma';
+import { getRedisConnection } from '@shared/queues';
 import { generateMetadataWithOllama } from '@shared/lib/metadata-generation';
-
-const redis = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: 6379,
-  maxRetriesPerRequest: null,
-});
 
 new Worker(
   'generate-metadata',
@@ -32,5 +26,5 @@ new Worker(
       throw err; // Mark job as failed → retry if attempts set
     }
   },
-  { connection: redis as any /* forced cast */ }
+  { connection: getRedisConnection() as any }
 );

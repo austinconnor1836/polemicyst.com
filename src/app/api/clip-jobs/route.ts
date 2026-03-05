@@ -1,10 +1,10 @@
-import { NextResponse } from 'next/server';
-import { Queue } from 'bullmq';
-import { redisConnection } from '@workers/queues/redisConnection';
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@shared/lib/prisma';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
+import { getClipGenerationQueue } from '@shared/queues';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-import { prisma } from '@shared/lib/prisma';
 
 type ClipJobSummary = {
   jobId: string | number;
@@ -17,8 +17,13 @@ type ClipJobSummary = {
   clipSourceVideoId: string | null;
 };
 
-export async function GET() {
-  const queue = new Queue('clip-generation', { connection: redisConnection });
+export async function GET(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const queue = getClipGenerationQueue();
   const now = Date.now();
   const staleMs = 2 * 60 * 60 * 1000;
 
@@ -110,7 +115,5 @@ export async function GET() {
   } catch (err) {
     console.error('clip-jobs route failed:', err);
     return NextResponse.json({ error: 'Failed to load jobs' }, { status: 500 });
-  } finally {
-    await queue.close();
   }
 }
