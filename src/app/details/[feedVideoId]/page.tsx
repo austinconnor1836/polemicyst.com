@@ -29,11 +29,13 @@ import {
   Trash2,
 } from 'lucide-react';
 import SpeakerTranscript from '@/components/SpeakerTranscript';
+import CopyableUrl from '@/components/CopyableUrl';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { useSubscription } from '@/hooks/useSubscription';
 import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
 import { formatRelativeTime } from '@/app/feeds/util/time';
+import { extractYouTubeId } from '@/app/feeds/util/thumbnails';
 import {
   DEFAULT_VIRALITY_SETTINGS,
   getStrictnessConfig,
@@ -54,6 +56,7 @@ type FeedVideoSummary = {
   feedVideo: {
     id: string;
     userId: string;
+    videoId: string;
     title: string;
     s3Url: string;
     thumbnailUrl?: string | null;
@@ -61,7 +64,7 @@ type FeedVideoSummary = {
     transcript?: string | null;
     transcriptJson?: { start: number; end: number; text: string }[] | null;
     transcriptSource?: string | null;
-    feed?: { id: string; name: string };
+    feed?: { id: string; name: string; sourceType?: string };
     clipSourceVideoId?: string | null;
     clipSourceVideo?: {
       id: string;
@@ -197,6 +200,15 @@ export default function ClipGroupPage() {
     () => describeJob(summary?.jobState ?? null, summary?.clips ?? []),
     [summary]
   );
+
+  const videoSourceUrl = useMemo(() => {
+    if (!summary) return null;
+    const fv = summary.feedVideo;
+    const ytId =
+      extractYouTubeId(fv.s3Url) || (fv.feed?.sourceType === 'youtube' ? fv.videoId || null : null);
+    if (ytId) return `https://www.youtube.com/watch?v=${ytId}`;
+    return fv.s3Url || null;
+  }, [summary]);
 
   const persistDefaultLLMProvider = async (provider: LLMProvider) => {
     if (!provider || provider === defaultLLMProvider) {
@@ -384,6 +396,7 @@ export default function ClipGroupPage() {
                 playsInline
                 className="max-h-[400px] w-full rounded bg-black/5 object-contain"
               />
+              {videoSourceUrl && <CopyableUrl url={videoSourceUrl} label="Source" />}
               <div className="flex flex-wrap gap-2">
                 <Button asChild variant="secondary">
                   <a href={summary.feedVideo.s3Url} target="_blank" rel="noreferrer">

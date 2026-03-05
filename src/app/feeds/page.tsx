@@ -37,7 +37,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { getFeedVideoThumbnail } from '@/app/feeds/util/thumbnails';
+import { getFeedVideoThumbnail, getVideoSourceUrl } from '@/app/feeds/util/thumbnails';
+import CopyableUrl from '@/components/CopyableUrl';
 import { cn } from '@/lib/utils';
 import {
   FileText,
@@ -972,6 +973,7 @@ export default function FeedsPage() {
 
                     const { thumbnailUrl, youtubeId } = getFeedVideoThumbnail(video);
                     const isYouTube = Boolean(youtubeId);
+                    const videoSourceUrl = getVideoSourceUrl(video);
                     return (
                       <Card
                         key={video.id}
@@ -1066,6 +1068,9 @@ export default function FeedsPage() {
                                 </span>
                               ) : null}
                             </div>
+                            {videoSourceUrl && (
+                              <CopyableUrl url={videoSourceUrl} className="mt-1" />
+                            )}
                             <div className="flex flex-wrap gap-2 pt-1">
                               <Button asChild size="sm" variant="secondary">
                                 <Link

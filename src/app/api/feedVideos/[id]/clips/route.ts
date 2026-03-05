@@ -13,11 +13,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     select: {
       id: true,
       userId: true,
+      videoId: true,
       title: true,
       s3Url: true,
       thumbnailUrl: true,
       createdAt: true,
-      feed: { select: { id: true, name: true } },
+      feed: { select: { id: true, name: true, sourceType: true } },
       clipSourceVideoId: true,
       transcript: true,
       transcriptJson: true,
