@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import React from 'react';
+import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -12,7 +13,17 @@ import {
   CardFooter,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Check, Zap, Rss, Scissors, Share2, BarChart3, Shield } from 'lucide-react';
+import {
+  Check,
+  Zap,
+  Rss,
+  Scissors,
+  Share2,
+  BarChart3,
+  Shield,
+  ArrowRight,
+  LayoutDashboard,
+} from 'lucide-react';
 import { PLANS, type PlanId } from '@/lib/plans';
 import Particles from './_components/particles';
 
@@ -76,8 +87,36 @@ const STEPS = [
 ];
 
 export default function Home() {
+  const { data: session, status } = useSession();
+  const isAuthenticated = status === 'authenticated';
+
   return (
     <div className="min-h-screen glass:bg-transparent">
+      {/* Member dashboard banner */}
+      {isAuthenticated && (
+        <section className="border-b border-border bg-accent/5 px-4 py-6 glass:bg-white/5">
+          <div className="mx-auto flex max-w-5xl flex-col items-center gap-4 sm:flex-row sm:justify-between">
+            <div className="flex items-center gap-3 text-center sm:text-left">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/10">
+                <LayoutDashboard className="h-5 w-5 text-accent" />
+              </div>
+              <div>
+                <p className="font-semibold">
+                  Welcome back{session.user?.name ? `, ${session.user.name}` : ''}
+                </p>
+                <p className="text-sm text-muted">Pick up where you left off in your dashboard.</p>
+              </div>
+            </div>
+            <Button size="lg" asChild>
+              <Link href="/feeds" className="gap-2">
+                Go to Dashboard
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </section>
+      )}
+
       {/* Hero */}
       <section className="relative overflow-hidden px-4 py-24 sm:py-32 lg:py-40">
         <Particles
@@ -103,9 +142,18 @@ export default function Home() {
           </p>
 
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <Button size="lg" asChild>
-              <Link href="/auth/signin">Get Started Free</Link>
-            </Button>
+            {isAuthenticated ? (
+              <Button size="lg" asChild>
+                <Link href="/feeds" className="gap-2">
+                  Go to Dashboard
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            ) : (
+              <Button size="lg" asChild>
+                <Link href="/auth/signin">Get Started Free</Link>
+              </Button>
+            )}
             <Button variant="outline" size="lg" asChild>
               <Link href="/pricing">View Pricing</Link>
             </Button>
@@ -216,8 +264,20 @@ export default function Home() {
                   </CardContent>
                   <CardFooter>
                     <Button variant={isPopular ? 'default' : 'outline'} className="w-full" asChild>
-                      <Link href={planId === 'free' ? '/auth/signin' : '/pricing'}>
-                        {planId === 'free' ? 'Get Started' : `Choose ${plan.name}`}
+                      <Link
+                        href={
+                          isAuthenticated && planId === 'free'
+                            ? '/feeds'
+                            : planId === 'free'
+                              ? '/auth/signin'
+                              : '/pricing'
+                        }
+                      >
+                        {isAuthenticated && planId === 'free'
+                          ? 'Go to Dashboard'
+                          : planId === 'free'
+                            ? 'Get Started'
+                            : `Choose ${plan.name}`}
                       </Link>
                     </Button>
                   </CardFooter>
@@ -232,15 +292,26 @@ export default function Home() {
       <section className="border-t border-border px-4 py-20 sm:py-24">
         <div className="mx-auto max-w-3xl text-center">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Ready to find your next viral moment?
+            {isAuthenticated ? 'Your clips are waiting' : 'Ready to find your next viral moment?'}
           </h2>
           <p className="mt-4 text-lg text-muted">
-            Sign up for free and start generating clips in minutes.
+            {isAuthenticated
+              ? 'Head to your dashboard to manage feeds and generate clips.'
+              : 'Sign up for free and start generating clips in minutes.'}
           </p>
           <div className="mt-8">
-            <Button size="lg" asChild>
-              <Link href="/auth/signin">Get Started Free</Link>
-            </Button>
+            {isAuthenticated ? (
+              <Button size="lg" asChild>
+                <Link href="/feeds" className="gap-2">
+                  Go to Dashboard
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            ) : (
+              <Button size="lg" asChild>
+                <Link href="/auth/signin">Get Started Free</Link>
+              </Button>
+            )}
           </div>
         </div>
       </section>
