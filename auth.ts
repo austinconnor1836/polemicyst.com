@@ -6,10 +6,10 @@ import FacebookProvider from 'next-auth/providers/facebook';
 import GoogleProvider from 'next-auth/providers/google';
 import TwitterProvider from 'next-auth/providers/twitter';
 import { PrismaAdapter } from '@next-auth/prisma-adapter';
-import { PrismaClient } from '@prisma/client';
 import { BskyAgent } from '@atproto/api';
 import type { JWT } from 'next-auth/jwt';
 import axios from 'axios';
+import { prisma } from '@shared/lib/prisma';
 
 interface ExtendedJWT extends JWT {
   googleAccessToken?: string;
@@ -19,8 +19,6 @@ interface ExtendedJWT extends JWT {
   sub?: string;
   error?: string;
 }
-
-const prisma = new PrismaClient();
 
 const NEXTAUTH_DEBUG_ENABLED = process.env.NEXTAUTH_DEBUG === 'true';
 const AUTH_ALLOWLIST_ENABLED = process.env.AUTH_ALLOWLIST_ENABLED === 'true';

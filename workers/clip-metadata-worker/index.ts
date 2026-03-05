@@ -4,8 +4,8 @@ dotenv.config({ path: '.env' });
 dotenv.config({ path: '.env.local', override: false });
 
 import { Worker, Job, Queue } from 'bullmq';
-import Redis from 'ioredis';
 import { prisma } from '@shared/lib/prisma';
+import { getRedisConnection } from '@shared/queues';
 import { transcribeFeedVideo } from '@shared/lib/transcription';
 import {
   buildCandidatesFromTranscript,
@@ -18,11 +18,7 @@ import { checkClipQuota } from '@shared/lib/plans';
 import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
 import { logJob } from '@shared/lib/job-logger';
 
-const redisConnection = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379', 10),
-  maxRetriesPerRequest: null,
-});
+const redisConnection = getRedisConnection();
 
 function formatTime(seconds: number): string {
   const date = new Date(0);

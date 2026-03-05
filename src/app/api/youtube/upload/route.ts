@@ -1,9 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@shared/lib/prisma';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import AWS from 'aws-sdk';
-
-const prisma = new PrismaClient();
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
@@ -15,15 +14,21 @@ const s3 = new AWS.S3({
   signatureVersion: 'v4',
 });
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   if (!req.headers.get('content-type')?.includes('application/json')) {
     return NextResponse.json({ error: 'Only JSON requests are supported' }, { status: 400 });
   }
 
   try {
-    const { videoId, title, description, userId } = await req.json();
+    const { videoId, title, description } = await req.json();
+    const userId = user.id;
 
-    if (!videoId || !title || !description || !userId) {
+    if (!videoId || !title || !description) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 

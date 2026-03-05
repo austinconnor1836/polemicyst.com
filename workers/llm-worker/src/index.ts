@@ -1,20 +1,12 @@
 import { Worker, Job } from 'bullmq';
-import Redis from 'ioredis';
 import { z } from 'zod';
+import { getRedisConnection } from '@shared/queues';
 
-// Configuration
-const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
-const REDIS_PORT = parseInt(process.env.REDIS_PORT || '6379');
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
-const SCORING_TYPE = process.env.SCORING_TYPE || 'PROVOCATIVENESS'; // PROVOCATIVENESS | COMEDIC
+const SCORING_TYPE = process.env.SCORING_TYPE || 'PROVOCATIVENESS';
 const MODEL_NAME = process.env.MODEL_NAME || 'llama3';
 
-// Redis Connection
-const connection = new Redis({
-  host: REDIS_HOST,
-  port: REDIS_PORT,
-  maxRetriesPerRequest: null,
-});
+const connection = getRedisConnection();
 
 // Prompts
 const PROMPTS = {

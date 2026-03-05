@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { encode } from 'next-auth/jwt';
 import { OAuth2Client } from 'google-auth-library';
-
-const prisma = new PrismaClient();
+import { prisma } from '@shared/lib/prisma';
 
 const AUTH_ALLOWLIST_ENABLED = process.env.AUTH_ALLOWLIST_ENABLED === 'true';
 const AUTH_ALLOWED_EMAILS = (process.env.AUTH_ALLOWED_EMAILS ?? '')
