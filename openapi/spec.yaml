@@ -179,6 +179,9 @@ components:
           type: string
         name:
           type: string
+        sourceType:
+          type: string
+          nullable: true
 
     FeedVideo:
       type: object
