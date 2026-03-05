@@ -4,10 +4,11 @@ import { checkFeedQuota, checkAutoGenerateAccess } from '@/lib/plans';
 import { getUserFeeds, createFeed, detectSourceType } from '@shared/services/feed-service';
 
 export async function GET(req: NextRequest) {
-  const user = await getAuthenticatedUser(req);
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
   const feeds = await getUserFeeds(user.id);
   return NextResponse.json(feeds);

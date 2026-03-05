@@ -3,7 +3,7 @@ dotenv.config({ path: '.env' });
 // For containers, respect already-set env (e.g., DATABASE_URL pointing at service DNS)
 dotenv.config({ path: '.env.local', override: false });
 
-import { Worker, Job } from 'bullmq';
+import { Worker, Job, Queue } from 'bullmq';
 import { prisma } from '@shared/lib/prisma';
 import { getRedisConnection } from '@shared/queues';
 import { transcribeFeedVideo } from '@shared/lib/transcription';
@@ -343,6 +343,141 @@ new Worker(
           console.log('🧹 Cleaned up local video file.');
         }
       }
+    }
+  },
+  { connection: redisConnection as any }
+);
+
+// --- Transcription Worker ---
+// Processes the 'transcription' queue alongside clip-generation.
+// Uses the shared transcribeFeedVideo which tries YouTube captions first (fast),
+// then falls back to Whisper (heavy). After transcription, auto-triggers
+// clip-generation if the feed has autoGenerateClips enabled.
+
+const clipGenerationQueue = new Queue('clip-generation', {
+  connection: redisConnection as any,
+});
+
+new Worker(
+  'transcription',
+  async (job) => {
+    const { feedVideoId } = job.data ?? {};
+    if (!feedVideoId) {
+      console.warn(`⚠️ Skipping transcription job ${job.id}: missing feedVideoId`);
+      return;
+    }
+
+    const startMs = Date.now();
+    await logJob({
+      feedVideoId,
+      jobType: 'transcription',
+      status: 'started',
+      message: 'Worker picked up transcription job',
+    });
+
+    console.log(`🎤 Transcribing video for feed video id ${feedVideoId}`);
+
+    try {
+      await transcribeFeedVideo(feedVideoId);
+      console.log('✅ Transcription complete.');
+
+      await logJob({
+        feedVideoId,
+        jobType: 'transcription',
+        status: 'completed',
+        message: 'Transcription finished successfully',
+        durationMs: Date.now() - startMs,
+      });
+
+      // Auto-trigger clip generation if the feed has autoGenerateClips enabled
+      const feedVideo = await prisma.feedVideo.findUnique({
+        where: { id: feedVideoId },
+        include: { feed: true },
+      });
+
+      if (feedVideo?.feed?.autoGenerateClips && feedVideo.feed.viralitySettings) {
+        const feedUser = await prisma.user.findUnique({
+          where: { id: feedVideo.feed.userId },
+          select: { subscriptionPlan: true },
+        });
+        const clipQuota = await checkClipQuota(
+          feedVideo.feed.userId,
+          feedUser?.subscriptionPlan
+        );
+
+        if (!clipQuota.allowed) {
+          console.warn(`⚠️ Clip quota exceeded. Skipping auto clip generation.`);
+        } else {
+          const settings = feedVideo.feed.viralitySettings as Record<string, any>;
+          const strictnessPreset = settings.strictnessPreset || 'balanced';
+          const strictnessConfig = {
+            minScore: 6.5,
+            percentile: 0.85,
+            minCandidates: 3,
+            maxCandidates: 20,
+            maxGeminiCandidates: 24,
+            ...(strictnessPreset === 'strict'
+              ? {
+                  minScore: 7.0,
+                  percentile: 0.9,
+                  minCandidates: 3,
+                  maxCandidates: 12,
+                  maxGeminiCandidates: 18,
+                }
+              : strictnessPreset === 'loose'
+                ? {
+                    minScore: 6.0,
+                    percentile: 0.75,
+                    minCandidates: 5,
+                    maxCandidates: 24,
+                    maxGeminiCandidates: 36,
+                  }
+                : {}),
+          };
+
+          await clipGenerationQueue.add(
+            'clip-generation',
+            {
+              feedVideoId,
+              userId: feedVideo.feed.userId,
+              aspectRatio: '9:16',
+              scoringMode: settings.scoringMode || 'hybrid',
+              includeAudio: settings.includeAudio || false,
+              saferClips: settings.saferClips ?? true,
+              targetPlatform: settings.targetPlatform || 'reels',
+              contentStyle: settings.contentStyle || 'auto',
+              llmProvider: settings.llmProvider,
+              ...strictnessConfig,
+            },
+            { jobId: feedVideoId, removeOnComplete: true, removeOnFail: true }
+          );
+          console.log(`📋 Auto-enqueued clip-generation for ${feedVideoId}`);
+        }
+      }
+    } catch (err: any) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+
+      await logJob({
+        feedVideoId,
+        jobType: 'transcription',
+        status: 'failed',
+        message: 'Transcription failed',
+        error: errorMessage,
+        durationMs: Date.now() - startMs,
+      });
+
+      if (err instanceof Error && /No audio stream found/i.test(err.message)) {
+        try {
+          await prisma.feedVideo.update({
+            where: { id: feedVideoId },
+            data: { status: 'failed' },
+          });
+        } catch (updateErr) {
+          console.error('Failed to mark feed video as failed:', updateErr);
+        }
+      }
+
+      console.error('❌ Transcription failed:', err);
     }
   },
   { connection: redisConnection as any }

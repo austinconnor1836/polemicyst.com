@@ -320,18 +320,24 @@ export const authOptions: NextAuthOptions = {
         session.user.facebookAccessToken = token.facebookAccessToken;
       }
 
-      const accounts = await prisma.account.findMany({
-        where: { userId: session.user.id },
-        select: { provider: true },
-      });
+      try {
+        const accounts = await prisma.account.findMany({
+          where: { userId: session.user.id },
+          select: { provider: true },
+        });
 
-      let providers = accounts.map((acc: any) => acc.provider);
+        let providers = accounts.map((acc: any) => acc.provider);
 
-      if (providers.includes('facebook') && !providers.includes('instagram')) {
-        providers.push('instagram');
+        if (providers.includes('facebook') && !providers.includes('instagram')) {
+          providers.push('instagram');
+        }
+
+        session.user.providers = providers;
+      } catch (err) {
+        console.error('[next-auth][session] Failed to load account providers:', err);
+        session.user.providers = [];
       }
 
-      session.user.providers = providers;
       return session;
     },
   },
