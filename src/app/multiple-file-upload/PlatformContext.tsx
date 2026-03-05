@@ -105,7 +105,7 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const triggerGridRefresh = () => setRefreshGridToggle((prev) => !prev);
 
   const fetchAuthenticationStatus = async () => {
-    if (!session?.user?.id) return;
+    if (!(session?.user as any)?.id) return;
     try {
       const res = await fetch('/api/auth/status');
       const data = await res.json();
