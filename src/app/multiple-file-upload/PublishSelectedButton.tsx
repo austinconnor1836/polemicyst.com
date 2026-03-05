@@ -27,7 +27,7 @@ const PublishSelectedButton = () => {
       return;
     }
 
-    if (!session?.user?.id) {
+    if (!session || !(session.user as any)?.id) {
       toast.error('User not authenticated.');
       return;
     }
@@ -60,7 +60,7 @@ const PublishSelectedButton = () => {
             videoId: video.id,
             title: video.videoTitle,
             description: descriptions.google,
-            userId: session.user.id,
+            userId: (session.user as any).id,
           });
           uploadedYouTubeUrl = ytRes.data.youtubeLink;
         } catch (err) {
@@ -77,13 +77,13 @@ const PublishSelectedButton = () => {
             await axios.post(endpointMap[platform], {
               videoId: video.id,
               description: descriptions[platform],
-              userId: session.user.id,
+              userId: (session.user as any).id,
             });
           } else if (platform === 'bluesky' || platform === 'twitter') {
             await axios.post(endpointMap[platform], {
               youtubeUrl: uploadedYouTubeUrl,
               description: descriptions[platform],
-              userId: session.user.id,
+              userId: (session.user as any).id,
             });
           }
         } catch (err) {

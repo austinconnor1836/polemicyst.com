@@ -122,11 +122,6 @@ export default function FeedsPage() {
         const provider: LLMProvider = data?.llmProvider === 'ollama' ? 'ollama' : 'gemini';
         if (cancelled) return;
         setDefaultLLMProvider(provider);
-        setViralitySettings((prev) => {
-          if (prev.llmProvider !== DEFAULT_VIRALITY_SETTINGS.llmProvider) return prev;
-          if (prev.llmProvider === provider) return prev;
-          return { ...prev, llmProvider: provider };
-        });
       } catch (err) {
         console.warn('Failed to load default LLM provider', err);
       }
