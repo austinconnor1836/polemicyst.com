@@ -1,9 +1,15 @@
 import { prisma } from '@shared/lib/prisma';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { deleteFromS3 } from '@shared/lib/s3';
 
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
   try {
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { id } = await request.json();
     if (!id) return NextResponse.json({ error: 'Missing video id' }, { status: 400 });
 

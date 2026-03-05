@@ -77,7 +77,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 
 ### Security & Auth
 
-- [ ] Audit all API routes have proper auth checks (some may be missing `getServerSession`)
+- [x] Audit all API routes have proper auth checks (some may be missing `getServerSession`)
 - [ ] Rate limiting on public API endpoints
 - [ ] CSRF protection review
 
