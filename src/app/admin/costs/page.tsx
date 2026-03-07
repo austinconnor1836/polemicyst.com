@@ -1,10 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 type StageRow = {
   stage: string;
@@ -37,7 +44,6 @@ type CostData = {
   daily: DailyRow[];
 };
 
-// Plan pricing for margin projections
 const PLANS = [
   { name: 'Pro', priceUsd: 19, clipsPerMonth: 100 },
   { name: 'Business', priceUsd: 49, clipsPerMonth: 500 },
@@ -61,6 +67,10 @@ export default function AdminCostsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState(30);
+  const [showStages, setShowStages] = useState(false);
+  const [showJobs, setShowJobs] = useState(false);
+  const [showDaily, setShowDaily] = useState(false);
+  const [showMargin, setShowMargin] = useState(false);
 
   const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
 
@@ -72,33 +82,52 @@ export default function AdminCostsPage() {
     }
   }, [session, status, router, adminEmail]);
 
-  useEffect(() => {
+  const fetchData = useCallback(() => {
     if (status === 'loading') return;
     if (!session?.user?.email || session.user.email !== adminEmail) return;
 
-    setLoading(true);
+    setLoading((prev) => (data === null ? true : prev));
     fetch(`/api/admin/costs?days=${days}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
       })
-      .then(setData)
+      .then((d) => {
+        setData(d);
+        setError(null);
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  }, [days, session, status, adminEmail, data]);
+
+  useEffect(() => {
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days, session, status, adminEmail]);
 
-  if (status === 'loading' || loading) {
+  if (status === 'loading' || (loading && !data)) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-muted-foreground">Loading cost data...</p>
+        <div className="text-center space-y-2">
+          <div className="w-6 h-6 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin mx-auto" />
+          <p className="text-muted-foreground text-sm">Loading costs...</p>
+        </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error && !data) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-red-500">Error: {error}</p>
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <div className="text-center space-y-3">
+          <p className="text-red-500 text-sm">{error}</p>
+          <button
+            onClick={fetchData}
+            className="px-4 py-2 rounded-lg bg-foreground text-background text-sm font-medium"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -109,242 +138,210 @@ export default function AdminCostsPage() {
   const avgCostPerClip = totalClips > 0 ? data.totalUsd / totalClips : 0;
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Cost Dashboard</h1>
-        <div className="flex gap-2">
-          {[7, 14, 30, 90].map((d) => (
-            <button
-              key={d}
-              onClick={() => setDays(d)}
-              className={`px-3 py-1 rounded text-sm ${
-                days === d
-                  ? 'bg-foreground text-background'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
-              }`}
-            >
-              {d}d
-            </button>
-          ))}
+    <div className="max-w-3xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-lg sm:text-2xl font-bold">Costs</h1>
+        <div className="flex items-center gap-1.5">
+          <div className="flex gap-1">
+            {[7, 14, 30, 90].map((d) => (
+              <button
+                key={d}
+                onClick={() => setDays(d)}
+                className={`px-2 py-1 rounded text-xs font-medium ${
+                  days === d ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {d}d
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={fetchData}
+            className="px-2.5 py-1 rounded-lg text-xs bg-muted text-muted-foreground active:bg-muted/60"
+          >
+            Refresh
+          </button>
         </div>
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Cost ({days}d)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{formatUsd(data.totalUsd)}</p>
-            <p className="text-xs text-muted-foreground">{data.totalEvents} events</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Jobs Tracked
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{totalClips}</p>
-            <p className="text-xs text-muted-foreground">last {days} days</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Avg Cost / Job
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{formatUsd(avgCostPerClip)}</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-xl p-3 bg-muted/20 border border-border/30 text-center">
+          <p className="text-lg sm:text-xl font-bold">{formatUsd(data.totalUsd)}</p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground">Total ({days}d)</p>
+        </div>
+        <div className="rounded-xl p-3 bg-muted/20 border border-border/30 text-center">
+          <p className="text-lg sm:text-xl font-bold">{totalClips}</p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground">Jobs</p>
+        </div>
+        <div className="rounded-xl p-3 bg-muted/20 border border-border/30 text-center">
+          <p className="text-lg sm:text-xl font-bold">{formatUsd(avgCostPerClip)}</p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground">Avg/Job</p>
+        </div>
       </div>
 
-      {/* Per-stage breakdown */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Cost by Stage</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {data.byStage.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No cost events recorded yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="pb-2 pr-4">Stage</th>
-                    <th className="pb-2 pr-4 text-right">Cost</th>
-                    <th className="pb-2 pr-4 text-right">Events</th>
-                    <th className="pb-2 pr-4 text-right">Avg Duration</th>
-                    <th className="pb-2 pr-4 text-right">Input Tokens</th>
-                    <th className="pb-2 text-right">Output Tokens</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.byStage.map((s) => (
-                    <tr key={s.stage} className="border-b border-border/50">
-                      <td className="py-2 pr-4">
-                        <Badge variant="secondary">{s.stage}</Badge>
-                      </td>
-                      <td className="py-2 pr-4 text-right font-mono">
-                        {formatUsd(s.totalCostUsd)}
-                      </td>
-                      <td className="py-2 pr-4 text-right">{s.count}</td>
-                      <td className="py-2 pr-4 text-right">
-                        {s.avgDurationMs > 0 ? `${(s.avgDurationMs / 1000).toFixed(1)}s` : '-'}
-                      </td>
-                      <td className="py-2 pr-4 text-right font-mono">
-                        {s.totalInputTokens > 0 ? formatTokens(s.totalInputTokens) : '-'}
-                      </td>
-                      <td className="py-2 text-right font-mono">
-                        {s.totalOutputTokens > 0 ? formatTokens(s.totalOutputTokens) : '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Collapsible: Cost by Stage */}
+      <div className="rounded-xl border border-border/40 overflow-hidden">
+        <button
+          onClick={() => setShowStages(!showStages)}
+          className="w-full flex items-center justify-between p-3 text-sm font-semibold active:bg-muted/30"
+        >
+          <span>Cost by Stage</span>
+          <span className="text-muted-foreground text-xs">{showStages ? '−' : '+'}</span>
+        </button>
+        {showStages && (
+          <div className="px-3 pb-3">
+            {data.byStage.length === 0 ? (
+              <p className="text-muted-foreground text-xs py-4 text-center">No cost events yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {data.byStage.map((s) => (
+                  <div key={s.stage} className="flex items-center gap-2 text-xs">
+                    <Badge
+                      variant="secondary"
+                      className="text-[10px] px-1.5 py-0 shrink-0 w-24 justify-center"
+                    >
+                      {s.stage}
+                    </Badge>
+                    <span className="font-mono flex-1">{formatUsd(s.totalCostUsd)}</span>
+                    <span className="text-muted-foreground">{s.count} events</span>
+                    {s.avgDurationMs > 0 && (
+                      <span className="text-muted-foreground">
+                        {(s.avgDurationMs / 1000).toFixed(1)}s
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-      {/* Per-job table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Jobs</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {data.byJob.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No jobs recorded yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="pb-2 pr-4">Job ID</th>
-                    <th className="pb-2 pr-4 text-right">Cost</th>
-                    <th className="pb-2 pr-4 text-right">Events</th>
-                    <th className="pb-2 text-right">Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.byJob.map((j) => (
-                    <tr key={j.jobId} className="border-b border-border/50">
-                      <td className="py-2 pr-4 font-mono text-xs">{j.jobId.slice(0, 12)}...</td>
-                      <td className="py-2 pr-4 text-right font-mono">
-                        {formatUsd(j.totalCostUsd)}
-                      </td>
-                      <td className="py-2 pr-4 text-right">{j.eventCount}</td>
-                      <td className="py-2 text-right text-muted-foreground">
-                        {new Date(j.createdAt).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Daily costs */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Daily Costs</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {data.daily.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No daily data yet.</p>
-          ) : (
-            <div className="space-y-1">
-              {data.daily.map((d) => {
-                const maxCost = Math.max(...data.daily.map((r) => r.totalCostUsd), 0.001);
-                const widthPct = Math.max(2, (d.totalCostUsd / maxCost) * 100);
-                return (
-                  <div key={d.day} className="flex items-center gap-3 text-sm">
-                    <span className="w-24 text-muted-foreground shrink-0">
-                      {new Date(d.day).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
+      {/* Collapsible: Recent Jobs */}
+      <div className="rounded-xl border border-border/40 overflow-hidden">
+        <button
+          onClick={() => setShowJobs(!showJobs)}
+          className="w-full flex items-center justify-between p-3 text-sm font-semibold active:bg-muted/30"
+        >
+          <span>Recent Jobs</span>
+          <span className="text-muted-foreground text-xs">{showJobs ? '−' : '+'}</span>
+        </button>
+        {showJobs && (
+          <div className="px-3 pb-3">
+            {data.byJob.length === 0 ? (
+              <p className="text-muted-foreground text-xs py-4 text-center">No jobs yet.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {data.byJob.map((j) => (
+                  <div
+                    key={j.jobId}
+                    className="flex items-center gap-2 text-xs p-1.5 rounded-lg hover:bg-muted/20"
+                  >
+                    <span className="font-mono text-[10px] text-muted-foreground truncate w-20 shrink-0">
+                      {j.jobId.slice(0, 10)}..
                     </span>
-                    <div className="flex-1 h-5 bg-muted/30 rounded overflow-hidden">
-                      <div
-                        className="h-full bg-blue-500/70 rounded"
-                        style={{ width: `${widthPct}%` }}
-                      />
+                    <span className="font-mono flex-1">{formatUsd(j.totalCostUsd)}</span>
+                    <span className="text-muted-foreground">{j.eventCount} ev</span>
+                    <span className="text-muted-foreground shrink-0">
+                      {new Date(j.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Collapsible: Daily Costs */}
+      <div className="rounded-xl border border-border/40 overflow-hidden">
+        <button
+          onClick={() => setShowDaily(!showDaily)}
+          className="w-full flex items-center justify-between p-3 text-sm font-semibold active:bg-muted/30"
+        >
+          <span>Daily Costs</span>
+          <span className="text-muted-foreground text-xs">{showDaily ? '−' : '+'}</span>
+        </button>
+        {showDaily && (
+          <div className="px-3 pb-3">
+            {data.daily.length === 0 ? (
+              <p className="text-muted-foreground text-xs py-4 text-center">No daily data yet.</p>
+            ) : (
+              <div className="space-y-1">
+                {data.daily.map((d) => {
+                  const maxCost = Math.max(...data.daily.map((r) => r.totalCostUsd), 0.001);
+                  const widthPct = Math.max(2, (d.totalCostUsd / maxCost) * 100);
+                  return (
+                    <div key={d.day} className="flex items-center gap-2 text-xs">
+                      <span className="w-14 text-muted-foreground shrink-0 text-[10px]">
+                        {new Date(d.day).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </span>
+                      <div className="flex-1 h-4 bg-muted/30 rounded overflow-hidden">
+                        <div
+                          className="h-full bg-blue-500/70 rounded"
+                          style={{ width: `${widthPct}%` }}
+                        />
+                      </div>
+                      <span className="w-16 text-right font-mono shrink-0 text-[10px]">
+                        {formatUsd(d.totalCostUsd)}
+                      </span>
                     </div>
-                    <span className="w-20 text-right font-mono shrink-0">
-                      {formatUsd(d.totalCostUsd)}
-                    </span>
-                    <span className="w-12 text-right text-muted-foreground shrink-0">
-                      {d.eventCount}
-                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Collapsible: Margin Projector */}
+      <div className="rounded-xl border border-border/40 overflow-hidden">
+        <button
+          onClick={() => setShowMargin(!showMargin)}
+          className="w-full flex items-center justify-between p-3 text-sm font-semibold active:bg-muted/30"
+        >
+          <span>Margin Projector</span>
+          <span className="text-muted-foreground text-xs">{showMargin ? '−' : '+'}</span>
+        </button>
+        {showMargin && (
+          <div className="px-3 pb-3">
+            <p className="text-[10px] text-muted-foreground mb-3">
+              Based on avg cost per job of {formatUsd(avgCostPerClip)}
+            </p>
+            <div className="space-y-3">
+              {PLANS.map((plan) => {
+                const estCost = avgCostPerClip * plan.clipsPerMonth;
+                const margin = plan.priceUsd - estCost;
+                const marginPct =
+                  plan.priceUsd > 0 ? ((margin / plan.priceUsd) * 100).toFixed(1) : '0';
+                return (
+                  <div key={plan.name} className="rounded-lg bg-muted/20 p-2.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-semibold">{plan.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        ${plan.priceUsd}/mo · {plan.clipsPerMonth} clips
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="text-muted-foreground">Est. cost: {formatUsd(estCost)}</span>
+                      <span
+                        className={`font-mono font-semibold ${margin >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
+                      >
+                        {formatUsd(margin)} ({marginPct}%)
+                      </span>
+                    </div>
                   </div>
                 );
               })}
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Margin projector */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Margin Projector</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-4">
-            Based on avg cost per job of {formatUsd(avgCostPerClip)}
-          </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="pb-2 pr-4">Plan</th>
-                  <th className="pb-2 pr-4 text-right">Price</th>
-                  <th className="pb-2 pr-4 text-right">Clips/mo</th>
-                  <th className="pb-2 pr-4 text-right">Est. Cost</th>
-                  <th className="pb-2 pr-4 text-right">Margin</th>
-                  <th className="pb-2 text-right">Margin %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {PLANS.map((plan) => {
-                  const estCost = avgCostPerClip * plan.clipsPerMonth;
-                  const margin = plan.priceUsd - estCost;
-                  const marginPct =
-                    plan.priceUsd > 0 ? ((margin / plan.priceUsd) * 100).toFixed(1) : '0';
-                  return (
-                    <tr key={plan.name} className="border-b border-border/50">
-                      <td className="py-2 pr-4 font-medium">{plan.name}</td>
-                      <td className="py-2 pr-4 text-right">${plan.priceUsd}/mo</td>
-                      <td className="py-2 pr-4 text-right">{plan.clipsPerMonth}</td>
-                      <td className="py-2 pr-4 text-right font-mono">{formatUsd(estCost)}</td>
-                      <td
-                        className={`py-2 pr-4 text-right font-mono ${margin >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
-                      >
-                        {formatUsd(margin)}
-                      </td>
-                      <td
-                        className={`py-2 text-right ${margin >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
-                      >
-                        {marginPct}%
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
     </div>
   );
 }
