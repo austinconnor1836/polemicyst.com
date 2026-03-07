@@ -1,15 +1,13 @@
-import { Worker, Queue } from 'bullmq';
+import { Worker } from 'bullmq';
 import { prisma } from '@shared/lib/prisma';
-import { getTranscriptionQueue } from '@shared/queues';
+import { getRedisConnection, getClipGenerationQueue, getTranscriptionQueue } from '@shared/queues';
 import { transcribeFeedVideo } from './transcription';
 import { transcribeFeedVideoWithSpeakers } from './speaker-transcription';
 import { checkClipQuota } from '@shared/lib/plans';
 import { logJob } from '@shared/lib/job-logger';
 import { updateJobProgress } from '@shared/lib/job-progress';
 
-const clipGenerationQueue = new Queue('clip-generation', {
-  connection: getTranscriptionQueue().opts.connection as any,
-});
+const clipGenerationQueue = getClipGenerationQueue();
 
 new Worker(
   'transcription',
@@ -189,7 +187,7 @@ new Worker(
       console.error('❌ Transcription failed:', transcriptionError);
     }
   },
-  { connection: getTranscriptionQueue().opts.connection as any }
+  { connection: getRedisConnection() as any }
 );
 
 // Speaker-identified transcription worker

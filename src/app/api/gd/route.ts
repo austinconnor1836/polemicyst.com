@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
-import type { ChatCompletionMessageParam } from 'openai/resources/chat';
+type ChatCompletionMessageParam = any;
 
 type Highlight = {
   text: string;

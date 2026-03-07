@@ -2,10 +2,9 @@
 import { NextRequest } from 'next/server';
 import axios from 'axios';
 import FormData from 'form-data';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@shared/lib/prisma';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import AWS from 'aws-sdk';
-
-const prisma = new PrismaClient();
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
@@ -18,10 +17,17 @@ const s3 = new AWS.S3({
 
 export async function POST(req: NextRequest) {
   try {
-    const { videoId, description, userId } = await req.json();
-    if (!videoId || !description || !userId) {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
+
+    const { videoId, description } = await req.json();
+    if (!videoId || !description) {
       return new Response('Missing required fields', { status: 400 });
     }
+
+    const userId = user.id;
 
     const video = await prisma.video.findUnique({ where: { id: videoId } });
     if (!video || !video.s3Key) return new Response('Video not found', { status: 404 });

@@ -1,54 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../auth';
-import { prisma } from '@shared/lib/prisma';
-import { randomUUID } from 'crypto';
-import { Queue } from 'bullmq';
-import Redis from 'ioredis';
-import {
-  getStrictnessConfig,
-  mergeViralitySettings,
-  type ViralitySettingsValue,
-} from '@shared/virality';
-
-let redis: Redis | null = null;
-let clipGenerationQueue: Queue | null = null;
-let downloadQueue: Queue | null = null;
-
-function getRedisConnection() {
-  if (redis) return redis;
-  redis = new Redis({
-    host: process.env.REDIS_HOST || 'localhost',
-    port: 6379,
-    maxRetriesPerRequest: null,
-  });
-  return redis;
-}
-
-function getClipGenerationQueue() {
-  if (clipGenerationQueue) return clipGenerationQueue;
-  clipGenerationQueue = new Queue('clip-generation', { connection: getRedisConnection() });
-  return clipGenerationQueue;
-}
-
-function getDownloadQueue() {
-  if (downloadQueue) return downloadQueue;
-  downloadQueue = new Queue('feed-download', { connection: getRedisConnection() });
-  return downloadQueue;
-}
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
+import { queueFeedDownloadJob } from '@shared/queues';
+import { findOrCreateManualFeed, createFeedVideoRecord } from '@shared/services/upload-service';
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-  });
-
+  const user = await getAuthenticatedUser(req);
   if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
@@ -58,47 +16,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
     }
 
-    // 1. Find or create the "Manual Uploads" feed
-    let manualFeed = await prisma.videoFeed.findFirst({
-      where: {
-        userId: user.id,
-        sourceType: 'manual',
-      },
+    const manualFeed = await findOrCreateManualFeed(user.id);
+
+    const newVideo = await createFeedVideoRecord({
+      feedId: manualFeed.id,
+      userId: user.id,
+      title: filename || url.split('/').pop() || 'Imported Video',
+      s3Url: url,
+      status: 'pending',
     });
 
-    if (!manualFeed) {
-      manualFeed = await prisma.videoFeed.create({
-        data: {
-          userId: user.id,
-          name: 'Manual Uploads',
-          sourceType: 'manual',
-          sourceUrl: 'manual://uploads',
-          pollingInterval: 0,
-        },
-      });
-    }
-
-    // 2. Create the FeedVideo record as "pending" and enqueue download
-    const newVideo = await prisma.feedVideo.create({
-      data: {
-        feedId: manualFeed.id,
-        userId: user.id,
-        videoId: randomUUID(), // Internal ID
-        title: filename || url.split('/').pop() || 'Imported Video',
-        s3Url: url, // temporary; will be replaced after download
-        status: 'pending',
-      },
-    });
-
-    // 3. Enqueue download job
-    const queue = getDownloadQueue();
-    await queue.add('download', {
+    await queueFeedDownloadJob({
       feedVideoId: newVideo.id,
       url,
       title: newVideo.title,
       feedId: manualFeed.id,
       userId: user.id,
     });
+
+    // 4. For YouTube URLs, enqueue transcription in parallel with download.
+    // YouTube captions resolve in ~100ms while the download takes minutes.
+    const { isYouTubeUrl } = await import('@shared/lib/youtube-captions');
+    if (isYouTubeUrl(url)) {
+      const { queueTranscriptionJob } = await import('@shared/queues');
+      await queueTranscriptionJob({ feedVideoId: newVideo.id });
+    }
 
     return NextResponse.json(newVideo);
   } catch (error) {

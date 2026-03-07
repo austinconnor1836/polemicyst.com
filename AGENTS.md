@@ -11,6 +11,61 @@ This package contains the **Next.js app** plus **workers** used in local dev via
 - Full stack (db/redis/workers hot reload):  
   `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build`
 
+## Cursor Cloud specific instructions
+
+### Authenticating in the web app (manual testing)
+
+The app uses Google OAuth, which cloud agents can't complete. A dev-only login endpoint bypasses this:
+
+1. Ensure these env vars are set (add as Cursor Cloud Agent secrets if not):
+   - `DEV_USER_EMAIL` — the email of the user account to log in as
+   - `DEV_LOGIN_SECRET` — a random secret token (e.g. `openssl rand -hex 32`)
+   - `NEXTAUTH_SECRET` — the NextAuth JWT secret (any random string works for local dev)
+   - `DATABASE_URL` — Postgres connection string (required for Prisma)
+2. Start the dev server: `npx next dev --port 3000`
+3. In the `computerUse` subagent, navigate to `http://localhost:3000/api/auth/dev-login?token=$DEV_LOGIN_SECRET`
+4. The browser will be redirected to `/` with a valid session cookie. All authenticated pages now work.
+
+Security: The endpoint requires three conditions to function — `NODE_ENV !== 'production'`, both `DEV_USER_EMAIL` and `DEV_LOGIN_SECRET` env vars set, and the correct secret passed as a `?token=` query parameter. Without the secret, the endpoint returns 404. It creates the user in the DB if they don't exist.
+
+### GitHub authentication (PRs, CI triggers)
+
+Add a GitHub PAT as the `GH_TOKEN` Cursor Cloud Agent secret. The startup script should run:
+
+```bash
+if [ -n "$GH_TOKEN" ]; then
+  echo "$GH_TOKEN" | gh auth login --with-token
+  git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+fi
+```
+
+Without this, the agent can push code but cannot create PRs, close/reopen PRs, or trigger CI workflows.
+
+## Release process (semver)
+
+We follow **semantic versioning** (`vMAJOR.MINOR.PATCH`). GitHub Releases are the source of truth for tags.
+
+- **Patch** (`v0.2.1`): bug fixes, dependency updates, formatting
+- **Minor** (`v0.3.0`): new features, non-breaking API changes
+- **Major** (`v1.0.0`): breaking changes, major architectural shifts
+
+### How to cut a release (automated)
+
+1. Go to **Actions → Prepare Release → Run workflow**.
+2. Select bump type (`patch` / `minor` / `major`) or enter an explicit version. Optionally enable **dry run** to preview.
+3. The workflow bumps `version.json` on `develop`, generates a changelog, and opens a PR `develop → main` titled `Release vX.Y.Z`.
+4. Review the PR and wait for CI (`Lint & Build`).
+5. Merge with a **merge commit** (not squash): `gh pr merge <PR_NUMBER> --merge`
+6. The **Finalize Release** workflow fires automatically on merge — creates the GitHub Release + git tag on `main`.
+
+### Manual fallback
+
+1. Update `version.json` and commit to `develop`.
+2. Create a PR `develop → main` titled `Release vX.Y.Z`.
+3. Merge with a merge commit, then: `gh release create vX.Y.Z --target main --title "vX.Y.Z" --notes "..."`
+
+**Rules**: Never push directly to `main`. Never squash-merge release PRs. Never create tags manually (let the workflow handle it).
+
 ## Key files
 
 - Next App Router: `src/app/*`
@@ -109,7 +164,74 @@ After starting all services, use the `computerUse` subagent to open the app in C
 ## UI conventions (quick reminders)
 
 - **Dialogs/modals**: follow the standard spacing pattern in the repo root `../CLAUDE.md`:
-  - `DialogHeader` â†’ body wrapper (`space-y-4` or `space-y-3`) â†’ `DialogFooter` with `pt-4`
+  - `DialogHeader` → body wrapper (`space-y-4` or `space-y-3`) → `DialogFooter` with `pt-4`
   - avoid one-off `mb-*` spacing between header badges and media previews
 - **Section Headers**:
   - "Add" actions in card/section headers should use `variant="secondary"` to maintain visual hierarchy (primary actions are usually for saving/confirming in modals).
+
+## Cursor Cloud specific instructions
+
+### Product overview
+
+Clips Genie (branded "POLEMICYST") is a social media video clip generation and distribution platform. It uses Next.js 15 for the frontend (port 3000), an Express 5 backend API (port 3001), BullMQ workers for async clip processing, Prisma ORM with PostgreSQL, and Redis for job queuing.
+
+### Architecture
+
+- **Root** (`/workspace`): Next.js 15 frontend + API routes
+- **`backend/`**: Express 5 API server (TypeScript, compiled with `tsc`)
+- **`clip-worker/`**: BullMQ worker for clip-generation queue
+- **`shared/`**: Shared Prisma client used by multiple packages
+- **`prisma/`**: Prisma schema and migrations
+- **`workers/`**: Poller worker for automated video feed polling
+
+### Environment constraints
+
+- **Docker is NOT available** — the VM kernel lacks iptables NAT support. All services (PostgreSQL, Redis) run natively.
+- The VM may inject a `DATABASE_URL` env var pointing to `db:5432` (Docker hostname). This is **wrong**. Always export the correct value pointing to `localhost:5432` before running any Prisma or backend commands.
+- The VM may inject `NEXTAUTH_URL` as `https://localhost:3000`. Override to `http://localhost:3000` for local dev (no TLS).
+
+### Required services
+
+| Service          | How to start                                                                                                                             | Port |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| PostgreSQL 16    | `sudo service postgresql start`                                                                                                          | 5432 |
+| Redis            | `sudo service redis-server start` (if it fails because port is occupied, first run `redis-cli shutdown` then retry)                      | 6379 |
+| Next.js frontend | `DATABASE_URL="postgresql://postgres:postgres@localhost:5432/clips-genie" NEXTAUTH_URL="http://localhost:3000" npx next dev --port 3000` | 3000 |
+| Express backend  | `cd backend && npx tsc && node index.js`                                                                                                 | 3001 |
+
+### Database setup (one-time, already done in snapshot)
+
+```
+sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';"
+sudo -u postgres createdb clips-genie   # ignore "already exists" error
+```
+
+To push the latest Prisma schema:
+
+```bash
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/clips-genie" \
+  npx prisma db push
+```
+
+(If Prisma asks for consent, add `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="yes"`.)
+
+### Authenticate (dev login)
+
+A dev-only credentials provider is available when `NODE_ENV !== 'production'`. No OAuth setup required.
+
+1. Navigate to `http://localhost:3000/auth/signin`.
+2. Enter any email (e.g. `dev@test.com`) in the **Email** field.
+3. Click **Dev Sign In**.
+
+This creates (or reuses) a real `User` row in the database. The resulting JWT session works identically to a production OAuth session for all API routes. The session persists in cookies across page navigations.
+
+### Key caveats
+
+- `next.config.js` rewrites `/api/backend/*` to `http://host.docker.internal:3001/*`. This does not resolve in native local dev. The frontend and backend work independently on their own ports; the rewrite only matters when running under Docker.
+- `npm run build` (production build) fails due to missing `@/` path alias in `tsconfig.json` — this is a pre-existing repo issue. The dev server (`next dev`) handles it fine.
+- No ESLint configuration exists in the repo. No automated test suite is configured (`backend/package.json` test script is a no-op).
+- The `.env` file must exist at the repo root with at minimum: `DATABASE_URL`, `REDIS_HOST`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`. Placeholder values work for OAuth providers and AWS credentials for basic dev.
+- All three packages (root, `backend/`, `clip-worker/`) use npm as their package manager (matching `package-lock.json` lockfiles).
+- The backend must be compiled with `tsc` before running (`cd backend && npx tsc`). Output JS files are emitted alongside source `.ts` files.
+- `faster-whisper` is installed via pip3 for the transcription pipeline.
+- `@next/swc-linux-x64-gnu` must be installed for Next.js SWC compilation on this platform.

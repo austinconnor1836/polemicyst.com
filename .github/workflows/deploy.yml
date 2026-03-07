@@ -14,8 +14,8 @@ env:
   ECS_CLUSTER: polemicyst-cluster
 
 jobs:
-  deploy:
-    name: Deploy
+  deploy-web:
+    name: Deploy Web
     runs-on: ubuntu-latest
 
     steps:
@@ -27,10 +27,8 @@ jobs:
         run: |
           if [ "${{ github.ref }}" == "refs/heads/main" ]; then
             echo "environment=prod" >> $GITHUB_OUTPUT
-            echo "github_environment=production" >> $GITHUB_OUTPUT
           else
             echo "environment=dev" >> $GITHUB_OUTPUT
-            echo "github_environment=development" >> $GITHUB_OUTPUT
           fi
 
       - name: Configure AWS credentials
@@ -52,6 +50,43 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_WEB:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_WEB:$IMAGE_TAG
 
+      - name: Update Web ECS Service
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service polemicyst-${ENVIRONMENT}-web \
+            --force-new-deployment
+
+  deploy-clip-worker:
+    name: Deploy Clip Worker
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine Environment
+        id: env
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
       - name: Build and push Clip Metadata Worker image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -60,6 +95,43 @@ jobs:
           docker build -f workers/clip-metadata-worker/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_CLIP:$IMAGE_TAG
 
+      - name: Update Clip Worker ECS Service
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service ${ENVIRONMENT}-clip-worker \
+            --force-new-deployment
+
+  deploy-llm-worker:
+    name: Deploy LLM Worker
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine Environment
+        id: env
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
       - name: Build and push LLM Worker image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -67,22 +139,6 @@ jobs:
         run: |
           docker build -f workers/llm-worker/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_LLM:$IMAGE_TAG
-
-      - name: Update ECS Services
-        env:
-          ENVIRONMENT: ${{ steps.env.outputs.environment }}
-        run: |
-          # Update web service
-          aws ecs update-service \
-            --cluster $ECS_CLUSTER \
-            --service polemicyst-${ENVIRONMENT}-web \
-            --force-new-deployment
-
-          # Update clip worker service (now runs clip-metadata-worker code)
-          aws ecs update-service \
-            --cluster $ECS_CLUSTER \
-            --service ${ENVIRONMENT}-clip-worker \
-            --force-new-deployment
 
   android-test:
     name: Android Tests
@@ -217,8 +273,8 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild test \
-            -project Polemicyst.xcodeproj \
-            -scheme PolemicystApp \
+            -project Clipfire.xcodeproj \
+            -scheme ClipfireApp \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             | xcpretty --color
 

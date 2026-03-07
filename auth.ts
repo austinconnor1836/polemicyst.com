@@ -1,22 +1,24 @@
-import NextAuth, { NextAuthOptions } from 'next-auth';
+import NextAuth from 'next-auth/next';
+import type { NextAuthOptions, Session, User } from 'next-auth';
+import type { Account } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import FacebookProvider from 'next-auth/providers/facebook';
 import GoogleProvider from 'next-auth/providers/google';
 import TwitterProvider from 'next-auth/providers/twitter';
 import { PrismaAdapter } from '@next-auth/prisma-adapter';
-import { PrismaClient } from '@prisma/client';
 import { BskyAgent } from '@atproto/api';
-import { JWT } from 'next-auth/jwt';
+import type { JWT } from 'next-auth/jwt';
 import axios from 'axios';
+import { prisma } from '@shared/lib/prisma';
 
 interface ExtendedJWT extends JWT {
   googleAccessToken?: string;
   googleRefreshToken?: string;
   accessTokenExpires?: number;
   id?: string;
+  sub?: string;
+  error?: string;
 }
-
-const prisma = new PrismaClient();
 
 const NEXTAUTH_DEBUG_ENABLED = process.env.NEXTAUTH_DEBUG === 'true';
 const AUTH_ALLOWLIST_ENABLED = process.env.AUTH_ALLOWLIST_ENABLED === 'true';
@@ -85,24 +87,48 @@ function redactSecrets(input: unknown): unknown {
   return walk(input);
 }
 
+const IS_DEV = process.env.NODE_ENV !== 'production';
+
+const devCredentialsProvider = IS_DEV
+  ? CredentialsProvider({
+      id: 'dev',
+      name: 'Dev Login',
+      credentials: {
+        email: { label: 'Email', type: 'email', placeholder: 'you@example.com' },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email) return null;
+        const email = credentials.email.trim().toLowerCase();
+
+        let user = await prisma.user.findUnique({ where: { email } });
+        if (!user) {
+          user = await prisma.user.create({
+            data: { email, name: email.split('@')[0] },
+          });
+        }
+        return user;
+      },
+    })
+  : null;
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma), // PostgreSQL persistence
   // Never log OAuth tokens / secrets unless explicitly enabled.
   debug: NEXTAUTH_DEBUG_ENABLED,
   logger: {
-    error(code, metadata) {
+    error(code: string, metadata: unknown) {
       console.error(`[next-auth][error][${code}]`, redactSecrets(metadata));
     },
-    warn(code) {
+    warn(code: string) {
       console.warn(`[next-auth][warn][${code}]`);
     },
-    debug(code, metadata) {
-      // NextAuth should only call this when debug=true, but keep it safe anyway.
+    debug(code: string, metadata: unknown) {
       if (!NEXTAUTH_DEBUG_ENABLED) return;
       console.debug(`[next-auth][debug][${code}]`, redactSecrets(metadata));
     },
   },
   providers: [
+    ...(devCredentialsProvider ? [devCredentialsProvider] : []),
     FacebookProvider({
       clientId: process.env.AUTH_FACEBOOK_ID!,
       clientSecret: process.env.AUTH_FACEBOOK_SECRET!,
@@ -208,7 +234,7 @@ export const authOptions: NextAuthOptions = {
     signIn: '/auth/signin',
   },
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account }: { token: any; user?: any; account?: any }) {
       if (user) {
         token.id = user.id;
       }
@@ -244,8 +270,9 @@ export const authOptions: NextAuthOptions = {
       // Access token expired, try to refresh it
       return await refreshAccessToken(token);
     },
-    async signIn({ user, account }) {
+    async signIn({ user, account }: { user: any; account: any }) {
       if (!user.email || !account) return false;
+      if (IS_DEV && account.provider === 'dev') return isAllowedEmail(user.email);
       if (!isAllowedEmail(user.email) || !isAllowedProvider(account.provider)) return false;
 
       const existingUser = await prisma.user.findUnique({
@@ -283,7 +310,7 @@ export const authOptions: NextAuthOptions = {
 
       return true;
     },
-    async session({ session, token }) {
+    async session({ session, token }: { session: any; token: any }) {
       if (token) {
         session.user = { ...session.user, id: token.sub as string };
       }
@@ -296,18 +323,24 @@ export const authOptions: NextAuthOptions = {
         session.user.facebookAccessToken = token.facebookAccessToken;
       }
 
-      const accounts = await prisma.account.findMany({
-        where: { userId: session.user.id },
-        select: { provider: true },
-      });
+      try {
+        const accounts = await prisma.account.findMany({
+          where: { userId: session.user.id },
+          select: { provider: true },
+        });
 
-      let providers = accounts.map((acc: any) => acc.provider);
+        let providers = accounts.map((acc: any) => acc.provider);
 
-      if (providers.includes('facebook') && !providers.includes('instagram')) {
-        providers.push('instagram');
+        if (providers.includes('facebook') && !providers.includes('instagram')) {
+          providers.push('instagram');
+        }
+
+        session.user.providers = providers;
+      } catch (err) {
+        console.error('[next-auth][session] Failed to load account providers:', err);
+        session.user.providers = [];
       }
 
-      session.user.providers = providers;
       return session;
     },
   },

@@ -1,26 +1,33 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
-import { Queue } from 'bullmq';
-import { redisConnection } from '@workers/queues/redisConnection';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
+import { getClipGenerationQueue } from '@shared/queues';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { id } = await params;
   const feedVideo = await prisma.feedVideo.findUnique({
     where: { id },
     select: {
       id: true,
       userId: true,
+      videoId: true,
       title: true,
       s3Url: true,
       thumbnailUrl: true,
       createdAt: true,
-      feed: { select: { id: true, name: true } },
+      feed: { select: { id: true, name: true, sourceType: true } },
       clipSourceVideoId: true,
       transcript: true,
       transcriptJson: true,
+      transcriptSource: true,
       clipSourceVideo: {
         select: {
           id: true,
@@ -49,7 +56,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Feed video not found' }, { status: 404 });
   }
 
-  const queue = new Queue('clip-generation', { connection: redisConnection });
+  const queue = getClipGenerationQueue();
   let jobState: string | null = null;
   let jobMeta: {
     enqueuedAt: number | null;
@@ -69,8 +76,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     }
   } catch (err) {
     console.error('feedVideo clips route failed:', err);
-  } finally {
-    await queue.close();
   }
 
   return NextResponse.json({

@@ -91,7 +91,7 @@ const DescriptionEditor = () => {
         ytForm.append('file', selectedFile);
         ytForm.append('title', videoTitle);
         ytForm.append('description', descriptions.google);
-        ytForm.append('userId', session?.user.id!);
+        ytForm.append('userId', (session?.user as any)?.id ?? '');
 
         const ytRes = await axios.post(endpointMap.google, ytForm, {
           headers: { 'Content-Type': 'multipart/form-data' },
@@ -126,7 +126,7 @@ const DescriptionEditor = () => {
           form.append('file', selectedFile);
           form.append('description', descriptions[platform]);
           // form.append("accessToken", session?.user.facebookAccessToken || "");
-          form.append('userId', session?.user.id!);
+          form.append('userId', (session?.user as any)?.id ?? '');
 
           await axios.post(endpointMap[platform], form, {
             headers: { 'Content-Type': 'multipart/form-data' },
@@ -136,7 +136,7 @@ const DescriptionEditor = () => {
           await axios.post(endpointMap[platform], {
             youtubeUrl: uploadedYouTubeUrl,
             description: descriptions[platform],
-            userId: session?.user.id,
+            userId: (session?.user as any)?.id,
           });
         }
 

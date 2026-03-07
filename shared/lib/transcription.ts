@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 import { randomUUID } from 'crypto';
+import { fetchYouTubeCaptions, isYouTubeUrl } from './youtube-captions';
 
 export async function transcribeFeedVideo(
   feedVideoId: string,
@@ -26,16 +27,39 @@ export async function transcribeFeedVideo(
     };
   }
 
-  console.info('🎤 Starting transcription...');
+  // Fast path: try YouTube captions before downloading + Whisper
+  const youtubeUrl = findYouTubeUrl(feedVideo);
+  if (youtubeUrl && !localFilePath) {
+    console.info('⚡ Attempting YouTube captions fast path...');
+    try {
+      const captions = await fetchYouTubeCaptions(youtubeUrl);
+      if (captions) {
+        console.info(
+          `✅ Got transcript from ${captions.source} (${captions.segments.length} segments)`
+        );
+        await prisma.feedVideo.update({
+          where: { id: feedVideoId },
+          data: {
+            transcript: captions.transcript,
+            transcriptJson: captions.segments as any,
+            transcriptSource: captions.source,
+          },
+        });
+        return { transcript: captions.transcript, segments: captions.segments };
+      }
+      console.info('⚠️ No YouTube captions available, falling back to Whisper...');
+    } catch (err) {
+      console.warn('⚠️ YouTube captions fetch failed, falling back to Whisper:', err);
+    }
+  }
 
-  // Create temp directory if not exists
+  console.info('🎤 Starting Whisper transcription...');
+
   const tempDir = path.join(process.cwd(), 'tmp');
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
   }
 
-  // Use provided path or fetch if not provided (fallback)
-  // ideally the worker should always provide the path now
   let tempFilePath = localFilePath;
   let shouldCleanup = false;
 
@@ -44,7 +68,6 @@ export async function transcribeFeedVideo(
       tempFilePath = path.join(tempDir, `${randomUUID()}.mp4`);
       shouldCleanup = true;
 
-      // 1. Download to temp file
       console.info(`⬇️ Downloading to ${tempFilePath}...`);
 
       if (feedVideo.s3Url.includes('youtube.com') || feedVideo.s3Url.includes('youtu.be')) {
@@ -58,7 +81,7 @@ export async function transcribeFeedVideo(
         ]);
 
         let ytError = '';
-        ytdlp.stderr.on('data', (d) => (ytError += d.toString()));
+        ytdlp.stderr.on('data', (d: Buffer) => (ytError += d.toString()));
 
         const downloadExitCode = await new Promise((resolve) => ytdlp.on('close', resolve));
         if (downloadExitCode !== 0) {
@@ -77,30 +100,17 @@ export async function transcribeFeedVideo(
       console.info(`✅ Using provided local video: ${tempFilePath}`);
     }
 
-    // 2. Run Python script with file path
     const pythonPath = process.env.PYTHON_PATH || 'python3';
-    // NOTE: scripts/transcribe.py must be available in the Docker image!
-    // The current Dockerfile copies ./backend/workers/clip-metadata-worker/ .
-    // It DOES NOT copy `backend/scripts/transcribe.py`.
-    // I need to fix this or move transcribe.py too.
-    // For now, I'll assume the worker image has it or I'll need to update Dockerfile.
-    // Actually, `clip-metadata-worker` Dockerfile (Step 282) copies:
-    // COPY ./backend/workers/clip-metadata-worker .
-    // It does not copy scripts.
-    // I will need to verify transcribe.py location.
     const pythonProcess = spawn(pythonPath, ['scripts/transcribe.py', tempFilePath], {
-      // cwd was path.join(__dirname, '../../') -> root.
-      // In Docker, we are at /app.
-      // If transcribe.py is not at /app/scripts/transcribe.py, this fails.
       cwd: process.cwd(),
-      stdio: ['ignore', 'pipe', 'pipe'], // Ignore stdin, capture stdout/stderr
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     let output = '';
     let error = '';
 
-    pythonProcess.stdout.on('data', (d) => (output += d.toString()));
-    pythonProcess.stderr.on('data', (d) => (error += d.toString()));
+    pythonProcess.stdout.on('data', (d: Buffer) => (output += d.toString()));
+    pythonProcess.stderr.on('data', (d: Buffer) => (error += d.toString()));
 
     const exitCode: number = await new Promise((resolve, reject) => {
       pythonProcess.on('error', reject);
@@ -123,15 +133,25 @@ export async function transcribeFeedVideo(
       where: { id: feedVideoId },
       data: {
         transcript: parsed.transcript,
-        transcriptJson: parsed.segments,
+        transcriptJson: parsed.segments as any,
+        transcriptSource: 'whisper',
       },
     });
 
     return parsed;
   } finally {
-    // 3. Cleanup
     if (shouldCleanup && tempFilePath && fs.existsSync(tempFilePath)) {
       fs.unlinkSync(tempFilePath);
     }
   }
+}
+
+function findYouTubeUrl(feedVideo: { s3Url: string; videoId?: string }): string | null {
+  if (isYouTubeUrl(feedVideo.s3Url)) {
+    return feedVideo.s3Url;
+  }
+  if (feedVideo.videoId && /^[a-zA-Z0-9_-]{11}$/.test(feedVideo.videoId)) {
+    return `https://www.youtube.com/watch?v=${feedVideo.videoId}`;
+  }
+  return null;
 }

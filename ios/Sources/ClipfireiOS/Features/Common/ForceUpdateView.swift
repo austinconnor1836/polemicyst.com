@@ -13,7 +13,7 @@ public struct ForceUpdateView: View {
 
             Image(systemName: "arrow.down.app.fill")
                 .font(.system(size: 64))
-                .foregroundStyle(DesignTokens.primary)
+                .foregroundStyle(DesignTokens.accent)
 
             Text("Update Required")
                 .font(.title)
@@ -21,7 +21,7 @@ public struct ForceUpdateView: View {
 
             Text("A new version of the app is available. Please update to continue.")
                 .font(.body)
-                .foregroundStyle(DesignTokens.textMuted)
+                .foregroundStyle(DesignTokens.muted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
 

@@ -1,10 +1,6 @@
 import { prisma } from './prisma';
 
-export type JobType =
-  | 'transcription'
-  | 'speaker-transcription'
-  | 'clip-generation'
-  | 'download';
+export type JobType = 'transcription' | 'speaker-transcription' | 'clip-generation' | 'download';
 
 export type JobStatus = 'queued' | 'started' | 'completed' | 'failed';
 
@@ -28,7 +24,7 @@ export async function logJob(params: LogJobParams): Promise<void> {
         message: params.message ?? null,
         error: params.error ?? null,
         durationMs: params.durationMs ?? null,
-        metadata: params.metadata ?? undefined,
+        metadata: (params.metadata as any) ?? undefined,
       },
     });
   } catch (err) {

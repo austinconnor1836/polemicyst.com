@@ -20,7 +20,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 
 ### Deployment
 
-- [ ] Run database migrations on production RDS (see `docs/NEXT_STEPS.md`)
+- [x] Run database migrations on production RDS (see `docs/NEXT_STEPS.md`)
 - [ ] Verify ECS services healthy after deploy (web, workers, redis)
 - [ ] Verify SSL certificate and DNS resolution for polemicyst.com
 - [ ] Verify Google OAuth works in production
@@ -33,13 +33,13 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 
 ### Android (`android/`)
 
-- [ ] Add structured error response parsing (decode JSON error body with `code`, `message`, `allowedProviders` fields)
-- [ ] Handle HTTP 403 specifically — show upgrade prompt with plan info instead of generic error
-- [ ] Add billing/subscription screen (show current plan, usage meters, link to web billing portal)
-- [ ] Show quota usage on feeds list (e.g., "2/10 feeds") and clip generation dialog
-- [ ] Disable/gray out LLM provider options the user's plan doesn't allow in `ViralitySettingsPanel`
-- [ ] Disable auto-generate toggle for free users in `FeedSettingsSheet`
-- [ ] Add "Upgrade Plan" CTA when quota errors are hit
+- [x] Add structured error response parsing (decode JSON error body with `code`, `message`, `allowedProviders` fields)
+- [x] Handle HTTP 403 specifically — show upgrade prompt with plan info instead of generic error
+- [x] Add billing/subscription screen (show current plan, usage meters, link to web billing portal)
+- [x] Show quota usage on feeds list (e.g., "2/10 feeds") and clip generation dialog
+- [x] Disable/gray out LLM provider options the user's plan doesn't allow in `ViralitySettingsPanel`
+- [x] Disable auto-generate toggle for free users in `FeedSettingsSheet`
+- [x] Add "Upgrade Plan" CTA when quota errors are hit
 
 ### iOS (`ios/`)
 
@@ -70,14 +70,14 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 
 ### UX Polish
 
-- [ ] Show quota warnings before user hits limit (e.g., "9/10 clips used this month")
+- [x] Show quota warnings before user hits limit (e.g., "9/10 clips used this month")
 - [ ] Show upgrade prompts inline when 403 is returned on the web app (feeds page, clip generation)
 - [x] Add loading/progress states for clip generation on feeds page
 - [ ] Error handling for Stripe portal session failures
 
 ### Security & Auth
 
-- [ ] Audit all API routes have proper auth checks (some may be missing `getServerSession`)
+- [x] Audit all API routes have proper auth checks (some may be missing `getServerSession`)
 - [ ] Rate limiting on public API endpoints
 - [ ] CSRF protection review
 
@@ -202,7 +202,7 @@ The billing & quota infrastructure is largely complete (Stripe checkout, plan de
 
 These block all revenue. Each item is independently executable by a cloud agent.
 
-- [ ] **Run production database migrations** — Execute Prisma migrations against production RDS. Verify all subscription/quota tables exist. (See `docs/NEXT_STEPS.md` for connection details.)
+- [x] **Run production database migrations** — Ran `prisma db push` via ECS task to sync production RDS schema. All missing columns (e.g. `transcriptSource`, `speakerTranscriptJson`, `clipGenerationStatus`, etc.) added. (2026-03-03)
 - [ ] **Verify ECS services are healthy** — Confirm web, clip-worker, and redis containers are running. Check ALB target group health checks pass.
 - [ ] **Verify SSL + DNS** — Confirm `polemicyst.com` resolves and serves HTTPS. Check certificate auto-renewal is configured.
 - [ ] **Verify Google OAuth in production** — Test sign-in flow end-to-end. Ensure callback URLs are registered in Google Cloud Console for the production domain.
@@ -220,7 +220,7 @@ The current landing page is a particle animation with zero product messaging. Th
   - Pricing tier summary (link to `/pricing` or inline)
   - Sign-up / Get Started CTA
   - Demo GIF or screenshot of the ClipsGenie interface
-- [ ] **Add pricing section to landing page or dedicated `/pricing` route** — Display Free / Pro / Business tiers with limits and pricing. Link to Stripe checkout.
+- [x] **Add pricing section to landing page or dedicated `/pricing` route** — Display Free / Pro / Business tiers with limits and pricing. Link to Stripe checkout.
 - [x] **Remove or gate playground routes** — `/playground/*` pages (read-line-by-line, scotus-scraper) are dev experiments. Either remove them or put them behind auth so they don't confuse visitors.
 - [x] **Clean up duplicate components** — Remove `chat-gpt copy.tsx` and `hamburger copy.tsx` from `src/app/_components/`.
 
@@ -228,18 +228,18 @@ The current landing page is a particle animation with zero product messaging. Th
 
 iOS has full quota handling and billing UI. Android has none. Each item below is a standalone agent task.
 
-- [ ] **Android: Structured error parsing** — Update API response handling to decode JSON error bodies with `code`, `message`, `allowedProviders` fields instead of treating all errors as generic failures.
-- [ ] **Android: 403 upgrade prompt** — When HTTP 403 is returned with `QUOTA_EXCEEDED` or `PLAN_RESTRICTED` codes, show a specific upgrade dialog with plan info and a link to the web billing portal.
-- [ ] **Android: Billing/subscription screen** — Add a screen showing current plan, usage meters (feeds used / limit, clips generated this month / limit), and a button to open the Stripe billing portal in a browser.
-- [ ] **Android: Quota usage indicators** — Show "2/10 feeds" on the feeds list and remaining clips on the clip generation dialog.
-- [ ] **Android: LLM provider gating** — Disable/gray out LLM provider options in `ViralitySettingsPanel` that the user's plan doesn't allow.
-- [ ] **Android: Auto-generate toggle gating** — Disable auto-generate toggle for free users in `FeedSettingsSheet`.
+- [x] **Android: Structured error parsing** — Update API response handling to decode JSON error bodies with `code`, `message`, `allowedProviders` fields instead of treating all errors as generic failures.
+- [x] **Android: 403 upgrade prompt** — When HTTP 403 is returned with `QUOTA_EXCEEDED` or `PLAN_RESTRICTED` codes, show a specific upgrade dialog with plan info and a link to the web billing portal.
+- [x] **Android: Billing/subscription screen** — Add a screen showing current plan, usage meters (feeds used / limit, clips generated this month / limit), and a button to open the Stripe billing portal in a browser.
+- [x] **Android: Quota usage indicators** — Show "2/10 feeds" on the feeds list and remaining clips on the clip generation dialog.
+- [x] **Android: LLM provider gating** — Disable/gray out LLM provider options in `ViralitySettingsPanel` that the user's plan doesn't allow.
+- [x] **Android: Auto-generate toggle gating** — Disable auto-generate toggle for free users in `FeedSettingsSheet`.
 
 ### Priority 4: Web App UX & Revenue Protection
 
 These improve retention and reduce churn once users are paying.
 
-- [ ] **Quota warning banners** — Show a warning when user reaches 80% of their clip or feed quota (e.g., "9/10 clips used this month — upgrade for more").
+- [x] **Quota warning banners** — Show a warning when user reaches 80% of their clip or feed quota (e.g., "9/10 clips used this month — upgrade for more").
 - [ ] **Inline upgrade prompts on 403** — When the web app receives a 403 on feeds page or clip generation, show an inline upgrade CTA instead of a generic error.
 - [x] **Clip generation progress states** — Add loading/progress indicators on the feeds page when clips are being generated in the background.
 - [ ] **Stripe portal error handling** — Handle failures when creating a Stripe portal session (e.g., Stripe is down) with a user-friendly message.

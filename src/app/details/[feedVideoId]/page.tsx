@@ -32,9 +32,13 @@ import SpeakerTranscript from '@/components/SpeakerTranscript';
 import ProgressButton from '@/components/ProgressButton';
 import JobProgressBar from '@/components/JobProgressBar';
 import { useJobProgress } from '@/hooks/useJobProgress';
+import CopyableUrl from '@/components/CopyableUrl';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
+import { useSubscription } from '@/hooks/useSubscription';
+import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
 import { formatRelativeTime } from '@/app/feeds/util/time';
+import { extractYouTubeId } from '@/app/feeds/util/thumbnails';
 import {
   DEFAULT_VIRALITY_SETTINGS,
   getStrictnessConfig,
@@ -55,13 +59,15 @@ type FeedVideoSummary = {
   feedVideo: {
     id: string;
     userId: string;
+    videoId: string;
     title: string;
     s3Url: string;
     thumbnailUrl?: string | null;
     createdAt?: string | null;
     transcript?: string | null;
     transcriptJson?: { start: number; end: number; text: string }[] | null;
-    feed?: { id: string; name: string };
+    transcriptSource?: string | null;
+    feed?: { id: string; name: string; sourceType?: string };
     clipSourceVideoId?: string | null;
     clipSourceVideo?: {
       id: string;
@@ -125,6 +131,7 @@ export default function ClipGroupPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [deletingClipId, setDeletingClipId] = useState<string | null>(null);
   const { progress: jobProgress, refetch: refetchProgress } = useJobProgress(feedVideoId);
+  const { quota, data: subscriptionData, refresh: refreshSubscription } = useSubscription();
 
   const prevTranscriptionStatus = useRef(jobProgress?.transcription.status);
   const prevClipStatus = useRef(jobProgress?.clipGeneration.status);
@@ -218,6 +225,15 @@ export default function ClipGroupPage() {
     [summary]
   );
 
+  const videoSourceUrl = useMemo(() => {
+    if (!summary) return null;
+    const fv = summary.feedVideo;
+    const ytId =
+      extractYouTubeId(fv.s3Url) || (fv.feed?.sourceType === 'youtube' ? fv.videoId || null : null);
+    if (ytId) return `https://www.youtube.com/watch?v=${ytId}`;
+    return fv.s3Url || null;
+  }, [summary]);
+
   const persistDefaultLLMProvider = async (provider: LLMProvider) => {
     if (!provider || provider === defaultLLMProvider) {
       return;
@@ -278,6 +294,7 @@ export default function ClipGroupPage() {
       await triggerClip();
       setGenerateMessage('Clip job enqueued.');
       refetchProgress();
+      refreshSubscription();
     } catch (err) {
       console.error(err);
       setGenerateMessage('Failed to enqueue clip job.');
@@ -405,6 +422,7 @@ export default function ClipGroupPage() {
                 playsInline
                 className="max-h-[400px] w-full rounded bg-black/5 object-contain"
               />
+              {videoSourceUrl && <CopyableUrl url={videoSourceUrl} label="Source" />}
               <div className="flex flex-wrap gap-2">
                 <Button asChild variant="secondary">
                   <a href={summary.feedVideo.s3Url} target="_blank" rel="noreferrer">
@@ -430,6 +448,16 @@ export default function ClipGroupPage() {
                       </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
+                      {quota &&
+                        subscriptionData &&
+                        (quota.clips.warning || quota.clips.exceeded) && (
+                          <QuotaWarningBanner
+                            quota={quota}
+                            planName={subscriptionData.plan.name}
+                            planId={subscriptionData.plan.id}
+                            show="clips"
+                          />
+                        )}
                       <AspectRatioSelect value={aspectRatio} onChange={setAspectRatio} />
                       <ViralitySettings
                         value={viralitySettings}
@@ -447,7 +475,10 @@ export default function ClipGroupPage() {
                       />
                     </div>
                     <DialogFooter className="gap-2 pt-4 sm:gap-2">
-                      <Button onClick={handleGenerateClip} disabled={isGeneratingClip}>
+                      <Button
+                        onClick={handleGenerateClip}
+                        disabled={isGeneratingClip || (quota?.clips.exceeded ?? false)}
+                      >
                         {isGeneratingClip ? 'Generating...' : 'Generate clip'}
                       </Button>
                       <Button
@@ -470,7 +501,18 @@ export default function ClipGroupPage() {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-base">Transcript</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base">Transcript</CardTitle>
+                    {summary.feedVideo.transcriptSource && (
+                      <Badge variant="outline" className="text-xs font-normal">
+                        {summary.feedVideo.transcriptSource === 'youtube-manual'
+                          ? 'YouTube captions'
+                          : summary.feedVideo.transcriptSource === 'youtube-auto'
+                            ? 'YouTube auto-captions'
+                            : 'Whisper'}
+                      </Badge>
+                    )}
+                  </div>
                   <CardDescription>Scroll to review the transcript for this video.</CardDescription>
                 </div>
                 <ChevronDown

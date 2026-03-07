@@ -1,4 +1,5 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
@@ -17,6 +18,11 @@ if (!fs.existsSync(CLIPS_DIR)) {
 }
 
 export async function POST(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { highlights, filename } = (await req.json()) as {
       highlights: Highlight[];

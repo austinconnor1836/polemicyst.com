@@ -37,7 +37,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { getFeedVideoThumbnail } from '@/app/feeds/util/thumbnails';
+import { getFeedVideoThumbnail, getVideoSourceUrl } from '@/app/feeds/util/thumbnails';
+import CopyableUrl from '@/components/CopyableUrl';
 import { cn } from '@/lib/utils';
 import {
   FileText,
@@ -52,6 +53,8 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
+import { useSubscription } from '@/hooks/useSubscription';
+import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
 
 function youtubeHandleUrlFromName(name: string) {
   const trimmed = (name || '').trim();
@@ -101,6 +104,8 @@ export default function FeedsPage() {
   const [videoFeedFilter, setVideoFeedFilter] = useState<string>('all');
   const [videoSort, setVideoSort] = useState<'newest' | 'oldest' | 'title'>('newest');
 
+  const { quota, data: subscriptionData } = useSubscription();
+
   const [selectedFeedSettings, setSelectedFeedSettings] = useState<VideoFeed | null>(null);
   const [isFeedSettingsOpen, setIsFeedSettingsOpen] = useState(false);
   const [defaultLLMProvider, setDefaultLLMProvider] = useState<LLMProvider>(
@@ -117,11 +122,6 @@ export default function FeedsPage() {
         const provider: LLMProvider = data?.llmProvider === 'ollama' ? 'ollama' : 'gemini';
         if (cancelled) return;
         setDefaultLLMProvider(provider);
-        setViralitySettings((prev) => {
-          if (prev.llmProvider !== DEFAULT_VIRALITY_SETTINGS.llmProvider) return prev;
-          if (prev.llmProvider === provider) return prev;
-          return { ...prev, llmProvider: provider };
-        });
       } catch (err) {
         console.warn('Failed to load default LLM provider', err);
       }
@@ -633,6 +633,21 @@ export default function FeedsPage() {
         </div>
       )}
 
+      {quota &&
+        subscriptionData &&
+        (quota.feeds.warning ||
+          quota.feeds.exceeded ||
+          quota.clips.warning ||
+          quota.clips.exceeded) && (
+          <div className="mb-6">
+            <QuotaWarningBanner
+              quota={quota}
+              planName={subscriptionData.plan.name}
+              planId={subscriptionData.plan.id}
+            />
+          </div>
+        )}
+
       {/* Hidden file input for uploads */}
       <input
         type="file"
@@ -953,6 +968,7 @@ export default function FeedsPage() {
 
                     const { thumbnailUrl, youtubeId } = getFeedVideoThumbnail(video);
                     const isYouTube = Boolean(youtubeId);
+                    const videoSourceUrl = getVideoSourceUrl(video);
                     return (
                       <Card
                         key={video.id}
@@ -1047,6 +1063,9 @@ export default function FeedsPage() {
                                 </span>
                               ) : null}
                             </div>
+                            {videoSourceUrl && (
+                              <CopyableUrl url={videoSourceUrl} className="mt-1" />
+                            )}
                             <div className="flex flex-wrap gap-2 pt-1">
                               <Button asChild size="sm" variant="secondary">
                                 <Link

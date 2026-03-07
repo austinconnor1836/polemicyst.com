@@ -298,7 +298,7 @@ export default function ClipEditorPage() {
   );
 
   const handlePointerDown = useCallback(
-    (event: PointerEvent, mode: DragState['mode'], handle?: DragState['handle']) => {
+    (event: PointerEvent, mode: DragState['mode'], handle?: 'nw' | 'ne' | 'sw' | 'se') => {
       if (!previewRef.current) return;
       if (!cropMode) return;
       event.preventDefault();
@@ -313,7 +313,7 @@ export default function ClipEditorPage() {
   );
 
   useEffect(() => {
-    const handlePointerMove = (event: PointerEvent) => {
+    const handlePointerMove = (event: globalThis.PointerEvent) => {
       if (timelineDragRef.current && timelineRef.current) {
         const state = timelineDragRef.current;
         const rect = timelineRef.current.getBoundingClientRect();

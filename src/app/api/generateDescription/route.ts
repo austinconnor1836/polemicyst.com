@@ -1,9 +1,15 @@
 // /src/app/api/generateDescription/route.ts
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { generateMetadataWithOllama } from '@shared/lib/metadata-generation';
 
 export async function POST(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { videoId } = await req.json();
 
   if (!videoId) {
