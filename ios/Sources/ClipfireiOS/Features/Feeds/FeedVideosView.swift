@@ -84,23 +84,43 @@ public struct FeedVideosView: View {
                                     .lineLimit(2)
                             }
 
-                            Button {
-                                Task {
-                                    await viewModel.triggerClip(
-                                        for: video,
-                                        userId: video.feed?.userId ?? ""
-                                    )
+                            HStack(spacing: DesignTokens.smallSpacing) {
+                                Button {
+                                    Task {
+                                        await viewModel.triggerClip(
+                                            for: video,
+                                            userId: video.feed?.userId ?? ""
+                                        )
+                                    }
+                                } label: {
+                                    Label("Generate Clip", systemImage: "bolt.fill")
+                                        .font(.caption)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 4)
+                                        .background(DesignTokens.accent.opacity(0.15))
+                                        .foregroundStyle(DesignTokens.accent)
+                                        .cornerRadius(6)
                                 }
-                            } label: {
-                                Label("Generate Clip", systemImage: "bolt.fill")
-                                    .font(.caption)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(DesignTokens.accent.opacity(0.15))
-                                    .foregroundStyle(DesignTokens.accent)
-                                    .cornerRadius(6)
+                                .buttonStyle(.plain)
+
+                                NavigationLink {
+                                    PauseRemovalView(
+                                        viewModel: PauseRemovalViewModel(
+                                            api: viewModel.api,
+                                            feedVideoId: video.id
+                                        )
+                                    )
+                                } label: {
+                                    Label("Remove Pauses", systemImage: "scissors")
+                                        .font(.caption)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 4)
+                                        .background(DesignTokens.accent.opacity(0.15))
+                                        .foregroundStyle(DesignTokens.accent)
+                                        .cornerRadius(6)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                         .padding(.vertical, DesignTokens.smallSpacing)
                         .listRowBackground(DesignTokens.surface)

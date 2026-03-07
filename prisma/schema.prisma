@@ -119,8 +119,9 @@ model FeedVideo {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  generatedClips Video[] @relation("FeedVideoClips")
-  jobLogs        JobLog[]
+  generatedClips    Video[]           @relation("FeedVideoClips")
+  jobLogs           JobLog[]
+  pauseRemovalJobs  PauseRemovalJob[]
 
   @@unique([feedId, videoId])
 }
@@ -265,6 +266,28 @@ model ClipCropTemplate {
 
   @@unique([userId, name])
   @@index([userId])
+}
+
+model PauseRemovalJob {
+  id                  String   @id @default(cuid())
+  feedVideoId         String
+  feedVideo           FeedVideo @relation(fields: [feedVideoId], references: [id], onDelete: Cascade)
+  userId              String
+  status              String   @default("queued") // queued | processing | completed | failed
+  estimatedPauseCount Int
+  detectedPauses      Json?    // [{start, end, duration, confidence}]
+  removedPauses       Json?    // [{start, end, duration}]
+  resultS3Url         String?
+  resultS3Key         String?
+  totalRemovedSeconds Float?
+  originalDurationS   Float?
+  resultDurationS     Float?
+  error               String?  @db.Text
+  createdAt           DateTime @default(now())
+
+  @@index([feedVideoId])
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model AutomationRule {

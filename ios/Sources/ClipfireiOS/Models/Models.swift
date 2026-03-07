@@ -166,6 +166,46 @@ public struct UpdateLLMProviderRequest: Codable {
     }
 }
 
+// MARK: - Pause Removal
+
+public struct PauseRemovalRequest: Codable {
+    public let estimatedPauseCount: Int
+
+    public init(estimatedPauseCount: Int) {
+        self.estimatedPauseCount = estimatedPauseCount
+    }
+}
+
+public struct PauseRemovalTriggerResponse: Codable {
+    public let ok: Bool
+    public let jobId: String
+}
+
+public struct DetectedPause: Codable {
+    public let start: Double
+    public let end: Double
+    public let duration: Double
+    public let confidence: Double
+}
+
+public struct PauseRemovalJob: Identifiable, Codable {
+    public let id: String
+    public let status: String
+    public let estimatedPauseCount: Int
+    public let detectedPauses: [DetectedPause]?
+    public let removedPauses: [DetectedPause]?
+    public let resultS3Url: String?
+    public let totalRemovedSeconds: Double?
+    public let originalDurationS: Double?
+    public let resultDurationS: Double?
+    public let error: String?
+    public let createdAt: String
+}
+
+public struct PauseRemovalJobsResponse: Codable {
+    public let jobs: [PauseRemovalJob]
+}
+
 // MARK: - API Error
 
 public struct APIErrorResponse: Codable {
