@@ -1,4 +1,3 @@
-// import { VideoFeed } from '@prisma/client';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
@@ -8,12 +7,13 @@ let feedDownloadQueue: Queue | null = null;
 let transcriptionQueue: Queue | null = null;
 let speakerTranscriptionQueue: Queue | null = null;
 let pauseRemovalQueue: Queue | null = null;
+let clipGenerationQueue: Queue | null = null;
 
-function getRedisConnection() {
+export function getRedisConnection() {
   if (redis) return redis;
   redis = new Redis({
     host: process.env.REDIS_HOST || 'localhost',
-    port: 6379,
+    port: parseInt(process.env.REDIS_PORT || '6379', 10),
     maxRetriesPerRequest: null,
   });
   return redis;
@@ -96,6 +96,7 @@ export interface TranscriptionJob {
 
 export function queueTranscriptionJob(data: TranscriptionJob) {
   return getTranscriptionQueue().add('transcribe', data, {
+    jobId: data.feedVideoId,
     removeOnComplete: true,
     removeOnFail: true,
   });
@@ -119,4 +120,12 @@ export function queuePauseRemovalJob(data: PauseRemovalJob) {
     removeOnComplete: true,
     removeOnFail: true,
   });
+}
+
+export function getClipGenerationQueue() {
+  if (clipGenerationQueue) return clipGenerationQueue;
+  clipGenerationQueue = new Queue('clip-generation', {
+    connection: getRedisConnection() as any,
+  });
+  return clipGenerationQueue;
 }

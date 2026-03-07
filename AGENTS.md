@@ -49,15 +49,22 @@ We follow **semantic versioning** (`vMAJOR.MINOR.PATCH`). GitHub Releases are th
 - **Minor** (`v0.3.0`): new features, non-breaking API changes
 - **Major** (`v1.0.0`): breaking changes, major architectural shifts
 
-### How to cut a release
+### How to cut a release (automated)
 
-1. Update `version.json` at the repo root to the new version.
-2. Create a PR from `develop` → `main` with title `Release vX.Y.Z`. Body should summarize highlights, features, bug fixes, and breaking changes.
-3. Wait for CI checks (`Lint & Build`) to pass.
-4. Merge with a **merge commit** (not squash): `gh pr merge <PR_NUMBER> --merge`
-5. Create a GitHub Release targeting `main`: `gh release create vX.Y.Z --target main --title "vX.Y.Z" --notes "..."`
+1. Go to **Actions → Prepare Release → Run workflow**.
+2. Select bump type (`patch` / `minor` / `major`) or enter an explicit version. Optionally enable **dry run** to preview.
+3. The workflow bumps `version.json` on `develop`, generates a changelog, and opens a PR `develop → main` titled `Release vX.Y.Z`.
+4. Review the PR and wait for CI (`Lint & Build`).
+5. Merge with a **merge commit** (not squash): `gh pr merge <PR_NUMBER> --merge`
+6. The **Finalize Release** workflow fires automatically on merge — creates the GitHub Release + git tag on `main`.
 
-**Rules**: Never push directly to `main`. Never squash-merge release PRs. Never create tags manually.
+### Manual fallback
+
+1. Update `version.json` and commit to `develop`.
+2. Create a PR `develop → main` titled `Release vX.Y.Z`.
+3. Merge with a merge commit, then: `gh release create vX.Y.Z --target main --title "vX.Y.Z" --notes "..."`
+
+**Rules**: Never push directly to `main`. Never squash-merge release PRs. Never create tags manually (let the workflow handle it).
 
 ## Key files
 

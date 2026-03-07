@@ -23,3 +23,15 @@ export function getFeedVideoThumbnail(video: FeedVideo) {
 
   return { thumbnailUrl, youtubeId };
 }
+
+export function getVideoSourceUrl(video: FeedVideo): string | null {
+  const youtubeId =
+    extractYouTubeId(video.s3Url) ||
+    (video.feed?.sourceType === 'youtube' ? video.videoId || null : null);
+
+  if (youtubeId) {
+    return `https://www.youtube.com/watch?v=${youtubeId}`;
+  }
+
+  return video.s3Url || null;
+}

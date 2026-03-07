@@ -7,8 +7,8 @@ import { IconButton } from '@mui/material';
 import { SideNavItem } from '../ui/types';
 import Link from 'next/link';
 import HomeIcon from '@mui/icons-material/Home';
+import RssFeedIcon from '@mui/icons-material/RssFeed';
 import DescriptionIcon from '@mui/icons-material/Description';
-import MovieIcon from '@mui/icons-material/Movie';
 import PaymentIcon from '@mui/icons-material/Payment';
 import SportsBasketballIcon from '@mui/icons-material/SportsBasketball';
 import WorkIcon from '@mui/icons-material/Work';
@@ -23,7 +23,7 @@ interface SidePanelProps {
 
 const sideNavItems: SideNavItem[] = [
   { label: 'Home', element: <HomeIcon />, href: '/' },
-  { label: 'Details', element: <MovieIcon />, href: '/details' },
+  { label: 'Feeds', element: <RssFeedIcon />, href: '/feeds' },
   { label: 'Automation', element: <SettingsIcon />, href: '/settings/automation' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
   { label: 'NCAA Seeds', element: <SportsBasketballIcon />, href: '/ncaa-seed-probability' },
@@ -32,7 +32,7 @@ const sideNavItems: SideNavItem[] = [
 ];
 
 const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
-  const { isOpen } = useHamburger(); // Use the isOpen state from context
+  const { isOpen, closeMenu } = useHamburger();
   const { data: session } = useSession();
 
   const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
@@ -60,7 +60,7 @@ const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
     >
       <ul className="flex flex-col">
         {navItems.map((item, index) => (
-          <Link key={item.label} href={item.href} passHref>
+          <Link key={item.label} href={item.href} passHref onClick={closeMenu}>
             <li
               key={index}
               className="rounded-md cursor-pointer hover:bg-blue-100 transition-colors flex items-center space-x-2 p-2"

@@ -1,7 +1,3 @@
-import Redis from 'ioredis';
+import { getRedisConnection } from '@shared/queues';
 
-export const redisConnection = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379'),
-  maxRetriesPerRequest: null,
-});
+export const redisConnection = getRedisConnection();

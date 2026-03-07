@@ -3,8 +3,8 @@ dotenv.config({ path: '.env' });
 dotenv.config({ path: '.env.local', override: false });
 
 import { Worker, Job, Queue } from 'bullmq';
-import Redis from 'ioredis';
 import { prisma } from '@shared/lib/prisma';
+import { getRedisConnection } from '@shared/queues';
 import { transcribeFeedVideo } from '@shared/lib/transcription';
 import {
   buildCandidatesFromTranscript,
@@ -22,11 +22,7 @@ import {
   buildKeepSegments,
 } from '@shared/lib/pause-removal';
 
-const redisConnection = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379', 10),
-  maxRetriesPerRequest: null,
-});
+const redisConnection = getRedisConnection();
 
 function formatTime(seconds: number): string {
   const date = new Date(0);
@@ -404,62 +400,72 @@ new Worker(
       });
 
       if (feedVideo?.feed?.autoGenerateClips && feedVideo.feed.viralitySettings) {
-        const feedUser = await prisma.user.findUnique({
-          where: { id: feedVideo.feed.userId },
-          select: { subscriptionPlan: true },
-        });
-        const clipQuota = await checkClipQuota(
-          feedVideo.feed.userId,
-          feedUser?.subscriptionPlan
-        );
-
-        if (!clipQuota.allowed) {
-          console.warn(`⚠️ Clip quota exceeded. Skipping auto clip generation.`);
-        } else {
-          const settings = feedVideo.feed.viralitySettings as Record<string, any>;
-          const strictnessPreset = settings.strictnessPreset || 'balanced';
-          const strictnessConfig = {
-            minScore: 6.5,
-            percentile: 0.85,
-            minCandidates: 3,
-            maxCandidates: 20,
-            maxGeminiCandidates: 24,
-            ...(strictnessPreset === 'strict'
-              ? {
-                  minScore: 7.0,
-                  percentile: 0.9,
-                  minCandidates: 3,
-                  maxCandidates: 12,
-                  maxGeminiCandidates: 18,
-                }
-              : strictnessPreset === 'loose'
-                ? {
-                    minScore: 6.0,
-                    percentile: 0.75,
-                    minCandidates: 5,
-                    maxCandidates: 24,
-                    maxGeminiCandidates: 36,
-                  }
-                : {}),
-          };
-
-          await clipGenerationQueue.add(
-            'clip-generation',
-            {
-              feedVideoId,
-              userId: feedVideo.feed.userId,
-              aspectRatio: '9:16',
-              scoringMode: settings.scoringMode || 'hybrid',
-              includeAudio: settings.includeAudio || false,
-              saferClips: settings.saferClips ?? true,
-              targetPlatform: settings.targetPlatform || 'reels',
-              contentStyle: settings.contentStyle || 'auto',
-              llmProvider: settings.llmProvider,
-              ...strictnessConfig,
-            },
-            { jobId: feedVideoId, removeOnComplete: true, removeOnFail: true }
+        // Status gate: don't trigger clip-gen if the video is still downloading.
+        // When transcription runs in parallel with download (YouTube), the download
+        // worker will re-enqueue transcription after setting status='ready', which
+        // will then trigger clip-gen.
+        if (feedVideo.status === 'pending') {
+          console.log(
+            `⏳ Video ${feedVideoId} still downloading, skipping clip-gen — will trigger after download completes`
           );
-          console.log(`📋 Auto-enqueued clip-generation for ${feedVideoId}`);
+        } else {
+          const feedUser = await prisma.user.findUnique({
+            where: { id: feedVideo.feed.userId },
+            select: { subscriptionPlan: true },
+          });
+          const clipQuota = await checkClipQuota(
+            feedVideo.feed.userId,
+            feedUser?.subscriptionPlan
+          );
+
+          if (!clipQuota.allowed) {
+            console.warn(`⚠️ Clip quota exceeded. Skipping auto clip generation.`);
+          } else {
+            const settings = feedVideo.feed.viralitySettings as Record<string, any>;
+            const strictnessPreset = settings.strictnessPreset || 'balanced';
+            const strictnessConfig = {
+              minScore: 6.5,
+              percentile: 0.85,
+              minCandidates: 3,
+              maxCandidates: 20,
+              maxGeminiCandidates: 24,
+              ...(strictnessPreset === 'strict'
+                ? {
+                    minScore: 7.0,
+                    percentile: 0.9,
+                    minCandidates: 3,
+                    maxCandidates: 12,
+                    maxGeminiCandidates: 18,
+                  }
+                : strictnessPreset === 'loose'
+                  ? {
+                      minScore: 6.0,
+                      percentile: 0.75,
+                      minCandidates: 5,
+                      maxCandidates: 24,
+                      maxGeminiCandidates: 36,
+                    }
+                  : {}),
+            };
+
+            await clipGenerationQueue.add(
+              'clip-generation',
+              {
+                feedVideoId,
+                userId: feedVideo.feed.userId,
+                aspectRatio: '9:16',
+                scoringMode: settings.scoringMode || 'hybrid',
+                includeAudio: settings.includeAudio || false,
+                saferClips: settings.saferClips ?? true,
+                targetPlatform: settings.targetPlatform || 'reels',
+                contentStyle: settings.contentStyle || 'auto',
+                llmProvider: settings.llmProvider,
+                ...strictnessConfig,
+              },
+              { jobId: feedVideoId, removeOnComplete: true, removeOnFail: true }
+            );
+            console.log(`📋 Auto-enqueued clip-generation for ${feedVideoId}`);
+          }
         }
       }
     } catch (err: any) {

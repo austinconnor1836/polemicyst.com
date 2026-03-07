@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { encode } from 'next-auth/jwt';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-
-const prisma = new PrismaClient();
+import { prisma } from '@shared/lib/prisma';
 
 const APPLE_JWKS = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
 

@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@shared/lib/prisma';
 
 export const blueskySignIn = async (identifier: string, password: string) => {
   const response = await fetch('https://bsky.social/xrpc/com.atproto.server.createSession', {

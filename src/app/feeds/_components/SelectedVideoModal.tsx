@@ -15,7 +15,8 @@ import {
 } from '@/components/ui/dialog';
 import { FeedVideo } from '@/app/feeds/types';
 import { formatRelativeTime } from '@/app/feeds/util/time';
-import { getFeedVideoThumbnail } from '@/app/feeds/util/thumbnails';
+import { getFeedVideoThumbnail, getVideoSourceUrl } from '@/app/feeds/util/thumbnails';
+import CopyableUrl from '@/components/CopyableUrl';
 import type { LLMProvider, ViralitySettingsValue } from '@shared/virality';
 import { FileText } from 'lucide-react';
 
@@ -52,6 +53,7 @@ export default function SelectedVideoModal({
 
   const { thumbnailUrl, youtubeId } = getFeedVideoThumbnail(video);
   const isYouTube = Boolean(youtubeId);
+  const videoSourceUrl = getVideoSourceUrl(video);
   const addedTime = video.createdAt ? formatRelativeTime(video.createdAt) : null;
   const isPendingDownload = video.status === 'pending';
 
@@ -104,6 +106,8 @@ export default function SelectedVideoModal({
               className="max-h-[35vh] w-full rounded object-contain"
             />
           )}
+
+          {videoSourceUrl && <CopyableUrl url={videoSourceUrl} label="Source" />}
 
           <AspectRatioSelect value={aspectRatio} onChange={onAspectRatioChange} />
           <ViralitySettings

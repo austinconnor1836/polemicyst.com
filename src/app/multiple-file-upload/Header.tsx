@@ -2,15 +2,15 @@ import { usePlatformContext } from './PlatformContext';
 import { ActionHeader } from '@/components/ActionHeader';
 
 const Header = () => {
-  const { selectedFile, generateDescription, isGenerating } = usePlatformContext();
+  const { activeVideo, generateDescription, isGenerating } = usePlatformContext();
 
   return (
     <ActionHeader
       title="Post a Video"
       actionLabel="Regenerate AI Description"
       loadingLabel="Generating..."
-      onAction={() => selectedFile && generateDescription(selectedFile)}
-      disabled={!selectedFile}
+      onAction={() => activeVideo && generateDescription(activeVideo.id)}
+      disabled={!activeVideo}
       loading={isGenerating}
     />
   );
