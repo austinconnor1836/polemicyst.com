@@ -1,10 +1,11 @@
 import { Worker } from 'bullmq';
 import { prisma } from '@shared/lib/prisma';
-import { getRedisConnection, getClipGenerationQueue } from '@shared/queues';
+import { getRedisConnection, getClipGenerationQueue, getTranscriptionQueue } from '@shared/queues';
 import { transcribeFeedVideo } from './transcription';
 import { transcribeFeedVideoWithSpeakers } from './speaker-transcription';
 import { checkClipQuota } from '@shared/lib/plans';
 import { logJob } from '@shared/lib/job-logger';
+import { updateJobProgress } from '@shared/lib/job-progress';
 
 const clipGenerationQueue = getClipGenerationQueue();
 
@@ -47,12 +48,34 @@ new Worker(
       status: 'started',
       message: 'Worker picked up transcription job',
     });
+    await updateJobProgress({
+      feedVideoId: resolvedFeedVideoId,
+      jobType: 'transcription',
+      status: 'processing',
+      progress: 10,
+      stage: 'Preparing audio…',
+    });
 
     console.log(`Transcribing video for feed video id ${resolvedFeedVideoId}`);
     try {
-      console.log('🔍 Checking for existing transcript...');
+      await updateJobProgress({
+        feedVideoId: resolvedFeedVideoId,
+        jobType: 'transcription',
+        status: 'processing',
+        progress: 20,
+        stage: 'Transcribing audio…',
+      });
+
       await transcribeFeedVideo(resolvedFeedVideoId);
       console.log('🎤 Transcription complete.');
+
+      await updateJobProgress({
+        feedVideoId: resolvedFeedVideoId,
+        jobType: 'transcription',
+        status: 'completed',
+        progress: 100,
+        stage: null,
+      });
 
       await logJob({
         feedVideoId: resolvedFeedVideoId,
@@ -130,6 +153,14 @@ new Worker(
           ? transcriptionError.message
           : String(transcriptionError);
 
+      await updateJobProgress({
+        feedVideoId: resolvedFeedVideoId,
+        jobType: 'transcription',
+        status: 'failed',
+        progress: 0,
+        stage: 'Failed',
+      });
+
       await logJob({
         feedVideoId: resolvedFeedVideoId,
         jobType: 'transcription',
@@ -176,13 +207,36 @@ new Worker(
       status: 'started',
       message: 'Worker picked up speaker-transcription job',
     });
+    await updateJobProgress({
+      feedVideoId,
+      jobType: 'speaker-transcription',
+      status: 'processing',
+      progress: 10,
+      stage: 'Preparing audio…',
+    });
 
     console.log(`Speaker-transcribing video for feed video id ${feedVideoId}`);
     try {
+      await updateJobProgress({
+        feedVideoId,
+        jobType: 'speaker-transcription',
+        status: 'processing',
+        progress: 20,
+        stage: 'Identifying speakers…',
+      });
+
       await transcribeFeedVideoWithSpeakers(feedVideoId, {
         numSpeakers: numSpeakers ?? undefined,
       });
       console.log('Speaker transcription complete.');
+
+      await updateJobProgress({
+        feedVideoId,
+        jobType: 'speaker-transcription',
+        status: 'completed',
+        progress: 100,
+        stage: null,
+      });
 
       await logJob({
         feedVideoId,
@@ -193,6 +247,15 @@ new Worker(
       });
     } catch (err: any) {
       const errorMessage = err instanceof Error ? err.message : String(err);
+
+      await updateJobProgress({
+        feedVideoId,
+        jobType: 'speaker-transcription',
+        status: 'failed',
+        progress: 0,
+        stage: 'Failed',
+      });
+
       await logJob({
         feedVideoId,
         jobType: 'speaker-transcription',

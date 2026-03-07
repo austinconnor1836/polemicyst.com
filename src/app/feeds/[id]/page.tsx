@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { ArrowLeftIcon } from '@heroicons/react/24/solid';
+import { useJobProgress } from '@/hooks/useJobProgress';
 import { useSubscription } from '@/hooks/useSubscription';
 import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
 
@@ -25,14 +26,6 @@ type FeedVideoDetail = {
   generatedClips: GeneratedClip[];
 };
 
-const STATUS_LABELS: Record<string, { text: string; color: string }> = {
-  idle: { text: 'Ready to generate', color: 'text-gray-500' },
-  queued: { text: 'Queued for processing', color: 'text-yellow-600' },
-  processing: { text: 'Generating clips...', color: 'text-blue-600' },
-  completed: { text: 'Generation complete', color: 'text-green-600' },
-  failed: { text: 'Generation failed', color: 'text-red-600' },
-};
-
 export default function FeedVideoDetailPage({ params }: { params: { id: string } }) {
   const [feedVideo, setFeedVideo] = useState<FeedVideoDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,7 +34,12 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
   const [isTriggering, setIsTriggering] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previousClipCountRef = useRef(0);
+  const { progress: jobProgress, refetch: refetchProgress } = useJobProgress(params.id);
   const { quota, data: subscriptionData, refresh: refreshSubscription } = useSubscription();
+
+  const clipProgress = jobProgress?.clipGeneration;
+  const clipStatus = clipProgress?.status ?? 'idle';
+  const isProgressActive = clipStatus === 'queued' || clipStatus === 'processing';
 
   const fetchFeedVideo = useCallback(async () => {
     try {
@@ -51,7 +49,7 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
       setFeedVideo(data);
       setError(null);
       return data;
-    } catch (err) {
+    } catch {
       setError('Failed to load feed video details');
       return null;
     } finally {
@@ -65,7 +63,17 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
 
   const isActiveGeneration =
     feedVideo?.clipGenerationStatus === 'queued' ||
-    feedVideo?.clipGenerationStatus === 'processing';
+    feedVideo?.clipGenerationStatus === 'processing' ||
+    isProgressActive;
+
+  // Auto-refresh page when clip generation completes
+  const prevClipStatus = useRef(clipStatus);
+  useEffect(() => {
+    if (prevClipStatus.current !== 'completed' && clipStatus === 'completed') {
+      fetchFeedVideo();
+    }
+    prevClipStatus.current = clipStatus;
+  }, [clipStatus, fetchFeedVideo]);
 
   useEffect(() => {
     if (isActiveGeneration) {
@@ -83,7 +91,7 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
             if (pollingRef.current) clearInterval(pollingRef.current);
           }
         }
-      }, 3000);
+      }, 5000);
     }
 
     return () => {
@@ -111,6 +119,7 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
       setFeedVideo((prev) =>
         prev ? { ...prev, clipGenerationStatus: 'queued', clipGenerationError: null } : prev
       );
+      refetchProgress();
       refreshSubscription();
     } catch {
       setError('Failed to trigger clip generation');
@@ -141,8 +150,6 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
   }
 
   if (!feedVideo) return null;
-
-  const statusInfo = STATUS_LABELS[feedVideo.clipGenerationStatus] || STATUS_LABELS.idle;
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -194,37 +201,43 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
             </select>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleGenerateClips}
-              disabled={isTriggering || isActiveGeneration || (quota?.clips.exceeded ?? false)}
-              className="bg-green-600 text-white px-5 py-2 rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-            >
-              {isTriggering
-                ? 'Queuing...'
-                : isActiveGeneration
-                  ? 'Generating...'
-                  : 'Generate Clips'}
-            </button>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleGenerateClips}
+                disabled={isTriggering || isActiveGeneration || (quota?.clips.exceeded ?? false)}
+                className="relative overflow-hidden bg-green-600 text-white px-5 py-2 rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              >
+                {isProgressActive && (
+                  <span
+                    className="absolute inset-y-0 left-0 bg-green-400/30 transition-all duration-500 ease-out"
+                    style={{ width: `${clipProgress?.progress ?? 0}%` }}
+                  />
+                )}
+                <span className="relative">
+                  {isTriggering
+                    ? 'Queuing...'
+                    : isActiveGeneration
+                      ? `${clipProgress?.stage || 'Generating…'}${clipProgress && clipProgress.progress > 0 && clipProgress.progress < 100 ? ` (${clipProgress.progress}%)` : ''}`
+                      : 'Generate Clips'}
+                </span>
+              </button>
+            </div>
 
-            <span className={`text-sm font-medium ${statusInfo.color}`}>{statusInfo.text}</span>
+            {isProgressActive && (
+              <div className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                <div
+                  className="h-full rounded-full bg-blue-500 transition-all duration-500 ease-out"
+                  style={{ width: `${Math.max(clipProgress?.progress ?? 0, 2)}%` }}
+                />
+              </div>
+            )}
           </div>
         </div>
 
         {feedVideo.clipGenerationError && (
           <div className="mt-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-3 rounded text-sm">
             {feedVideo.clipGenerationError}
-          </div>
-        )}
-
-        {isActiveGeneration && (
-          <div className="mt-4 flex items-center gap-3">
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
-            <span className="text-sm text-gray-600 dark:text-gray-400">
-              {feedVideo.clipGenerationStatus === 'queued'
-                ? 'Waiting in queue...'
-                : `Processing clips${feedVideo.generatedClips.length > 0 ? ` (${feedVideo.generatedClips.length} generated so far)` : '...'}`}
-            </span>
           </div>
         )}
       </div>
@@ -245,18 +258,23 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
         {feedVideo.generatedClips.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
             {isActiveGeneration ? (
-              <div className="flex flex-col items-center gap-3">
-                <div className="animate-pulse text-blue-500">
-                  <svg className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"
-                    />
-                  </svg>
-                </div>
-                <p>Clips are being generated. They will appear here as they are ready.</p>
+              <div className="flex flex-col items-center gap-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+                <p className="font-medium">{clipProgress?.stage || 'Generating clips…'}</p>
+                {clipProgress && clipProgress.progress > 0 && (
+                  <div className="w-48">
+                    <div className="mb-1 text-center text-xs font-medium text-gray-400">
+                      {clipProgress.progress}%
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                      <div
+                        className="h-full rounded-full bg-blue-500 transition-all duration-500 ease-out"
+                        style={{ width: `${clipProgress.progress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                <p className="text-sm">Clips will appear here as they are ready.</p>
               </div>
             ) : (
               <p>No clips generated yet. Click &ldquo;Generate Clips&rdquo; to get started.</p>

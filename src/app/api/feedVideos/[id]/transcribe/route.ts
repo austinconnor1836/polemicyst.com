@@ -4,6 +4,7 @@ import { authOptions } from '../../../../../../auth';
 import { prisma } from '@shared/lib/prisma';
 import { getTranscriptionQueue } from '@shared/queues';
 import { logJob } from '@shared/lib/job-logger';
+import { updateJobProgress } from '@shared/lib/job-progress';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,6 +43,14 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     { feedVideoId: feedVideo.id },
     { jobId: feedVideo.id, removeOnComplete: true, removeOnFail: true }
   );
+
+  await updateJobProgress({
+    feedVideoId: feedVideo.id,
+    jobType: 'transcription',
+    status: 'queued',
+    progress: 0,
+    stage: 'Queued',
+  });
 
   await logJob({
     feedVideoId: feedVideo.id,

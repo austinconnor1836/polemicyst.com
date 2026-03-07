@@ -163,6 +163,21 @@ In the Feeds modal, users can set:
 
 ### 2026-03-01
 
+- Added **real-time progress tracking** for all long-running processes (transcription, clip generation, speaker transcription).
+- New progress fields on `FeedVideo` model: `transcriptionStatus/Progress/Stage`, `clipGenerationProgress/Stage`, `speakerTranscriptionStatus/Progress/Stage` + migration.
+- `updateJobProgress()` helper (`shared/lib/job-progress.ts`): non-fatal DB updates so pipeline continues even if progress write fails.
+- `getJobProgress()` returns all three job types' progress for a given feed video.
+- New `GET /api/feedVideos/:id/progress` endpoint for lightweight polling.
+- Workers now emit granular progress updates at each pipeline stage (download → transcribe → build candidates → score → render clips).
+- New `ProgressButton` component: shows inline progress bar + percentage inside the button itself during active jobs, with completed/failed state icons.
+- New `JobProgressBar` component: standalone progress bar with stage label for embedding in cards/dialogs.
+- `useJobProgress` hook: polls progress every 2s while any job is active, auto-stops when idle.
+- Details page: transcribe button replaced with `ProgressButton` showing live progress; clip generation dialog shows `JobProgressBar`; no-clips placeholder shows real-time progress bar with percentage.
+- Details page: auto-refreshes page data when transcription or clip generation completes.
+- SpeakerTranscript component: generate button replaced with `ProgressButton`; progress bar shown during processing.
+- Feeds/[id] page: Generate Clips button shows inline progress fill + stage text; empty clips section shows progress bar with percentage.
+- Updated `openapi/spec.yaml` with `JobProgress` schema and `/api/feedVideos/{id}/progress` endpoint.
+
 - Added **job log tracking** for transcription, clip-generation, and speaker-transcription jobs.
 - New `JobLog` Prisma model + migration: records `queued`, `started`, `completed`, `failed` events with duration, error messages, and metadata.
 - `logJob()` helper (`shared/lib/job-logger.ts`): non-fatal writes so pipeline continues even if logging fails.

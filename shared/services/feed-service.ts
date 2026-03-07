@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '@shared/lib/prisma';
 import { queueFeedDownloadJob, queueTranscriptionJob } from '@shared/queues';
 
@@ -56,7 +57,7 @@ export async function createFeed(userId: string, input: CreateFeedInput) {
       sourceType,
       userId,
       autoGenerateClips: !!input.autoGenerateClips,
-      viralitySettings: input.viralitySettings ?? undefined,
+      viralitySettings: (input.viralitySettings as Prisma.InputJsonValue) ?? undefined,
     },
   });
 

@@ -17,6 +17,7 @@ import { scorePhilosophicalRhetoric } from '@shared/lib/scoring/philosophy-ranke
 import { checkClipQuota } from '@shared/lib/plans';
 import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
 import { logJob } from '@shared/lib/job-logger';
+import { updateJobProgress } from '@shared/lib/job-progress';
 
 const redisConnection = getRedisConnection();
 
@@ -56,6 +57,13 @@ new Worker(
       status: 'started',
       message: 'Worker picked up clip-generation job',
     });
+    await updateJobProgress({
+      feedVideoId,
+      jobType: 'clip-generation',
+      status: 'processing',
+      progress: 5,
+      stage: 'Starting…',
+    });
 
     console.log(`📥 Processing clip-generation job for FeedVideo: ${feedVideoId}`);
 
@@ -85,6 +93,13 @@ new Worker(
       // 2. Ensuring local video file (Download ONCE)
       const { downloadFeedVideoToTemp } = await import('@shared/util/download');
       console.log('⬇️ Ensuring local video file...');
+      await updateJobProgress({
+        feedVideoId,
+        jobType: 'clip-generation',
+        status: 'processing',
+        progress: 10,
+        stage: 'Downloading video…',
+      });
       localVideoPath = await costTracker.track(
         'download',
         () => downloadFeedVideoToTemp(feedVideo.s3Url),
@@ -104,6 +119,13 @@ new Worker(
 
       // 3. Transcribe (using local file)
       console.log('🎤 Ensuring transcript...');
+      await updateJobProgress({
+        feedVideoId,
+        jobType: 'clip-generation',
+        status: 'processing',
+        progress: 20,
+        stage: 'Transcribing audio…',
+      });
       let transcript: string;
       let transcriptSegments: any[];
       try {
@@ -130,6 +152,13 @@ new Worker(
 
       // 4. Create a parent Video record
       console.log('📼 Creating parent Video record...');
+      await updateJobProgress({
+        feedVideoId,
+        jobType: 'clip-generation',
+        status: 'processing',
+        progress: 30,
+        stage: 'Setting up records…',
+      });
       const video = await prisma.video.create({
         data: {
           userId: userId,
@@ -153,12 +182,26 @@ new Worker(
 
       // 5. Build Candidates
       console.log('🧠 Building candidates...');
+      await updateJobProgress({
+        feedVideoId,
+        jobType: 'clip-generation',
+        status: 'processing',
+        progress: 35,
+        stage: 'Building candidates…',
+      });
       const rawCandidates = buildCandidatesFromTranscript(transcriptSegments, { clipLength });
 
       // 6. Score Candidates (using local file)
       console.log(
         `🤖 Scoring with mode: ${scoringMode || 'hybrid'} using ${llmProvider || process.env.LLM_PROVIDER || 'gemini'}...`
       );
+      await updateJobProgress({
+        feedVideoId,
+        jobType: 'clip-generation',
+        status: 'processing',
+        progress: 40,
+        stage: 'Scoring with AI…',
+      });
       let topCandidates: ClipCandidate[] = [];
 
       // Both branches now use localVideoPath
@@ -195,6 +238,13 @@ new Worker(
       });
 
       console.log(`✨ Found ${philosophyWeightedCandidates.length} viral candidates.`);
+      await updateJobProgress({
+        feedVideoId,
+        jobType: 'clip-generation',
+        status: 'processing',
+        progress: 60,
+        stage: `Rendering ${philosophyWeightedCandidates.length} clips…`,
+      });
 
       // 7. Generate Clips (using FFmpeg with S3 URL - might be better to use local path but existing function expects S3 URL context, keeping as is for now as FFmpeg supports remote URLs well enough usually, OR we can refactor generateClipFromS3 later. But since we have the local file, using it would be faster. However, let's stick to minimum changes for stability first unless it fails.)
       // Actually, for YouTube URLs, ffmpeg might fail on the URL just like scoring did.
@@ -206,7 +256,9 @@ new Worker(
       // To be robust, we should probably update ffmpegUtils to take a local path too, but let's see.
       // For now, let's proceed.
 
-      for (const c of philosophyWeightedCandidates) {
+      const totalClips = philosophyWeightedCandidates.length;
+      for (let clipIdx = 0; clipIdx < totalClips; clipIdx++) {
+        const c = philosophyWeightedCandidates[clipIdx];
         // Re-check quota before each clip to stop if limit is hit mid-loop
         const loopQuota = await checkClipQuota(userId, quotaUser?.subscriptionPlan);
         if (!loopQuota.allowed) {
@@ -215,6 +267,15 @@ new Worker(
           );
           break;
         }
+
+        const clipProgress = 60 + Math.round(((clipIdx + 1) / totalClips) * 35);
+        await updateJobProgress({
+          feedVideoId,
+          jobType: 'clip-generation',
+          status: 'processing',
+          progress: clipProgress,
+          stage: `Rendering clip ${clipIdx + 1} of ${totalClips}…`,
+        });
 
         console.log(`✂️ Generating clip: ${c.tStartS}-${c.tEndS} (Score: ${c.score})`);
 
@@ -294,6 +355,14 @@ new Worker(
         console.log(`✅ Clip created and registered: ${s3Url}`);
       }
 
+      await updateJobProgress({
+        feedVideoId,
+        jobType: 'clip-generation',
+        status: 'completed',
+        progress: 100,
+        stage: null,
+      });
+
       await logJob({
         feedVideoId,
         jobType: 'clip-generation',
@@ -316,6 +385,16 @@ new Worker(
         return;
       }
       const errorMessage = err instanceof Error ? (err as Error).message : String(err);
+
+      await updateJobProgress({
+        feedVideoId,
+        jobType: 'clip-generation',
+        status: 'failed',
+        progress: 0,
+        stage: 'Failed',
+        error: errorMessage,
+      });
+
       await logJob({
         feedVideoId,
         jobType: 'clip-generation',

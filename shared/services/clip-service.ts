@@ -45,7 +45,12 @@ export async function triggerClipGeneration(input: TriggerClipInput): Promise<Tr
 
   await prisma.feedVideo.update({
     where: { id: input.feedVideoId },
-    data: { clipGenerationStatus: 'queued', clipGenerationError: null },
+    data: {
+      clipGenerationStatus: 'queued',
+      clipGenerationError: null,
+      clipGenerationProgress: 0,
+      clipGenerationStage: 'Queued',
+    },
   });
 
   const resolvedProvider =
