@@ -7,6 +7,7 @@ let videoDownloadQueue: Queue | null = null;
 let feedDownloadQueue: Queue | null = null;
 let transcriptionQueue: Queue | null = null;
 let speakerTranscriptionQueue: Queue | null = null;
+let pauseRemovalQueue: Queue | null = null;
 
 function getRedisConnection() {
   if (redis) return redis;
@@ -95,6 +96,26 @@ export interface TranscriptionJob {
 
 export function queueTranscriptionJob(data: TranscriptionJob) {
   return getTranscriptionQueue().add('transcribe', data, {
+    removeOnComplete: true,
+    removeOnFail: true,
+  });
+}
+
+export interface PauseRemovalJob {
+  pauseRemovalJobId: string;
+  feedVideoId: string;
+  userId: string;
+  estimatedPauseCount: number;
+}
+
+export function getPauseRemovalQueue() {
+  if (pauseRemovalQueue) return pauseRemovalQueue;
+  pauseRemovalQueue = new Queue('pause-removal', { connection: getRedisConnection() as any });
+  return pauseRemovalQueue;
+}
+
+export function queuePauseRemovalJob(data: PauseRemovalJob) {
+  return getPauseRemovalQueue().add('pause-removal', data, {
     removeOnComplete: true,
     removeOnFail: true,
   });

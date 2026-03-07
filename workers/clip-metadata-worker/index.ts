@@ -1,6 +1,5 @@
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env' });
-// For containers, respect already-set env (e.g., DATABASE_URL pointing at service DNS)
 dotenv.config({ path: '.env.local', override: false });
 
 import { Worker, Job, Queue } from 'bullmq';
@@ -12,11 +11,16 @@ import {
   scoreAndRankCandidatesLLM,
   ClipCandidate,
 } from '@shared/lib/scoring/viral-scoring';
-import { generateClipFromS3 } from '@shared/util/ffmpegUtils';
+import { generateClipFromS3, removePausesAndUpload } from '@shared/util/ffmpegUtils';
 import { scorePhilosophicalRhetoric } from '@shared/lib/scoring/philosophy-ranker';
 import { checkClipQuota } from '@shared/lib/plans';
 import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
 import { logJob } from '@shared/lib/job-logger';
+import {
+  detectSilentSegments,
+  selectPausesToRemove,
+  buildKeepSegments,
+} from '@shared/lib/pause-removal';
 
 const redisConnection = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
@@ -482,6 +486,100 @@ new Worker(
       }
 
       console.error('❌ Transcription failed:', err);
+    }
+  },
+  { connection: redisConnection as any }
+);
+
+// --- Pause Removal Worker ---
+new Worker(
+  'pause-removal',
+  async (job) => {
+    const { pauseRemovalJobId, feedVideoId, userId, estimatedPauseCount } = job.data;
+    console.log(`🔇 Processing pause-removal job ${pauseRemovalJobId} for FeedVideo ${feedVideoId}`);
+
+    let localVideoPath: string | null = null;
+
+    try {
+      await prisma.pauseRemovalJob.update({
+        where: { id: pauseRemovalJobId },
+        data: { status: 'processing' },
+      });
+
+      const feedVideo = await prisma.feedVideo.findUnique({ where: { id: feedVideoId } });
+      if (!feedVideo) {
+        throw new Error(`FeedVideo ${feedVideoId} not found`);
+      }
+
+      const { downloadFeedVideoToTemp } = await import('@shared/util/download');
+      localVideoPath = await downloadFeedVideoToTemp(feedVideo.s3Url);
+
+      console.log('🔍 Detecting silent segments...');
+      const { pauses, videoDurationS } = await detectSilentSegments(localVideoPath);
+      console.log(`   Found ${pauses.length} candidate pauses in ${videoDurationS.toFixed(1)}s video`);
+
+      const toRemove = selectPausesToRemove(pauses, estimatedPauseCount, videoDurationS);
+      console.log(`   Selected ${toRemove.length} pauses to remove (user estimated ~${estimatedPauseCount})`);
+
+      if (toRemove.length === 0) {
+        await prisma.pauseRemovalJob.update({
+          where: { id: pauseRemovalJobId },
+          data: {
+            status: 'completed',
+            detectedPauses: pauses as any,
+            removedPauses: [],
+            totalRemovedSeconds: 0,
+            originalDurationS: videoDurationS,
+            resultDurationS: videoDurationS,
+          },
+        });
+        console.log('✅ No pauses to remove — job complete.');
+        return;
+      }
+
+      const keepSegments = buildKeepSegments(videoDurationS, toRemove);
+      const totalRemoved = toRemove.reduce((sum, p) => sum + p.duration, 0);
+      const resultDuration = videoDurationS - totalRemoved;
+
+      console.log(`✂️ Removing ${totalRemoved.toFixed(1)}s of dead space (${keepSegments.length} segments to keep)`);
+
+      const s3Key = `pause-removal/${pauseRemovalJobId}.mp4`;
+      const { s3Url } = await removePausesAndUpload(localVideoPath, keepSegments, s3Key);
+
+      await prisma.pauseRemovalJob.update({
+        where: { id: pauseRemovalJobId },
+        data: {
+          status: 'completed',
+          detectedPauses: pauses as any,
+          removedPauses: toRemove as any,
+          resultS3Url: s3Url,
+          resultS3Key: s3Key,
+          totalRemovedSeconds: totalRemoved,
+          originalDurationS: videoDurationS,
+          resultDurationS: resultDuration,
+        },
+      });
+
+      console.log(`✅ Pause removal complete. Result: ${s3Url}`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('❌ Pause removal failed:', err);
+
+      try {
+        await prisma.pauseRemovalJob.update({
+          where: { id: pauseRemovalJobId },
+          data: { status: 'failed', error: errorMessage },
+        });
+      } catch (updateErr) {
+        console.error('Failed to update pause removal job status:', updateErr);
+      }
+    } finally {
+      if (localVideoPath) {
+        const fs = await import('fs');
+        if (fs.existsSync(localVideoPath)) {
+          fs.unlinkSync(localVideoPath);
+        }
+      }
     }
   },
   { connection: redisConnection as any }

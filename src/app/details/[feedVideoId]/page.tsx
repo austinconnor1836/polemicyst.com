@@ -29,6 +29,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import SpeakerTranscript from '@/components/SpeakerTranscript';
+import PauseRemoval from '@/components/PauseRemoval';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -519,6 +520,10 @@ export default function ClipGroupPage() {
                 }
               }}
             />
+          </div>
+
+          <div className="mb-6">
+            <PauseRemoval feedVideoId={feedVideoId} />
           </div>
 
           {summary.clips.length === 0 ? (
