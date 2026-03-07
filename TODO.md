@@ -256,6 +256,183 @@ These improve retention and reduce churn once users are paying.
 
 ---
 
+## Automatic B-Roll Feature
+
+_Added 2026-03-05. Rivals OpusClip's AI B-Roll feature — automatically inserts contextually relevant B-roll footage into generated clips._
+
+### Overview
+
+The feature analyzes the transcript and visual content of a clip, identifies moments where B-roll would enhance engagement (talking-head segments, abstract concepts, visual descriptions), and either fetches stock footage or generates AI B-roll to splice in at those moments. Two modes:
+
+1. **Stock B-Roll** — Searches free/paid stock libraries (Pexels, Pixabay) for relevant footage based on transcript context.
+2. **AI-Generated B-Roll** — Uses text-to-video models (Runway, Replicate Stable Video Diffusion, or similar) to generate custom visuals from transcript-derived prompts.
+
+### Architecture Brainstorm
+
+#### B-Roll Insertion Point Detection
+
+The LLM scoring call already analyzes each clip candidate. Extend it (or add a second pass) to return B-roll suggestions:
+
+- **Input**: Transcript text + extracted frames (already available for Gemini scoring).
+- **Output per suggestion**: `{ startS, endS, searchQuery, reason, style }` — where in the clip to insert B-roll, what to search for, and why.
+- **Heuristic fallback**: If no LLM is available, detect insertion points via:
+  - Talking-head segments (low visual change between consecutive frames)
+  - Abstract language in transcript ("the economy", "millions of people", "imagine a world")
+  - Pauses or filler words
+  - Segments with low `visualEnergyScore` (already scored by the LLM)
+
+#### B-Roll Source Pipeline
+
+```
+Insertion points detected
+  → For each insertion point:
+    → Generate search query from transcript context
+    → Mode: Stock
+        → Query Pexels/Pixabay API (free tier: 200 req/hr)
+        → Download top match → cache in S3 (reusable across clips)
+    → Mode: AI-Generated
+        → Build image/video prompt from transcript context + style
+        → Call Runway / Replicate / fal.ai API
+        → Download generated clip → cache in S3
+    → Store BRollAsset record in DB
+```
+
+#### FFmpeg Rendering Changes
+
+Current `generateClipFromS3()` does a simple trim + scale/crop with no overlays. Extend it to support B-roll compositing:
+
+```
+Option A: Concat demuxer (hard cut)
+  → Split source clip at B-roll insertion points
+  → Concat: [source_segment_1] [broll_1] [source_segment_2] [broll_2] ...
+  → Maintains original audio track throughout
+
+Option B: Overlay filter (picture-in-picture or crossfade)
+  → Use filter_complex with overlay, blend, or xfade filters
+  → B-roll fades in/out over source video while audio continues
+
+Option C: Hybrid
+  → Full-screen B-roll with crossfade transitions (most polished)
+  → Original audio continues under B-roll
+  → Configurable transition duration (0.3–0.5s default)
+```
+
+Recommended: **Option C** (full-screen B-roll with crossfade, original audio preserved). This matches OpusClip's approach and looks the most professional.
+
+#### Data Model Changes
+
+```prisma
+model BRollAsset {
+  id          String   @id @default(cuid())
+  userId      String?
+  source      String   // "pexels", "pixabay", "runway", "upload"
+  sourceId    String?  // external asset ID for dedup
+  s3Key       String
+  s3Url       String
+  query       String   // search query or generation prompt
+  tags        String[] // keyword tags for local search
+  durationS   Float
+  width       Int
+  height      Int
+  mimeType    String   @default("video/mp4")
+  createdAt   DateTime @default(now())
+
+  insertions  BRollInsertion[]
+  user        User?    @relation(fields: [userId], references: [id])
+}
+
+model BRollInsertion {
+  id          String   @id @default(cuid())
+  clipId      String
+  assetId     String
+  startS      Float    // insertion start time in the clip
+  endS        Float    // insertion end time in the clip
+  transition  String   @default("crossfade") // "cut", "crossfade", "fade"
+  transitionDurationS Float @default(0.4)
+
+  clip        Clip     @relation(fields: [clipId], references: [id])
+  asset       BRollAsset @relation(fields: [assetId], references: [id])
+}
+```
+
+#### Pipeline Integration
+
+Insert B-roll processing between candidate selection and FFmpeg render in the clip-metadata-worker:
+
+```
+Current pipeline:
+  Score candidates → Select top N → For each: FFmpeg render → S3 upload
+
+New pipeline:
+  Score candidates → Select top N → For each:
+    → Detect B-roll insertion points (LLM or heuristic)
+    → Fetch/generate B-roll assets (parallel)
+    → FFmpeg render with B-roll compositing → S3 upload
+```
+
+#### User-Facing Controls
+
+- **AutomationRule / Virality Settings**: `bRollEnabled: Boolean`, `bRollMode: "stock" | "ai" | "off"`, `bRollFrequency: "low" | "medium" | "high"` (maps to max insertions per 30s: 1/2/3)
+- **Feed-level toggle**: Enable/disable B-roll per feed
+- **Clip detail page**: Show B-roll insertions on a timeline, allow remove/replace/add
+- **B-Roll library**: User-uploaded assets + previously used stock/AI assets for reuse
+
+#### Cost Tracking
+
+Extend the existing `CostTracker` with a new `broll_fetch` stage:
+
+| Stage | Provider | Cost |
+|-------|----------|------|
+| `broll_search` | pexels/pixabay | $0 (free API) |
+| `broll_generate` | runway/replicate | ~$0.01–0.05 per generation |
+| `broll_download` | s3 | standard S3 bandwidth |
+
+### Implementation Phases
+
+#### Phase 1: Stock B-Roll MVP
+
+- [ ] Add `BRollAsset` and `BRollInsertion` Prisma models + migration
+- [ ] Add Pexels API integration (`shared/lib/broll/pexels-client.ts`) — search by keyword, download to S3, dedup by `sourceId`
+- [ ] Extend LLM scoring prompt to return B-roll suggestions (`bRollSuggestions[]` in JSON response)
+- [ ] Add heuristic B-roll insertion point detection as fallback (low visual energy + abstract transcript language)
+- [ ] Extend `generateClipFromS3()` to accept B-roll insertions and render with crossfade compositing
+- [ ] Add `bRollEnabled` toggle to virality settings (UI + API + worker plumbing)
+- [ ] Add B-roll cost tracking (`broll_search` + `broll_download` stages)
+- [ ] Wire into clip-metadata-worker pipeline between selection and render
+
+#### Phase 2: AI-Generated B-Roll
+
+- [ ] Add Runway/Replicate/fal.ai integration (`shared/lib/broll/ai-generator.ts`)
+- [ ] Prompt engineering: convert transcript context → video generation prompt with style presets
+- [ ] Add `bRollMode` setting ("stock" vs "ai") to virality settings UI
+- [ ] Add AI generation cost tracking
+- [ ] Cache generated assets for reuse across similar clips
+
+#### Phase 3: B-Roll Editing & Library
+
+- [ ] Clip detail page: visual timeline showing B-roll insertions with preview thumbnails
+- [ ] Allow manual add/remove/replace B-roll on existing clips (re-render via FFmpeg)
+- [ ] User B-roll library page: upload custom footage, browse previously used assets
+- [ ] B-roll style presets (frequency, transition type, full-screen vs PiP)
+- [ ] Admin B-roll analytics (most-used queries, cache hit rate, cost per clip)
+
+#### Phase 4: Advanced
+
+- [ ] Semantic B-roll caching — embed B-roll assets with CLIP and match by semantic similarity instead of keyword search
+- [ ] Speaker detection — only insert B-roll during talking-head segments, never during action/demo segments
+- [ ] B-roll quality scoring — LLM rates B-roll relevance before insertion
+- [ ] Multi-platform B-roll sizing — different B-roll for 9:16 vs 16:9 vs 1:1
+
+### Key Technical Decisions to Make
+
+1. **Stock API**: Pexels (free, 200 req/hr, attribution required) vs Pixabay (free, no attribution) vs Storyblocks (paid, $20/mo, unlimited downloads, no attribution). Recommendation: Start with Pexels free tier, add Storyblocks for paid plans.
+2. **AI video generation**: Runway Gen-3 ($0.05/5s), Replicate SVD ($0.02/generation), fal.ai ($0.01/generation). Recommendation: Start with fal.ai for cost, upgrade to Runway for quality on business plan.
+3. **When to insert B-roll**: During initial clip render (saves re-render cost) vs as a post-processing step (more flexible, allows preview-before-commit). Recommendation: During initial render for MVP, add post-processing editing in Phase 3.
+4. **FFmpeg complexity**: The crossfade approach requires `filter_complex` with concat + xfade filters, which is significantly more complex than the current simple trim pipeline. Consider using `fluent-ffmpeg` for programmatic filter graph construction.
+5. **Caching strategy**: B-roll for common queries ("economy graph", "crowd cheering", "city skyline") should be cached in S3 and reused across users/clips to minimize API calls and cost.
+
+---
+
 ## Random Features
 
 - Some way to view admin
