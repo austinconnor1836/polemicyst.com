@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version bump type or explicit version (e.g. patch, minor, major, 1.2.3)"
+        description: 'Version bump type or explicit version (e.g. patch, minor, major, 1.2.3)'
         required: true
         type: choice
         options:
@@ -13,11 +13,11 @@ on:
           - major
         default: patch
       custom_version:
-        description: "Explicit version override (leave blank to use bump type above)"
+        description: 'Explicit version override (leave blank to use bump type above)'
         required: false
         type: string
       dry_run:
-        description: "Dry run — print what would happen without creating the PR"
+        description: 'Dry run — print what would happen without creating the PR'
         required: false
         type: boolean
         default: false

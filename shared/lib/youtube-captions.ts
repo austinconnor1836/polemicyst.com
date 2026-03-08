@@ -67,9 +67,7 @@ function parseJson3(data: Json3Data): TranscriptSegment[] {
     if (!text || /^\[.*\]$/.test(text)) continue;
 
     const startSec = event.tStartMs / 1000;
-    const endSec = event.dDurationMs
-      ? (event.tStartMs + event.dDurationMs) / 1000
-      : startSec + 5;
+    const endSec = event.dDurationMs ? (event.tStartMs + event.dDurationMs) / 1000 : startSec + 5;
 
     segments.push({ start: startSec, end: endSec, text });
   }
@@ -85,9 +83,12 @@ function runYtDlpSubs(
   return new Promise((resolve) => {
     const args = [
       '--skip-download',
-      '--sub-lang', 'en',
-      '--sub-format', 'json3',
-      '-o', outputTemplate,
+      '--sub-lang',
+      'en',
+      '--sub-format',
+      'json3',
+      '-o',
+      outputTemplate,
       ...(useAutoSub ? ['--write-auto-sub'] : ['--write-sub']),
       videoUrl,
     ];
