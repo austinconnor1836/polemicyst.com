@@ -1,8 +1,8 @@
 import SwiftUI
-import PolemicystiOS
+import ClipfireiOS
 
 @main
-struct PolemicystApp: App {
+struct ClipfireApp: App {
     @StateObject private var authService: AuthService
     @State private var tabSelection = 0
     @State private var forceUpdateRequired = false

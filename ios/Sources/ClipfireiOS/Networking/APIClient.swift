@@ -7,9 +7,18 @@ public struct APIClient {
     public var encoder: JSONEncoder
     public var tokenStorage: TokenStorage?
 
-    public init(baseURL: URL, session: URLSession = .shared, tokenStorage: TokenStorage? = nil) {
+    public init(baseURL: URL, session: URLSession? = nil, tokenStorage: TokenStorage? = nil) {
         self.baseURL = baseURL
-        self.session = session
+        #if DEBUG
+        if session == nil && baseURL.host() == "localhost" {
+            let delegate = LocalhostSessionDelegate()
+            self.session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        } else {
+            self.session = session ?? .shared
+        }
+        #else
+        self.session = session ?? .shared
+        #endif
         self.decoder = JSONDecoder()
         self.decoder.dateDecodingStrategy = .iso8601
         self.encoder = JSONEncoder()
@@ -205,3 +214,19 @@ public enum APIError: Error, LocalizedError {
         return response.allowedProviders
     }
 }
+
+#if DEBUG
+/// Accepts self-signed certificates for localhost during development.
+final class LocalhostSessionDelegate: NSObject, URLSessionDelegate {
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        guard challenge.protectionSpace.host == "localhost",
+              let trust = challenge.protectionSpace.serverTrust else {
+            return (.performDefaultHandling, nil)
+        }
+        return (.useCredential, URLCredential(trust: trust))
+    }
+}
+#endif

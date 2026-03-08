@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "PolemicystiOS",
+    name: "ClipfireiOS",
     platforms: [
         .iOS(.v17),
         .macOS(.v13)
     ],
     products: [
-        .library(name: "PolemicystiOS", targets: ["PolemicystiOS"]),
-        .executable(name: "PolemicystApp", targets: ["PolemicystApp"])
+        .library(name: "ClipfireiOS", targets: ["ClipfireiOS"]),
+        .executable(name: "ClipfireApp", targets: ["ClipfireApp"])
     ],
     dependencies: [
         .package(
@@ -19,22 +19,22 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "PolemicystiOS",
+            name: "ClipfireiOS",
             dependencies: [
                 .product(name: "GoogleSignIn", package: "GoogleSignIn-iOS"),
                 .product(name: "GoogleSignInSwift", package: "GoogleSignIn-iOS"),
             ],
-            path: "Sources/PolemicystiOS",
+            path: "Sources/ClipfireiOS",
             resources: []
         ),
         .executableTarget(
-            name: "PolemicystApp",
-            dependencies: ["PolemicystiOS"],
-            path: "Sources/PolemicystApp"
+            name: "ClipfireApp",
+            dependencies: ["ClipfireiOS"],
+            path: "Sources/ClipfireApp"
         ),
         .testTarget(
-            name: "PolemicystiOSTests",
-            dependencies: ["PolemicystiOS"],
+            name: "ClipfireiOSTests",
+            dependencies: ["ClipfireiOS"],
             path: "Tests"
         )
     ]

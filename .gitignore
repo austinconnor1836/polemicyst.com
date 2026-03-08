@@ -101,6 +101,7 @@ android/captures/
 
 # iOS
 ios/*.xcodeproj/
+ios/xcconfig/
 ios/build/
 ios/.build/
 ios/.derived/
