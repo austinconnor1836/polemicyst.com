@@ -53,19 +53,20 @@ We follow **semantic versioning** (`vMAJOR.MINOR.PATCH`). GitHub Releases are th
 
 1. Go to **Actions → Prepare Release → Run workflow** (or use the `/release` slash command).
 2. Select bump type (`patch` / `minor` / `major`) or enter an explicit version. Optionally enable **dry run** to preview.
-3. The workflow creates a `release/vX.Y.Z` branch, bumps `version.json`, and opens a PR to `develop`. Auto-merge handles it once CI passes.
-4. The workflow also opens a release PR `develop → main` with a generated changelog.
-5. Review the release PR and wait for CI (`Lint & Build`).
-6. Merge with a **merge commit** (not squash): `gh pr merge <PR_NUMBER> --merge`
-7. The **Finalize Release** workflow fires automatically on merge — creates the GitHub Release + git tag on `main`.
+3. The workflow creates two PRs:
+   - **Version bump PR** (`release/vX.Y.Z` → `develop`) — auto-merges once CI passes.
+   - **Release PR** (`release-pr/vX.Y.Z` → `main`) — contains a generated changelog.
+4. Review the release PR and wait for CI (`Lint & Build`).
+5. Merge with a **merge commit** (not squash): `gh pr merge <PR_NUMBER> --merge`
+6. The **Finalize Release** workflow fires automatically on merge — creates the GitHub Release + git tag on `main`, and fast-forwards `develop` to `main`.
 
 ### Manual fallback
 
 1. Create a branch from `develop`, update `version.json`, and open a PR to `develop`.
-2. After merge, create a PR `develop → main` titled `Release vX.Y.Z`.
+2. After merge, create a temporary branch from `develop` (e.g. `release-pr/vX.Y.Z`) and open a PR to `main` titled `Release vX.Y.Z`. **Never use `develop` directly as the PR head** — GitHub's auto-delete will remove it.
 3. Merge with a merge commit, then: `gh release create vX.Y.Z --target main --title "vX.Y.Z" --notes "..."`
 
-**Rules**: Never push directly to `main` or `develop`. Never squash-merge release PRs. Never create tags manually (let the workflow handle it).
+**Rules**: Never push directly to `main` or `develop`. Never use `develop` as a PR head branch targeting `main` (use a temporary branch). Never squash-merge release PRs. Never create tags manually (let the workflow handle it).
 
 ## Key files
 

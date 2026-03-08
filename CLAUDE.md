@@ -23,18 +23,18 @@ We follow **semantic versioning** (`vMAJOR.MINOR.PATCH`) and use GitHub Releases
 Use the **Prepare Release** GitHub Actions workflow (`Actions → Prepare Release → Run workflow`) or the `/release` slash command:
 
 1. Select bump type (`patch` / `minor` / `major`) or enter an explicit version.
-2. The workflow creates a `release/vX.Y.Z` branch, bumps `version.json`, and opens a PR to `develop`.
-3. Auto-merge merges the version bump PR once CI passes.
-4. The workflow also opens a release PR `develop → main` with a generated changelog.
-5. Review the release PR, wait for CI, then merge with a **merge commit** (not squash).
-6. The **Finalize Release** workflow auto-fires on merge — creates the GitHub Release + git tag.
+2. The workflow creates two PRs:
+   - **Version bump PR** (`release/vX.Y.Z` → `develop`) — auto-merges once CI passes.
+   - **Release PR** (`release-pr/vX.Y.Z` → `main`) — contains a generated changelog.
+3. Review the release PR, wait for CI, then merge with a **merge commit** (not squash): `gh pr merge <number> --merge`
+4. The **Finalize Release** workflow auto-fires on merge — creates the GitHub Release + git tag, and fast-forwards `develop` to `main`.
 
 Use the **dry run** checkbox to preview without making changes.
 
 ### Manual fallback
 
 1. Create a branch from `develop`, update `version.json`, and open a PR to `develop`.
-2. After merge, open a PR `develop → main` titled `Release vX.Y.Z`.
+2. After merge, create a temporary branch from `develop` (e.g. `release-pr/vX.Y.Z`) and open a PR to `main` titled `Release vX.Y.Z`. **Never use `develop` directly as the PR head** — GitHub's auto-delete will remove it.
 3. Merge with a merge commit, then:
    ```
    gh release create v0.2.0 --target main --title "v0.2.0" --notes "..."
@@ -48,7 +48,8 @@ Use the **dry run** checkbox to preview without making changes.
 
 ### What NOT to do
 
-- Don't push directly to `main` — always go through a PR from `develop`.
+- Don't push directly to `main` or `develop` — always go through a PR.
+- Don't create PRs with `develop` as the head branch targeting `main` — GitHub's auto-delete will remove `develop` on merge. Use a temporary branch instead.
 - Don't create tags manually — let the workflow or `gh release create` handle it.
 - Don't squash-merge release PRs — merge commits keep history traceable.
 
