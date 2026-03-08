@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version bump type or explicit version (e.g. patch, minor, major, 1.2.3)'
+        description: "Version bump type or explicit version (e.g. patch, minor, major, 1.2.3)"
         required: true
         type: choice
         options:
@@ -13,11 +13,11 @@ on:
           - major
         default: patch
       custom_version:
-        description: 'Explicit version override (leave blank to use bump type above)'
+        description: "Explicit version override (leave blank to use bump type above)"
         required: false
         type: string
       dry_run:
-        description: 'Dry run — print what would happen without creating the PR'
+        description: "Dry run — print what would happen without creating the PR"
         required: false
         type: boolean
         default: false
@@ -37,7 +37,6 @@ jobs:
         with:
           ref: develop
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_PAT }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -131,19 +130,36 @@ jobs:
           cat /tmp/release-body.md >> $GITHUB_STEP_SUMMARY
           git checkout -- version.json
 
-      - name: Commit version bump
-        if: ${{ !inputs.dry_run }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.json
-          git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}"
-          git push origin develop
-
-      - name: Create release PR
+      - name: Create version bump branch and PR
         if: ${{ !inputs.dry_run }}
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="release/v${{ steps.bump.outputs.version }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add version.json
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}"
+          git push origin "$BRANCH"
+
+          # Create PR to develop for the version bump
+          BUMP_PR_URL=$(gh pr create \
+            --base develop \
+            --head "$BRANCH" \
+            --title "chore: bump version to ${{ steps.bump.outputs.version }}" \
+            --body "Automated version bump for release v${{ steps.bump.outputs.version }}. Auto-merge will merge this once CI passes, then the release PR will be created.")
+          echo "### Version bump PR created" >> $GITHUB_STEP_SUMMARY
+          echo "$BUMP_PR_URL" >> $GITHUB_STEP_SUMMARY
+
+          # Save release body for the next step
+          cp /tmp/release-body.md /tmp/release-body-saved.md
+
+      - name: Create or update release PR
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           EXISTING=$(gh pr list --base main --head develop --state open \
             --json number --jq '.[0].number' || true)
@@ -152,7 +168,7 @@ jobs:
             gh pr edit "$EXISTING" \
               --title "Release v${{ steps.bump.outputs.version }}" \
               --body-file /tmp/release-body.md
-            echo "### Updated PR #$EXISTING" >> $GITHUB_STEP_SUMMARY
+            echo "### Updated release PR #$EXISTING" >> $GITHUB_STEP_SUMMARY
             echo "[View PR](../pull/$EXISTING)" >> $GITHUB_STEP_SUMMARY
           else
             PR_URL=$(gh pr create \
@@ -160,6 +176,6 @@ jobs:
               --head develop \
               --title "Release v${{ steps.bump.outputs.version }}" \
               --body-file /tmp/release-body.md)
-            echo "### Created release PR" >> $GITHUB_STEP_SUMMARY
+            echo "### Release PR created" >> $GITHUB_STEP_SUMMARY
             echo "$PR_URL" >> $GITHUB_STEP_SUMMARY
           fi
