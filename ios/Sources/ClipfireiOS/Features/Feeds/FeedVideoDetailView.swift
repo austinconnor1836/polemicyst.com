@@ -10,6 +10,7 @@ public final class FeedVideoDetailViewModel: ObservableObject {
     @Published public var upgradeError: APIError?
     @Published public var clipResultMessage: String?
     @Published public private(set) var isGenerating = false
+    @Published public private(set) var isDeleting = false
 
     let api: APIClient
     let feedVideoId: String
@@ -51,6 +52,18 @@ public final class FeedVideoDetailViewModel: ObservableObject {
         }
     }
 
+    public func deleteFeedVideo() async -> Bool {
+        isDeleting = true
+        do {
+            try await api.deleteFeedVideo(id: feedVideoId)
+            return true
+        } catch {
+            isDeleting = false
+            errorMessage = "Failed to delete video"
+            return false
+        }
+    }
+
     func startPollingIfNeeded() {
         pollTask?.cancel()
         pollTask = nil
@@ -76,53 +89,106 @@ public final class FeedVideoDetailViewModel: ObservableObject {
 
 public struct FeedVideoDetailView: View {
     @StateObject private var viewModel: FeedVideoDetailViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var showDeleteConfirmation = false
+    private var onDelete: (() -> Void)?
 
-    public init(api: APIClient, feedVideoId: String) {
+    public init(api: APIClient, feedVideoId: String, onDelete: (() -> Void)? = nil) {
         _viewModel = StateObject(wrappedValue: FeedVideoDetailViewModel(api: api, feedVideoId: feedVideoId))
+        self.onDelete = onDelete
     }
 
     public var body: some View {
-        Group {
-            if viewModel.isLoading && viewModel.detail == nil {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let detail = viewModel.detail {
-                contentView(detail)
-            } else {
-                VStack(spacing: DesignTokens.spacing) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 48))
-                        .foregroundStyle(DesignTokens.muted)
-                    Text("Failed to load video")
-                        .foregroundStyle(DesignTokens.textSecondary)
+        mainContent
+            .background(DesignTokens.background.ignoresSafeArea())
+            .navigationTitle(viewModel.detail?.feedVideo.title ?? "Video Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .destructiveAction) {
+                    Button {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundStyle(.red)
+                    }
+                    .disabled(viewModel.isDeleting)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .overlay { deletingOverlay }
+            .alert("Delete Video", isPresented: $showDeleteConfirmation) {
+                Button("Delete", role: .destructive) {
+                    Task {
+                        if await viewModel.deleteFeedVideo() {
+                            onDelete?()
+                            dismiss()
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Are you sure you want to delete this video? This action cannot be undone.")
+            }
+            .task { await viewModel.load() }
+            .onDisappear { viewModel.stopPolling() }
+            .refreshable { await viewModel.load() }
+            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+            } message: {
+                Text(viewModel.errorMessage ?? "")
+            }
+            .alert("Clip Generation", isPresented: .constant(viewModel.clipResultMessage != nil)) {
+                Button("OK", role: .cancel) { viewModel.clipResultMessage = nil }
+            } message: {
+                Text(viewModel.clipResultMessage ?? "")
+            }
+            .sheet(item: $viewModel.upgradeError) { error in
+                UpgradePromptView(
+                    message: error.localizedDescription,
+                    quotaLimit: error.quotaLimit,
+                    quotaUsage: error.quotaUsage,
+                    onDismiss: { viewModel.upgradeError = nil }
+                )
+                .presentationDetents([.medium])
+            }
+    }
+
+    @ViewBuilder
+    private var mainContent: some View {
+        if viewModel.isLoading && viewModel.detail == nil {
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let detail = viewModel.detail {
+            contentView(detail)
+        } else {
+            VStack(spacing: DesignTokens.spacing) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 48))
+                    .foregroundStyle(DesignTokens.muted)
+                Text("Failed to load video")
+                    .foregroundStyle(DesignTokens.textSecondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(DesignTokens.background.ignoresSafeArea())
-        .navigationTitle(viewModel.detail?.feedVideo.title ?? "Video Details")
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await viewModel.load() }
-        .onDisappear { viewModel.stopPolling() }
-        .refreshable { await viewModel.load() }
-        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-            Button("OK", role: .cancel) { viewModel.errorMessage = nil }
-        } message: {
-            Text(viewModel.errorMessage ?? "")
-        }
-        .alert("Clip Generation", isPresented: .constant(viewModel.clipResultMessage != nil)) {
-            Button("OK", role: .cancel) { viewModel.clipResultMessage = nil }
-        } message: {
-            Text(viewModel.clipResultMessage ?? "")
-        }
-        .sheet(item: $viewModel.upgradeError) { error in
-            UpgradePromptView(
-                message: error.localizedDescription,
-                quotaLimit: error.quotaLimit,
-                quotaUsage: error.quotaUsage,
-                onDismiss: { viewModel.upgradeError = nil }
-            )
-            .presentationDetents([.medium])
+    }
+
+    @ViewBuilder
+    private var deletingOverlay: some View {
+        if viewModel.isDeleting {
+            ZStack {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .tint(.white)
+                        .controlSize(.large)
+                    Text("Deleting...")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.white)
+                }
+                .padding(24)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+            }
         }
     }
 
@@ -132,7 +198,7 @@ public struct FeedVideoDetailView: View {
     private func contentView(_ detail: FeedVideoDetailResponse) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignTokens.largeSpacing) {
-                thumbnailSection(detail.feedVideo)
+                mediaSection(detail.feedVideo)
                 metadataSection(detail)
                 transcriptSection(detail.feedVideo)
                 generateSection(detail)
@@ -142,26 +208,24 @@ public struct FeedVideoDetailView: View {
         }
     }
 
-    // MARK: - Thumbnail
+    // MARK: - Media
 
     @ViewBuilder
-    private func thumbnailSection(_ video: FeedVideoDetail) -> some View {
-        if let url = video.resolvedThumbnailUrl {
+    private func mediaSection(_ video: FeedVideoDetail) -> some View {
+        if let ytId = video.youtubeVideoId {
+            YouTubeThumbnailView(videoId: ytId)
+                .cornerRadius(DesignTokens.cornerRadius)
+        } else if let url = video.resolvedThumbnailUrl {
             AsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(16 / 9, contentMode: .fill)
+                    image.resizable().aspectRatio(16 / 9, contentMode: .fill)
                 case .failure:
-                    thumbnailPlaceholder
+                    mediaPlaceholder
                 case .empty:
-                    ZStack {
-                        thumbnailPlaceholder
-                        ProgressView().tint(DesignTokens.muted)
-                    }
+                    ZStack { mediaPlaceholder; ProgressView().tint(DesignTokens.muted) }
                 @unknown default:
-                    thumbnailPlaceholder
+                    mediaPlaceholder
                 }
             }
             .frame(maxWidth: .infinity)
@@ -169,12 +233,12 @@ public struct FeedVideoDetailView: View {
             .clipped()
             .cornerRadius(DesignTokens.cornerRadius)
         } else {
-            thumbnailPlaceholder
+            mediaPlaceholder
                 .cornerRadius(DesignTokens.cornerRadius)
         }
     }
 
-    private var thumbnailPlaceholder: some View {
+    private var mediaPlaceholder: some View {
         ZStack {
             Rectangle()
                 .fill(DesignTokens.surface)
