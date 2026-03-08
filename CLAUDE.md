@@ -20,19 +20,21 @@ We follow **semantic versioning** (`vMAJOR.MINOR.PATCH`) and use GitHub Releases
 
 ### Automated release (preferred)
 
-Use the **Prepare Release** GitHub Actions workflow (`Actions → Prepare Release → Run workflow`):
+Use the **Prepare Release** GitHub Actions workflow (`Actions → Prepare Release → Run workflow`) or the `/release` slash command:
 
 1. Select bump type (`patch` / `minor` / `major`) or enter an explicit version.
-2. The workflow bumps `version.json`, generates a changelog, and opens a PR `develop → main`.
-3. Review the PR, wait for CI, then merge with a **merge commit** (not squash).
-4. The **Finalize Release** workflow auto-fires on merge — creates the GitHub Release + git tag.
+2. The workflow creates a `release/vX.Y.Z` branch, bumps `version.json`, and opens a PR to `develop`.
+3. Auto-merge merges the version bump PR once CI passes.
+4. The workflow also opens a release PR `develop → main` with a generated changelog.
+5. Review the release PR, wait for CI, then merge with a **merge commit** (not squash).
+6. The **Finalize Release** workflow auto-fires on merge — creates the GitHub Release + git tag.
 
 Use the **dry run** checkbox to preview without making changes.
 
 ### Manual fallback
 
-1. Update `version.json` and commit to `develop`.
-2. Open a PR `develop → main` titled `Release vX.Y.Z`.
+1. Create a branch from `develop`, update `version.json`, and open a PR to `develop`.
+2. After merge, open a PR `develop → main` titled `Release vX.Y.Z`.
 3. Merge with a merge commit, then:
    ```
    gh release create v0.2.0 --target main --title "v0.2.0" --notes "..."
