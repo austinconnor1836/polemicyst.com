@@ -56,7 +56,7 @@ export async function createFeed(userId: string, input: CreateFeedInput) {
       sourceType,
       userId,
       autoGenerateClips: !!input.autoGenerateClips,
-      viralitySettings: input.viralitySettings ?? undefined,
+      viralitySettings: (input.viralitySettings as any) ?? undefined,
     },
   });
 
