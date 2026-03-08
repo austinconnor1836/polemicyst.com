@@ -11,31 +11,31 @@
  * Prints the new version to stdout for consumption by CI scripts.
  */
 
-import { readFileSync, writeFileSync } from "fs";
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
+import { readFileSync, writeFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const versionFile = resolve(__dirname, "..", "version.json");
+const versionFile = resolve(__dirname, '..', 'version.json');
 
 const bump = process.argv[2];
 if (!bump) {
-  console.error("Usage: bump-version.mjs <patch|minor|major|x.y.z>");
+  console.error('Usage: bump-version.mjs <patch|minor|major|x.y.z>');
   process.exit(1);
 }
 
-const data = JSON.parse(readFileSync(versionFile, "utf-8"));
-const [major, minor, patch] = data.version.split(".").map(Number);
+const data = JSON.parse(readFileSync(versionFile, 'utf-8'));
+const [major, minor, patch] = data.version.split('.').map(Number);
 
 let newVersion;
 switch (bump) {
-  case "patch":
+  case 'patch':
     newVersion = `${major}.${minor}.${patch + 1}`;
     break;
-  case "minor":
+  case 'minor':
     newVersion = `${major}.${minor + 1}.0`;
     break;
-  case "major":
+  case 'major':
     newVersion = `${major + 1}.0.0`;
     break;
   default:
@@ -47,7 +47,7 @@ switch (bump) {
 }
 
 data.version = newVersion;
-writeFileSync(versionFile, JSON.stringify(data, null, 2) + "\n");
+writeFileSync(versionFile, JSON.stringify(data, null, 2) + '\n');
 
 // stdout only — CI captures this
 console.log(newVersion);

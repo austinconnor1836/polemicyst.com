@@ -409,10 +409,7 @@ new Worker(
             where: { id: feedVideo.feed.userId },
             select: { subscriptionPlan: true },
           });
-          const clipQuota = await checkClipQuota(
-            feedVideo.feed.userId,
-            feedUser?.subscriptionPlan
-          );
+          const clipQuota = await checkClipQuota(feedVideo.feed.userId, feedUser?.subscriptionPlan);
 
           if (!clipQuota.allowed) {
             console.warn(`⚠️ Clip quota exceeded. Skipping auto clip generation.`);

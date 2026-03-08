@@ -15,5 +15,10 @@
     }
   },
   "include": ["**/*.ts", "../../shared/**/*.ts"],
-  "exclude": ["node_modules", "scripts", "../../shared/lib/auth.ts", "../../shared/lib/auth-helpers.ts"]
+  "exclude": [
+    "node_modules",
+    "scripts",
+    "../../shared/lib/auth.ts",
+    "../../shared/lib/auth-helpers.ts"
+  ]
 }

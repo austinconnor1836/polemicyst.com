@@ -44,13 +44,13 @@ System-level overview of the Polemicyst / Clipfire platform. For coding conventi
 
 ## Queue Architecture (BullMQ)
 
-| Queue | Producer | Consumer | Job Shape |
-|-------|----------|----------|-----------|
-| `feed-download` | API routes, Poller | Download Worker | `{ feedVideoId, url, title?, feedId?, userId? }` |
-| `transcription` | API routes, Download Worker | Clip-Metadata Worker | `{ feedVideoId, sourceUrl?, title? }` |
-| `clip-generation` | API routes, Clip-Metadata Worker (auto-trigger) | Clip-Metadata Worker | `{ feedVideoId, userId, aspectRatio, scoringMode, ... }` |
-| `speaker-transcription` | API routes | Clip-Metadata Worker | `{ feedVideoId, numSpeakers? }` |
-| `video-download` | Legacy API routes | Video-Download Worker | `{ feedId, videoId, sourceUrl, userId, title }` |
+| Queue                   | Producer                                        | Consumer              | Job Shape                                                |
+| ----------------------- | ----------------------------------------------- | --------------------- | -------------------------------------------------------- |
+| `feed-download`         | API routes, Poller                              | Download Worker       | `{ feedVideoId, url, title?, feedId?, userId? }`         |
+| `transcription`         | API routes, Download Worker                     | Clip-Metadata Worker  | `{ feedVideoId, sourceUrl?, title? }`                    |
+| `clip-generation`       | API routes, Clip-Metadata Worker (auto-trigger) | Clip-Metadata Worker  | `{ feedVideoId, userId, aspectRatio, scoringMode, ... }` |
+| `speaker-transcription` | API routes                                      | Clip-Metadata Worker  | `{ feedVideoId, numSpeakers? }`                          |
+| `video-download`        | Legacy API routes                               | Video-Download Worker | `{ feedId, videoId, sourceUrl, userId, title }`          |
 
 All queues use `jobId: feedVideoId` for deduplication.
 
@@ -144,18 +144,19 @@ API enqueues: download + transcription (parallel)
 ```
 
 Race conditions are handled by:
+
 - **Idempotent transcription**: `transcribeFeedVideo()` returns early if transcript exists
 - **BullMQ dedup**: `jobId: feedVideoId` prevents duplicate queue entries
 - **Status gate**: clip-gen only triggers when `status !== 'pending'`
 
 ## ECS Deployment
 
-| ECS Service | Container | Queues Consumed |
-|-------------|-----------|-----------------|
-| `{env}-web` | Next.js (Dockerfile) | — (serves HTTP) |
-| `{env}-clip-worker` | clip-metadata-worker | `clip-generation`, `transcription` |
-| `{env}-poller` | poller-worker | — (polling loop) |
-| `{env}-download-worker` | video-download-worker | `feed-download`, `video-download` |
+| ECS Service             | Container             | Queues Consumed                    |
+| ----------------------- | --------------------- | ---------------------------------- |
+| `{env}-web`             | Next.js (Dockerfile)  | — (serves HTTP)                    |
+| `{env}-clip-worker`     | clip-metadata-worker  | `clip-generation`, `transcription` |
+| `{env}-poller`          | poller-worker         | — (polling loop)                   |
+| `{env}-download-worker` | video-download-worker | `feed-download`, `video-download`  |
 
 Auxiliary containers (Faster-Whisper, Ollama) run as ECS services or sidecars depending on environment.
 
