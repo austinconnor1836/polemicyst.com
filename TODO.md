@@ -116,6 +116,7 @@ _Eliminate `develop` branch. Ship from `main` with short-lived feature branches,
 
 - [ ] **Delete `develop` branch** (local + remote)
 - [ ] **Archive or remove any develop-specific CI workflows**
+- [ ] **Simplify `/sync` slash command** — after migration, sync becomes just `git fetch origin && git rebase origin/main` (no develop step)
 
 ---
 
