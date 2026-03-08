@@ -1006,6 +1006,156 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExportClipResponse'
 
+  /api/clips/{id}/compose:
+    post:
+      operationId: composeClipPost
+      summary: Generate AI-powered per-platform post content for a clip
+      description: >
+        Uses the clip's transcript to generate platform-specific titles,
+        descriptions, and hashtags. Returns connected platform status and
+        AI-generated (or template-based) content for YouTube, Facebook,
+        Instagram, Bluesky, and Twitter.
+      tags: [Clips]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Composed post content per platform
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clip:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      title:
+                        type: string
+                      s3Url:
+                        type: string
+                        nullable: true
+                  aiGenerated:
+                    type: boolean
+                  connected:
+                    type: object
+                    properties:
+                      youtube:
+                        type: boolean
+                      facebook:
+                        type: boolean
+                      instagram:
+                        type: boolean
+                      bluesky:
+                        type: boolean
+                      twitter:
+                        type: boolean
+                  content:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        title:
+                          type: string
+                          nullable: true
+                        description:
+                          type: string
+                        hashtags:
+                          type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Clip not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/clips/{id}/publish:
+    post:
+      operationId: publishClip
+      summary: Publish a clip to one or more social platforms
+      description: >
+        Accepts per-platform content (title, description) and publishes
+        the clip video to each selected platform using the user's connected
+        OAuth accounts. Returns per-platform success/failure results.
+      tags: [Clips]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [platforms]
+              properties:
+                platforms:
+                  type: object
+                  additionalProperties:
+                    type: object
+                    properties:
+                      title:
+                        type: string
+                      description:
+                        type: string
+                        description: Full post description including hashtags
+      responses:
+        '200':
+          description: Per-platform publish results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        success:
+                          type: boolean
+                        url:
+                          type: string
+                          nullable: true
+                        id:
+                          type: string
+                          nullable: true
+                        error:
+                          type: string
+                          nullable: true
+        '400':
+          description: No platforms selected or clip has no video
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Clip not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/trigger-clip:
     post:
       operationId: triggerClipGeneration

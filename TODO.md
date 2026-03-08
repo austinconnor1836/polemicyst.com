@@ -64,7 +64,8 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 ### Core Product
 
 - [ ] Clip editing/trimming improvements (trim UI on detail page)
-- [ ] Clip export to social platforms (verify Bluesky, Meta, YouTube, Twitter flows work)
+- [x] Cross-platform AI-powered "Compose & Publish" dialog (compose + publish API routes, integrated into clip detail and clips list pages)
+- [ ] Clip export to social platforms (verify Bluesky, Meta, YouTube, Twitter flows work with real OAuth tokens)
 - [ ] AI description generation (verify `generateDescription` endpoint works)
 - [ ] Clip templates system (CRUD exists but UI may not be wired up)
 

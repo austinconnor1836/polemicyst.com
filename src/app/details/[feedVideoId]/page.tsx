@@ -26,9 +26,11 @@ import {
   RefreshCw,
   ArrowLeft,
   Pencil,
+  Send,
   Trash2,
 } from 'lucide-react';
 import SpeakerTranscript from '@/components/SpeakerTranscript';
+import ComposePostDialog from '@/components/ComposePostDialog';
 import CopyableUrl from '@/components/CopyableUrl';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
@@ -127,6 +129,7 @@ export default function ClipGroupPage() {
   const [transcribeMessage, setTranscribeMessage] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [deletingClipId, setDeletingClipId] = useState<string | null>(null);
+  const [composeClipId, setComposeClipId] = useState<string | null>(null);
   const { quota, data: subscriptionData, refresh: refreshSubscription } = useSubscription();
 
   const fetchSummary = useCallback(
@@ -607,6 +610,14 @@ export default function ClipGroupPage() {
                                   Download
                                 </a>
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => setComposeClipId(clip.id)}
+                              >
+                                <Send className="mr-2 h-4 w-4" />
+                                Post
+                              </Button>
                             </>
                           ) : null}
                           <Button
@@ -637,6 +648,15 @@ export default function ClipGroupPage() {
           )}
         </>
       ) : null}
+      {composeClipId && (
+        <ComposePostDialog
+          clipId={composeClipId}
+          open={!!composeClipId}
+          onOpenChange={(open) => {
+            if (!open) setComposeClipId(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -148,6 +148,16 @@ In the Feeds modal, users can set:
 
 ## Change log
 
+### 2026-03-05 (cross-platform AI posting)
+
+- **Compose & Publish feature** — clips can now be posted to social platforms directly from the clips list and clip editor pages.
+- New **`POST /api/clips/[id]/compose`** API route — generates per-platform post content (title, description, hashtags) using AI (Ollama) with template-based fallback. Returns connected-platform status from user's `Account` records.
+- New **`POST /api/clips/[id]/publish`** API route — unified multi-platform publish endpoint. Publishes the clip video to YouTube, Facebook, Instagram, and/or Bluesky using stored OAuth tokens. Returns per-platform success/failure results.
+- New **`ComposePostDialog`** component — modal with platform toggles, editable per-platform fields (title, description, hashtags), character count tracking, AI regeneration, and publish status badges.
+- Integrated **"Post" button** on clip cards in the feed video details page (`/details/[feedVideoId]`).
+- Integrated **"Post to platforms" button** in the clip editor action bar (`/details/[feedVideoId]/clips/[clipId]`).
+- Updated `openapi/spec.yaml` with the new `compose` and `publish` endpoints.
+
 ### 2026-03-04 (parallel transcription)
 
 - **Parallel YouTube transcription** — when importing a YouTube URL (via feed creation or URL import), transcription is now enqueued alongside the download job. YouTube captions resolve in ~100ms via HTTP while the download takes minutes, so the transcript is ready by the time the download finishes.

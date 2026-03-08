@@ -18,10 +18,11 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import { ArrowLeft, Download, Loader2, Save, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, Save, Send, Sparkles, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { formatRelativeTime } from '@/app/feeds/util/time';
+import ComposePostDialog from '@/components/ComposePostDialog';
 
 type ClipRecord = {
   id: string;
@@ -126,6 +127,7 @@ export default function ClipEditorPage() {
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
   const [isDeletingClip, setIsDeletingClip] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
 
   const previewRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -688,6 +690,10 @@ export default function ClipEditorPage() {
               <Download className="mr-2 h-4 w-4" />
               {isExporting ? 'Exporting...' : 'Export video'}
             </Button>
+            <Button variant="secondary" onClick={() => setComposeOpen(true)}>
+              <Send className="mr-2 h-4 w-4" />
+              Post to platforms
+            </Button>
             <Button variant="destructive" onClick={handleDeleteClip} disabled={isDeletingClip}>
               {isDeletingClip ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1181,6 +1187,9 @@ export default function ClipEditorPage() {
           </div>
         </div>
       )}
+      {clip ? (
+        <ComposePostDialog clipId={clip.id} open={composeOpen} onOpenChange={setComposeOpen} />
+      ) : null}
       {clip ? (
         <div className="hidden lg:block">
           <Card className="fixed inset-x-6 bottom-6 z-30 shadow-xl">
