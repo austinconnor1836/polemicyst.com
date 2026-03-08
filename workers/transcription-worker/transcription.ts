@@ -128,10 +128,7 @@ function findYouTubeUrl(feedVideo: { s3Url: string; videoId?: string }): string 
   if (isYouTubeUrl(feedVideo.s3Url)) {
     return feedVideo.s3Url;
   }
-  if (
-    feedVideo.videoId &&
-    /^[a-zA-Z0-9_-]{11}$/.test(feedVideo.videoId)
-  ) {
+  if (feedVideo.videoId && /^[a-zA-Z0-9_-]{11}$/.test(feedVideo.videoId)) {
     return `https://www.youtube.com/watch?v=${feedVideo.videoId}`;
   }
   return null;
