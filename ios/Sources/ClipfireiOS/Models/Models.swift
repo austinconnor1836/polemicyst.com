@@ -28,11 +28,137 @@ public struct VideoFeed: Identifiable, Codable {
 public struct FeedVideo: Identifiable, Codable {
     public let id: String
     public let feedId: String
+    public let videoId: String?
     public let title: String?
+    public let thumbnailUrl: String?
     public let transcript: String?
     public let s3Url: String?
     public let createdAt: Date
     public let feed: VideoFeed?
+
+    /// Returns the best available thumbnail URL.
+    /// Prefers the stored `thumbnailUrl`, falls back to YouTube thumbnail if applicable.
+    public var resolvedThumbnailUrl: URL? {
+        if let stored = thumbnailUrl, let url = URL(string: stored) {
+            return url
+        }
+        // Fall back to YouTube thumbnail
+        if let ytId = youtubeVideoId {
+            return URL(string: "https://img.youtube.com/vi/\(ytId)/hqdefault.jpg")
+        }
+        return nil
+    }
+
+    /// Extracts YouTube video ID from s3Url or videoId field.
+    private var youtubeVideoId: String? {
+        if let s3 = s3Url, let id = FeedVideo.extractYouTubeId(from: s3) {
+            return id
+        }
+        if feed?.sourceType == "youtube", let vid = videoId, !vid.isEmpty {
+            return vid
+        }
+        return nil
+    }
+
+    private static func extractYouTubeId(from url: String) -> String? {
+        let pattern = #"(?:youtube\.com\/watch\?[^#]*[?&]v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{6,})"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: url, range: NSRange(url.startIndex..., in: url)),
+              let range = Range(match.range(at: 1), in: url) else {
+            return nil
+        }
+        return String(url[range])
+    }
+}
+
+// MARK: - Feed Video Detail (clips endpoint)
+
+public struct FeedVideoDetailResponse: Codable {
+    public let feedVideo: FeedVideoDetail
+    public let jobState: String?
+    public let jobMeta: JobMeta?
+    public let clips: [GeneratedClip]
+}
+
+public struct FeedVideoDetail: Codable {
+    public let id: String
+    public let userId: String
+    public let videoId: String?
+    public let title: String?
+    public let s3Url: String?
+    public let thumbnailUrl: String?
+    public let createdAt: Date
+    public let feed: FeedVideoDetailFeed?
+    public let clipSourceVideoId: String?
+    public let transcript: String?
+    public let transcriptSource: String?
+    public let clipSourceVideo: ClipSourceVideoDetail?
+
+    /// Returns the best available thumbnail URL.
+    public var resolvedThumbnailUrl: URL? {
+        if let stored = thumbnailUrl, let url = URL(string: stored) {
+            return url
+        }
+        if let ytId = youtubeVideoId {
+            return URL(string: "https://img.youtube.com/vi/\(ytId)/hqdefault.jpg")
+        }
+        return nil
+    }
+
+    private var youtubeVideoId: String? {
+        if let s3 = s3Url, let id = Self.extractYouTubeId(from: s3) {
+            return id
+        }
+        if feed?.sourceType == "youtube", let vid = videoId, !vid.isEmpty {
+            return vid
+        }
+        return nil
+    }
+
+    private static func extractYouTubeId(from url: String) -> String? {
+        let pattern = #"(?:youtube\.com\/watch\?[^#]*[?&]v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{6,})"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: url, range: NSRange(url.startIndex..., in: url)),
+              let range = Range(match.range(at: 1), in: url) else {
+            return nil
+        }
+        return String(url[range])
+    }
+}
+
+public struct FeedVideoDetailFeed: Codable {
+    public let id: String
+    public let name: String
+    public let sourceType: String
+}
+
+public struct ClipSourceVideoDetail: Codable {
+    public let id: String
+    public let videoTitle: String?
+    public let s3Url: String?
+    public let createdAt: Date
+    public let generatedClips: [GeneratedClip]
+}
+
+public struct GeneratedClip: Identifiable, Codable {
+    public let id: String
+    public let videoTitle: String?
+    public let sharedDescription: String?
+    public let s3Url: String?
+    public let s3Key: String?
+    public let trimStartS: Double
+    public let trimEndS: Double
+    public let createdAt: Date
+
+    public var duration: Double {
+        trimEndS - trimStartS
+    }
+}
+
+public struct JobMeta: Codable {
+    public let enqueuedAt: Double?
+    public let startedAt: Double?
+    public let finishedAt: Double?
 }
 
 // MARK: - Clips

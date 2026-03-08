@@ -49,6 +49,10 @@ public struct FeedVideosView: View {
         _viewModel = StateObject(wrappedValue: viewModel)
     }
 
+    private let columns = [
+        GridItem(.adaptive(minimum: 160), spacing: DesignTokens.spacing)
+    ]
+
     public var body: some View {
         NavigationStack {
             Group {
@@ -67,45 +71,20 @@ public struct FeedVideosView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List(viewModel.videos) { video in
-                        VStack(alignment: .leading, spacing: DesignTokens.smallSpacing) {
-                            Text(video.title ?? "Untitled video")
-                                .font(.headline)
-                                .foregroundStyle(DesignTokens.textPrimary)
-                            if let feedName = video.feed?.name {
-                                Text(feedName)
-                                    .font(.subheadline)
-                                    .foregroundStyle(DesignTokens.textSecondary)
-                            }
-                            if let transcript = video.transcript, !transcript.isEmpty {
-                                Text(transcript)
-                                    .font(.footnote)
-                                    .foregroundStyle(DesignTokens.textSecondary)
-                                    .lineLimit(2)
-                            }
-
-                            Button {
-                                Task {
-                                    await viewModel.triggerClip(
-                                        for: video,
-                                        userId: video.feed?.userId ?? ""
-                                    )
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: DesignTokens.spacing) {
+                            ForEach(viewModel.videos) { video in
+                                NavigationLink(value: video.id) {
+                                    VideoGridCell(video: video)
                                 }
-                            } label: {
-                                Label("Generate Clip", systemImage: "bolt.fill")
-                                    .font(.caption)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(DesignTokens.accent.opacity(0.15))
-                                    .foregroundStyle(DesignTokens.accent)
-                                    .cornerRadius(6)
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
-                        .padding(.vertical, DesignTokens.smallSpacing)
-                        .listRowBackground(DesignTokens.surface)
+                        .padding(DesignTokens.spacing)
                     }
-                    .listStyle(.plain)
+                    .navigationDestination(for: String.self) { videoId in
+                        FeedVideoDetailView(api: viewModel.api, feedVideoId: videoId)
+                    }
                 }
             }
             .background(DesignTokens.background.ignoresSafeArea())
@@ -150,6 +129,73 @@ public struct FeedVideosView: View {
                 )
                 .presentationDetents([.medium])
             }
+        }
+    }
+}
+
+// MARK: - Grid Cell
+
+private struct VideoGridCell: View {
+    let video: FeedVideo
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Thumbnail
+            if let url = video.resolvedThumbnailUrl {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(16 / 9, contentMode: .fill)
+                    case .failure:
+                        thumbnailPlaceholder
+                    case .empty:
+                        ZStack {
+                            thumbnailPlaceholder
+                            ProgressView()
+                                .tint(DesignTokens.muted)
+                        }
+                    @unknown default:
+                        thumbnailPlaceholder
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .clipped()
+            } else {
+                thumbnailPlaceholder
+            }
+
+            // Info
+            VStack(alignment: .leading, spacing: 4) {
+                Text(video.title ?? "Untitled video")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(DesignTokens.textPrimary)
+                    .lineLimit(2)
+
+                if let feedName = video.feed?.name {
+                    Text(feedName)
+                        .font(.caption2)
+                        .foregroundStyle(DesignTokens.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(DesignTokens.smallSpacing)
+        }
+        .background(DesignTokens.surface)
+        .cornerRadius(DesignTokens.cornerRadius)
+    }
+
+    private var thumbnailPlaceholder: some View {
+        ZStack {
+            Rectangle()
+                .fill(DesignTokens.background)
+                .aspectRatio(16 / 9, contentMode: .fit)
+            Image(systemName: "video.fill")
+                .font(.title2)
+                .foregroundStyle(DesignTokens.muted)
         }
     }
 }
