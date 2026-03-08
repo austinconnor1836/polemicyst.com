@@ -8,8 +8,37 @@ on:
   workflow_dispatch:
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.filter.outputs.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            app:
+              - 'src/**'
+              - 'shared/**'
+              - 'workers/**'
+              - 'prisma/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.json'
+              - 'tsconfig.docker.json'
+              - 'next.config.js'
+              - 'tailwind.config.ts'
+              - 'postcss.config.js'
+              - '.eslintrc.json'
+              - '.prettierrc'
+              - 'auth.ts'
+
   lint-and-build:
     name: Lint & Build
+    needs: changes
+    if: needs.changes.outputs.should_build == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -36,3 +65,11 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  lint-and-build-skip:
+    name: Lint & Build
+    needs: changes
+    if: needs.changes.outputs.should_build != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No app code changed — skipping build"
