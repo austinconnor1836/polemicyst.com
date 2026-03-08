@@ -162,7 +162,10 @@ jobs:
       - name: Create or update release PR
         if: ${{ !inputs.dry_run }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Must use RELEASE_PAT (not GITHUB_TOKEN) so the PR creation
+          # triggers CI workflows. GITHUB_TOKEN events are suppressed by
+          # GitHub to prevent infinite loops.
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           RELEASE_BRANCH="release-pr/v${{ steps.bump.outputs.version }}"
 
