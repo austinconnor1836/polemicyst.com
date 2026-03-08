@@ -1,6 +1,6 @@
 import { Worker } from 'bullmq';
 import { prisma } from '@shared/lib/prisma';
-import { getRedisConnection, getClipGenerationQueue } from '@shared/queues';
+import { getRedisConnection, getClipGenerationQueue, getTranscriptionQueue } from '@shared/queues';
 import { transcribeFeedVideo } from './transcription';
 import { transcribeFeedVideoWithSpeakers } from './speaker-transcription';
 import { checkClipQuota } from '@shared/lib/plans';
