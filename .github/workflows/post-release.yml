@@ -48,7 +48,33 @@ jobs:
             --title "${{ steps.version.outputs.tag }}" \
             --notes-file /tmp/release-notes.md
 
+      - name: Fast-forward develop to main
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          # After a release merges to main, sync develop forward so it
+          # includes the version bump commit. This avoids needing a
+          # separate sync PR (which would trigger auto-delete of develop).
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin develop || true
+          if git rev-parse origin/develop >/dev/null 2>&1; then
+            git checkout develop
+            git merge origin/main --ff-only || {
+              echo "::warning::Could not fast-forward develop to main — manual sync needed"
+              exit 0
+            }
+            git push origin develop || {
+              echo "::warning::Could not push to develop — branch may be protected. Manual sync needed."
+              exit 0
+            }
+            echo "Synced develop to main (fast-forward)"
+          else
+            echo "::warning::develop branch not found — skipping sync"
+          fi
+
       - name: Summary
         run: |
           echo "### Release ${{ steps.version.outputs.tag }} published" >> $GITHUB_STEP_SUMMARY
           echo "GitHub Release and git tag created on \`main\`." >> $GITHUB_STEP_SUMMARY
+          echo "develop branch synced to main." >> $GITHUB_STEP_SUMMARY
