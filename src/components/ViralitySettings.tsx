@@ -150,7 +150,7 @@ export default function ViralitySettings({
             <Button
               type="button"
               variant="outline"
-              size="xs"
+              size="sm"
               onClick={() => onPersistLLMProvider(value.llmProvider)}
               disabled={isPersistingLLMProvider}
             >

@@ -1,22 +1,24 @@
-import NextAuth, { NextAuthOptions } from 'next-auth';
+import NextAuth from 'next-auth/next';
+import type { NextAuthOptions, Session, User } from 'next-auth';
+import type { Account } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import FacebookProvider from 'next-auth/providers/facebook';
 import GoogleProvider from 'next-auth/providers/google';
 import TwitterProvider from 'next-auth/providers/twitter';
 import { PrismaAdapter } from '@next-auth/prisma-adapter';
-import { PrismaClient } from '@prisma/client';
 import { BskyAgent } from '@atproto/api';
-import { JWT } from 'next-auth/jwt';
+import type { JWT } from 'next-auth/jwt';
 import axios from 'axios';
+import { prisma } from '@shared/lib/prisma';
 
 interface ExtendedJWT extends JWT {
   googleAccessToken?: string;
   googleRefreshToken?: string;
   accessTokenExpires?: number;
   id?: string;
+  sub?: string;
+  error?: string;
 }
-
-const prisma = new PrismaClient();
 
 const NEXTAUTH_DEBUG_ENABLED = process.env.NEXTAUTH_DEBUG === 'true';
 const AUTH_ALLOWLIST_ENABLED = process.env.AUTH_ALLOWLIST_ENABLED === 'true';
@@ -114,14 +116,13 @@ export const authOptions: NextAuthOptions = {
   // Never log OAuth tokens / secrets unless explicitly enabled.
   debug: NEXTAUTH_DEBUG_ENABLED,
   logger: {
-    error(code, metadata) {
+    error(code: string, metadata: unknown) {
       console.error(`[next-auth][error][${code}]`, redactSecrets(metadata));
     },
-    warn(code) {
+    warn(code: string) {
       console.warn(`[next-auth][warn][${code}]`);
     },
-    debug(code, metadata) {
-      // NextAuth should only call this when debug=true, but keep it safe anyway.
+    debug(code: string, metadata: unknown) {
       if (!NEXTAUTH_DEBUG_ENABLED) return;
       console.debug(`[next-auth][debug][${code}]`, redactSecrets(metadata));
     },
@@ -233,7 +234,7 @@ export const authOptions: NextAuthOptions = {
     signIn: '/auth/signin',
   },
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account }: { token: any; user?: any; account?: any }) {
       if (user) {
         token.id = user.id;
       }
@@ -269,7 +270,7 @@ export const authOptions: NextAuthOptions = {
       // Access token expired, try to refresh it
       return await refreshAccessToken(token);
     },
-    async signIn({ user, account }) {
+    async signIn({ user, account }: { user: any; account: any }) {
       if (!user.email || !account) return false;
       if (IS_DEV && account.provider === 'dev') return isAllowedEmail(user.email);
       if (!isAllowedEmail(user.email) || !isAllowedProvider(account.provider)) return false;
@@ -309,7 +310,7 @@ export const authOptions: NextAuthOptions = {
 
       return true;
     },
-    async session({ session, token }) {
+    async session({ session, token }: { session: any; token: any }) {
       if (token) {
         session.user = { ...session.user, id: token.sub as string };
       }

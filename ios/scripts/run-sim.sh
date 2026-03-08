@@ -4,11 +4,11 @@ set -euo pipefail
 # Simple runner to build the app, bundle it, and install/launch on a simulator from CLI.
 # Assumes Xcode toolchain is installed.
 
-SCHEME=${SCHEME:-PolemicystApp}
+SCHEME=${SCHEME:-ClipfireApp}
 DEVICE_NAME=${DEVICE_NAME:-"iPhone 15"}
 DERIVED_DATA="${DERIVED_DATA:-$(pwd)/.derived}"
-APP_ID="com.polemicyst.app"
-APP_NAME="PolemicystApp"
+APP_ID="com.clipfire.app"
+APP_NAME="ClipfireApp"
 BUILD_CONFIG=${BUILD_CONFIG:-Debug}
 SDK=${SDK:-iphonesimulator}
 

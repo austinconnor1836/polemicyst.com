@@ -88,7 +88,7 @@ Threads: https://www.threads.net/@polemicyst`
 
   // Function to fetch authentication status from the API
   const fetchAuthenticationStatus = async () => {
-    if (!session?.user?.id) return;
+    if (!(session?.user as any)?.id) return;
 
     try {
       const res = await fetch(`/api/auth/status`);

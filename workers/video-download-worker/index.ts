@@ -2,19 +2,11 @@ if (process.env.NODE_ENV === 'production') {
   require('module-alias/register');
 }
 import { Worker } from 'bullmq';
-import Redis from 'ioredis';
 import { downloadAndUploadToS3 } from '@shared/util/downloadAndUploadToS3';
 import { prisma } from '@shared/lib/prisma';
-import { getLatestVideoFromYoutubeFeed } from '@shared/util/youtube';
-import { VideoFeed } from '@prisma/client';
-import { NewVideo } from '@shared/types';
-import { queueTranscriptionJob } from '@shared/queues';
+import { getRedisConnection, queueTranscriptionJob } from '@shared/queues';
 
-const redis = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: 6379,
-  maxRetriesPerRequest: null,
-});
+const redis = getRedisConnection();
 
 interface DownloadJob {
   feedId: string;

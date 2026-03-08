@@ -23,10 +23,9 @@
     "paths": {
       "@/*": ["src/*"],
       "@shared/*": ["shared/*"],
-
       "@workers/*": ["workers/*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "scripts", "debug-clipping.ts", ".next"]
 }

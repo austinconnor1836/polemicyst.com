@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { usePlatformContext } from './PlatformContext';
-import toast from 'react-hot-toast';
 import {
   Dialog,
   DialogContent,
@@ -16,7 +15,23 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
 const DescriptionEditor = () => {
-  const { selectedVideos, setSelectedVideos, generateDescription } = usePlatformContext();
+  const { uploadedVideos, setUploadedVideos, selectedVideoIds, generateDescription, isGenerating } =
+    usePlatformContext();
+
+  const selectedVideos = useMemo(
+    () => uploadedVideos.filter((v) => selectedVideoIds.has(v.id)),
+    [uploadedVideos, selectedVideoIds]
+  );
+
+  const setSelectedVideos = useCallback(
+    (updated: typeof uploadedVideos) => {
+      setUploadedVideos((prev) => {
+        const updatedMap = new Map(updated.map((v) => [v.id, v]));
+        return prev.map((v) => updatedMap.get(v.id) ?? v);
+      });
+    },
+    [setUploadedVideos]
+  );
 
   const [activeVideoIndex, setActiveVideoIndex] = useState<number | null>(null);
 
@@ -26,7 +41,7 @@ const DescriptionEditor = () => {
     value: string
   ) => {
     const updated = [...selectedVideos];
-    updated[index][field] = value;
+    updated[index] = { ...updated[index], [field]: value };
     setSelectedVideos(updated);
   };
 
@@ -50,8 +65,10 @@ const DescriptionEditor = () => {
                 <Label>Video Title</Label>
                 <Input
                   type="text"
-                  value={selectedVideos[activeVideoIndex].title}
-                  onChange={(e) => handleInputChange(activeVideoIndex, 'title', e.target.value)}
+                  value={selectedVideos[activeVideoIndex].videoTitle}
+                  onChange={(e) =>
+                    handleInputChange(activeVideoIndex, 'videoTitle', e.target.value)
+                  }
                 />
               </div>
 
@@ -91,12 +108,10 @@ const DescriptionEditor = () => {
                 Cancel
               </Button>
               <Button
-                onClick={() => generateDescription(activeVideoIndex)}
-                disabled={selectedVideos[activeVideoIndex].isGenerating}
+                onClick={() => generateDescription(selectedVideos[activeVideoIndex].id)}
+                disabled={isGenerating}
               >
-                {selectedVideos[activeVideoIndex].isGenerating
-                  ? 'Generating...'
-                  : 'Regenerate AI Description'}
+                {isGenerating ? 'Generating...' : 'Regenerate AI Description'}
               </Button>
             </DialogFooter>
           </DialogContent>

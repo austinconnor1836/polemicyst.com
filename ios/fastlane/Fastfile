@@ -2,8 +2,8 @@ require 'json'
 
 default_platform(:ios)
 
-XCODEPROJ = "Polemicyst.xcodeproj"
-SCHEME = "PolemicystApp"
+XCODEPROJ = "Clipfire.xcodeproj"
+SCHEME = "ClipfireApp"
 
 platform :ios do
   before_all do
@@ -33,7 +33,7 @@ platform :ios do
       export_method: "app-store",
       xcargs: "API_BASE_URL='https://dev.polemicyst.com' DEVELOPMENT_TEAM='#{ENV["APPLE_TEAM_ID"]}'",
       output_directory: "./build",
-      output_name: "Polemicyst.ipa"
+      output_name: "Clipfire.ipa"
     )
 
     api_key = app_store_connect_api_key(
@@ -63,7 +63,7 @@ platform :ios do
       export_method: "app-store",
       xcargs: "DEVELOPMENT_TEAM='#{ENV["APPLE_TEAM_ID"]}'",
       output_directory: "./build",
-      output_name: "Polemicyst.ipa"
+      output_name: "Clipfire.ipa"
     )
 
     api_key = app_store_connect_api_key(
@@ -116,7 +116,7 @@ platform :ios do
     update_project_provisioning(
       xcodeproj: XCODEPROJ,
       profile: "fastlane/profile.mobileprovision",
-      target_filter: "PolemicystApp",
+      target_filter: "ClipfireApp",
       build_configuration: "Release",
       code_signing_identity: "Apple Distribution"
     )

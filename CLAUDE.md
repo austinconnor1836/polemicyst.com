@@ -18,20 +18,25 @@
 
 We follow **semantic versioning** (`vMAJOR.MINOR.PATCH`) and use GitHub Releases as the source of truth.
 
-### Steps to cut a release
+### Automated release (preferred)
 
-1. **Create a PR from `develop` → `main`** with a title like `Release v0.2.0`.
-   - The PR body should summarize highlights, bug fixes, and breaking changes.
-2. **Wait for required CI checks** (`Lint & Build`) to pass.
-3. **Merge with a merge commit** (not squash) — this preserves the full commit history on `main`.
-   ```
-   gh pr merge <PR_NUMBER> --merge
-   ```
-4. **Create a GitHub Release** targeting `main` with the same version tag:
+Use the **Prepare Release** GitHub Actions workflow (`Actions → Prepare Release → Run workflow`):
+
+1. Select bump type (`patch` / `minor` / `major`) or enter an explicit version.
+2. The workflow bumps `version.json`, generates a changelog, and opens a PR `develop → main`.
+3. Review the PR, wait for CI, then merge with a **merge commit** (not squash).
+4. The **Finalize Release** workflow auto-fires on merge — creates the GitHub Release + git tag.
+
+Use the **dry run** checkbox to preview without making changes.
+
+### Manual fallback
+
+1. Update `version.json` and commit to `develop`.
+2. Open a PR `develop → main` titled `Release vX.Y.Z`.
+3. Merge with a merge commit, then:
    ```
    gh release create v0.2.0 --target main --title "v0.2.0" --notes "..."
    ```
-   This creates the git tag automatically and publishes release notes on GitHub.
 
 ### Versioning guidelines
 
@@ -42,7 +47,7 @@ We follow **semantic versioning** (`vMAJOR.MINOR.PATCH`) and use GitHub Releases
 ### What NOT to do
 
 - Don't push directly to `main` — always go through a PR from `develop`.
-- Don't create tags manually — let `gh release create` handle it.
+- Don't create tags manually — let the workflow or `gh release create` handle it.
 - Don't squash-merge release PRs — merge commits keep history traceable.
 
 ---
@@ -140,6 +145,14 @@ In the Feeds modal, users can set:
 - **`isAdmin()` helper**: `shared/lib/admin.ts`.
 
 ## Change log
+
+### 2026-03-04 (parallel transcription)
+
+- **Parallel YouTube transcription** — when importing a YouTube URL (via feed creation or URL import), transcription is now enqueued alongside the download job. YouTube captions resolve in ~100ms via HTTP while the download takes minutes, so the transcript is ready by the time the download finishes.
+- Added **status gate** in transcription worker's auto-trigger: clip-generation only enqueues when `feedVideo.status !== 'pending'`, preventing premature triggering during parallel imports.
+- Added `jobId: feedVideoId` dedup to `queueTranscriptionJob` to prevent duplicate transcription jobs.
+- Fixed `s3Url: ''` in feed creation — now set to the YouTube URL so the transcription worker can fetch captions before the S3 download completes.
+- Created `ARCHITECTURE.md` with full system topology, queue architecture, data flow diagrams, and key design decisions.
 
 ### 2026-03-04
 

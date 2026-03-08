@@ -1,7 +1,7 @@
 import XCTest
-@testable import PolemicystiOS
+@testable import ClipfireiOS
 
-final class PolemicystiOSTests: XCTestCase {
+final class ClipfireiOSTests: XCTestCase {
     func testDecodeFeed() throws {
         let json = """
         {
