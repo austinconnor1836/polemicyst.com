@@ -83,6 +83,42 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 
 ---
 
+## Migrate to Trunk-Based Development
+
+_Eliminate `develop` branch. Ship from `main` with short-lived feature branches, tags for releases, and feature flags for incomplete work. See [Claude Code chat transcript](../.claude/projects/-Users-austin-Developer-polemicyst-polemicyst-com/969fd158-9453-4b85-af79-c74893742493.jsonl) for full discussion and rationale._
+
+### Step 1: Sync & CI/CD (do first)
+
+- [ ] **Merge `develop` into `main`** — ensure they're fully in sync, resolve any drift
+- [ ] **Update `deploy.yml`** — push to `main` deploys to dev/staging; tagged GitHub Release deploys to production
+- [ ] **Update branch protection on `main`** — require PR, require CI (lint + build + tests) to pass
+
+### Step 2: Update repo conventions
+
+- [ ] **Update `CLAUDE.md`** — branch from `main`, PR to `main` (remove all `develop` references)
+- [ ] **Update `/create-pr` slash command** — default target to `main`
+- [ ] **Update `release.yml` / `post-release.yml`** — remove develop→main release PR flow; releases are just tags on `main`
+- [ ] **Update `bump-version.mjs`** — simplify for tag-based workflow (no more develop→main PR)
+
+### Step 3: Feature flags (for shipping incomplete work safely)
+
+- [ ] **Choose feature flag approach** — simple DB table + React context, or LaunchDarkly/Unleash
+- [ ] **Implement feature flag system** — server-side check + client-side context provider
+- [ ] **Add admin UI for toggling flags** (extend existing `/admin` pages)
+
+### Step 4: AI-powered workflow automation
+
+- [ ] **Add Claude Code PR review GitHub Action** — auto-review on every PR to `main`
+- [ ] **AI-generated release notes** — on tag creation, summarize commits into human-readable changelog
+- [ ] **Auto-generated changelogs for mobile stores** — feed AI release notes into Fastlane/Play Store metadata
+
+### Step 5: Cleanup
+
+- [ ] **Delete `develop` branch** (local + remote)
+- [ ] **Archive or remove any develop-specific CI workflows**
+
+---
+
 ## Infrastructure & DevOps
 
 - [ ] Set up CloudWatch alarms for ECS task failures, high CPU, high memory
