@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../auth';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { deleteFromS3 } from '@shared/lib/s3';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -30,8 +29,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

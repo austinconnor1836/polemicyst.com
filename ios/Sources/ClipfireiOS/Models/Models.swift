@@ -49,9 +49,12 @@ public struct FeedVideo: Identifiable, Codable {
         return nil
     }
 
-    /// Extracts YouTube video ID from s3Url or videoId field.
-    private var youtubeVideoId: String? {
-        if let s3 = s3Url, let id = FeedVideo.extractYouTubeId(from: s3) {
+    /// Extracts YouTube video ID from s3Url, thumbnailUrl, or videoId field.
+    public var youtubeVideoId: String? {
+        if let s3 = s3Url, let id = Self.extractYouTubeId(from: s3) {
+            return id
+        }
+        if let thumb = thumbnailUrl, let id = Self.extractYouTubeIdFromThumbnail(thumb) {
             return id
         }
         if feed?.sourceType == "youtube", let vid = videoId, !vid.isEmpty {
@@ -60,8 +63,19 @@ public struct FeedVideo: Identifiable, Codable {
         return nil
     }
 
-    private static func extractYouTubeId(from url: String) -> String? {
+    static func extractYouTubeId(from url: String) -> String? {
         let pattern = #"(?:youtube\.com\/watch\?[^#]*[?&]v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{6,})"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: url, range: NSRange(url.startIndex..., in: url)),
+              let range = Range(match.range(at: 1), in: url) else {
+            return nil
+        }
+        return String(url[range])
+    }
+
+    static func extractYouTubeIdFromThumbnail(_ url: String) -> String? {
+        // Matches https://img.youtube.com/vi/{videoId}/...
+        let pattern = #"img\.youtube\.com\/vi\/([A-Za-z0-9_-]{6,})"#
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: url, range: NSRange(url.startIndex..., in: url)),
               let range = Range(match.range(at: 1), in: url) else {
@@ -105,24 +119,17 @@ public struct FeedVideoDetail: Codable {
         return nil
     }
 
-    private var youtubeVideoId: String? {
-        if let s3 = s3Url, let id = Self.extractYouTubeId(from: s3) {
+    public var youtubeVideoId: String? {
+        if let s3 = s3Url, let id = FeedVideo.extractYouTubeId(from: s3) {
+            return id
+        }
+        if let thumb = thumbnailUrl, let id = FeedVideo.extractYouTubeIdFromThumbnail(thumb) {
             return id
         }
         if feed?.sourceType == "youtube", let vid = videoId, !vid.isEmpty {
             return vid
         }
         return nil
-    }
-
-    private static func extractYouTubeId(from url: String) -> String? {
-        let pattern = #"(?:youtube\.com\/watch\?[^#]*[?&]v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{6,})"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: url, range: NSRange(url.startIndex..., in: url)),
-              let range = Range(match.range(at: 1), in: url) else {
-            return nil
-        }
-        return String(url[range])
     }
 }
 
@@ -241,6 +248,43 @@ public struct TriggerClipRequest: Codable {
         self.percentile = percentile
         self.maxGeminiCandidates = maxGeminiCandidates
         self.llmProvider = llmProvider
+    }
+}
+
+// MARK: - Upload / Import
+
+public struct ImportFromURLRequest: Codable {
+    public let url: String
+    public let filename: String?
+
+    public init(url: String, filename: String? = nil) {
+        self.url = url
+        self.filename = filename
+    }
+}
+
+public struct PresignedUploadRequest: Codable {
+    public let filename: String
+    public let contentType: String
+
+    public init(filename: String, contentType: String = "video/mp4") {
+        self.filename = filename
+        self.contentType = contentType
+    }
+}
+
+public struct PresignedUploadResponse: Codable {
+    public let url: String
+    public let key: String
+}
+
+public struct CompleteUploadRequest: Codable {
+    public let key: String
+    public let filename: String
+
+    public init(key: String, filename: String) {
+        self.key = key
+        self.filename = filename
     }
 }
 

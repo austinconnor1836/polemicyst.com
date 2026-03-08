@@ -56,10 +56,39 @@ public struct APIClient {
         try await delete(path: "/api/feeds/\(id)")
     }
 
+    // MARK: Upload / Import
+
+    public func importVideoFromURL(url: String, filename: String? = nil) async throws -> FeedVideo {
+        try await post(path: "/api/uploads/from-url", body: ImportFromURLRequest(url: url, filename: filename))
+    }
+
+    public func getPresignedUploadURL(filename: String, contentType: String = "video/mp4") async throws -> PresignedUploadResponse {
+        try await post(path: "/api/uploads/presigned", body: PresignedUploadRequest(filename: filename, contentType: contentType))
+    }
+
+    public func uploadToPresignedURL(_ presignedURL: URL, fileData: Data, contentType: String = "video/mp4") async throws {
+        var request = URLRequest(url: presignedURL)
+        request.httpMethod = "PUT"
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.setValue("\(fileData.count)", forHTTPHeaderField: "Content-Length")
+        let (_, response) = try await session.upload(for: request, from: fileData)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.statusCode((response as? HTTPURLResponse)?.statusCode ?? 500)
+        }
+    }
+
+    public func completeUpload(key: String, filename: String) async throws -> FeedVideo {
+        try await post(path: "/api/uploads/complete", body: CompleteUploadRequest(key: key, filename: filename))
+    }
+
     // MARK: Feed videos
 
     public func fetchFeedVideos() async throws -> [FeedVideo] {
         try await get(path: "/api/feedVideos")
+    }
+
+    public func deleteFeedVideo(id: String) async throws {
+        try await delete(path: "/api/feedVideos/\(id)")
     }
 
     // MARK: Feed video detail

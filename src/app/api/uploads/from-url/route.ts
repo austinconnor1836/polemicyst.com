@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { queueFeedDownloadJob } from '@shared/queues';
 import { findOrCreateManualFeed, createFeedVideoRecord } from '@shared/services/upload-service';
+import { extractYouTubeId } from '@/app/feeds/util/thumbnails';
 
 export async function POST(req: NextRequest) {
   const user = await getAuthenticatedUser(req);
@@ -18,12 +19,19 @@ export async function POST(req: NextRequest) {
 
     const manualFeed = await findOrCreateManualFeed(user.id);
 
+    // Generate thumbnail for YouTube URLs
+    const youtubeId = extractYouTubeId(url);
+    const thumbnailUrl = youtubeId
+      ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg`
+      : undefined;
+
     const newVideo = await createFeedVideoRecord({
       feedId: manualFeed.id,
       userId: user.id,
       title: filename || url.split('/').pop() || 'Imported Video',
       s3Url: url,
       status: 'pending',
+      thumbnailUrl,
     });
 
     await queueFeedDownloadJob({
