@@ -85,6 +85,16 @@ public struct APIClient {
         try await put(path: "/api/user/llm-provider", body: request)
     }
 
+    // MARK: Pause Removal
+
+    public func triggerPauseRemoval(feedVideoId: String, request: PauseRemovalRequest) async throws -> PauseRemovalTriggerResponse {
+        try await post(path: "/api/feedVideos/\(feedVideoId)/pause-removal", body: request)
+    }
+
+    public func fetchPauseRemovalJobs(feedVideoId: String) async throws -> PauseRemovalJobsResponse {
+        try await get(path: "/api/feedVideos/\(feedVideoId)/pause-removal")
+    }
+
     // MARK: Version Check
 
     public func checkVersion(currentVersion: String) async throws -> VersionCheckResponse {

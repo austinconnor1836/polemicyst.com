@@ -297,3 +297,9 @@ These improve retention and reduce churn once users are paying.
 - Some way to view admin
 - If youtube video is the type of video added, use youtube embed in details page rather than from aws
 - add already used refresh button to transcript section to refresh retrieivng transcript
+- **Intelligent pause removal** — Automatically cut dead space / silent pauses from videos. Instead of using a fixed silence-detection threshold (which produces many false positives), the user provides a ballpark estimate: _"Roughly how many pauses are in this video to be removed?"_ The system uses that estimate to calibrate its detection so it targets approximately that many pauses rather than every micro-silence. The estimate is a hint, not a hard count — the system may remove fewer or more pauses than the user guessed depending on the audio analysis. Implementation approach:
+  - Add a setting in the clip/video editing UI: a numeric input or slider asking the user for their rough pause count estimate.
+  - Analyze the audio track to identify all candidate silent/low-energy segments (ranked by duration, energy level, or confidence).
+  - Use the user's estimate to set an adaptive threshold: if the user says ~5 pauses, pick roughly the top 5 most prominent silent gaps rather than every gap that crosses an arbitrary dB threshold. The ranking should consider gap duration, surrounding audio energy, and position in the video to space removals somewhat evenly.
+  - Apply the removals and re-render the video with the dead space cut out.
+  - Show the user a before/after timeline or summary of what was removed so they can approve or adjust.

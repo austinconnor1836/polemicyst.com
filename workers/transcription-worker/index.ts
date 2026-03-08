@@ -206,5 +206,5 @@ new Worker(
       throw err;
     }
   },
-  { connection: getTranscriptionQueue().opts.connection as any }
+  { connection: getRedisConnection() as any }
 );

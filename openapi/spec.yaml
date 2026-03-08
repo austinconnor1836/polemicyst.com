@@ -28,6 +28,66 @@ components:
         error:
           type: string
 
+    PauseRemovalRequest:
+      type: object
+      required: [estimatedPauseCount]
+      properties:
+        estimatedPauseCount:
+          type: integer
+          minimum: 1
+          maximum: 500
+          description: User's rough estimate of pauses to remove (used to calibrate detection)
+
+    DetectedPause:
+      type: object
+      properties:
+        start:
+          type: number
+        end:
+          type: number
+        duration:
+          type: number
+        confidence:
+          type: number
+
+    PauseRemovalJob:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [queued, processing, completed, failed]
+        estimatedPauseCount:
+          type: integer
+        detectedPauses:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/DetectedPause'
+        removedPauses:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/DetectedPause'
+        resultS3Url:
+          type: string
+          nullable: true
+        totalRemovedSeconds:
+          type: number
+          nullable: true
+        originalDurationS:
+          type: number
+          nullable: true
+        resultDurationS:
+          type: number
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+
     MobileGoogleAuthRequest:
       type: object
       required: [idToken]
@@ -1295,6 +1355,85 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/feedVideos/{feedVideoId}/pause-removal:
+    parameters:
+      - name: feedVideoId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: triggerPauseRemoval
+      summary: Trigger intelligent pause removal for a feed video
+      description: >
+        Enqueues a background job that analyses the video's audio track to detect
+        silent pauses, uses the user's estimated pause count to adaptively select
+        which pauses to remove, and produces a new video with the dead space cut out.
+      tags: [Feed Videos]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PauseRemovalRequest'
+      responses:
+        '200':
+          description: Job enqueued successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  jobId:
+                    type: string
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A pause removal job is already in progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  jobId:
+                    type: string
+    get:
+      operationId: getPauseRemovalJobs
+      summary: List pause removal jobs for a feed video
+      tags: [Feed Videos]
+      responses:
+        '200':
+          description: List of pause removal jobs (newest first)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PauseRemovalJob'
         '401':
           description: Unauthorized
           content:
