@@ -35,14 +35,15 @@ The preferred way to cut a release is the **Prepare Release** GitHub Actions wor
 
 1. Go to **Actions → Prepare Release → Run workflow**.
 2. Select the bump type (`patch`, `minor`, `major`) or enter an explicit version.
-3. The workflow creates a `release/vX.Y.Z` branch, bumps `version.json`, and opens a PR to `develop`. Auto-merge handles it once CI passes.
-4. The workflow also opens a release PR `develop → main` with a generated changelog.
-5. **Review the release PR** — CI (`Lint & Build`) runs automatically.
-6. **Merge with a merge commit** (not squash — preserves full commit history):
+3. The workflow creates two PRs:
+   - **Version bump PR** (`release/vX.Y.Z` → `develop`) — auto-merges once CI passes.
+   - **Release PR** (`release-pr/vX.Y.Z` → `main`) — contains a generated changelog.
+4. **Review the release PR** — CI (`Lint & Build`) runs automatically.
+5. **Merge with a merge commit** (not squash — preserves full commit history):
    ```bash
    gh pr merge <PR_NUMBER> --merge
    ```
-7. On merge, the **Finalize Release** workflow fires automatically — it creates the GitHub Release and git tag on `main`. No manual `gh release create` needed.
+6. On merge, the **Finalize Release** workflow fires automatically — it creates the GitHub Release and git tag on `main`, and fast-forwards `develop` to `main`. No manual sync needed.
 
 Use the **dry run** option to preview the version bump and changelog without making changes.
 
@@ -51,7 +52,7 @@ Use the **dry run** option to preview the version bump and changelog without mak
 If you need to cut a release without the workflow:
 
 1. Create a branch from `develop`, update `version.json` (also update `android.minVersion` / `ios.minVersion` if needed), and open a PR to `develop`.
-2. After merge, create a PR from `develop` → `main` with title `Release vX.Y.Z`.
+2. After merge, create a temporary branch from `develop` (e.g. `release-pr/vX.Y.Z`) and open a PR to `main` titled `Release vX.Y.Z`. **Never use `develop` directly as the PR head** — GitHub's auto-delete will remove it.
 3. Wait for CI, merge with a merge commit, then run:
    ```bash
    gh release create vX.Y.Z --target main --title "vX.Y.Z" --notes "..."
@@ -60,6 +61,7 @@ If you need to cut a release without the workflow:
 ### What NOT to do
 
 - Don't push directly to `main` or `develop` — always go through a PR.
+- Don't create PRs with `develop` as the head branch targeting `main` — GitHub's auto-delete will remove `develop` on merge. Use a temporary branch instead.
 - Don't create tags manually — let the workflow or `gh release create` handle it.
 - Don't squash-merge release PRs — merge commits keep history traceable.
 
