@@ -62,6 +62,12 @@ public struct APIClient {
         try await get(path: "/api/feedVideos")
     }
 
+    // MARK: Feed video detail
+
+    public func fetchFeedVideoDetail(id: String) async throws -> FeedVideoDetailResponse {
+        try await get(path: "/api/feedVideos/\(id)/clips")
+    }
+
     // MARK: Trigger clip generation
 
     public func triggerClip(_ request: TriggerClipRequest) async throws -> ClipJobResponse {
