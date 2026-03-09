@@ -27,8 +27,12 @@ public struct APIClient {
 
     // MARK: Auth
 
-    public func authenticateWithGoogle(idToken: String) async throws -> MobileAuthResponse {
-        try await post(path: "/api/auth/mobile/google", body: MobileGoogleAuthRequest(idToken: idToken))
+    public func authenticateWithGoogle(idToken: String, serverAuthCode: String? = nil) async throws -> MobileAuthResponse {
+        try await post(path: "/api/auth/mobile/google", body: MobileGoogleAuthRequest(idToken: idToken, serverAuthCode: serverAuthCode))
+    }
+
+    public func exchangeGoogleAuthCode(_ serverAuthCode: String) async throws -> ExchangeCodeResponse {
+        try await post(path: "/api/auth/mobile/google/exchange-code", body: ExchangeCodeRequest(serverAuthCode: serverAuthCode))
     }
 
     public func authenticateWithApple(identityToken: String, fullName: AppleFullName?) async throws -> MobileAuthResponse {
@@ -36,6 +40,34 @@ public struct APIClient {
             path: "/api/auth/mobile/apple",
             body: MobileAppleAuthRequest(identityToken: identityToken, fullName: fullName)
         )
+    }
+
+    // MARK: YouTube Channels
+
+    public func fetchYouTubeChannels() async throws -> [YouTubeChannel] {
+        try await get(path: "/api/youtube/channels")
+    }
+
+    public func connectYouTubeChannel(_ request: CreateFromYouTubeRequest) async throws -> VideoFeed {
+        try await post(path: "/api/connected-accounts/from-youtube", body: request)
+    }
+
+    // MARK: Brands
+
+    public func fetchBrands() async throws -> [Brand] {
+        try await get(path: "/api/brands")
+    }
+
+    public func createBrand(_ request: CreateBrandRequest) async throws -> Brand {
+        try await post(path: "/api/brands", body: request)
+    }
+
+    public func updateBrand(id: String, body: UpdateBrandRequest) async throws -> Brand {
+        try await patch(path: "/api/brands/\(id)", body: body)
+    }
+
+    public func deleteBrand(id: String) async throws {
+        try await delete(path: "/api/brands/\(id)")
     }
 
     // MARK: Connected Accounts

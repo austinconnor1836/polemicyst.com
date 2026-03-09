@@ -1,7 +1,7 @@
 import { prisma } from '@shared/lib/prisma';
 import { queueFeedDownloadJob, queueTranscriptionJob } from '@shared/queues';
 
-export function detectSourceType(sourceUrlRaw: string): 'youtube' | 'cspan' {
+export function detectSourceType(sourceUrlRaw: string): 'youtube' | 'cspan' | 'youtube-oauth' {
   const trimmed = (sourceUrlRaw || '').trim();
   let lower = trimmed.toLowerCase();
 
@@ -29,6 +29,7 @@ export async function getUserFeeds(userId: string) {
   return prisma.videoFeed.findMany({
     where: { userId, sourceType: { not: 'manual' } },
     orderBy: { createdAt: 'desc' },
+    include: { brand: true },
   });
 }
 
@@ -38,6 +39,7 @@ interface CreateFeedInput {
   pollingInterval?: number;
   autoGenerateClips?: boolean;
   viralitySettings?: Record<string, unknown>;
+  brandId?: string;
 }
 
 export async function createFeed(userId: string, input: CreateFeedInput) {
@@ -57,6 +59,7 @@ export async function createFeed(userId: string, input: CreateFeedInput) {
       userId,
       autoGenerateClips: !!input.autoGenerateClips,
       viralitySettings: (input.viralitySettings as any) ?? undefined,
+      ...(input.brandId && { brandId: input.brandId }),
     },
   });
 
@@ -72,7 +75,7 @@ export async function createFeed(userId: string, input: CreateFeedInput) {
 async function pullInitialVideo(
   feed: { id: string },
   userId: string,
-  sourceType: 'youtube' | 'cspan'
+  sourceType: 'youtube' | 'cspan' | 'youtube-oauth'
 ) {
   let newVideo: { id: string; title: string; url: string; thumbnailUrl?: string | null } | null =
     null;
@@ -80,6 +83,10 @@ async function pullInitialVideo(
   if (sourceType === 'youtube') {
     const { pollYouTubeFeed } = await import('@shared/util/youtube');
     newVideo = await pollYouTubeFeed(feed as any);
+  } else if (sourceType === 'youtube-oauth') {
+    // OAuth feeds are handled by the from-youtube API route at creation time
+    // and by the poller worker for subsequent polls. Skip here.
+    return;
   } else if (sourceType === 'cspan') {
     const { pollCspanFeed } = await import('@shared/util/cspan');
     newVideo = await pollCspanFeed(feed as any);

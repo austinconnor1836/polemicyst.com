@@ -1,3 +1,12 @@
+export type Brand = {
+  id: string;
+  name: string;
+  imageUrl?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  _count?: { videoFeeds: number };
+};
+
 export type VideoFeed = {
   id: string;
   name: string;
@@ -8,6 +17,18 @@ export type VideoFeed = {
   createdAt?: string;
   autoGenerateClips?: boolean;
   viralitySettings?: any;
+  youtubeChannelId?: string | null;
+  youtubeChannelTitle?: string | null;
+  youtubeChannelThumb?: string | null;
+  brandId?: string | null;
+  brand?: Brand | null;
+};
+
+export type YouTubeChannel = {
+  id: string;
+  title: string;
+  thumbnail: string;
+  subscriberCount?: string;
 };
 
 export type FeedVideo = {

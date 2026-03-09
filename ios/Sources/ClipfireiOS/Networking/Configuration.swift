@@ -10,4 +10,10 @@ public enum AppConfiguration {
         }
         return URL(string: "http://127.0.0.1:3000")!
     }
+
+    /// The web app's Google Client ID, used as `serverClientID` in GIDSignIn
+    /// so the backend can exchange the server auth code for access/refresh tokens.
+    public static var googleServerClientID: String? {
+        Bundle.main.infoDictionary?["GOOGLE_SERVER_CLIENT_ID"] as? String
+    }
 }

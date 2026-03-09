@@ -4,12 +4,13 @@ import Combine
 @MainActor
 public final class ConnectedAccountsViewModel: ObservableObject {
     @Published public private(set) var feeds: [VideoFeed] = []
+    @Published public private(set) var brands: [Brand] = []
     @Published public var isLoading = false
     @Published public var errorMessage: String?
     @Published public var upgradeError: APIError?
     @Published public var subscription: SubscriptionResponse?
 
-    private let api: APIClient
+    public let api: APIClient
 
     public init(api: APIClient) {
         self.api = api
@@ -27,6 +28,62 @@ public final class ConnectedAccountsViewModel: ObservableObject {
         }
     }
 
+    public func loadBrands() async {
+        do {
+            brands = try await api.fetchBrands()
+        } catch {
+            // Non-blocking
+        }
+    }
+
+    public func createBrand(name: String) async {
+        do {
+            let brand = try await api.createBrand(CreateBrandRequest(name: name))
+            brands.insert(brand, at: 0)
+        } catch let error as APIError {
+            errorMessage = error.localizedDescription
+        } catch {
+            errorMessage = "Failed to create brand"
+        }
+    }
+
+    public func deleteBrand(_ brand: Brand) async {
+        do {
+            try await api.deleteBrand(id: brand.id)
+            brands.removeAll { $0.id == brand.id }
+            await loadAccounts()
+        } catch let error as APIError {
+            errorMessage = error.localizedDescription
+        } catch {
+            errorMessage = "Failed to delete brand"
+        }
+    }
+
+    /// Groups feeds by brand. Ungrouped feeds have brand == nil, placed at end.
+    public var feedsByBrand: [(brand: Brand?, feeds: [VideoFeed])] {
+        guard !brands.isEmpty else { return [(nil, feeds)] }
+
+        var brandMap: [String: [VideoFeed]] = [:]
+        var ungrouped: [VideoFeed] = []
+
+        for feed in feeds {
+            if let brandId = feed.brandId {
+                brandMap[brandId, default: []].append(feed)
+            } else {
+                ungrouped.append(feed)
+            }
+        }
+
+        var result: [(brand: Brand?, feeds: [VideoFeed])] = []
+        for brand in brands {
+            result.append((brand, brandMap[brand.id] ?? []))
+        }
+        if !ungrouped.isEmpty {
+            result.append((nil, ungrouped))
+        }
+        return result
+    }
+
     public func loadSubscription() async {
         do {
             subscription = try await api.fetchSubscription()
@@ -35,29 +92,8 @@ public final class ConnectedAccountsViewModel: ObservableObject {
         }
     }
 
-    public func connectAccount(name: String, url: String, interval: Int,
-                               autoGenerateClips: Bool, viralitySettings: ViralitySettings?) async {
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            let request = CreateFeedRequest(
-                name: name,
-                sourceUrl: url,
-                pollingInterval: interval,
-                autoGenerateClips: autoGenerateClips,
-                viralitySettings: viralitySettings?.toDictionary()
-            )
-            let feed = try await api.createFeed(request)
-            feeds.insert(feed, at: 0)
-        } catch let error as APIError {
-            if error.isUpgradeRequired {
-                upgradeError = error
-            } else {
-                errorMessage = error.localizedDescription
-            }
-        } catch {
-            errorMessage = "Failed to connect account"
-        }
+    public func addFeed(_ feed: VideoFeed) {
+        feeds.insert(feed, at: 0)
     }
 
     public func deleteAccount(_ feed: VideoFeed) async {
@@ -70,39 +106,25 @@ public final class ConnectedAccountsViewModel: ObservableObject {
             errorMessage = "Failed to remove account"
         }
     }
-
-    public var allowedProviders: [String] {
-        subscription?.plan.limits.llmProviders ?? ["ollama"]
-    }
-
-    public var canAutoGenerate: Bool {
-        subscription?.plan.limits.autoGenerateClips ?? false
-    }
 }
 
 public struct ConnectedAccountsView: View {
     @StateObject private var viewModel: ConnectedAccountsViewModel
     @State private var showPlatformPicker = false
-    @State private var showConnectForm = false
-    @State private var selectedPlatform: PlatformOption?
-    @State private var name = ""
-    @State private var url = ""
-    @State private var interval = "60"
-    @State private var autoGenerateClips = false
-    @State private var showViralitySettings = false
-    @State private var viralitySettings = ViralitySettings()
+    @State private var showYouTubePicker = false
+    @State private var showCreateBrand = false
+    @State private var newBrandName = ""
 
-    public init(viewModel: ConnectedAccountsViewModel) {
+    private let authService: AuthService?
+
+    public init(viewModel: ConnectedAccountsViewModel, authService: AuthService? = nil) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        self.authService = authService
     }
 
     public var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if showConnectForm, let platform = selectedPlatform {
-                    connectFormSection(platform: platform)
-                }
-
                 if let sub = viewModel.subscription {
                     HStack(spacing: DesignTokens.largeSpacing) {
                         QuotaBar(
@@ -126,8 +148,18 @@ public struct ConnectedAccountsView: View {
             .navigationTitle("Connected Accounts")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showPlatformPicker = true
+                    Menu {
+                        Button {
+                            showPlatformPicker = true
+                        } label: {
+                            Label("Connect Account", systemImage: "plus.circle")
+                        }
+                        Button {
+                            newBrandName = ""
+                            showCreateBrand = true
+                        } label: {
+                            Label("Create Brand", systemImage: "tag")
+                        }
                     } label: {
                         Image(systemName: "plus.circle.fill")
                     }
@@ -135,7 +167,9 @@ public struct ConnectedAccountsView: View {
             }
             .task {
                 await viewModel.loadSubscription()
-                await viewModel.loadAccounts()
+                async let accountsTask: () = viewModel.loadAccounts()
+                async let brandsTask: () = viewModel.loadBrands()
+                _ = await (accountsTask, brandsTask)
             }
             .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
                 Button("OK", role: .cancel) { viewModel.errorMessage = nil }
@@ -154,64 +188,39 @@ public struct ConnectedAccountsView: View {
             .sheet(isPresented: $showPlatformPicker) {
                 PlatformPickerView { platform in
                     showPlatformPicker = false
-                    selectedPlatform = platform
-                    showConnectForm = true
+                    handlePlatformSelected(platform)
+                }
+            }
+            .alert("Create Brand", isPresented: $showCreateBrand) {
+                TextField("Brand name", text: $newBrandName)
+                Button("Create") {
+                    let name = newBrandName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !name.isEmpty else { return }
+                    Task { await viewModel.createBrand(name: name) }
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Group your connected accounts under a brand.")
+            }
+            .sheet(isPresented: $showYouTubePicker) {
+                if let auth = authService {
+                    YouTubeChannelPickerView(
+                        authService: auth,
+                        api: viewModel.api
+                    ) { feed in
+                        viewModel.addFeed(feed)
+                    }
                 }
             }
         }
     }
 
-    @ViewBuilder
-    private func connectFormSection(platform: PlatformOption) -> some View {
-        Form {
-            Section(header: Text("Connect \(platform.name)")) {
-                TextField("Name", text: $name)
-                TextField("Source URL", text: $url)
-                    #if os(iOS)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    #endif
-                TextField("Polling Interval (minutes)", text: $interval)
-                    #if os(iOS)
-                    .keyboardType(.numberPad)
-                    #endif
-
-                Toggle("Auto-Generate Clips", isOn: $autoGenerateClips)
-                    .disabled(!viewModel.canAutoGenerate)
-
-                if !viewModel.canAutoGenerate {
-                    Text("Upgrade to Pro to enable auto-generation")
-                        .font(.caption)
-                        .foregroundStyle(DesignTokens.muted)
-                }
-
-                DisclosureGroup("Virality Settings", isExpanded: $showViralitySettings) {
-                    ViralitySettingsView(
-                        settings: $viralitySettings,
-                        allowedProviders: viewModel.allowedProviders
-                    )
-                }
-
-                HStack {
-                    Button("Cancel") {
-                        showConnectForm = false
-                        selectedPlatform = nil
-                        resetForm()
-                    }
-                    .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    Button("Connect") {
-                        Task { await submit() }
-                    }
-                    .disabled(name.isEmpty || url.isEmpty)
-                }
-            }
+    private func handlePlatformSelected(_ platform: PlatformOption) {
+        if platform == .youtube {
+            // Always use OAuth for YouTube
+            showYouTubePicker = true
         }
-        .scrollContentBackground(.hidden)
-        .background(DesignTokens.background)
-        .frame(maxHeight: showViralitySettings ? 520 : 380)
+        // Future platforms (Facebook, Instagram, TikTok, Twitter) will be added here
     }
 
     @ViewBuilder
@@ -224,7 +233,7 @@ public struct ConnectedAccountsView: View {
                 Text("No connected accounts")
                     .font(.title3)
                     .foregroundStyle(DesignTokens.textPrimary)
-                Text("Connect a YouTube channel, C-SPAN, or other source to start generating clips.")
+                Text("Connect a YouTube channel to start generating clips.")
                     .font(.subheadline)
                     .foregroundStyle(DesignTokens.textSecondary)
                     .multilineTextAlignment(.center)
@@ -245,40 +254,43 @@ public struct ConnectedAccountsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
-                ForEach(viewModel.feeds) { feed in
-                    VStack(alignment: .leading, spacing: DesignTokens.smallSpacing) {
-                        HStack {
-                            Text(feed.name)
-                                .font(.headline)
-                                .foregroundStyle(DesignTokens.textPrimary)
-                            Spacer()
-                            if feed.autoGenerateClips {
-                                Image(systemName: "bolt.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(DesignTokens.accent)
+                let groups = viewModel.feedsByBrand
+                ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                    Section {
+                        ForEach(group.feeds) { feed in
+                            feedRow(feed)
+                        }
+                        .onDelete { indexSet in
+                            for index in indexSet {
+                                let feed = group.feeds[index]
+                                Task { await viewModel.deleteAccount(feed) }
                             }
                         }
-                        Text(feed.sourceUrl)
-                            .font(.subheadline)
-                            .foregroundStyle(DesignTokens.textSecondary)
-                            .lineLimit(1)
-                        HStack {
-                            Label(feed.sourceType.uppercased(), systemImage: sourceIcon(feed.sourceType))
-                                .font(.caption2)
-                                .foregroundStyle(DesignTokens.muted)
-                            Spacer()
-                            Text("Every \(feed.pollingInterval) min")
-                                .font(.caption2)
-                                .foregroundStyle(DesignTokens.muted)
+                    } header: {
+                        if let brand = group.brand {
+                            HStack {
+                                if let imageUrl = brand.imageUrl,
+                                   let url = URL(string: imageUrl) {
+                                    AsyncImage(url: url) { image in
+                                        image.resizable().aspectRatio(contentMode: .fill)
+                                    } placeholder: {
+                                        Circle().fill(DesignTokens.surface)
+                                    }
+                                    .frame(width: 20, height: 20)
+                                    .clipShape(Circle())
+                                }
+                                Text(brand.name)
+                                Spacer()
+                                Button(role: .destructive) {
+                                    Task { await viewModel.deleteBrand(brand) }
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.caption2)
+                                }
+                            }
+                        } else if viewModel.brands.count > 0 {
+                            Text("Ungrouped")
                         }
-                    }
-                    .padding(.vertical, DesignTokens.smallSpacing)
-                    .listRowBackground(DesignTokens.surface)
-                }
-                .onDelete { indexSet in
-                    for index in indexSet {
-                        let feed = viewModel.feeds[index]
-                        Task { await viewModel.deleteAccount(feed) }
                     }
                 }
             }
@@ -287,32 +299,63 @@ public struct ConnectedAccountsView: View {
         }
     }
 
-    private func submit() async {
-        guard let intervalInt = Int(interval) else { return }
-        await viewModel.connectAccount(
-            name: name,
-            url: url,
-            interval: intervalInt,
-            autoGenerateClips: autoGenerateClips,
-            viralitySettings: showViralitySettings ? viralitySettings : nil
-        )
-        showConnectForm = false
-        selectedPlatform = nil
-        resetForm()
+    @ViewBuilder
+    private func feedRow(_ feed: VideoFeed) -> some View {
+        HStack(spacing: DesignTokens.spacing) {
+            if feed.sourceType == "youtube-oauth",
+               let thumb = feed.youtubeChannelThumb,
+               let thumbURL = URL(string: thumb) {
+                AsyncImage(url: thumbURL) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Circle().fill(DesignTokens.surface)
+                }
+                .frame(width: 40, height: 40)
+                .clipShape(Circle())
+            }
+
+            VStack(alignment: .leading, spacing: DesignTokens.smallSpacing) {
+                HStack {
+                    Text(feed.name)
+                        .font(.headline)
+                        .foregroundStyle(DesignTokens.textPrimary)
+                    Spacer()
+                    if feed.autoGenerateClips {
+                        Image(systemName: "bolt.fill")
+                            .font(.caption)
+                            .foregroundStyle(DesignTokens.accent)
+                    }
+                }
+                Text(feed.sourceUrl)
+                    .font(.subheadline)
+                    .foregroundStyle(DesignTokens.textSecondary)
+                    .lineLimit(1)
+                HStack {
+                    Label(displaySourceType(feed.sourceType), systemImage: sourceIcon(feed.sourceType))
+                        .font(.caption2)
+                        .foregroundStyle(DesignTokens.muted)
+                    Spacer()
+                    Text("Every \(feed.pollingInterval) min")
+                        .font(.caption2)
+                        .foregroundStyle(DesignTokens.muted)
+                }
+            }
+        }
+        .padding(.vertical, DesignTokens.smallSpacing)
+        .listRowBackground(DesignTokens.surface)
     }
 
-    private func resetForm() {
-        name = ""
-        url = ""
-        interval = "60"
-        autoGenerateClips = false
-        showViralitySettings = false
-        viralitySettings = ViralitySettings()
+    private func displaySourceType(_ type: String) -> String {
+        switch type.lowercased() {
+        case "youtube-oauth": return "YouTube"
+        case "youtube": return "YouTube"
+        default: return type.uppercased()
+        }
     }
 
     private func sourceIcon(_ type: String) -> String {
         switch type.lowercased() {
-        case "youtube": return "play.rectangle.fill"
+        case "youtube", "youtube-oauth": return "play.rectangle.fill"
         case "cspan": return "building.columns.fill"
         default: return "globe"
         }

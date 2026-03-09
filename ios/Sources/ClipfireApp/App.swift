@@ -33,7 +33,7 @@ struct ClipfireApp: App {
                             }
                             .tag(0)
 
-                    ConnectedAccountsView(viewModel: ConnectedAccountsViewModel(api: apiClient))
+                    ConnectedAccountsView(viewModel: ConnectedAccountsViewModel(api: apiClient), authService: authService)
                         .tabItem {
                             Label("Accounts", systemImage: "link")
                         }

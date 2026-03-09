@@ -31,6 +31,7 @@ model User {
   clipCropTemplates   ClipCropTemplate[]
   videoFeeds          VideoFeed[]
   feedVideos          FeedVideo[]
+  brands              Brand[]
   automationRule      AutomationRule?
 }
 
@@ -78,6 +79,20 @@ model Video {
   clipSourceFeedVideo FeedVideo? @relation("FeedVideoClipSource")
 }
 
+model Brand {
+  id        String   @id @default(cuid())
+  name      String
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videoFeeds VideoFeed[]
+
+  @@index([userId])
+  @@map("brands")
+}
+
 model VideoFeed {
   id              String    @id @default(cuid())
   name            String
@@ -88,14 +103,20 @@ model VideoFeed {
   lastVideoId     String?
   autoGenerateClips Boolean   @default(false)
   viralitySettings  Json?
+  youtubeChannelId    String?
+  youtubeChannelTitle String?
+  youtubeChannelThumb String?
+  brandId         String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  brand    Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
   feedVideos FeedVideo[]
 
+  @@index([brandId])
   @@map("connected_accounts")
 }
 

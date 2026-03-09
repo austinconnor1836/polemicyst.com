@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { signIn, useSession } from 'next-auth/react';
 import { set as idbSet, get as idbGet, del as idbDel } from 'idb-keyval';
 import ViralitySettings from '@/components/ViralitySettings';
 import {
@@ -28,7 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AccountsHeroAnimation } from '@/app/connected-accounts/_components/AccountsHeroAnimation';
 import { CardGridBackground } from '@/app/connected-accounts/_components/CardGridBackground';
-import { FeedVideo, VideoFeed } from '@/app/connected-accounts/types';
+import { Brand, FeedVideo, VideoFeed, YouTubeChannel } from '@/app/connected-accounts/types';
 import { formatRelativeTime } from '@/app/connected-accounts/util/time';
 import {
   Select,
@@ -41,6 +41,7 @@ import { getFeedVideoThumbnail, getVideoSourceUrl } from '@/app/connected-accoun
 import CopyableUrl from '@/components/CopyableUrl';
 import { cn } from '@/lib/utils';
 import { PlatformPicker, type Platform } from '@/app/connected-accounts/_components/PlatformPicker';
+import { YouTubeChannelPicker } from '@/app/connected-accounts/_components/YouTubeChannelPicker';
 import {
   FileText,
   Plus,
@@ -51,42 +52,29 @@ import {
   Upload,
   Settings,
   Loader2,
+  Tags,
 } from 'lucide-react';
+import { BrandSection } from '@/app/connected-accounts/_components/BrandSection';
+import { BrandDialog } from '@/app/connected-accounts/_components/BrandDialog';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { useSubscription } from '@/hooks/useSubscription';
 import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
 
-function youtubeHandleUrlFromName(name: string) {
-  const trimmed = (name || '').trim();
-  if (!trimmed) return '';
-
-  // "Same thing the user is typing", but avoid obviously invalid handle chars like spaces.
-  // Also accept users typing "@handle" or pasting a full youtube handle URL.
-  const extracted =
-    trimmed.match(/youtube\.com\/@([^/?#\s]+)/i)?.[1] ??
-    trimmed.match(/^@([^/?#\s]+)/)?.[1] ??
-    trimmed;
-
-  const handle = extracted.replace(/\s+/g, '');
-  return handle ? `https://www.youtube.com/@${handle}` : '';
-}
-
 export default function FeedsPage() {
   const videosHeaderRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const router = useRouter();
-  const { status: sessionStatus } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
 
   const [feeds, setFeeds] = useState<VideoFeed[]>([]);
   const [videos, setVideos] = useState<FeedVideo[]>([]);
-  const [form, setForm] = useState({ name: '', sourceUrl: '', pollingInterval: 60 });
 
   const [isLoadingFeeds, setIsLoadingFeeds] = useState(false);
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
-  const [isCreatingFeed, setIsCreatingFeed] = useState(false);
   const [isAddFeedOpen, setIsAddFeedOpen] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(null);
+  const [isConnectingChannel, setIsConnectingChannel] = useState(false);
   const [isAddVideoOpen, setIsAddVideoOpen] = useState(false);
   const [activeVideoTab, setActiveVideoTab] = useState<'file' | 'url'>('file');
   const [importUrl, setImportUrl] = useState('');
@@ -107,6 +95,10 @@ export default function FeedsPage() {
   const [videoSort, setVideoSort] = useState<'newest' | 'oldest' | 'title'>('newest');
 
   const { quota, data: subscriptionData } = useSubscription();
+
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [isBrandDialogOpen, setIsBrandDialogOpen] = useState(false);
+  const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
 
   const [selectedFeedSettings, setSelectedFeedSettings] = useState<VideoFeed | null>(null);
   const [isFeedSettingsOpen, setIsFeedSettingsOpen] = useState(false);
@@ -151,6 +143,52 @@ export default function FeedsPage() {
     }
   };
 
+  const fetchBrands = async () => {
+    try {
+      const res = await fetch('/api/brands');
+      if (!res.ok) return;
+      const data = await res.json();
+      setBrands(data);
+    } catch (err) {
+      console.error('Failed to load brands', err);
+    }
+  };
+
+  const createBrand = async (data: { name: string; imageUrl?: string }) => {
+    const res = await fetch('/api/brands', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) throw new Error('Failed to create brand');
+    await fetchBrands();
+    toast.success('Brand created');
+  };
+
+  const updateBrand = async (id: string, data: { name: string; imageUrl?: string }) => {
+    const res = await fetch(`/api/brands/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) throw new Error('Failed to update brand');
+    await fetchBrands();
+    toast.success('Brand updated');
+  };
+
+  const deleteBrand = async (brand: Brand) => {
+    if (!confirm(`Delete brand "${brand.name}"? Accounts will be ungrouped, not deleted.`)) return;
+    try {
+      const res = await fetch(`/api/brands/${brand.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete brand');
+      await Promise.all([fetchBrands(), fetchFeeds()]);
+      toast.success('Brand deleted');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to delete brand');
+    }
+  };
+
   const fetchVideos = async () => {
     setIsLoadingVideos(true);
     setPageError(null);
@@ -168,30 +206,7 @@ export default function FeedsPage() {
     }
   };
 
-  const addFeed = async () => {
-    setIsCreatingFeed(true);
-    setPageError(null);
-    try {
-      const res = await fetch('/api/connected-accounts', {
-        method: 'POST',
-        body: JSON.stringify(form),
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (!res.ok) throw new Error('Failed to create feed');
-      setForm({ name: '', sourceUrl: '', pollingInterval: 60 });
-      await fetchFeeds();
-      toast.success('Account connected');
-      setIsAddFeedOpen(false);
-    } catch (err) {
-      console.error(err);
-      setPageError('Could not connect account. Check the URL and try again.');
-      toast.error('Could not connect account');
-    } finally {
-      setIsCreatingFeed(false);
-    }
-  };
-
-  /* 
+  /*
     AUTO-RESUME LOGIC
     1. On mount, check if there's a pending upload metadata in localStorage.
     2. If yes, check if the file exists in IndexedDB.
@@ -483,6 +498,32 @@ export default function FeedsPage() {
     }
   };
 
+  const handleConnectYouTubeChannel = async (channel: YouTubeChannel) => {
+    setIsConnectingChannel(true);
+    try {
+      const res = await fetch('/api/connected-accounts/from-youtube', {
+        method: 'POST',
+        body: JSON.stringify({
+          channelId: channel.id,
+          channelTitle: channel.title,
+          channelThumbnail: channel.thumbnail,
+          pollingInterval: 60,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) throw new Error('Failed to connect channel');
+      await fetchFeeds();
+      toast.success('YouTube channel connected');
+      setIsAddFeedOpen(false);
+      setSelectedPlatform(null);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to connect YouTube channel');
+    } finally {
+      setIsConnectingChannel(false);
+    }
+  };
+
   const deleteFeed = async (feedId: string) => {
     if (!confirm('Delete this feed and all ingested videos?')) return;
     setDeletingFeedId(feedId);
@@ -509,7 +550,7 @@ export default function FeedsPage() {
         headers: { 'Content-Type': 'application/json' },
       });
       if (!res.ok) throw new Error('Failed to update feed');
-      await fetchFeeds();
+      await Promise.all([fetchFeeds(), fetchBrands()]);
       toast.success('Settings saved');
       setIsFeedSettingsOpen(false);
     } catch (err) {
@@ -539,6 +580,7 @@ export default function FeedsPage() {
   useEffect(() => {
     fetchFeeds();
     fetchVideos();
+    fetchBrands();
   }, []);
 
   // Clear server-fetched data when the user logs out
@@ -550,6 +592,7 @@ export default function FeedsPage() {
       wasAuthenticated.current = false;
       setFeeds([]);
       setVideos([]);
+      setBrands([]);
       setPageError(null);
     }
   }, [sessionStatus]);
@@ -561,6 +604,32 @@ export default function FeedsPage() {
     }
     return map;
   }, [videos]);
+
+  const feedsByBrand = useMemo(() => {
+    if (brands.length === 0) return null;
+    const grouped: { brand: Brand | null; feeds: VideoFeed[] }[] = [];
+    const brandMap = new Map<string, VideoFeed[]>();
+    const ungrouped: VideoFeed[] = [];
+
+    for (const feed of feeds) {
+      if (feed.brandId) {
+        const arr = brandMap.get(feed.brandId) || [];
+        arr.push(feed);
+        brandMap.set(feed.brandId, arr);
+      } else {
+        ungrouped.push(feed);
+      }
+    }
+
+    for (const brand of brands) {
+      grouped.push({ brand, feeds: brandMap.get(brand.id) || [] });
+    }
+    if (ungrouped.length > 0) {
+      grouped.push({ brand: null, feeds: ungrouped });
+    }
+
+    return grouped;
+  }, [feeds, brands]);
 
   const filteredVideos = useMemo(() => {
     const q = videoQuery.trim().toLowerCase();
@@ -603,6 +672,83 @@ export default function FeedsPage() {
 
     return sorted;
   }, [feeds, videoFeedFilter, videoQuery, videoSort, videos, activeUploads]);
+
+  const renderFeedRow = (feed: VideoFeed) => (
+    <div
+      key={feed.id}
+      className={cn(
+        'group flex items-start justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-gray-50 dark:hover:bg-zinc-900/40 glass:border-white/5 glass:hover:bg-white/8',
+        videoFeedFilter === feed.id &&
+          'border-gray-400 bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900/40 glass:border-white/20 glass:bg-white/8'
+      )}
+    >
+      <button
+        type="button"
+        className="min-w-0 flex-1 text-left"
+        onClick={() => {
+          setVideoFeedFilter((cur) => (cur === feed.id ? 'all' : feed.id));
+          window.setTimeout(() => {
+            videosHeaderRef.current?.scrollIntoView({
+              behavior: 'smooth',
+              block: 'start',
+            });
+          }, 0);
+        }}
+        title="Filter videos by this source"
+      >
+        <div className="flex items-center gap-2">
+          {feed.youtubeChannelThumb && (
+            <img
+              src={feed.youtubeChannelThumb}
+              alt=""
+              className="h-6 w-6 rounded-full object-cover shrink-0"
+            />
+          )}
+          <div className="truncate font-semibold">{feed.name}</div>
+          {feed.sourceType && (
+            <Badge variant="outline" className="capitalize">
+              {feed.sourceType === 'youtube-oauth' ? 'YouTube' : feed.sourceType}
+            </Badge>
+          )}
+          {videoFeedFilter === feed.id ? <Badge>Selected</Badge> : null}
+          <Badge variant="secondary">{videoCountsByFeed.get(feed.id) || 0}</Badge>
+        </div>
+        <div className="mt-1 truncate text-xs text-muted-foreground">
+          {feed.sourceUrl} • every {feed.pollingInterval} min
+          {feed.lastCheckedAt ? <> • checked {formatRelativeTime(feed.lastCheckedAt)}</> : null}
+          {feed.autoGenerateClips && (
+            <span className="ml-2 text-green-600 dark:text-green-400 font-medium whitespace-nowrap">
+              Auto-Gen On
+            </span>
+          )}
+        </div>
+      </button>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 text-muted-foreground hover:text-foreground"
+        onClick={() => {
+          setSelectedFeedSettings(feed);
+          setIsFeedSettingsOpen(true);
+        }}
+        title="Account Settings"
+      >
+        <Settings className="h-4 w-4" />
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+        onClick={() => deleteFeed(feed.id)}
+        disabled={deletingFeedId === feed.id}
+        title="Delete source"
+      >
+        <Trash2 className={cn('h-4 w-4', deletingFeedId === feed.id && 'animate-pulse')} />
+      </Button>
+    </div>
+  );
 
   return (
     <div className="mx-auto w-full max-w-screen-xl px-4 py-6 sm:px-6 lg:px-8">
@@ -675,6 +821,18 @@ export default function FeedsPage() {
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary">{feeds.length}</Badge>
                   <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingBrand(null);
+                      setIsBrandDialogOpen(true);
+                    }}
+                    title="Create brand"
+                  >
+                    <Tags className="mr-2 h-4 w-4" />
+                    Brand
+                  </Button>
+                  <Button
                     variant="secondary"
                     size="sm"
                     onClick={() => setIsAddFeedOpen(true)}
@@ -711,79 +869,44 @@ export default function FeedsPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {feeds.map((feed) => (
-                    <div
-                      key={feed.id}
-                      className={cn(
-                        'group flex items-start justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-gray-50 dark:hover:bg-zinc-900/40 glass:border-white/5 glass:hover:bg-white/8',
-                        videoFeedFilter === feed.id &&
-                          'border-gray-400 bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900/40 glass:border-white/20 glass:bg-white/8'
-                      )}
-                    >
-                      <button
-                        type="button"
-                        className="min-w-0 flex-1 text-left"
-                        onClick={() => {
-                          setVideoFeedFilter((cur) => (cur === feed.id ? 'all' : feed.id));
-                          window.setTimeout(() => {
-                            videosHeaderRef.current?.scrollIntoView({
-                              behavior: 'smooth',
-                              block: 'start',
-                            });
-                          }, 0);
-                        }}
-                        title="Filter videos by this source"
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className="truncate font-semibold">{feed.name}</div>
-                          {feed.sourceType && (
-                            <Badge variant="outline" className="capitalize">
-                              {feed.sourceType}
-                            </Badge>
-                          )}
-                          {videoFeedFilter === feed.id ? <Badge>Selected</Badge> : null}
-                          <Badge variant="secondary">{videoCountsByFeed.get(feed.id) || 0}</Badge>
-                        </div>
-                        <div className="mt-1 truncate text-xs text-muted-foreground">
-                          {feed.sourceUrl} • every {feed.pollingInterval} min
-                          {feed.lastCheckedAt ? (
-                            <> • checked {formatRelativeTime(feed.lastCheckedAt)}</>
-                          ) : null}
-                          {feed.autoGenerateClips && (
-                            <span className="ml-2 text-green-600 dark:text-green-400 font-medium whitespace-nowrap">
-                              Auto-Gen On
-                            </span>
-                          )}
-                        </div>
-                      </button>
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                        onClick={() => {
-                          setSelectedFeedSettings(feed);
-                          setIsFeedSettingsOpen(true);
-                        }}
-                        title="Account Settings"
-                      >
-                        <Settings className="h-4 w-4" />
-                      </Button>
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                        onClick={() => deleteFeed(feed.id)}
-                        disabled={deletingFeedId === feed.id}
-                        title="Delete source"
-                      >
-                        <Trash2
-                          className={cn('h-4 w-4', deletingFeedId === feed.id && 'animate-pulse')}
-                        />
-                      </Button>
-                    </div>
-                  ))}
+                  {feedsByBrand
+                    ? feedsByBrand.map((group) => {
+                        const feedRows = group.feeds.map((feed) => renderFeedRow(feed));
+                        if (group.brand) {
+                          return (
+                            <BrandSection
+                              key={group.brand.id}
+                              brand={group.brand}
+                              feedCount={group.feeds.length}
+                              onEdit={(b) => {
+                                setEditingBrand(b);
+                                setIsBrandDialogOpen(true);
+                              }}
+                              onDelete={deleteBrand}
+                            >
+                              {feedRows.length > 0 ? (
+                                feedRows
+                              ) : (
+                                <div className="py-2 text-xs text-muted-foreground italic">
+                                  No accounts in this brand yet
+                                </div>
+                              )}
+                            </BrandSection>
+                          );
+                        }
+                        // Ungrouped feeds (no header when brands exist)
+                        return (
+                          <div key="ungrouped" className="space-y-2">
+                            {group.feeds.length > 0 && brands.length > 0 && (
+                              <div className="px-2 py-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                Ungrouped
+                              </div>
+                            )}
+                            {feedRows}
+                          </div>
+                        );
+                      })
+                    : feeds.map((feed) => renderFeedRow(feed))}
                 </div>
               )}
             </CardContent>
@@ -1091,17 +1214,12 @@ export default function FeedsPage() {
         </div>
       </div>
 
-      {/* Connect Account Modal (two-step: platform picker → form) */}
+      {/* Connect Account Modal (platform picker → OAuth flow) */}
       <Dialog
         open={isAddFeedOpen}
         onOpenChange={(open) => {
-          if (isCreatingFeed) return;
-          if (open) {
-            setForm({ name: '', sourceUrl: '', pollingInterval: 60 });
-            setSelectedPlatform(null);
-          } else {
-            setSelectedPlatform(null);
-          }
+          if (isConnectingChannel) return;
+          if (!open) setSelectedPlatform(null);
           setIsAddFeedOpen(open);
         }}
       >
@@ -1114,93 +1232,64 @@ export default function FeedsPage() {
               </DialogHeader>
               <PlatformPicker
                 onSelect={(platform) => {
-                  if (platform === 'upload') {
-                    setIsAddFeedOpen(false);
-                    setIsAddVideoOpen(true);
-                  } else {
-                    setSelectedPlatform(platform);
-                  }
+                  setSelectedPlatform(platform);
                 }}
               />
             </>
-          ) : (
+          ) : selectedPlatform === 'youtube' ? (
             <>
               <DialogHeader>
-                <DialogTitle>
-                  Connect{' '}
-                  {selectedPlatform === 'youtube'
-                    ? 'YouTube'
-                    : selectedPlatform === 'cspan'
-                      ? 'C-SPAN'
-                      : selectedPlatform}
-                </DialogTitle>
+                <DialogTitle>Connect YouTube</DialogTitle>
                 <DialogDescription>
-                  Provide a source URL. The poller will ingest new videos over time.
+                  {(session?.user as any)?.providers?.includes('google')
+                    ? 'Select a channel to connect.'
+                    : 'Sign in with Google to connect your YouTube channel.'}
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <Label>Name</Label>
-                  <Input
-                    placeholder={
-                      selectedPlatform === 'youtube' ? 'My YouTube channel' : 'Source name'
-                    }
-                    value={form.name}
-                    onChange={(e) => {
-                      const nextName = e.target.value;
-                      const currentAutoUrl = youtubeHandleUrlFromName(form.name);
-                      const nextAutoUrl = youtubeHandleUrlFromName(nextName);
-
-                      const shouldSyncSourceUrl =
-                        selectedPlatform === 'youtube' &&
-                        (!form.sourceUrl || form.sourceUrl.trim() === currentAutoUrl);
-
-                      setForm({
-                        ...form,
-                        name: nextName,
-                        ...(shouldSyncSourceUrl ? { sourceUrl: nextAutoUrl } : null),
-                      });
-                    }}
-                    autoFocus
-                  />
+              {(session?.user as any)?.providers?.includes('google') ? (
+                <div className="space-y-4">
+                  {isConnectingChannel && (
+                    <div className="flex items-center justify-center gap-2 py-4">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span className="text-sm text-muted-foreground">Connecting channel...</span>
+                    </div>
+                  )}
+                  {!isConnectingChannel && (
+                    <YouTubeChannelPicker onSelectChannel={handleConnectYouTubeChannel} />
+                  )}
                 </div>
-                <div className="space-y-1">
-                  <Label>Source URL</Label>
-                  <Input
-                    placeholder="https://..."
-                    value={form.sourceUrl}
-                    onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
-                  />
+              ) : (
+                <div className="rounded-lg border border-dashed p-6 text-center">
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Connect your Google account to browse your YouTube channels.
+                  </p>
+                  <Button onClick={() => signIn('google', { callbackUrl: '/connected-accounts' })}>
+                    Sign in with Google
+                  </Button>
                 </div>
-                <div className="space-y-1">
-                  <Label>Polling interval (min)</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={String(form.pollingInterval)}
-                    onChange={(e) => {
-                      const next = Math.max(1, Number(e.target.value || 1));
-                      setForm({ ...form, pollingInterval: Number.isFinite(next) ? next : 60 });
-                    }}
-                  />
-                </div>
-              </div>
+              )}
 
               <DialogFooter className="pt-4 gap-2 sm:gap-2">
                 <Button
                   variant="outline"
                   onClick={() => setSelectedPlatform(null)}
-                  disabled={isCreatingFeed}
+                  disabled={isConnectingChannel}
                 >
                   Back
                 </Button>
-                <Button
-                  onClick={addFeed}
-                  disabled={!form.name || !form.sourceUrl || isCreatingFeed}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  {isCreatingFeed ? 'Connecting...' : 'Connect'}
+              </DialogFooter>
+            </>
+          ) : (
+            /* Future platforms (Facebook, Instagram, TikTok, Twitter) will go here */
+            <>
+              <DialogHeader>
+                <DialogTitle>Connect {selectedPlatform}</DialogTitle>
+                <DialogDescription>Coming soon.</DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="pt-4 gap-2 sm:gap-2">
+                <Button variant="outline" onClick={() => setSelectedPlatform(null)}>
+                  Back
                 </Button>
               </DialogFooter>
             </>
@@ -1320,11 +1409,26 @@ export default function FeedsPage() {
             <FeedSettingsForm
               feed={selectedFeedSettings}
               defaultLLMProvider={defaultLLMProvider}
+              brands={brands}
               onSave={(updates) => updateFeedSettings(selectedFeedSettings.id, updates)}
             />
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Brand Dialog */}
+      <BrandDialog
+        open={isBrandDialogOpen}
+        onOpenChange={setIsBrandDialogOpen}
+        brand={editingBrand}
+        onSave={async (data) => {
+          if (editingBrand) {
+            await updateBrand(editingBrand.id, data);
+          } else {
+            await createBrand(data);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -1333,12 +1437,15 @@ function FeedSettingsForm({
   feed,
   onSave,
   defaultLLMProvider,
+  brands,
 }: {
   feed: VideoFeed;
   onSave: (updates: any) => void;
   defaultLLMProvider: LLMProvider;
+  brands: Brand[];
 }) {
   const [autoGen, setAutoGen] = useState(feed.autoGenerateClips || false);
+  const [selectedBrandId, setSelectedBrandId] = useState<string>(feed.brandId || 'none');
   const [settings, setSettings] = useState<ViralitySettingsValue>(() =>
     mergeViralitySettings(
       (feed.viralitySettings as Partial<ViralitySettingsValue> | null) ?? undefined,
@@ -1349,16 +1456,36 @@ function FeedSettingsForm({
 
   useEffect(() => {
     setAutoGen(feed.autoGenerateClips || false);
+    setSelectedBrandId(feed.brandId || 'none');
     setSettings(
       mergeViralitySettings(
         (feed.viralitySettings as Partial<ViralitySettingsValue> | null) ?? undefined,
         defaultLLMProvider
       )
     );
-  }, [feed.id, feed.autoGenerateClips, feed.viralitySettings, defaultLLMProvider]);
+  }, [feed.id, feed.autoGenerateClips, feed.brandId, feed.viralitySettings, defaultLLMProvider]);
 
   return (
     <div className="space-y-6">
+      {brands.length > 0 && (
+        <div className="space-y-1">
+          <Label>Brand</Label>
+          <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select a brand" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No brand</SelectItem>
+              {brands.map((b) => (
+                <SelectItem key={b.id} value={b.id}>
+                  {b.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4 bg-gray-50 dark:bg-zinc-900/50 glass:bg-white/5 glass:border-white/10">
         <div className="space-y-0.5">
           <Label className="text-base">Auto-generate clips</Label>
@@ -1394,7 +1521,11 @@ function FeedSettingsForm({
         <Button
           onClick={async () => {
             setIsSaving(true);
-            await onSave({ autoGenerateClips: autoGen, viralitySettings: settings });
+            await onSave({
+              autoGenerateClips: autoGen,
+              viralitySettings: settings,
+              brandId: selectedBrandId === 'none' ? null : selectedBrandId,
+            });
             setIsSaving(false);
           }}
           disabled={isSaving}
