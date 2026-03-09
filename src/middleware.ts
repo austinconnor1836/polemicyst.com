@@ -17,6 +17,15 @@ function isAllowedEmail(email?: string | null): boolean {
 const PUBLIC_PATHS = ['/', '/pricing', '/privacy-policy', '/terms-of-service'];
 
 export async function middleware(req: NextRequest) {
+  // Redirect authenticated users from home to dashboard
+  if (req.nextUrl.pathname === '/') {
+    const token = await getToken({ req });
+    if (token && isAllowedEmail(token.email)) {
+      return NextResponse.redirect(new URL('/connected-accounts', req.url));
+    }
+    return NextResponse.next();
+  }
+
   if (PUBLIC_PATHS.includes(req.nextUrl.pathname)) {
     return NextResponse.next();
   }

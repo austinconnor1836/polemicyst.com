@@ -677,7 +677,7 @@ export default function FeedsPage() {
     <div
       key={feed.id}
       className={cn(
-        'group flex items-start justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-gray-50 dark:hover:bg-zinc-900/40 glass:border-white/5 glass:hover:bg-white/8',
+        'group relative flex items-start justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-gray-50 dark:hover:bg-zinc-900/40 glass:border-white/5 glass:hover:bg-white/8',
         videoFeedFilter === feed.id &&
           'border-gray-400 bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900/40 glass:border-white/20 glass:bg-white/8'
       )}
@@ -745,8 +745,17 @@ export default function FeedsPage() {
         disabled={deletingFeedId === feed.id}
         title="Delete source"
       >
-        <Trash2 className={cn('h-4 w-4', deletingFeedId === feed.id && 'animate-pulse')} />
+        <Trash2 className="h-4 w-4" />
       </Button>
+
+      {deletingFeedId === feed.id && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-background/80 backdrop-blur-sm dark:bg-black/60 glass:!bg-black/50">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground dark:text-white glass:!text-white">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Deleting…
+          </div>
+        </div>
+      )}
     </div>
   );
 

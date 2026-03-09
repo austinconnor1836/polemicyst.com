@@ -12,7 +12,7 @@ const IS_DEV = process.env.NODE_ENV !== 'production';
 
 const SignIn = () => {
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') || '/clips-genie';
+  const callbackUrl = searchParams.get('callbackUrl') || '/connected-accounts';
   const provider = searchParams.get('provider');
 
   const [identifier, setIdentifier] = useState('');

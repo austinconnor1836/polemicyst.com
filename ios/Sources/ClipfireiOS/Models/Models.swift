@@ -429,6 +429,81 @@ public struct CreateFromYouTubeRequest: Encodable {
     }
 }
 
+// MARK: - Automation Settings
+
+public struct AutomationSettings: Codable {
+    public var enabled: Bool
+    public var autoGenerateClips: Bool
+    public var viralitySettings: ViralitySettings
+    public var captionsEnabled: Bool
+    public var captionStyle: String
+    public var aspectRatio: String
+    public var autoPublish: Bool
+    public var publishPlatforms: [String]
+
+    public init(
+        enabled: Bool = false,
+        autoGenerateClips: Bool = true,
+        viralitySettings: ViralitySettings = ViralitySettings(),
+        captionsEnabled: Bool = true,
+        captionStyle: String = "default",
+        aspectRatio: String = "9:16",
+        autoPublish: Bool = false,
+        publishPlatforms: [String] = []
+    ) {
+        self.enabled = enabled
+        self.autoGenerateClips = autoGenerateClips
+        self.viralitySettings = viralitySettings
+        self.captionsEnabled = captionsEnabled
+        self.captionStyle = captionStyle
+        self.aspectRatio = aspectRatio
+        self.autoPublish = autoPublish
+        self.publishPlatforms = publishPlatforms
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case enabled, autoGenerateClips, viralitySettings, captionsEnabled
+        case captionStyle, aspectRatio, autoPublish, publishPlatforms
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decode(Bool.self, forKey: .enabled)
+        autoGenerateClips = try c.decode(Bool.self, forKey: .autoGenerateClips)
+        captionsEnabled = try c.decode(Bool.self, forKey: .captionsEnabled)
+        captionStyle = try c.decode(String.self, forKey: .captionStyle)
+        aspectRatio = try c.decode(String.self, forKey: .aspectRatio)
+        autoPublish = try c.decode(Bool.self, forKey: .autoPublish)
+        publishPlatforms = (try? c.decode([String].self, forKey: .publishPlatforms)) ?? []
+
+        // Decode viralitySettings from [String: AnyCodable] dictionary
+        if let dict = try? c.decode([String: AnyCodable].self, forKey: .viralitySettings) {
+            viralitySettings = ViralitySettings(
+                scoringMode: (dict["scoringMode"]?.value as? String) ?? "heuristic",
+                targetPlatform: (dict["targetPlatform"]?.value as? String) ?? "all",
+                contentStyle: (dict["contentStyle"]?.value as? String) ?? "auto",
+                saferClips: (dict["saferClips"]?.value as? Bool) ?? false,
+                includeAudio: (dict["includeAudio"]?.value as? Bool) ?? false,
+                llmProvider: (dict["llmProvider"]?.value as? String) ?? "ollama"
+            )
+        } else {
+            viralitySettings = ViralitySettings()
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(enabled, forKey: .enabled)
+        try c.encode(autoGenerateClips, forKey: .autoGenerateClips)
+        try c.encode(captionsEnabled, forKey: .captionsEnabled)
+        try c.encode(captionStyle, forKey: .captionStyle)
+        try c.encode(aspectRatio, forKey: .aspectRatio)
+        try c.encode(autoPublish, forKey: .autoPublish)
+        try c.encode(publishPlatforms, forKey: .publishPlatforms)
+        try c.encode(viralitySettings.toDictionary(), forKey: .viralitySettings)
+    }
+}
+
 // MARK: - API Error
 
 public struct APIErrorResponse: Codable {
