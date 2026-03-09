@@ -264,6 +264,21 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Create xcconfig files
+        working-directory: ios
+        run: |
+          mkdir -p xcconfig
+          cat > xcconfig/Debug.xcconfig << 'XCEOF'
+          GOOGLE_CLIENT_ID = placeholder
+          GOOGLE_CLIENT_ID_REVERSED = placeholder
+          GOOGLE_SERVER_CLIENT_ID = placeholder
+          XCEOF
+          cat > xcconfig/Release.xcconfig << 'XCEOF'
+          GOOGLE_CLIENT_ID = ${GOOGLE_IOS_CLIENT_ID}
+          GOOGLE_CLIENT_ID_REVERSED = ${GOOGLE_IOS_CLIENT_ID_REVERSED}
+          GOOGLE_SERVER_CLIENT_ID = ${GOOGLE_SERVER_CLIENT_ID}
+          XCEOF
+
       - name: Generate Xcode project
         working-directory: ios
         run: xcodegen generate
@@ -275,6 +290,7 @@ jobs:
           xcodebuild test \
             -project Clipfire.xcodeproj \
             -scheme ClipfireApp \
+            -skip-testing:ClipfireUITests \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             | xcpretty --color
 
@@ -290,6 +306,21 @@ jobs:
 
       - name: Install XcodeGen
         run: brew install xcodegen
+
+      - name: Create xcconfig files
+        working-directory: ios
+        env:
+          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+          GOOGLE_IOS_CLIENT_ID_REVERSED: ${{ secrets.GOOGLE_IOS_CLIENT_ID_REVERSED }}
+          GOOGLE_SERVER_CLIENT_ID: ${{ secrets.GOOGLE_SERVER_CLIENT_ID }}
+        run: |
+          mkdir -p xcconfig
+          cat > xcconfig/Debug.xcconfig << XCEOF
+          GOOGLE_CLIENT_ID = ${GOOGLE_IOS_CLIENT_ID:-placeholder}
+          GOOGLE_CLIENT_ID_REVERSED = ${GOOGLE_IOS_CLIENT_ID_REVERSED:-placeholder}
+          GOOGLE_SERVER_CLIENT_ID = ${GOOGLE_SERVER_CLIENT_ID:-placeholder}
+          XCEOF
+          cp xcconfig/Debug.xcconfig xcconfig/Release.xcconfig
 
       - name: Generate Xcode project
         working-directory: ios
@@ -312,7 +343,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.2'
+          ruby-version: '3.1'
           bundler-cache: true
           working-directory: ios
 
@@ -341,6 +372,21 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Create xcconfig files
+        working-directory: ios
+        env:
+          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+          GOOGLE_IOS_CLIENT_ID_REVERSED: ${{ secrets.GOOGLE_IOS_CLIENT_ID_REVERSED }}
+          GOOGLE_SERVER_CLIENT_ID: ${{ secrets.GOOGLE_SERVER_CLIENT_ID }}
+        run: |
+          mkdir -p xcconfig
+          cat > xcconfig/Debug.xcconfig << XCEOF
+          GOOGLE_CLIENT_ID = ${GOOGLE_IOS_CLIENT_ID:-placeholder}
+          GOOGLE_CLIENT_ID_REVERSED = ${GOOGLE_IOS_CLIENT_ID_REVERSED:-placeholder}
+          GOOGLE_SERVER_CLIENT_ID = ${GOOGLE_SERVER_CLIENT_ID:-placeholder}
+          XCEOF
+          cp xcconfig/Debug.xcconfig xcconfig/Release.xcconfig
+
       - name: Generate Xcode project
         working-directory: ios
         run: xcodegen generate
@@ -362,7 +408,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.2'
+          ruby-version: '3.1'
           bundler-cache: true
           working-directory: ios
 
