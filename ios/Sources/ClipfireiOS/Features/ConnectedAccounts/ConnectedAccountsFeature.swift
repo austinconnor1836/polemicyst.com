@@ -114,6 +114,7 @@ public struct ConnectedAccountsView: View {
     @State private var showYouTubePicker = false
     @State private var showCreateBrand = false
     @State private var newBrandName = ""
+    @State private var selectedAccountSettings: VideoFeed?
 
     private let authService: AuthService?
 
@@ -210,6 +211,15 @@ public struct ConnectedAccountsView: View {
                     ) { feed in
                         viewModel.addFeed(feed)
                     }
+                }
+            }
+            .sheet(item: $selectedAccountSettings) { feed in
+                AccountSettingsView(
+                    viewModel: AccountSettingsViewModel(feed: feed, api: viewModel.api)
+                )
+                .presentationDetents([.large])
+                .onDisappear {
+                    Task { await viewModel.loadAccounts() }
                 }
             }
         }
@@ -325,6 +335,14 @@ public struct ConnectedAccountsView: View {
                             .font(.caption)
                             .foregroundStyle(DesignTokens.accent)
                     }
+                    Button {
+                        selectedAccountSettings = feed
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .font(.subheadline)
+                            .foregroundStyle(DesignTokens.muted)
+                    }
+                    .buttonStyle(.plain)
                 }
                 Text(feed.sourceUrl)
                     .font(.subheadline)

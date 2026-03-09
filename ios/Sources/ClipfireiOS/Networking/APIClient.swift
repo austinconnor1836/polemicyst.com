@@ -161,6 +161,16 @@ public struct APIClient {
         try await put(path: "/api/user/llm-provider", body: request)
     }
 
+    // MARK: Automation Settings
+
+    public func fetchAutomationSettings() async throws -> AutomationSettings {
+        try await get(path: "/api/user/automation")
+    }
+
+    public func updateAutomationSettings(_ settings: AutomationSettings) async throws -> AutomationSettings {
+        try await put(path: "/api/user/automation", body: settings)
+    }
+
     // MARK: Version Check
 
     public func checkVersion(currentVersion: String) async throws -> VersionCheckResponse {
