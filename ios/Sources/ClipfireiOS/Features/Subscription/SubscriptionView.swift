@@ -94,9 +94,9 @@ public struct SubscriptionView: View {
                 .foregroundStyle(DesignTokens.textPrimary)
 
             QuotaBar(
-                label: "Feeds",
+                label: "Accounts",
                 current: sub.usage.feeds,
-                maximum: sub.plan.limits.maxFeeds
+                maximum: sub.plan.limits.maxConnectedAccounts
             )
 
             QuotaBar(

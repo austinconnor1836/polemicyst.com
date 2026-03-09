@@ -1,18 +1,18 @@
-# iOS presentation layer (Polemicyst)
+# iOS presentation layer (Clipfire)
 
-Lightweight scaffolding to mirror the existing Next.js app. We keep features small (Feeds, FeedVideos, Clips), reuse the same REST contracts, and centralize design tokens for a dark-first UI that matches web.
+Lightweight scaffolding to mirror the existing Next.js app. We keep features small (Connected Accounts, FeedVideos, Clips), reuse the same REST contracts, and centralize design tokens for a dark-first UI that matches web.
 
 ## Architecture
 
-- SwiftUI views + small feature modules (e.g., FeedsFeature, ClipsFeature).
+- SwiftUI views + small feature modules (e.g., ConnectedAccountsFeature, ClipsFeature).
 - ViewModels use async/await over a thin `APIClient` (URLSession); no heavy dependencies.
 - Observation/Combine for state; inject `APIClient` and `DesignSystem` as environment objects.
 - Design tokens live in Swift (`DesignSystem/Tokens.swift`) sourced from Tailwind choices.
 
 ## Endpoints to mirror
 
-- `GET /api/feeds` → `[VideoFeed]`
-- `POST /api/feeds` with `{ name, sourceUrl, pollingInterval, autoGenerateClips?, viralitySettings? }` → `VideoFeed`
+- `GET /api/connected-accounts` → `[VideoFeed]`
+- `POST /api/connected-accounts` with `{ name, sourceUrl, pollingInterval, autoGenerateClips?, viralitySettings? }` → `VideoFeed`
 - `GET /api/feedVideos` → `[FeedVideo]` (includes `feed`)
 - `POST /api/trigger-clip` with `{ feedVideoId, userId, aspectRatio?, scoringMode?, includeAudio?, saferClips?, targetPlatform?, contentStyle?, minCandidates?, maxCandidates?, minScore?, percentile?, maxGeminiCandidates?, llmProvider? }` → `{ message, jobId }`
 - `GET /api/clips` → `[Video]` (requires authenticated session)
@@ -32,7 +32,7 @@ See `Sources/Models/Models.swift` for DTOs:
 
 ## Auth
 
-The iOS app uses native sign-in (Google Sign-In SDK + Sign in with Apple) and exchanges provider tokens for a Polemicyst JWT via backend endpoints:
+The iOS app uses native sign-in (Google Sign-In SDK + Sign in with Apple) and exchanges provider tokens for a Clipfire JWT via backend endpoints:
 
 - **Google**: `GIDSignIn` → `POST /api/auth/mobile/google` with Google ID token → JWT
 - **Apple**: `SignInWithAppleButton` → `POST /api/auth/mobile/apple` with Apple identity token → JWT
@@ -54,7 +54,7 @@ The JWT is stored in Keychain (`TokenStorage`) and sent as `Authorization: Beare
 
 ## Quick-start slice
 
-1. Wire `APIClient.feeds()` + `createFeed()` and build a Feeds list/create flow in SwiftUI.
+1. Wire `APIClient.connectedAccounts()` + `createConnectedAccount()` and build a Connected Accounts list/create flow in SwiftUI.
 2. Add FeedVideos list + trigger-clip action.
 3. Decide auth path, then light up Clips list/delete.
 4. Align tokens: port primary colors/spacing/radii from Tailwind into `DesignSystem/Tokens.swift`.
@@ -62,7 +62,7 @@ The JWT is stored in Keychain (`TokenStorage`) and sent as `Authorization: Beare
 ## Run (CLI, no Xcode UI)
 
 - Build/tests: `cd ios && swift test`
-- Launch Feeds demo in simulator (requires Xcode toolchain, uses http://127.0.0.1:3000):
+- Launch Connected Accounts demo in simulator (requires Xcode toolchain, uses http://127.0.0.1:3000):
   ```
   cd ios
   xcodebuild -scheme PolemicystApp \

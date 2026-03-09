@@ -5,4 +5,5 @@ if [ "$HUSKY" = "0" ]; then
   exit 0
 fi
 
+export ESLINT_USE_FLAT_CONFIG=false
 npx lint-staged

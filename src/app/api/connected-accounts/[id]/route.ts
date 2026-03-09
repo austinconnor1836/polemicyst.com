@@ -1,4 +1,4 @@
-// /src/app/api/feeds/[id]/route.ts
+// /src/app/api/connected-accounts/[id]/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
@@ -25,7 +25,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const data = await req.json();
-  const { autoGenerateClips, viralitySettings, name, pollingInterval } = data;
+  const { autoGenerateClips, viralitySettings, name, pollingInterval, brandId } = data;
 
   // Enforce auto-generate access
   if (autoGenerateClips === true) {
@@ -66,6 +66,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         Number.isFinite(pollingInterval) && {
           pollingInterval: Math.max(1, Math.floor(pollingInterval)),
         }),
+      ...(brandId !== undefined && { brandId: brandId || null }),
     },
   });
 

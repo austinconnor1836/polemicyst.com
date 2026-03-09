@@ -21,7 +21,7 @@ public struct HomeView: View {
                     Text("Polemicyst")
                         .font(.largeTitle).bold()
                         .foregroundStyle(DesignTokens.textPrimary)
-                    Text("Generate and manage feeds to create clips faster.")
+                    Text("Connect your accounts and generate clips faster.")
                         .font(.body)
                         .foregroundStyle(DesignTokens.textSecondary)
                         .multilineTextAlignment(.center)
@@ -29,7 +29,7 @@ public struct HomeView: View {
                 .padding(.horizontal, DesignTokens.largeSpacing)
 
                 VStack(alignment: .leading, spacing: DesignTokens.spacing) {
-                    Label("Set up feeds for YouTube or C-SPAN sources", systemImage: "dot.radiowaves.left.and.right")
+                    Label("Connect YouTube, C-SPAN, and more", systemImage: "link")
                         .foregroundStyle(DesignTokens.textPrimary)
                     Label("Trigger clip generation jobs from transcripts", systemImage: "bolt.fill")
                         .foregroundStyle(DesignTokens.textPrimary)
@@ -44,7 +44,7 @@ public struct HomeView: View {
 
                 HStack(spacing: DesignTokens.spacing) {
                     Button(action: { selection = 1 }) {
-                        Text("Feeds")
+                        Text("Accounts")
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .padding()

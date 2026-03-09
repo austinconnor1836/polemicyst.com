@@ -1,10 +1,10 @@
 import React from 'react';
 
-type FeedsHeroAnimationProps = {
+type AccountsHeroAnimationProps = {
   className?: string;
 };
 
-export function FeedsHeroAnimation({ className }: FeedsHeroAnimationProps) {
+export function AccountsHeroAnimation({ className }: AccountsHeroAnimationProps) {
   return (
     <div className={className} aria-hidden="true">
       <svg

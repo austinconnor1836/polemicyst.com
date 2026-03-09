@@ -7,7 +7,7 @@ export interface SubscriptionData {
   plan: {
     id: string;
     name: string;
-    limits: { maxFeeds: number; maxClipsPerMonth: number };
+    limits: { maxConnectedAccounts: number; maxClipsPerMonth: number };
     features: string[];
   };
   usage: { feeds: number; clipsThisMonth: number };
@@ -23,7 +23,9 @@ const WARNING_THRESHOLD = 0.8;
 
 function computeQuotaStatus(data: SubscriptionData): QuotaStatus {
   const feedPercent =
-    data.plan.limits.maxFeeds > 0 ? data.usage.feeds / data.plan.limits.maxFeeds : 0;
+    data.plan.limits.maxConnectedAccounts > 0
+      ? data.usage.feeds / data.plan.limits.maxConnectedAccounts
+      : 0;
   const clipPercent =
     data.plan.limits.maxClipsPerMonth > 0
       ? data.usage.clipsThisMonth / data.plan.limits.maxClipsPerMonth
@@ -32,7 +34,7 @@ function computeQuotaStatus(data: SubscriptionData): QuotaStatus {
   return {
     feeds: {
       used: data.usage.feeds,
-      limit: data.plan.limits.maxFeeds,
+      limit: data.plan.limits.maxConnectedAccounts,
       percent: feedPercent,
       warning: feedPercent >= WARNING_THRESHOLD && feedPercent < 1,
       exceeded: feedPercent >= 1,

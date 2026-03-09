@@ -261,7 +261,7 @@ public struct FeedVideoDetailView: View {
 
             HStack(spacing: DesignTokens.smallSpacing) {
                 if let feedName = detail.feedVideo.feed?.name {
-                    Label(feedName, systemImage: "antenna.radiowaves.left.and.right")
+                    Label(feedName, systemImage: "link")
                         .font(.caption)
                         .foregroundStyle(DesignTokens.textSecondary)
                 }

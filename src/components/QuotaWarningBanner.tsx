@@ -32,7 +32,7 @@ export function QuotaWarningBanner({
   if (show === 'feeds' || show === 'both') {
     if (quota.feeds.warning || quota.feeds.exceeded) {
       lines.push({
-        label: 'Sources',
+        label: 'Connected accounts',
         used: quota.feeds.used,
         limit: quota.feeds.limit,
         exceeded: quota.feeds.exceeded,

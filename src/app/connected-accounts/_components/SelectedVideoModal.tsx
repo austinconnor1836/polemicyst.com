@@ -13,9 +13,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { FeedVideo } from '@/app/feeds/types';
-import { formatRelativeTime } from '@/app/feeds/util/time';
-import { getFeedVideoThumbnail, getVideoSourceUrl } from '@/app/feeds/util/thumbnails';
+import { FeedVideo } from '@/app/connected-accounts/types';
+import { formatRelativeTime } from '@/app/connected-accounts/util/time';
+import { getFeedVideoThumbnail, getVideoSourceUrl } from '@/app/connected-accounts/util/thumbnails';
 import CopyableUrl from '@/components/CopyableUrl';
 import type { LLMProvider, ViralitySettingsValue } from '@shared/virality';
 import { FileText } from 'lucide-react';

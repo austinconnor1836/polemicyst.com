@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   }
 
   const data = await req.json();
-  const { name, sourceUrl, pollingInterval, autoGenerateClips, viralitySettings } = data;
+  const { name, sourceUrl, pollingInterval, autoGenerateClips, viralitySettings, brandId } = data;
 
   if (autoGenerateClips) {
     const autoAccess = checkAutoGenerateAccess(user.subscriptionPlan);
@@ -70,6 +70,7 @@ export async function POST(req: NextRequest) {
     pollingInterval,
     autoGenerateClips,
     viralitySettings,
+    brandId,
   });
 
   return NextResponse.json(newFeed);

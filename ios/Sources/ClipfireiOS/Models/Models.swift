@@ -9,6 +9,45 @@ public struct VersionCheckResponse: Codable {
     public let storeUrl: String
 }
 
+// MARK: - Brands
+
+public struct Brand: Identifiable, Codable {
+    public let id: String
+    public let name: String
+    public let imageUrl: String?
+    public let createdAt: Date
+    public let updatedAt: Date
+    public let _count: BrandCount?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, imageUrl, createdAt, updatedAt, _count
+    }
+}
+
+public struct BrandCount: Codable {
+    public let videoFeeds: Int
+}
+
+public struct CreateBrandRequest: Encodable {
+    public let name: String
+    public let imageUrl: String?
+
+    public init(name: String, imageUrl: String? = nil) {
+        self.name = name
+        self.imageUrl = imageUrl
+    }
+}
+
+public struct UpdateBrandRequest: Encodable {
+    public let name: String?
+    public let imageUrl: String?
+
+    public init(name: String? = nil, imageUrl: String? = nil) {
+        self.name = name
+        self.imageUrl = imageUrl
+    }
+}
+
 // MARK: - Feeds
 
 public struct VideoFeed: Identifiable, Codable {
@@ -21,6 +60,31 @@ public struct VideoFeed: Identifiable, Codable {
     public let autoGenerateClips: Bool
     public let viralitySettings: [String: AnyCodable]?
     public let createdAt: Date
+    public let youtubeChannelThumb: String?
+    public let brandId: String?
+    public let brand: Brand?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, sourceUrl, pollingInterval, sourceType, userId
+        case autoGenerateClips, viralitySettings, createdAt, youtubeChannelThumb
+        case brandId, brand
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        sourceUrl = try c.decode(String.self, forKey: .sourceUrl)
+        pollingInterval = try c.decode(Int.self, forKey: .pollingInterval)
+        sourceType = try c.decode(String.self, forKey: .sourceType)
+        userId = try c.decode(String.self, forKey: .userId)
+        autoGenerateClips = try c.decode(Bool.self, forKey: .autoGenerateClips)
+        viralitySettings = try c.decodeIfPresent([String: AnyCodable].self, forKey: .viralitySettings)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        youtubeChannelThumb = try c.decodeIfPresent(String.self, forKey: .youtubeChannelThumb)
+        brandId = try c.decodeIfPresent(String.self, forKey: .brandId)
+        brand = try c.decodeIfPresent(Brand.self, forKey: .brand)
+    }
 }
 
 // MARK: - Feed Videos
@@ -304,7 +368,7 @@ public struct PlanInfo: Codable {
 }
 
 public struct PlanLimits: Codable {
-    public let maxFeeds: Int
+    public let maxConnectedAccounts: Int
     public let maxClipsPerMonth: Int
     public let maxStorageGb: Int
     public let llmProviders: [String]
@@ -333,6 +397,35 @@ public struct UpdateLLMProviderRequest: Codable {
 
     public init(llmProvider: String) {
         self.llmProvider = llmProvider
+    }
+}
+
+// MARK: - YouTube Channel
+
+public struct YouTubeChannel: Identifiable, Codable {
+    public let id: String
+    public let title: String
+    public let thumbnail: String
+    public let subscriberCount: String?
+}
+
+public struct CreateFromYouTubeRequest: Encodable {
+    public let channelId: String
+    public let channelTitle: String
+    public let channelThumbnail: String?
+    public let pollingInterval: Int
+    public let autoGenerateClips: Bool
+    public let viralitySettings: [String: AnyCodable]?
+
+    public init(channelId: String, channelTitle: String, channelThumbnail: String? = nil,
+                pollingInterval: Int = 60, autoGenerateClips: Bool = false,
+                viralitySettings: [String: AnyCodable]? = nil) {
+        self.channelId = channelId
+        self.channelTitle = channelTitle
+        self.channelThumbnail = channelThumbnail
+        self.pollingInterval = pollingInterval
+        self.autoGenerateClips = autoGenerateClips
+        self.viralitySettings = viralitySettings
     }
 }
 

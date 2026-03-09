@@ -1,4 +1,4 @@
-import { FeedVideo } from '@/app/feeds/types';
+import { FeedVideo } from '@/app/connected-accounts/types';
 
 // Extracts a YouTube video ID from common URL formats (watch, share, shorts, embed).
 export function extractYouTubeId(url?: string | null): string | null {
