@@ -169,6 +169,10 @@ Auxiliary containers (Faster-Whisper, Ollama) run as ECS services or sidecars de
 - **Clip** — Rendered clip variant linked to a Segment.
 - **CostEvent** — Per-stage cost tracking (download, transcription, llm_scoring, ffmpeg_render, s3_upload).
 - **JobLog** — Job execution history with status transitions and error details.
+- **TruthAnalysis** — Cached AI analysis of video/clip transcripts (assertions, fallacies, biases, credibility).
+- **AnalysisChat** / **AnalysisChatMessage** — Persistent multi-turn AI conversation about analysis results.
+- **TrainingExample** — LLM clip-scoring input/output pairs for model distillation.
+- **TruthTrainingExample** — Truth analysis and chat LLM input/output pairs for model distillation.
 
 ## Key Design Decisions
 
@@ -178,3 +182,4 @@ Auxiliary containers (Faster-Whisper, Ollama) run as ECS services or sidecars de
 4. **Council-style LLM scoring** — Single LLM call returns multiple specialist subscores (hook, context, captionability, risk) that are deterministically aggregated with platform-specific weights.
 5. **Non-fatal cost tracking** — `CostTracker` accumulates events in memory and flushes once at job end. Flush failures don't block the pipeline.
 6. **YouTube-first transcription** — Always tries fetching YouTube captions (~100ms) before falling back to Whisper (~5-30min), saving significant processing time and cost.
+7. **Training data collection** — Every LLM call (clip scoring, truth analysis, analysis chat) is logged for model distillation. Two separate tables: `TrainingExample` (clip scoring) and `TruthTrainingExample` (truth/chat). Goal: fine-tune a local model to replace Gemini at zero inference cost.

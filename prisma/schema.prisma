@@ -142,8 +142,10 @@ model FeedVideo {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  generatedClips Video[] @relation("FeedVideoClips")
-  jobLogs        JobLog[]
+  generatedClips  Video[] @relation("FeedVideoClips")
+  jobLogs         JobLog[]
+  truthAnalyses   TruthAnalysis[]
+  analysisChats   AnalysisChat[]
 
   @@unique([feedId, videoId])
   @@map("account_videos")
@@ -308,4 +310,151 @@ model AutomationRule {
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+model TruthAnalysis {
+  id               String    @id @default(cuid())
+  feedVideoId      String
+  feedVideo        FeedVideo @relation(fields: [feedVideoId], references: [id], onDelete: Cascade)
+  clipId           String    @default("__video__") // "__video__" = full video; otherwise clip ID
+  userId           String
+  provider         String    // gemini | ollama
+  model            String?
+  status           String    @default("pending") // pending | processing | completed | failed
+  error            String?   @db.Text
+  result           Json?     // TruthAnalysisResult
+  inputTokens      Int?
+  outputTokens     Int?
+  estimatedCostUsd Float?
+  durationMs       Int?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([feedVideoId, clipId])
+  @@index([feedVideoId])
+  @@index([userId])
+}
+
+model TrainingExample {
+  id                  String   @id @default(cuid())
+  userId              String
+  jobId               String   // feedVideoId
+  provider            String   // gemini | ollama
+  model               String?  // e.g. models/gemini-2.5-flash
+
+  // Input
+  transcriptText      String   @db.Text
+  tStartS             Float
+  tEndS               Float
+  targetPlatform      String   @default("all")
+  contentStyle        String?
+  saferClips          Boolean  @default(false)
+  includeAudio        Boolean  @default(false)
+  frameCount          Int      @default(0)
+  audioSeconds        Float    @default(0)
+
+  // Heuristic pre-score context
+  heuristicScore      Float?
+  heuristicFeatures   Json?
+
+  // LLM output (raw scores before aggregation)
+  llmScore            Float
+  hookScore           Float?
+  contextScore        Float?
+  captionabilityScore Float?
+  comedicScore        Float?
+  provocativeScore    Float?
+  visualEnergyScore   Float?
+  audioEnergyScore    Float?
+  riskScore           Float?
+  riskFlags           Json?    // string[]
+  hasViralMoment      Boolean?
+  confidence          Float?
+  rationale           String?  @db.Text
+
+  // Post-aggregation
+  finalScore          Float    // after platform weights + safety penalty
+  wasSelected         Boolean  @default(false) // made it into final clip set
+
+  // Cost metadata
+  inputTokens         Int?
+  outputTokens        Int?
+  estimatedCostUsd    Float?
+  durationMs          Int?
+
+  createdAt           DateTime @default(now())
+
+  @@index([userId])
+  @@index([jobId])
+  @@index([provider])
+  @@index([confidence])
+  @@index([createdAt])
+}
+
+model TruthTrainingExample {
+  id               String   @id @default(cuid())
+  userId           String
+  feedVideoId      String
+  provider         String   // gemini | ollama
+  model            String?
+  type             String   // analysis | chat
+
+  // Input
+  transcriptText   String   @db.Text
+  analysisContext   Json?    // for chat: the TruthAnalysisResult used as context
+  conversationHistory Json?  // for chat: prior messages array
+
+  // Output
+  result           Json     // analysis: TruthAnalysisResult, chat: { content: string }
+
+  // Quality signals
+  overallCredibility Float?  // from analysis result (0-10)
+  assertionCount   Int?
+  fallacyCount     Int?
+  biasCount        Int?
+
+  // Cost metadata
+  inputTokens      Int?
+  outputTokens     Int?
+  estimatedCostUsd Float?
+  durationMs       Int?
+
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+  @@index([feedVideoId])
+  @@index([provider])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model AnalysisChat {
+  id              String   @id @default(cuid())
+  feedVideoId     String
+  feedVideo       FeedVideo @relation(fields: [feedVideoId], references: [id], onDelete: Cascade)
+  clipId          String   @default("__video__")
+  userId          String
+  provider        String   // gemini | ollama
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  messages        AnalysisChatMessage[]
+
+  @@unique([feedVideoId, clipId])
+  @@index([userId])
+}
+
+model AnalysisChatMessage {
+  id               String   @id @default(cuid())
+  chatId           String
+  chat             AnalysisChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  role             String   // user | assistant
+  content          String   @db.Text
+  inputTokens      Int?
+  outputTokens     Int?
+  estimatedCostUsd Float?
+  durationMs       Int?
+  createdAt        DateTime @default(now())
+
+  @@index([chatId])
 }

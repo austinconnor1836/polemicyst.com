@@ -1,5 +1,6 @@
 import type { LLMScoreResult } from './llm-types';
 import type { CostTracker } from '../cost-tracking';
+import type { TrainingCollector } from '../training-collector';
 
 export type TranscriptWordSegment = {
   start: number; // seconds
@@ -435,6 +436,7 @@ export async function scoreAndRankCandidatesLLM(params: {
   localVideoPath?: string;
   providerOverride?: string;
   costTracker?: CostTracker;
+  trainingCollector?: TrainingCollector;
 }): Promise<ClipCandidate[]> {
   const {
     s3Url,
@@ -449,6 +451,7 @@ export async function scoreAndRankCandidatesLLM(params: {
     localVideoPath: providedPath,
     providerOverride,
     costTracker,
+    trainingCollector,
   } = params;
 
   const provider = (providerOverride || process.env.LLM_PROVIDER || 'ollama').toLowerCase();
@@ -562,7 +565,8 @@ export async function scoreAndRankCandidatesLLM(params: {
         saferClips,
         mediaSummary,
       });
-      scored.push(buildCandidate(llm, c, 'ollama'));
+      const candidate = buildCandidate(llm, c, 'ollama');
+      scored.push(candidate);
 
       if (costTracker && llm._cost) {
         costTracker.add({
@@ -573,6 +577,40 @@ export async function scoreAndRankCandidatesLLM(params: {
           outputTokens: llm._cost.outputTokens,
           durationMs: llm._cost.durationMs,
           estimatedCostUsd: llm._cost.estimatedCostUsd,
+        });
+      }
+
+      if (trainingCollector) {
+        trainingCollector.add({
+          provider: 'ollama',
+          model: llm._cost?.modelName,
+          transcriptText: c.text,
+          tStartS: c.tStartS,
+          tEndS: c.tEndS,
+          targetPlatform,
+          contentStyle,
+          saferClips,
+          includeAudio,
+          heuristicScore: c.hScore,
+          heuristicFeatures: c.hFeatures,
+          llmScore: llm.score,
+          hookScore: llm.hookScore,
+          contextScore: llm.contextScore,
+          captionabilityScore: llm.captionabilityScore,
+          comedicScore: llm.comedicScore,
+          provocativeScore: llm.provocativeScore,
+          visualEnergyScore: llm.visualEnergyScore,
+          audioEnergyScore: llm.audioEnergyScore,
+          riskScore: llm.riskScore,
+          riskFlags: llm.riskFlags,
+          hasViralMoment: llm.hasViralMoment,
+          confidence: llm.confidence,
+          rationale: llm.rationale,
+          finalScore: candidate.score,
+          inputTokens: llm._cost?.inputTokens,
+          outputTokens: llm._cost?.outputTokens,
+          estimatedCostUsd: llm._cost?.estimatedCostUsd,
+          durationMs: llm._cost?.durationMs,
         });
       }
     }
@@ -614,7 +652,8 @@ export async function scoreAndRankCandidatesLLM(params: {
         saferClips,
       });
 
-      scored.push(buildCandidate(llm, c, 'gemini'));
+      const candidate = buildCandidate(llm, c, 'gemini');
+      scored.push(candidate);
 
       if (costTracker && llm._cost) {
         costTracker.add({
@@ -627,6 +666,42 @@ export async function scoreAndRankCandidatesLLM(params: {
           inputAudioS: llm._cost.audioSeconds,
           durationMs: llm._cost.durationMs,
           estimatedCostUsd: llm._cost.estimatedCostUsd,
+        });
+      }
+
+      if (trainingCollector) {
+        trainingCollector.add({
+          provider: 'gemini',
+          model: llm._cost?.modelName,
+          transcriptText: c.text,
+          tStartS: c.tStartS,
+          tEndS: c.tEndS,
+          targetPlatform,
+          contentStyle,
+          saferClips,
+          includeAudio,
+          frameCount: frames.length,
+          audioSeconds: audio ? c.tEndS - c.tStartS : 0,
+          heuristicScore: c.hScore,
+          heuristicFeatures: c.hFeatures,
+          llmScore: llm.score,
+          hookScore: llm.hookScore,
+          contextScore: llm.contextScore,
+          captionabilityScore: llm.captionabilityScore,
+          comedicScore: llm.comedicScore,
+          provocativeScore: llm.provocativeScore,
+          visualEnergyScore: llm.visualEnergyScore,
+          audioEnergyScore: llm.audioEnergyScore,
+          riskScore: llm.riskScore,
+          riskFlags: llm.riskFlags,
+          hasViralMoment: llm.hasViralMoment,
+          confidence: llm.confidence,
+          rationale: llm.rationale,
+          finalScore: candidate.score,
+          inputTokens: llm._cost?.inputTokens,
+          outputTokens: llm._cost?.outputTokens,
+          estimatedCostUsd: llm._cost?.estimatedCostUsd,
+          durationMs: llm._cost?.durationMs,
         });
       }
     }

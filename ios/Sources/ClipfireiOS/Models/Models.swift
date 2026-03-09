@@ -504,6 +504,105 @@ public struct AutomationSettings: Codable {
     }
 }
 
+// MARK: - Truth Analysis
+
+public struct TruthAnalysisRequest: Encodable {
+    public let clipId: String?
+    public let provider: String
+
+    public init(clipId: String? = nil, provider: String = "gemini") {
+        self.clipId = clipId
+        self.provider = provider
+    }
+}
+
+public struct TruthAnalysisResponse: Codable {
+    public let ok: Bool?
+    public let status: String?
+    public let result: TruthAnalysisResult?
+    // GET returns flat fields
+    public let id: String?
+    public let feedVideoId: String?
+    public let error: String?
+}
+
+public struct TruthAnalysisResult: Codable {
+    public let summary: String
+    public let assertions: [TruthAssertion]
+    public let fallacies: [TruthFallacy]
+    public let biases: [TruthBias]
+    public let overallCredibility: Double
+    public let overallBiasLevel: String
+    public let keyAssumptions: [String]
+    public let recommendedFactChecks: [String]
+}
+
+public struct TruthAssertion: Identifiable, Codable {
+    public let id: Int
+    public let text: String
+    public let category: String
+    public let confidence: Double
+    public let factCheckNeeded: Bool
+    public let factCheckReason: String?
+}
+
+public struct TruthFallacy: Identifiable, Codable {
+    public let id: Int
+    public let name: String
+    public let description: String
+    public let assertionIds: [Int]
+    public let severity: String
+    public let confidence: Double
+}
+
+public struct TruthBias: Identifiable, Codable {
+    public let id: Int
+    public let type: String
+    public let description: String
+    public let direction: String?
+    public let evidence: String
+    public let confidence: Double
+}
+
+// MARK: - Analysis Chat
+
+public struct AnalysisChatResponse: Codable {
+    public let chat: AnalysisChatData?
+    public let analysis: TruthAnalysisResult?
+}
+
+public struct AnalysisChatData: Codable {
+    public let id: String
+    public let messages: [AnalysisChatMessage]
+}
+
+public struct AnalysisChatMessage: Identifiable, Codable {
+    public let id: String
+    public let role: String
+    public let content: String
+    public let createdAt: Date?
+}
+
+public struct AnalysisChatSendRequest: Encodable {
+    public let message: String
+    public let clipId: String?
+
+    public init(message: String, clipId: String? = nil) {
+        self.message = message
+        self.clipId = clipId
+    }
+}
+
+public struct AnalysisChatSendResponse: Codable {
+    public let ok: Bool
+    public let message: AnalysisChatSendMessage
+}
+
+public struct AnalysisChatSendMessage: Codable {
+    public let role: String
+    public let content: String
+}
+
 // MARK: - API Error
 
 public struct APIErrorResponse: Codable {
