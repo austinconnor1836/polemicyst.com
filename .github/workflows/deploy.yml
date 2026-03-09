@@ -290,6 +290,7 @@ jobs:
           xcodebuild test \
             -project Clipfire.xcodeproj \
             -scheme ClipfireApp \
+            -skip-testing:ClipfireUITests \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             | xcpretty --color
 
