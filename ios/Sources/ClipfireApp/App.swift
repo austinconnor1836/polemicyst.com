@@ -45,7 +45,7 @@ struct ClipfireApp: App {
                             }
                             .tag(2)
 
-                        SettingsTabView(apiClient: apiClient)
+                        SettingsTabView(apiClient: apiClient, authService: authService)
                             .tabItem {
                                 Label("Settings", systemImage: "gearshape.fill")
                             }
@@ -77,6 +77,7 @@ struct ClipfireApp: App {
 
 struct SettingsTabView: View {
     let apiClient: APIClient
+    @ObservedObject var authService: AuthService
 
     var body: some View {
         NavigationStack {
@@ -101,6 +102,15 @@ struct SettingsTabView: View {
                     Label("LLM Provider", systemImage: "cpu")
                 }
                 .listRowBackground(DesignTokens.surface)
+
+                Section {
+                    Button(role: .destructive) {
+                        authService.signOut()
+                    } label: {
+                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                    .listRowBackground(DesignTokens.surface)
+                }
             }
             .scrollContentBackground(.hidden)
             .background(DesignTokens.background.ignoresSafeArea())
