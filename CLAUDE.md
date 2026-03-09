@@ -147,7 +147,69 @@ In the Connected Accounts modal, users can set:
 - **Subscription API** (`/api/user/subscription`) now includes `costThisMonth` in the usage response.
 - **`isAdmin()` helper**: `shared/lib/admin.ts`.
 
+## Model distillation pipeline
+
+### Goal
+
+Collect LLM scoring input/output pairs to fine-tune a smaller, self-hosted model that replicates Gemini/Claude scoring quality at zero inference cost.
+
+### Architecture — clip scoring
+
+- **`TrainingExample` table** (`prisma/schema.prisma`): stores one row per LLM scoring call. Captures full input context (transcript, time bounds, platform, style, safety mode, media metadata), all raw LLM subscores, post-aggregation final score, and whether the candidate was selected into the final clip set.
+- **`TrainingCollector`** (`shared/lib/training-collector.ts`): in-memory accumulator (same pattern as `CostTracker`). Non-fatal — flush failures don't block the pipeline.
+- **Collection point**: `scoreAndRankCandidatesLLM()` in `shared/lib/scoring/viral-scoring.ts` — after each scoring call returns.
+- **Admin export**: `GET /api/admin/training-data?format=jsonl` — exports filtered examples as JSONL for fine-tuning.
+
+### Architecture — truth analysis & chat
+
+- **`TruthTrainingExample` table** (`prisma/schema.prisma`): stores one row per truth analysis or chat LLM call. Fields: `type` (`analysis` | `chat`), `transcriptText`, `analysisContext` (for chat: the analysis result used as context), `conversationHistory` (for chat: prior messages), `result` (full output JSON), quality signals (`overallCredibility`, `assertionCount`, `fallacyCount`, `biasCount`), cost metadata.
+- **`TruthTrainingCollector`** (`shared/lib/truth-training-collector.ts`): same batched non-fatal pattern.
+- **Collection points**: `POST /api/feedVideos/:id/truth-analysis` (analysis calls) and `POST /api/feedVideos/:id/truth-analysis/chat` (chat calls).
+- **Admin export**: `GET /api/admin/training-data/truth?format=jsonl` — filterable by `provider`, `type`, `days`.
+
+### Distillation workflow
+
+1. Collect examples during normal scoring/analysis/chat (automatic, zero user action)
+2. Export high-confidence examples via admin API (`?minConfidence=0.7&provider=gemini` for clips, `?provider=gemini` for truth)
+3. Fine-tune a 7-8B model (Llama 3 / Mistral / Phi-3) using Unsloth or Axolotl
+4. Deploy via Ollama (existing provider infrastructure, zero architecture changes)
+5. A/B test against Gemini on held-out examples
+
+## AI analysis chat
+
+### Architecture
+
+- **`AnalysisChat` + `AnalysisChatMessage` tables** (`prisma/schema.prisma`): persistent multi-turn conversation linked to a `FeedVideo` + `clipId`. One chat per video/clip, messages ordered by `createdAt`.
+- **LLM functions** (`shared/lib/scoring/truth-chat.ts`): `chatWithGemini()` uses `systemInstruction` + multi-turn `contents` array; `chatWithOllama()` uses `/api/chat` endpoint with system message. System prompt includes a condensed analysis summary + truncated transcript.
+- **API routes**: `GET /api/feedVideos/:id/truth-analysis/chat` (load history), `POST` (send message → AI response → save both to DB).
+- **Web page**: `/details/[feedVideoId]/chat` — full-screen chat UI with analysis summary banner, suggestion chips, message bubbles, typing indicator.
+- **iOS**: `AnalysisChatView.swift` with `AnalysisChatViewModel`, reachable via NavigationLink from `TruthAnalysisView`.
+- **Cost tracking**: each chat call tracked as `llm_scoring` stage with `metadata: { type: 'truth_chat' }`.
+
 ## Change log
+
+### 2026-03-09
+
+- Added **AI analysis chat** — full-screen chat page where users discuss truth analysis results with the AI. Multi-turn conversation with persistent DB history.
+- New `AnalysisChat` + `AnalysisChatMessage` Prisma models + migration.
+- New `shared/lib/scoring/truth-chat.ts` — multi-turn Gemini (`systemInstruction` + `contents`) and Ollama (`/api/chat`) chat functions.
+- New API routes: `GET/POST /api/feedVideos/:id/truth-analysis/chat` — load history, send messages.
+- New web page: `/details/[feedVideoId]/chat` — chat UI with analysis summary, suggestion chips, message bubbles, typing indicator.
+- Added "Chat about this" button to `TruthAnalysis.tsx` results footer.
+- iOS: `AnalysisChatView.swift` + `AnalysisChatViewModel`, new API client methods, NavigationLink from `TruthAnalysisView`.
+- Added **truth analysis + chat training data collection** for model distillation — every truth analysis and chat LLM call is now logged as a `TruthTrainingExample`.
+- New `TruthTrainingExample` Prisma model + migration.
+- New `TruthTrainingCollector` utility (`shared/lib/truth-training-collector.ts`).
+- Hooked into `POST /api/feedVideos/:id/truth-analysis` and `POST /api/feedVideos/:id/truth-analysis/chat`.
+- Admin-only export API: `GET /api/admin/training-data/truth?format=jsonl` with provider, type, and days filters.
+- Added **training data collection** for model distillation — every LLM scoring call (Gemini/Ollama) is now logged as a `TrainingExample` with full input/output pairs.
+- New `TrainingExample` Prisma model + migration.
+- New `TrainingCollector` utility (`shared/lib/training-collector.ts`) — same non-fatal batched pattern as `CostTracker`.
+- Hooked into `scoreAndRankCandidatesLLM()` in `shared/lib/scoring/viral-scoring.ts`.
+- Wired into `clip-metadata-worker` — creates, passes, marks selected, and flushes alongside cost tracker.
+- Admin-only export API: `GET /api/admin/training-data?format=jsonl` with provider, confidence, and selection filters.
+- Training data seed script: `scripts/seed-training-data.ts` — ingests videos from public YouTube channels for training data collection.
+- Updated `ARCHITECTURE.md` and `docs/LLM_SYSTEM.md` with training data documentation.
 
 ### 2026-03-04 (parallel transcription)
 

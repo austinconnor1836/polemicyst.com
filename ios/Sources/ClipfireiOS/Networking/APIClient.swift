@@ -11,13 +11,21 @@ public struct APIClient {
         self.baseURL = baseURL
         #if DEBUG
         if session == nil && baseURL.host() == "localhost" {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 120
             let delegate = LocalhostSessionDelegate()
-            self.session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+            self.session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         } else {
             self.session = session ?? .shared
         }
         #else
-        self.session = session ?? .shared
+        if session == nil {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 120
+            self.session = URLSession(configuration: config)
+        } else {
+            self.session = session ?? .shared
+        }
         #endif
         self.decoder = JSONDecoder()
         self.decoder.dateDecodingStrategy = .iso8601
@@ -169,6 +177,30 @@ public struct APIClient {
 
     public func updateAutomationSettings(_ settings: AutomationSettings) async throws -> AutomationSettings {
         try await put(path: "/api/user/automation", body: settings)
+    }
+
+    // MARK: Truth Analysis
+
+    public func fetchTruthAnalysis(feedVideoId: String, clipId: String? = nil) async throws -> TruthAnalysisResponse {
+        var path = "/api/feedVideos/\(feedVideoId)/truth-analysis"
+        if let clipId { path += "?clipId=\(clipId)" }
+        return try await get(path: path)
+    }
+
+    public func runTruthAnalysis(feedVideoId: String, clipId: String? = nil, provider: String = "gemini") async throws -> TruthAnalysisResponse {
+        try await post(path: "/api/feedVideos/\(feedVideoId)/truth-analysis", body: TruthAnalysisRequest(clipId: clipId, provider: provider))
+    }
+
+    // MARK: Analysis Chat
+
+    public func fetchAnalysisChat(feedVideoId: String, clipId: String? = nil) async throws -> AnalysisChatResponse {
+        var path = "/api/feedVideos/\(feedVideoId)/truth-analysis/chat"
+        if let clipId { path += "?clipId=\(clipId)" }
+        return try await get(path: path)
+    }
+
+    public func sendAnalysisChatMessage(feedVideoId: String, message: String, clipId: String? = nil) async throws -> AnalysisChatSendResponse {
+        try await post(path: "/api/feedVideos/\(feedVideoId)/truth-analysis/chat", body: AnalysisChatSendRequest(message: message, clipId: clipId))
     }
 
     // MARK: Version Check

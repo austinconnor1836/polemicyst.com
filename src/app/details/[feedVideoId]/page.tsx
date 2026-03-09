@@ -29,6 +29,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import SpeakerTranscript from '@/components/SpeakerTranscript';
+import TruthAnalysis from '@/components/TruthAnalysis';
 import CopyableUrl from '@/components/CopyableUrl';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
@@ -532,6 +533,10 @@ export default function ClipGroupPage() {
                 }
               }}
             />
+          </div>
+
+          <div className="mb-6">
+            <TruthAnalysis feedVideoId={feedVideoId} />
           </div>
 
           {summary.clips.length === 0 ? (

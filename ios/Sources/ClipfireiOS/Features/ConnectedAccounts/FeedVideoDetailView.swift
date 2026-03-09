@@ -201,6 +201,10 @@ public struct FeedVideoDetailView: View {
                 mediaSection(detail.feedVideo)
                 metadataSection(detail)
                 transcriptSection(detail.feedVideo)
+                TruthAnalysisView(
+                    api: viewModel.api,
+                    feedVideoId: viewModel.feedVideoId
+                )
                 generateSection(detail)
                 clipsSection(detail.clips)
             }

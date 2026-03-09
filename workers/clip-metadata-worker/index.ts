@@ -16,6 +16,7 @@ import { generateClipFromS3 } from '@shared/util/ffmpegUtils';
 import { scorePhilosophicalRhetoric } from '@shared/lib/scoring/philosophy-ranker';
 import { checkClipQuota } from '@shared/lib/plans';
 import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
+import { TrainingCollector } from '@shared/lib/training-collector';
 import { logJob } from '@shared/lib/job-logger';
 
 const redisConnection = getRedisConnection();
@@ -48,6 +49,7 @@ new Worker(
     } = job.data;
 
     const costTracker = new CostTracker(userId, feedVideoId);
+    const trainingCollector = new TrainingCollector(userId, feedVideoId);
 
     const jobStartMs = Date.now();
     await logJob({
@@ -172,6 +174,7 @@ new Worker(
         localVideoPath: localVideoPath,
         providerOverride: llmProvider,
         costTracker,
+        trainingCollector,
       });
 
       const philosophyWeightedCandidates: ClipCandidate[] = topCandidates.map((candidate) => {
@@ -193,6 +196,11 @@ new Worker(
           features: enrichedFeatures,
         };
       });
+
+      // Mark which candidates were selected for training data
+      trainingCollector.markSelected(
+        philosophyWeightedCandidates.map((c) => ({ tStartS: c.tStartS, tEndS: c.tEndS }))
+      );
 
       console.log(`✨ Found ${philosophyWeightedCandidates.length} viral candidates.`);
 
@@ -333,6 +341,13 @@ new Worker(
         await costTracker.flush();
       } catch (costErr) {
         console.error('⚠️ Cost tracking flush failed (non-fatal):', costErr);
+      }
+
+      // Flush training examples (non-fatal)
+      try {
+        await trainingCollector.flush();
+      } catch (trainErr) {
+        console.error('⚠️ Training data flush failed (non-fatal):', trainErr);
       }
 
       // Cleanup local video
