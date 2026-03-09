@@ -1,12 +1,12 @@
-app_identifier(ENV["APP_IDENTIFIER"] || "com.polemicyst.app")
+app_identifier(ENV["APP_IDENTIFIER"] || "com.clipfire.app")
 apple_id(ENV["APPLE_ID"])
 team_id(ENV["APPLE_TEAM_ID"])
 
 for_platform :ios do
   for_lane :beta do
-    app_identifier("com.polemicyst.app")
+    app_identifier("com.clipfire.app")
   end
   for_lane :release do
-    app_identifier("com.polemicyst.app")
+    app_identifier("com.clipfire.app")
   end
 end

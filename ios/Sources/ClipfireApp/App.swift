@@ -23,9 +23,9 @@ struct ClipfireApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if forceUpdateRequired {
+                if forceUpdateRequired && !ScreenshotMode.isActive {
                     ForceUpdateView(storeUrl: forceUpdateStoreUrl)
-                } else if authService.isAuthenticated {
+                } else if authService.isAuthenticated || ScreenshotMode.isActive {
                     TabView(selection: $tabSelection) {
                         ClipsListView(viewModel: ClipsViewModel(api: apiClient))
                             .tabItem {
