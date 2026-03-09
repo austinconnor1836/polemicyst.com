@@ -147,11 +147,37 @@ In the Connected Accounts modal, users can set:
 - **Subscription API** (`/api/user/subscription`) now includes `costThisMonth` in the usage response.
 - **`isAdmin()` helper**: `shared/lib/admin.ts`.
 
-## Model distillation pipeline
+## AI cost strategy — Gemini → self-hosted model
 
-### Goal
+### Overview
 
-Collect LLM scoring input/output pairs to fine-tune a smaller, self-hosted model that replicates Gemini/Claude scoring quality at zero inference cost.
+All AI features (clip scoring, truth analysis, analysis chat) currently use **Google Gemini** as the primary LLM provider. Gemini is the "teacher" model — it produces high-quality results but costs money per API call. The long-term goal is to **eliminate external AI costs entirely** by training our own private model.
+
+### Phased approach
+
+| Phase                                | Status      | Description                                                                                                                                                                                     |
+| ------------------------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Phase 1: Build with Gemini**       | Done        | Ship all AI features using Gemini as the LLM provider. Ollama available as a free local alternative for development/testing.                                                                    |
+| **Phase 2: Collect training data**   | Active      | Every Gemini API call (clip scoring, truth analysis, chat) automatically logs its full input/output as a training example. No user action needed — data accumulates silently in the background. |
+| **Phase 3: Fine-tune private model** | Not started | Export collected Gemini examples, fine-tune a 7-8B parameter model (Llama 3, Mistral, or Phi-3) using Unsloth or Axolotl.                                                                       |
+| **Phase 4: Replace Gemini**          | Not started | Deploy the fine-tuned model via Ollama. Switch `LLM_PROVIDER` from `gemini` to `ollama`. Zero architecture changes needed — Ollama is already a first-class provider. Gemini costs drop to $0.  |
+
+### Why this works
+
+- **Same provider interface**: Gemini and Ollama share the same input/output contract. Switching providers is a config change, not a code change.
+- **Training data is automatic**: Every production Gemini call feeds the training pipeline. More usage = better training data = better private model.
+- **Two separate training tables**: `TrainingExample` (clip scoring) and `TruthTrainingExample` (truth analysis + chat) — each captures the full context needed to replicate Gemini's behavior.
+- **A/B testable**: Before fully switching, we can run the fine-tuned model alongside Gemini on held-out examples to validate quality.
+
+### When to switch
+
+Switch to the private model when:
+
+1. Sufficient training examples collected (target: 1,000+ per task type)
+2. Fine-tuned model achieves ≥90% agreement with Gemini on held-out test set
+3. Quality validated via A/B testing on real videos
+
+## Model distillation pipeline (technical details)
 
 ### Architecture — clip scoring
 
