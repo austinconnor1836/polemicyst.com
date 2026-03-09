@@ -3,7 +3,7 @@ import { prisma } from './prisma';
 export type PlanId = 'free' | 'pro' | 'business';
 
 export interface PlanLimits {
-  maxFeeds: number;
+  maxConnectedAccounts: number;
   maxClipsPerMonth: number;
   maxStorageGb: number;
   llmProviders: string[];
@@ -27,14 +27,14 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     description: 'Get started with basic clip generation',
     monthlyPriceDisplay: '$0',
     limits: {
-      maxFeeds: 2,
+      maxConnectedAccounts: 2,
       maxClipsPerMonth: 10,
       maxStorageGb: 1,
       llmProviders: ['ollama'],
       autoGenerateClips: false,
       prioritySupport: false,
     },
-    features: ['2 sources (feeds)', '10 clips/month', '1 GB storage', 'Ollama LLM only'],
+    features: ['2 connected accounts', '10 clips/month', '1 GB storage', 'Ollama LLM only'],
   },
   pro: {
     id: 'pro',
@@ -42,7 +42,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     description: 'For creators who need more power',
     monthlyPriceDisplay: '$19',
     limits: {
-      maxFeeds: 10,
+      maxConnectedAccounts: 10,
       maxClipsPerMonth: 100,
       maxStorageGb: 25,
       llmProviders: ['ollama', 'gemini'],
@@ -50,7 +50,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       prioritySupport: false,
     },
     features: [
-      '10 sources (feeds)',
+      '10 connected accounts',
       '100 clips/month',
       '25 GB storage',
       'Ollama + Gemini LLM',
@@ -63,7 +63,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     description: 'For teams and high-volume creators',
     monthlyPriceDisplay: '$49',
     limits: {
-      maxFeeds: 50,
+      maxConnectedAccounts: 50,
       maxClipsPerMonth: 500,
       maxStorageGb: 100,
       llmProviders: ['ollama', 'gemini', 'openai', 'anthropic'],
@@ -71,7 +71,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       prioritySupport: true,
     },
     features: [
-      '50 sources (feeds)',
+      '50 connected accounts',
       '500 clips/month',
       '100 GB storage',
       'All LLM providers',
@@ -93,13 +93,13 @@ export async function checkFeedQuota(userId: string, subscriptionPlan?: string |
   const currentUsage = await prisma.videoFeed.count({
     where: { userId, sourceType: { not: 'manual' } },
   });
-  const limit = plan.limits.maxFeeds;
+  const limit = plan.limits.maxConnectedAccounts;
 
   return {
     allowed: currentUsage < limit,
     message:
       currentUsage >= limit
-        ? `You have reached your feed limit (${limit}) on the ${plan.name} plan. Upgrade to add more sources.`
+        ? `You have reached your connected accounts limit (${limit}) on the ${plan.name} plan. Upgrade to add more.`
         : null,
     currentUsage,
     limit,

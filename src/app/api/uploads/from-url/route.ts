@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { queueFeedDownloadJob } from '@shared/queues';
 import { findOrCreateManualFeed, createFeedVideoRecord } from '@shared/services/upload-service';
-import { extractYouTubeId } from '@/app/feeds/util/thumbnails';
+import { extractYouTubeId } from '@/app/connected-accounts/util/thumbnails';
 
 export async function POST(req: NextRequest) {
   const user = await getAuthenticatedUser(req);

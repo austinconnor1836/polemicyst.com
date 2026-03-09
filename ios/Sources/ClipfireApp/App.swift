@@ -33,9 +33,9 @@ struct ClipfireApp: App {
                             }
                             .tag(0)
 
-                    FeedsView(viewModel: FeedsViewModel(api: apiClient))
+                    ConnectedAccountsView(viewModel: ConnectedAccountsViewModel(api: apiClient))
                         .tabItem {
-                            Label("Feeds", systemImage: "antenna.radiowaves.left.and.right")
+                            Label("Accounts", systemImage: "link")
                         }
                         .tag(1)
 

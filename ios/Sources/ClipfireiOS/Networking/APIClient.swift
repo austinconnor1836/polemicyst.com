@@ -38,22 +38,22 @@ public struct APIClient {
         )
     }
 
-    // MARK: Feeds
+    // MARK: Connected Accounts
 
     public func fetchFeeds() async throws -> [VideoFeed] {
-        try await get(path: "/api/feeds")
+        try await get(path: "/api/connected-accounts")
     }
 
     public func createFeed(_ request: CreateFeedRequest) async throws -> VideoFeed {
-        try await post(path: "/api/feeds", body: request)
+        try await post(path: "/api/connected-accounts", body: request)
     }
 
     public func updateFeed(id: String, body: [String: AnyCodable]) async throws -> VideoFeed {
-        try await patch(path: "/api/feeds/\(id)", body: body)
+        try await patch(path: "/api/connected-accounts/\(id)", body: body)
     }
 
     public func deleteFeed(id: String) async throws {
-        try await delete(path: "/api/feeds/\(id)")
+        try await delete(path: "/api/connected-accounts/\(id)")
     }
 
     // MARK: Upload / Import

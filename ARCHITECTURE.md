@@ -25,7 +25,7 @@ System-level overview of the Polemicyst / Clipfire platform. For coding conventi
 │ Poller       │ │ Download     │ │ Clip-Metadata Worker │
 │ Worker       │ │ Worker       │ │ (transcription +     │
 │              │ │ (feed-       │ │  clip-generation)    │
-│ polls feeds  │ │  download)   │ │                      │
+│ polls accts  │ │  download)   │ │                      │
 └──────────────┘ └──────────────┘ └──────────┬───────────┘
                                              │
                          ┌───────────────────┼───────────────┐
@@ -58,10 +58,10 @@ All queues use `jobId: feedVideoId` for deduplication.
 
 There are four entry paths into the pipeline. All converge at transcription → clip-generation.
 
-### Path 1: Feed Creation (YouTube/C-SPAN)
+### Path 1: Connected Account Creation (YouTube/C-SPAN)
 
 ```
-POST /api/feeds
+POST /api/connected-accounts
   → Create VideoFeed
   → pollYouTubeFeed() / pollCspanFeed() → get latest video
   → Create FeedVideo (status: pending, s3Url: youtube_url)
@@ -73,7 +73,7 @@ POST /api/feeds
 
 ```
 POST /api/uploads/from-url
-  → Find/create "Manual Uploads" feed
+  → Find/create "Manual Uploads" connected account
   → Create FeedVideo (status: pending, s3Url: source_url)
   → Enqueue feed-download
   → If YouTube URL: enqueue transcription in parallel  ← NEW (parallel)
@@ -87,7 +87,7 @@ POST /api/uploads/complete
   → Enqueue clip-generation directly (file is already on S3)
 ```
 
-### Path 4: Feed Polling (Automated)
+### Path 4: Connected Account Polling (Automated)
 
 ```
 Poller Worker (every 60s)
@@ -162,8 +162,8 @@ Auxiliary containers (Faster-Whisper, Ollama) run as ECS services or sidecars de
 
 ## Key Data Models
 
-- **VideoFeed** — Source feed (YouTube channel, C-SPAN). Has `sourceType`, `pollingInterval`, `autoGenerateClips`, `viralitySettings`.
-- **FeedVideo** — Individual video from a feed. Tracks `status` (pending/ready/failed), `transcript`, `transcriptJson`, `transcriptSource` (whisper/youtube-auto/youtube-manual).
+- **VideoFeed** — Connected account (YouTube channel, C-SPAN). Has `sourceType`, `pollingInterval`, `autoGenerateClips`, `viralitySettings`.
+- **FeedVideo** — Individual video from a connected account. Tracks `status` (pending/ready/failed), `transcript`, `transcriptJson`, `transcriptSource` (whisper/youtube-auto/youtube-manual).
 - **Video** — Parent video or generated clip. Self-referencing via `sourceVideoId` for clip→parent relationship.
 - **Segment** — Scored time window within a Video. Contains `tStartS`, `tEndS`, `score`, `features` (JSON with LLM subscores).
 - **Clip** — Rendered clip variant linked to a Segment.

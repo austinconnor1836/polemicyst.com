@@ -95,6 +95,8 @@ model VideoFeed {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   feedVideos FeedVideo[]
+
+  @@map("connected_accounts")
 }
 
 model FeedVideo {
@@ -123,6 +125,7 @@ model FeedVideo {
   jobLogs        JobLog[]
 
   @@unique([feedId, videoId])
+  @@map("account_videos")
 }
 
 model Account {

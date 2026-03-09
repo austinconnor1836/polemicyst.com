@@ -1,4 +1,4 @@
-// /src/app/api/feeds/[id]/route.ts
+// /src/app/api/connected-accounts/[id]/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';

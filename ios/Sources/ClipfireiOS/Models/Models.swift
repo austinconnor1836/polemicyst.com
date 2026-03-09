@@ -304,7 +304,7 @@ public struct PlanInfo: Codable {
 }
 
 public struct PlanLimits: Codable {
-    public let maxFeeds: Int
+    public let maxConnectedAccounts: Int
     public let maxClipsPerMonth: Int
     public let maxStorageGb: Int
     public let llmProviders: [String]

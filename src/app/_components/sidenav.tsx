@@ -7,7 +7,7 @@ import { IconButton } from '@mui/material';
 import { SideNavItem } from '../ui/types';
 import Link from 'next/link';
 import HomeIcon from '@mui/icons-material/Home';
-import RssFeedIcon from '@mui/icons-material/RssFeed';
+import LinkIcon from '@mui/icons-material/Link';
 import DescriptionIcon from '@mui/icons-material/Description';
 import PaymentIcon from '@mui/icons-material/Payment';
 import SportsBasketballIcon from '@mui/icons-material/SportsBasketball';
@@ -23,7 +23,7 @@ interface SidePanelProps {
 
 const sideNavItems: SideNavItem[] = [
   { label: 'Home', element: <HomeIcon />, href: '/' },
-  { label: 'Feeds', element: <RssFeedIcon />, href: '/feeds' },
+  { label: 'Connected Accounts', element: <LinkIcon />, href: '/connected-accounts' },
   { label: 'Automation', element: <SettingsIcon />, href: '/settings/automation' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
   { label: 'NCAA Seeds', element: <SportsBasketballIcon />, href: '/ncaa-seed-probability' },

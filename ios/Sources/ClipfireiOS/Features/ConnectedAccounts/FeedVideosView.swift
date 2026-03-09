@@ -74,7 +74,7 @@ public struct FeedVideosView: View {
         NavigationStack {
             gridContent
                 .background(DesignTokens.background.ignoresSafeArea())
-                .navigationTitle("Feed Videos")
+                .navigationTitle("Videos")
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
@@ -136,10 +136,10 @@ public struct FeedVideosView: View {
                 Image(systemName: "video.slash")
                     .font(.system(size: 48))
                     .foregroundStyle(DesignTokens.muted)
-                Text("No feed videos")
+                Text("No videos")
                     .font(.title3)
                     .foregroundStyle(DesignTokens.textPrimary)
-                Text("Videos will appear here once your feeds are polled.")
+                Text("Videos will appear here once your connected accounts are polled.")
                     .font(.subheadline)
                     .foregroundStyle(DesignTokens.textSecondary)
                     .multilineTextAlignment(.center)

@@ -130,8 +130,11 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
   if (error && !feedVideo) {
     return (
       <div className="p-6">
-        <Link href="/feeds" className="text-blue-600 hover:underline flex items-center gap-1 mb-4">
-          <ArrowLeftIcon className="h-4 w-4" /> Back to Feeds
+        <Link
+          href="/connected-accounts"
+          className="text-blue-600 hover:underline flex items-center gap-1 mb-4"
+        >
+          <ArrowLeftIcon className="h-4 w-4" /> Back to Connected Accounts
         </Link>
         <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-4 rounded">
           {error}
@@ -146,8 +149,11 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <Link href="/feeds" className="text-blue-600 hover:underline flex items-center gap-1 mb-6">
-        <ArrowLeftIcon className="h-4 w-4" /> Back to Feeds
+      <Link
+        href="/connected-accounts"
+        className="text-blue-600 hover:underline flex items-center gap-1 mb-6"
+      >
+        <ArrowLeftIcon className="h-4 w-4" /> Back to Connected Accounts
       </Link>
 
       {/* Source Video Section */}

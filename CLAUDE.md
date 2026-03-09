@@ -95,7 +95,7 @@ The backend then **aggregates** these subscores deterministically into the final
 
 ### Virality settings (UI)
 
-In the Feeds modal, users can set:
+In the Connected Accounts modal, users can set:
 
 - **Target platform**: `all | reels | shorts | youtube`
 - **Content style**: `auto | politics | comedy | education | podcast | gaming | vlog | other`
@@ -151,10 +151,10 @@ In the Feeds modal, users can set:
 
 ### 2026-03-04 (parallel transcription)
 
-- **Parallel YouTube transcription** — when importing a YouTube URL (via feed creation or URL import), transcription is now enqueued alongside the download job. YouTube captions resolve in ~100ms via HTTP while the download takes minutes, so the transcript is ready by the time the download finishes.
+- **Parallel YouTube transcription** — when importing a YouTube URL (via connected account creation or URL import), transcription is now enqueued alongside the download job. YouTube captions resolve in ~100ms via HTTP while the download takes minutes, so the transcript is ready by the time the download finishes.
 - Added **status gate** in transcription worker's auto-trigger: clip-generation only enqueues when `feedVideo.status !== 'pending'`, preventing premature triggering during parallel imports.
 - Added `jobId: feedVideoId` dedup to `queueTranscriptionJob` to prevent duplicate transcription jobs.
-- Fixed `s3Url: ''` in feed creation — now set to the YouTube URL so the transcription worker can fetch captions before the S3 download completes.
+- Fixed `s3Url: ''` in connected account creation — now set to the YouTube URL so the transcription worker can fetch captions before the S3 download completes.
 - Created `ARCHITECTURE.md` with full system topology, queue architecture, data flow diagrams, and key design decisions.
 
 ### 2026-03-04
@@ -178,7 +178,7 @@ In the Feeds modal, users can set:
 - Added **iOS authentication** (Google Sign-In + Sign in with Apple) and unified backend Bearer JWT auth.
 - Fixed JWT secret mismatch bug: mobile Google auth was signing with `AUTH_SECRET` but bearer decoder uses `NEXTAUTH_SECRET`.
 - New unified auth helper `shared/lib/auth-helpers.ts` (`getAuthenticatedUser()`) — tries web session first, falls back to mobile Bearer JWT.
-- Updated API routes (`feeds`, `feedVideos`, `clips`, `clips/[id]`, `user/subscription`) to accept Bearer tokens via `getAuthenticatedUser()`.
+- Updated API routes (`connected-accounts`, `feedVideos`, `clips`, `clips/[id]`, `user/subscription`) to accept Bearer tokens via `getAuthenticatedUser()`.
 - New `POST /api/auth/mobile/apple` endpoint — verifies Apple identity tokens using `jose` + Apple JWKS.
 - Updated `POST /api/auth/mobile/google` to accept iOS client ID (array audience).
 - iOS: Added Google Sign-In SPM dependency, Keychain token storage, `AuthService`, `LoginView`, and auth-gated `App.swift`.
@@ -202,4 +202,4 @@ In the Feeds modal, users can set:
 - Upgraded the LLM scoring layer to return council-style subscores (`contextScore`, `captionabilityScore`, `hasViralMoment`, `riskScore`), and added deterministic aggregation.
 - Added a **video-level virality decision** returned from `/api/clip-candidates` (`hasViralMoments`, reason, cutoff/top-score diagnostics).
 - Improved the video-level decision with **platform-aware quality gates** (hook/context/captionability) and an optional `recommendation` string for what to try next when no moments are found.
-- Dialog UX: made `DialogContent` scrollable by default and constrained tall media previews (feeds modal).
+- Dialog UX: made `DialogContent` scrollable by default and constrained tall media previews (connected accounts modal).
