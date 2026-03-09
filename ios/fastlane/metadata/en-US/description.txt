@@ -1,0 +1,8 @@
+Clipfire automatically finds and generates viral clips from your video feeds. Connect YouTube channels, C-SPAN, and other sources — Clipfire uses AI to score and extract the most compelling moments.
+
+Features:
+- Set up feeds for YouTube and C-SPAN sources
+- AI-powered clip scoring with Gemini or local models
+- Automatic clip generation from transcripts
+- Track your usage and subscription
+- Dark mode interface

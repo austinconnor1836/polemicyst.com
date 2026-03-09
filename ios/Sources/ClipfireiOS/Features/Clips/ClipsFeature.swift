@@ -14,6 +14,10 @@ public final class ClipsViewModel: ObservableObject {
     }
 
     public func load() async {
+        if ScreenshotMode.isActive {
+            clips = MockData.clips
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         do {

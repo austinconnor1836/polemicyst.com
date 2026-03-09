@@ -109,5 +109,6 @@ ios/Supporting/Info.plist
 ios/fastlane/cert.p12
 ios/fastlane/profile.mobileprovision
 ios/fastlane/report.xml
+ios/fastlane/screenshots/
 ios/vendor/
 nul

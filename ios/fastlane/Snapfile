@@ -1,0 +1,21 @@
+# Snapfile — Fastlane Snapshot configuration for Clipfire
+
+devices([
+  "iPhone 15 Pro Max",
+  "iPhone 11 Pro Max"
+])
+
+languages(["en-US"])
+
+scheme("ClipfireApp")
+project("Clipfire.xcodeproj")
+
+output_directory("./fastlane/screenshots")
+
+clear_previous_screenshots(true)
+
+dark_mode(true)
+
+# Override status bar for clean screenshots
+override_status_bar(true)
+override_status_bar_arguments("--time 9:41 --batteryState charged --batteryLevel 100 --cellularMode active --cellularBars 4 --wifiBars 3")

@@ -85,6 +85,24 @@ public struct VideoFeed: Identifiable, Codable {
         brandId = try c.decodeIfPresent(String.self, forKey: .brandId)
         brand = try c.decodeIfPresent(Brand.self, forKey: .brand)
     }
+
+    public init(id: String, name: String, sourceUrl: String, pollingInterval: Int,
+                sourceType: String, userId: String, autoGenerateClips: Bool,
+                viralitySettings: [String: AnyCodable]? = nil, createdAt: Date,
+                youtubeChannelThumb: String? = nil, brandId: String? = nil, brand: Brand? = nil) {
+        self.id = id
+        self.name = name
+        self.sourceUrl = sourceUrl
+        self.pollingInterval = pollingInterval
+        self.sourceType = sourceType
+        self.userId = userId
+        self.autoGenerateClips = autoGenerateClips
+        self.viralitySettings = viralitySettings
+        self.createdAt = createdAt
+        self.youtubeChannelThumb = youtubeChannelThumb
+        self.brandId = brandId
+        self.brand = brand
+    }
 }
 
 // MARK: - Feed Videos
@@ -146,6 +164,20 @@ public struct FeedVideo: Identifiable, Codable {
             return nil
         }
         return String(url[range])
+    }
+
+    public init(id: String, feedId: String, videoId: String? = nil, title: String? = nil,
+                thumbnailUrl: String? = nil, transcript: String? = nil,
+                s3Url: String? = nil, createdAt: Date, feed: VideoFeed? = nil) {
+        self.id = id
+        self.feedId = feedId
+        self.videoId = videoId
+        self.title = title
+        self.thumbnailUrl = thumbnailUrl
+        self.transcript = transcript
+        self.s3Url = s3Url
+        self.createdAt = createdAt
+        self.feed = feed
     }
 }
 
@@ -238,6 +270,12 @@ public struct ClipSourceVideo: Codable {
     public let id: String
     public let videoTitle: String?
     public let s3Url: String?
+
+    public init(id: String, videoTitle: String? = nil, s3Url: String? = nil) {
+        self.id = id
+        self.videoTitle = videoTitle
+        self.s3Url = s3Url
+    }
 }
 
 public struct ClipVideo: Identifiable, Codable {
@@ -249,6 +287,19 @@ public struct ClipVideo: Identifiable, Codable {
     public let videoTitle: String?
     public let createdAt: Date
     public let sourceVideo: ClipSourceVideo?
+
+    public init(id: String, userId: String, sourceVideoId: String? = nil,
+                s3Key: String? = nil, s3Url: String? = nil, videoTitle: String? = nil,
+                createdAt: Date, sourceVideo: ClipSourceVideo? = nil) {
+        self.id = id
+        self.userId = userId
+        self.sourceVideoId = sourceVideoId
+        self.s3Key = s3Key
+        self.s3Url = s3Url
+        self.videoTitle = videoTitle
+        self.createdAt = createdAt
+        self.sourceVideo = sourceVideo
+    }
 }
 
 public struct ClipJobResponse: Codable {
@@ -358,6 +409,12 @@ public struct SubscriptionResponse: Codable {
     public let plan: PlanInfo
     public let usage: UsageInfo
     public let hasStripeCustomer: Bool
+
+    public init(plan: PlanInfo, usage: UsageInfo, hasStripeCustomer: Bool) {
+        self.plan = plan
+        self.usage = usage
+        self.hasStripeCustomer = hasStripeCustomer
+    }
 }
 
 public struct PlanInfo: Codable {
@@ -365,6 +422,13 @@ public struct PlanInfo: Codable {
     public let name: String
     public let limits: PlanLimits
     public let features: [String]
+
+    public init(id: String, name: String, limits: PlanLimits, features: [String]) {
+        self.id = id
+        self.name = name
+        self.limits = limits
+        self.features = features
+    }
 }
 
 public struct PlanLimits: Codable {
@@ -373,17 +437,37 @@ public struct PlanLimits: Codable {
     public let maxStorageGb: Int
     public let llmProviders: [String]
     public let autoGenerateClips: Bool
+
+    public init(maxConnectedAccounts: Int, maxClipsPerMonth: Int, maxStorageGb: Int,
+                llmProviders: [String], autoGenerateClips: Bool) {
+        self.maxConnectedAccounts = maxConnectedAccounts
+        self.maxClipsPerMonth = maxClipsPerMonth
+        self.maxStorageGb = maxStorageGb
+        self.llmProviders = llmProviders
+        self.autoGenerateClips = autoGenerateClips
+    }
 }
 
 public struct UsageInfo: Codable {
     public let feeds: Int
     public let clipsThisMonth: Int
     public let costThisMonth: CostSummary
+
+    public init(feeds: Int, clipsThisMonth: Int, costThisMonth: CostSummary) {
+        self.feeds = feeds
+        self.clipsThisMonth = clipsThisMonth
+        self.costThisMonth = costThisMonth
+    }
 }
 
 public struct CostSummary: Codable {
     public let totalUsd: Double
     public let eventCount: Int
+
+    public init(totalUsd: Double, eventCount: Int) {
+        self.totalUsd = totalUsd
+        self.eventCount = eventCount
+    }
 }
 
 // MARK: - LLM Provider
