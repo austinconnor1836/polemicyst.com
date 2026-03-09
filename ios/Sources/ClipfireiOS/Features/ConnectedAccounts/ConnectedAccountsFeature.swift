@@ -17,6 +17,10 @@ public final class ConnectedAccountsViewModel: ObservableObject {
     }
 
     public func loadAccounts() async {
+        if ScreenshotMode.isActive {
+            feeds = MockData.feeds
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         do {
@@ -85,6 +89,10 @@ public final class ConnectedAccountsViewModel: ObservableObject {
     }
 
     public func loadSubscription() async {
+        if ScreenshotMode.isActive {
+            subscription = MockData.subscription
+            return
+        }
         do {
             subscription = try await api.fetchSubscription()
         } catch {

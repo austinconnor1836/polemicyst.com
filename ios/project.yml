@@ -85,7 +85,20 @@ targets:
     scheme:
       testTargets:
         - ClipfireiOSTests
+        - ClipfireUITests
       gatherCoverageData: true
+
+  ClipfireUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: ClipfireApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.clipfire.uitests
+        GENERATE_INFOPLIST_FILE: true
 
   ClipfireiOSTests:
     type: bundle.unit-test

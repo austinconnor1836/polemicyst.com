@@ -16,6 +16,10 @@ public final class FeedVideosViewModel: ObservableObject {
     }
 
     public func load() async {
+        if ScreenshotMode.isActive {
+            videos = MockData.feedVideos
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         do {

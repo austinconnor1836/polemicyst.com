@@ -10,6 +10,14 @@ platform :ios do
     setup_ci if ENV["CI"]
   end
 
+  desc "Capture App Store screenshots"
+  lane :screenshots do
+    capture_screenshots(
+      project: XCODEPROJ,
+      scheme: SCHEME
+    )
+  end
+
   desc "Run tests"
   lane :test do
     run_tests(
