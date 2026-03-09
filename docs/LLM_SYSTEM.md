@@ -1,6 +1,10 @@
 ## LLM System Overview
 
-This doc describes how Polemicyst uses LLMs to generate and rank viral clip candidates.
+This doc describes how Polemicyst uses LLMs for clip scoring, truth analysis, and analysis chat.
+
+### AI cost strategy
+
+Gemini is the current "teacher" LLM — it produces high-quality results but costs money per call. Every Gemini call automatically logs its input/output as training data. Once enough examples are collected (~1,000+ per task type), we'll fine-tune a private 7-8B model and deploy it via Ollama, dropping external AI costs to $0. Ollama is already a first-class provider in the codebase — switching is a config change, not an architecture change. See `ARCHITECTURE.md` for the phased roadmap.
 
 ### Pipeline
 

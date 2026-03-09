@@ -183,3 +183,14 @@ Auxiliary containers (Faster-Whisper, Ollama) run as ECS services or sidecars de
 5. **Non-fatal cost tracking** — `CostTracker` accumulates events in memory and flushes once at job end. Flush failures don't block the pipeline.
 6. **YouTube-first transcription** — Always tries fetching YouTube captions (~100ms) before falling back to Whisper (~5-30min), saving significant processing time and cost.
 7. **Training data collection** — Every LLM call (clip scoring, truth analysis, analysis chat) is logged for model distillation. Two separate tables: `TrainingExample` (clip scoring) and `TruthTrainingExample` (truth/chat). Goal: fine-tune a local model to replace Gemini at zero inference cost.
+
+## AI Cost Strategy
+
+All AI features currently use **Gemini** (paid API) as the primary LLM. Every Gemini call automatically collects training data for model distillation. The end goal is to fine-tune a private 7-8B model and deploy it via Ollama, reducing external AI costs to **$0**. The Ollama provider is already a first-class code path — switching is a config change (`LLM_PROVIDER=ollama`), not an architecture change.
+
+```
+Phase 1 (done):     Build features with Gemini as teacher model
+Phase 2 (active):   Collect training data from every Gemini call
+Phase 3 (planned):  Fine-tune private model on collected data
+Phase 4 (planned):  Deploy via Ollama → $0 AI inference cost
+```
