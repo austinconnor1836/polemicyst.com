@@ -11,13 +11,21 @@ public struct APIClient {
         self.baseURL = baseURL
         #if DEBUG
         if session == nil && baseURL.host() == "localhost" {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 120
             let delegate = LocalhostSessionDelegate()
-            self.session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+            self.session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         } else {
             self.session = session ?? .shared
         }
         #else
-        self.session = session ?? .shared
+        if session == nil {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 120
+            self.session = URLSession(configuration: config)
+        } else {
+            self.session = session ?? .shared
+        }
         #endif
         self.decoder = JSONDecoder()
         self.decoder.dateDecodingStrategy = .iso8601
@@ -27,8 +35,12 @@ public struct APIClient {
 
     // MARK: Auth
 
-    public func authenticateWithGoogle(idToken: String) async throws -> MobileAuthResponse {
-        try await post(path: "/api/auth/mobile/google", body: MobileGoogleAuthRequest(idToken: idToken))
+    public func authenticateWithGoogle(idToken: String, serverAuthCode: String? = nil) async throws -> MobileAuthResponse {
+        try await post(path: "/api/auth/mobile/google", body: MobileGoogleAuthRequest(idToken: idToken, serverAuthCode: serverAuthCode))
+    }
+
+    public func exchangeGoogleAuthCode(_ serverAuthCode: String) async throws -> ExchangeCodeResponse {
+        try await post(path: "/api/auth/mobile/google/exchange-code", body: ExchangeCodeRequest(serverAuthCode: serverAuthCode))
     }
 
     public func authenticateWithApple(identityToken: String, fullName: AppleFullName?) async throws -> MobileAuthResponse {
@@ -38,28 +50,91 @@ public struct APIClient {
         )
     }
 
-    // MARK: Feeds
+    // MARK: YouTube Channels
+
+    public func fetchYouTubeChannels() async throws -> [YouTubeChannel] {
+        try await get(path: "/api/youtube/channels")
+    }
+
+    public func connectYouTubeChannel(_ request: CreateFromYouTubeRequest) async throws -> VideoFeed {
+        try await post(path: "/api/connected-accounts/from-youtube", body: request)
+    }
+
+    // MARK: Brands
+
+    public func fetchBrands() async throws -> [Brand] {
+        try await get(path: "/api/brands")
+    }
+
+    public func createBrand(_ request: CreateBrandRequest) async throws -> Brand {
+        try await post(path: "/api/brands", body: request)
+    }
+
+    public func updateBrand(id: String, body: UpdateBrandRequest) async throws -> Brand {
+        try await patch(path: "/api/brands/\(id)", body: body)
+    }
+
+    public func deleteBrand(id: String) async throws {
+        try await delete(path: "/api/brands/\(id)")
+    }
+
+    // MARK: Connected Accounts
 
     public func fetchFeeds() async throws -> [VideoFeed] {
-        try await get(path: "/api/feeds")
+        try await get(path: "/api/connected-accounts")
     }
 
     public func createFeed(_ request: CreateFeedRequest) async throws -> VideoFeed {
-        try await post(path: "/api/feeds", body: request)
+        try await post(path: "/api/connected-accounts", body: request)
     }
 
     public func updateFeed(id: String, body: [String: AnyCodable]) async throws -> VideoFeed {
-        try await patch(path: "/api/feeds/\(id)", body: body)
+        try await patch(path: "/api/connected-accounts/\(id)", body: body)
     }
 
     public func deleteFeed(id: String) async throws {
-        try await delete(path: "/api/feeds/\(id)")
+        try await delete(path: "/api/connected-accounts/\(id)")
+    }
+
+    // MARK: Upload / Import
+
+    public func importVideoFromURL(url: String, filename: String? = nil) async throws -> FeedVideo {
+        try await post(path: "/api/uploads/from-url", body: ImportFromURLRequest(url: url, filename: filename))
+    }
+
+    public func getPresignedUploadURL(filename: String, contentType: String = "video/mp4") async throws -> PresignedUploadResponse {
+        try await post(path: "/api/uploads/presigned", body: PresignedUploadRequest(filename: filename, contentType: contentType))
+    }
+
+    public func uploadToPresignedURL(_ presignedURL: URL, fileData: Data, contentType: String = "video/mp4") async throws {
+        var request = URLRequest(url: presignedURL)
+        request.httpMethod = "PUT"
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.setValue("\(fileData.count)", forHTTPHeaderField: "Content-Length")
+        let (_, response) = try await session.upload(for: request, from: fileData)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.statusCode((response as? HTTPURLResponse)?.statusCode ?? 500)
+        }
+    }
+
+    public func completeUpload(key: String, filename: String) async throws -> FeedVideo {
+        try await post(path: "/api/uploads/complete", body: CompleteUploadRequest(key: key, filename: filename))
     }
 
     // MARK: Feed videos
 
     public func fetchFeedVideos() async throws -> [FeedVideo] {
         try await get(path: "/api/feedVideos")
+    }
+
+    public func deleteFeedVideo(id: String) async throws {
+        try await delete(path: "/api/feedVideos/\(id)")
+    }
+
+    // MARK: Feed video detail
+
+    public func fetchFeedVideoDetail(id: String) async throws -> FeedVideoDetailResponse {
+        try await get(path: "/api/feedVideos/\(id)/clips")
     }
 
     // MARK: Trigger clip generation
@@ -92,6 +167,40 @@ public struct APIClient {
 
     public func updateLLMProvider(_ request: UpdateLLMProviderRequest) async throws -> LLMProviderResponse {
         try await put(path: "/api/user/llm-provider", body: request)
+    }
+
+    // MARK: Automation Settings
+
+    public func fetchAutomationSettings() async throws -> AutomationSettings {
+        try await get(path: "/api/user/automation")
+    }
+
+    public func updateAutomationSettings(_ settings: AutomationSettings) async throws -> AutomationSettings {
+        try await put(path: "/api/user/automation", body: settings)
+    }
+
+    // MARK: Truth Analysis
+
+    public func fetchTruthAnalysis(feedVideoId: String, clipId: String? = nil) async throws -> TruthAnalysisResponse {
+        var path = "/api/feedVideos/\(feedVideoId)/truth-analysis"
+        if let clipId { path += "?clipId=\(clipId)" }
+        return try await get(path: path)
+    }
+
+    public func runTruthAnalysis(feedVideoId: String, clipId: String? = nil, provider: String = "gemini") async throws -> TruthAnalysisResponse {
+        try await post(path: "/api/feedVideos/\(feedVideoId)/truth-analysis", body: TruthAnalysisRequest(clipId: clipId, provider: provider))
+    }
+
+    // MARK: Analysis Chat
+
+    public func fetchAnalysisChat(feedVideoId: String, clipId: String? = nil) async throws -> AnalysisChatResponse {
+        var path = "/api/feedVideos/\(feedVideoId)/truth-analysis/chat"
+        if let clipId { path += "?clipId=\(clipId)" }
+        return try await get(path: path)
+    }
+
+    public func sendAnalysisChatMessage(feedVideoId: String, message: String, clipId: String? = nil) async throws -> AnalysisChatSendResponse {
+        try await post(path: "/api/feedVideos/\(feedVideoId)/truth-analysis/chat", body: AnalysisChatSendRequest(message: message, clipId: clipId))
     }
 
     // MARK: Version Check

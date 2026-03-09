@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../auth'; // Adjust path if needed
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import AWS from 'aws-sdk';
 import { randomUUID } from 'crypto';
 
@@ -8,8 +7,8 @@ const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -24,7 +23,7 @@ export async function POST(req: NextRequest) {
     });
 
     const fileExt = filename.split('.').pop();
-    const key = `uploads/${session.user.email}/${randomUUID()}.${fileExt}`;
+    const key = `uploads/${user.email}/${randomUUID()}.${fileExt}`;
 
     const presignedUrl = await s3.getSignedUrlPromise('putObject', {
       Bucket: S3_BUCKET,

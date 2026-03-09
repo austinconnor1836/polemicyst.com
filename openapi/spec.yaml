@@ -747,15 +747,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthStatus'
 
-  /api/feeds:
+  /api/connected-accounts:
     get:
-      operationId: getFeeds
-      summary: List user-created video feeds (excludes auto-created manual-upload feeds)
-      tags: [Feeds]
+      operationId: getConnectedAccounts
+      summary: List user-created connected accounts (excludes auto-created manual-upload accounts)
+      tags: [ConnectedAccounts]
       security: []
       responses:
         '200':
-          description: List of feeds
+          description: List of connected accounts
           content:
             application/json:
               schema:
@@ -763,9 +763,9 @@ paths:
                 items:
                   $ref: '#/components/schemas/VideoFeed'
     post:
-      operationId: createFeed
-      summary: Create a new feed
-      tags: [Feeds]
+      operationId: createConnectedAccount
+      summary: Create a new connected account
+      tags: [ConnectedAccounts]
       requestBody:
         required: true
         content:
@@ -774,7 +774,7 @@ paths:
               $ref: '#/components/schemas/CreateFeedRequest'
       responses:
         '200':
-          description: Created feed
+          description: Created connected account
           content:
             application/json:
               schema:
@@ -786,11 +786,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/feeds/{id}:
+  /api/connected-accounts/{id}:
     patch:
-      operationId: updateFeed
-      summary: Update feed settings (auto-generate clips, virality settings, etc.)
-      tags: [Feeds]
+      operationId: updateConnectedAccount
+      summary: Update connected account settings (auto-generate clips, virality settings, etc.)
+      tags: [ConnectedAccounts]
       parameters:
         - name: id
           in: path
@@ -805,7 +805,7 @@ paths:
               $ref: '#/components/schemas/UpdateFeedRequest'
       responses:
         '200':
-          description: Updated feed
+          description: Updated connected account
           content:
             application/json:
               schema:
@@ -817,15 +817,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: Feed not found or not owned by user
+          description: Connected account not found or not owned by user
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
     delete:
-      operationId: deleteFeed
-      summary: Delete a feed and all associated videos
-      tags: [Feeds]
+      operationId: deleteConnectedAccount
+      summary: Delete a connected account and all associated videos
+      tags: [ConnectedAccounts]
       parameters:
         - name: id
           in: path

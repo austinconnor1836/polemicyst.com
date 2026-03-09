@@ -27,6 +27,7 @@ interface CreateFeedVideoInput {
   title: string;
   s3Url: string;
   status?: string;
+  thumbnailUrl?: string;
 }
 
 export async function createFeedVideoRecord(input: CreateFeedVideoInput) {
@@ -38,6 +39,7 @@ export async function createFeedVideoRecord(input: CreateFeedVideoInput) {
       title: input.title,
       s3Url: input.s3Url,
       status: input.status,
+      thumbnailUrl: input.thumbnailUrl,
     },
   });
 }

@@ -108,7 +108,7 @@ export default function Home() {
               </div>
             </div>
             <Button size="lg" asChild>
-              <Link href="/feeds" className="gap-2">
+              <Link href="/connected-accounts" className="gap-2">
                 Go to Dashboard
                 <ArrowRight className="h-4 w-4" />
               </Link>
@@ -144,7 +144,7 @@ export default function Home() {
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             {isAuthenticated ? (
               <Button size="lg" asChild>
-                <Link href="/feeds" className="gap-2">
+                <Link href="/connected-accounts" className="gap-2">
                   Go to Dashboard
                   <ArrowRight className="h-4 w-4" />
                 </Link>
@@ -296,13 +296,13 @@ export default function Home() {
           </h2>
           <p className="mt-4 text-lg text-muted">
             {isAuthenticated
-              ? 'Head to your dashboard to manage feeds and generate clips.'
+              ? 'Head to your dashboard to manage your accounts and generate clips.'
               : 'Sign up for free and start generating clips in minutes.'}
           </p>
           <div className="mt-8">
             {isAuthenticated ? (
               <Button size="lg" asChild>
-                <Link href="/feeds" className="gap-2">
+                <Link href="/connected-accounts" className="gap-2">
                   Go to Dashboard
                   <ArrowRight className="h-4 w-4" />
                 </Link>

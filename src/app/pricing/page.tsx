@@ -31,7 +31,7 @@ const COMPARISON_ROWS: ComparisonRow[] = [
     values: { free: '$0', pro: '$19', business: '$49' },
   },
   {
-    label: 'Video sources (feeds)',
+    label: 'Connected accounts',
     values: { free: '2', pro: '10', business: '50' },
   },
   {
@@ -71,7 +71,7 @@ const COMPARISON_ROWS: ComparisonRow[] = [
 const FAQ_ITEMS = [
   {
     q: 'Can I try Polemicyst for free?',
-    a: 'Yes — the Free plan gives you 2 video sources, 10 clips per month, and 1 GB of storage with no credit card required.',
+    a: 'Yes — the Free plan gives you 2 connected accounts, 10 clips per month, and 1 GB of storage with no credit card required.',
   },
   {
     q: 'How does billing work?',

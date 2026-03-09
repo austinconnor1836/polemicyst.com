@@ -1,24 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../auth';
 import { prisma } from '@shared/lib/prisma';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { DEFAULT_VIRALITY_SETTINGS, type ViralitySettingsValue } from '@shared/virality';
 
 const VALID_ASPECT_RATIOS = ['9:16', '16:9', '1:1', '4:5'];
 const VALID_CAPTION_STYLES = ['default', 'bold', 'minimal', 'none'];
 
-async function requireUser() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return null;
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
-  return user;
-}
-
-export async function GET() {
-  const user = await requireUser();
+export async function GET(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -55,7 +44,7 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
-  const user = await requireUser();
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

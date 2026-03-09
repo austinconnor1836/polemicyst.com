@@ -76,6 +76,7 @@ targets:
         CFBundleDisplayName: Clipfire
         API_BASE_URL: '$(API_BASE_URL)'
         GIDClientID: '$(GOOGLE_CLIENT_ID)'
+        GOOGLE_SERVER_CLIENT_ID: '$(GOOGLE_SERVER_CLIENT_ID)'
         CFBundleURLTypes:
           - CFBundleURLSchemes:
               - '$(GOOGLE_CLIENT_ID_REVERSED)'

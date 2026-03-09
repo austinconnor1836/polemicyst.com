@@ -2,6 +2,8 @@ import { prisma } from '@shared/lib/prisma';
 import { queueTranscriptionJob } from '@shared/queues';
 import { pollYouTubeFeed } from '@shared/util/youtube';
 import { pollCspanFeed } from '@shared/util/cspan';
+import { pollYouTubeOAuthFeed } from '@shared/util/youtube-api';
+import { getValidGoogleToken } from '@shared/lib/google-token';
 import { downloadAndUploadToS3 } from '@shared/util/downloadAndUploadToS3';
 
 function inferSourceTypeFromUrl(sourceUrlRaw: string): 'youtube' | 'cspan' | null {
@@ -44,7 +46,11 @@ export async function pollFeeds() {
 
       const inferred = inferSourceTypeFromUrl(feed.sourceUrl);
       const effectiveSourceType =
-        feed.sourceType === 'youtube' || feed.sourceType === 'cspan' ? feed.sourceType : inferred;
+        feed.sourceType === 'youtube' ||
+        feed.sourceType === 'cspan' ||
+        feed.sourceType === 'youtube-oauth'
+          ? feed.sourceType
+          : inferred;
 
       if (!effectiveSourceType) {
         console.warn(
@@ -68,6 +74,17 @@ export async function pollFeeds() {
         case 'youtube':
           newVideo = await pollYouTubeFeed(feed);
           break;
+        case 'youtube-oauth': {
+          const token = await getValidGoogleToken(feed.userId);
+          if (!token) {
+            console.warn(
+              `[poller] No valid Google token for user ${feed.userId}, skipping feed ${feed.name}`
+            );
+            break;
+          }
+          newVideo = await pollYouTubeOAuthFeed(feed, token);
+          break;
+        }
         case 'cspan':
           newVideo = await pollCspanFeed(feed);
           break;

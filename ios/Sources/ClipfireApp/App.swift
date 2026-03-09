@@ -27,35 +27,29 @@ struct ClipfireApp: App {
                     ForceUpdateView(storeUrl: forceUpdateStoreUrl)
                 } else if authService.isAuthenticated {
                     TabView(selection: $tabSelection) {
-                        HomeView(selection: $tabSelection)
+                        ClipsListView(viewModel: ClipsViewModel(api: apiClient))
                             .tabItem {
-                                Label("Home", systemImage: "house.fill")
+                                Label("Clips", systemImage: "film.stack")
                             }
                             .tag(0)
 
-                    FeedsView(viewModel: FeedsViewModel(api: apiClient))
-                        .tabItem {
-                            Label("Feeds", systemImage: "antenna.radiowaves.left.and.right")
-                        }
-                        .tag(1)
+                        ConnectedAccountsView(viewModel: ConnectedAccountsViewModel(api: apiClient), authService: authService)
+                            .tabItem {
+                                Label("Accounts", systemImage: "link")
+                            }
+                            .tag(1)
 
-                    FeedVideosView(viewModel: FeedVideosViewModel(api: apiClient))
-                        .tabItem {
-                            Label("Videos", systemImage: "list.bullet")
-                        }
-                        .tag(2)
+                        FeedVideosView(viewModel: FeedVideosViewModel(api: apiClient))
+                            .tabItem {
+                                Label("Videos", systemImage: "list.bullet")
+                            }
+                            .tag(2)
 
-                    ClipsListView(viewModel: ClipsViewModel(api: apiClient))
-                        .tabItem {
-                            Label("Clips", systemImage: "film.stack")
-                        }
-                        .tag(3)
-
-                    SettingsTabView(apiClient: apiClient)
-                        .tabItem {
-                            Label("Settings", systemImage: "gearshape.fill")
-                        }
-                        .tag(4)
+                        SettingsTabView(apiClient: apiClient)
+                            .tabItem {
+                                Label("Settings", systemImage: "gearshape.fill")
+                            }
+                            .tag(3)
                     }
                 } else {
                     LoginView(authService: authService)
@@ -91,6 +85,13 @@ struct SettingsTabView: View {
                     SubscriptionView(viewModel: SubscriptionViewModel(api: apiClient))
                 } label: {
                     Label("Subscription & Billing", systemImage: "creditcard.fill")
+                }
+                .listRowBackground(DesignTokens.surface)
+
+                NavigationLink {
+                    AutomationSettingsView(viewModel: AutomationSettingsViewModel(api: apiClient))
+                } label: {
+                    Label("Clip Generation", systemImage: "bolt.fill")
                 }
                 .listRowBackground(DesignTokens.surface)
 

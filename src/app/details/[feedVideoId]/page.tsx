@@ -29,13 +29,14 @@ import {
   Trash2,
 } from 'lucide-react';
 import SpeakerTranscript from '@/components/SpeakerTranscript';
+import TruthAnalysis from '@/components/TruthAnalysis';
 import CopyableUrl from '@/components/CopyableUrl';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { useSubscription } from '@/hooks/useSubscription';
 import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
-import { formatRelativeTime } from '@/app/feeds/util/time';
-import { extractYouTubeId } from '@/app/feeds/util/thumbnails';
+import { formatRelativeTime } from '@/app/connected-accounts/util/time';
+import { extractYouTubeId } from '@/app/connected-accounts/util/thumbnails';
 import {
   DEFAULT_VIRALITY_SETTINGS,
   getStrictnessConfig,
@@ -532,6 +533,10 @@ export default function ClipGroupPage() {
                 }
               }}
             />
+          </div>
+
+          <div className="mb-6">
+            <TruthAnalysis feedVideoId={feedVideoId} />
           </div>
 
           {summary.clips.length === 0 ? (

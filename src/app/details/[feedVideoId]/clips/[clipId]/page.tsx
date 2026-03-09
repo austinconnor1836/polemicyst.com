@@ -21,7 +21,8 @@ import { cn } from '@/lib/utils';
 import { ArrowLeft, Download, Loader2, Save, Sparkles, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
-import { formatRelativeTime } from '@/app/feeds/util/time';
+import { formatRelativeTime } from '@/app/connected-accounts/util/time';
+import TruthAnalysis from '@/components/TruthAnalysis';
 
 type ClipRecord = {
   id: string;
@@ -1177,6 +1178,8 @@ export default function ClipEditorPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              <TruthAnalysis feedVideoId={feedVideoId} clipId={clipId} />
             </div>
           </div>
         </div>

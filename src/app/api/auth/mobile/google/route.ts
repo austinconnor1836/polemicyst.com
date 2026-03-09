@@ -21,9 +21,57 @@ function isAllowed(email: string): boolean {
   );
 }
 
+/**
+ * Exchange a Google server auth code for access + refresh tokens
+ * and store them in the Account row.
+ */
+async function exchangeServerAuthCode(accountId: string, serverAuthCode: string) {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    console.error(
+      '[mobile-google-auth] Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET for code exchange'
+    );
+    return;
+  }
+
+  const params = new URLSearchParams({
+    code: serverAuthCode,
+    client_id: clientId,
+    client_secret: clientSecret,
+    grant_type: 'authorization_code',
+    redirect_uri: '', // empty for mobile flows
+  });
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    console.error('[mobile-google-auth] Code exchange failed:', res.status, body);
+    return;
+  }
+
+  const data = await res.json();
+  const expiresAt = Math.floor(Date.now() / 1000) + (data.expires_in as number);
+
+  await prisma.account.update({
+    where: { id: accountId },
+    data: {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token ?? null,
+      expires_at: expiresAt,
+      scope: data.scope ?? null,
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { idToken } = await req.json();
+    const { idToken, serverAuthCode } = await req.json();
     if (!idToken) {
       return NextResponse.json({ error: 'Missing idToken' }, { status: 400 });
     }
@@ -57,17 +105,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Upsert Google account
-    await prisma.account.upsert({
+    const account = await prisma.account.upsert({
       where: {
         provider_providerAccountId: {
           provider: 'google',
           providerAccountId: googleId!,
         },
       },
-      update: {
-        access_token: null,
-        refresh_token: null,
-      },
+      update: {},
       create: {
         userId: user.id,
         provider: 'google',
@@ -75,6 +120,15 @@ export async function POST(req: NextRequest) {
         type: 'oauth',
       },
     });
+
+    // If a server auth code was provided, exchange it for access + refresh tokens
+    if (serverAuthCode) {
+      try {
+        await exchangeServerAuthCode(account.id, serverAuthCode);
+      } catch (err) {
+        console.error('[mobile-google-auth] Server auth code exchange failed (non-blocking):', err);
+      }
+    }
 
     // Mint a NextAuth-compatible JWT
     const token = await encode({

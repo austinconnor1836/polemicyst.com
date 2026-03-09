@@ -14,7 +14,7 @@ interface SubscriptionData {
   plan: {
     id: string;
     name: string;
-    limits: { maxFeeds: number; maxClipsPerMonth: number };
+    limits: { maxConnectedAccounts: number; maxClipsPerMonth: number };
     features: string[];
   };
   usage: { feeds: number; clipsThisMonth: number };
@@ -88,9 +88,9 @@ function BillingContent() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm text-muted">Sources (feeds)</p>
+              <p className="text-sm text-muted">Connected accounts</p>
               <p className="text-lg font-medium">
-                {data.usage.feeds} / {plan.limits.maxFeeds}
+                {data.usage.feeds} / {plan.limits.maxConnectedAccounts}
               </p>
             </div>
             <div>

@@ -25,7 +25,7 @@ System-level overview of the Polemicyst / Clipfire platform. For coding conventi
 │ Poller       │ │ Download     │ │ Clip-Metadata Worker │
 │ Worker       │ │ Worker       │ │ (transcription +     │
 │              │ │ (feed-       │ │  clip-generation)    │
-│ polls feeds  │ │  download)   │ │                      │
+│ polls accts  │ │  download)   │ │                      │
 └──────────────┘ └──────────────┘ └──────────┬───────────┘
                                              │
                          ┌───────────────────┼───────────────┐
@@ -58,10 +58,10 @@ All queues use `jobId: feedVideoId` for deduplication.
 
 There are four entry paths into the pipeline. All converge at transcription → clip-generation.
 
-### Path 1: Feed Creation (YouTube/C-SPAN)
+### Path 1: Connected Account Creation (YouTube/C-SPAN)
 
 ```
-POST /api/feeds
+POST /api/connected-accounts
   → Create VideoFeed
   → pollYouTubeFeed() / pollCspanFeed() → get latest video
   → Create FeedVideo (status: pending, s3Url: youtube_url)
@@ -73,7 +73,7 @@ POST /api/feeds
 
 ```
 POST /api/uploads/from-url
-  → Find/create "Manual Uploads" feed
+  → Find/create "Manual Uploads" connected account
   → Create FeedVideo (status: pending, s3Url: source_url)
   → Enqueue feed-download
   → If YouTube URL: enqueue transcription in parallel  ← NEW (parallel)
@@ -87,7 +87,7 @@ POST /api/uploads/complete
   → Enqueue clip-generation directly (file is already on S3)
 ```
 
-### Path 4: Feed Polling (Automated)
+### Path 4: Connected Account Polling (Automated)
 
 ```
 Poller Worker (every 60s)
@@ -162,13 +162,17 @@ Auxiliary containers (Faster-Whisper, Ollama) run as ECS services or sidecars de
 
 ## Key Data Models
 
-- **VideoFeed** — Source feed (YouTube channel, C-SPAN). Has `sourceType`, `pollingInterval`, `autoGenerateClips`, `viralitySettings`.
-- **FeedVideo** — Individual video from a feed. Tracks `status` (pending/ready/failed), `transcript`, `transcriptJson`, `transcriptSource` (whisper/youtube-auto/youtube-manual).
+- **VideoFeed** — Connected account (YouTube channel, C-SPAN). Has `sourceType`, `pollingInterval`, `autoGenerateClips`, `viralitySettings`.
+- **FeedVideo** — Individual video from a connected account. Tracks `status` (pending/ready/failed), `transcript`, `transcriptJson`, `transcriptSource` (whisper/youtube-auto/youtube-manual).
 - **Video** — Parent video or generated clip. Self-referencing via `sourceVideoId` for clip→parent relationship.
 - **Segment** — Scored time window within a Video. Contains `tStartS`, `tEndS`, `score`, `features` (JSON with LLM subscores).
 - **Clip** — Rendered clip variant linked to a Segment.
 - **CostEvent** — Per-stage cost tracking (download, transcription, llm_scoring, ffmpeg_render, s3_upload).
 - **JobLog** — Job execution history with status transitions and error details.
+- **TruthAnalysis** — Cached AI analysis of video/clip transcripts (assertions, fallacies, biases, credibility).
+- **AnalysisChat** / **AnalysisChatMessage** — Persistent multi-turn AI conversation about analysis results.
+- **TrainingExample** — LLM clip-scoring input/output pairs for model distillation.
+- **TruthTrainingExample** — Truth analysis and chat LLM input/output pairs for model distillation.
 
 ## Key Design Decisions
 
@@ -178,3 +182,15 @@ Auxiliary containers (Faster-Whisper, Ollama) run as ECS services or sidecars de
 4. **Council-style LLM scoring** — Single LLM call returns multiple specialist subscores (hook, context, captionability, risk) that are deterministically aggregated with platform-specific weights.
 5. **Non-fatal cost tracking** — `CostTracker` accumulates events in memory and flushes once at job end. Flush failures don't block the pipeline.
 6. **YouTube-first transcription** — Always tries fetching YouTube captions (~100ms) before falling back to Whisper (~5-30min), saving significant processing time and cost.
+7. **Training data collection** — Every LLM call (clip scoring, truth analysis, analysis chat) is logged for model distillation. Two separate tables: `TrainingExample` (clip scoring) and `TruthTrainingExample` (truth/chat). Goal: fine-tune a local model to replace Gemini at zero inference cost.
+
+## AI Cost Strategy
+
+All AI features currently use **Gemini** (paid API) as the primary LLM. Every Gemini call automatically collects training data for model distillation. The end goal is to fine-tune a private 7-8B model and deploy it via Ollama, reducing external AI costs to **$0**. The Ollama provider is already a first-class code path — switching is a config change (`LLM_PROVIDER=ollama`), not an architecture change.
+
+```
+Phase 1 (done):     Build features with Gemini as teacher model
+Phase 2 (active):   Collect training data from every Gemini call
+Phase 3 (planned):  Fine-tune private model on collected data
+Phase 4 (planned):  Deploy via Ollama → $0 AI inference cost
+```
