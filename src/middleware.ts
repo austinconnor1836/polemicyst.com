@@ -14,7 +14,14 @@ function isAllowedEmail(email?: string | null): boolean {
   return AUTH_ALLOWED_EMAILS.includes(email.toLowerCase());
 }
 
-const PUBLIC_PATHS = ['/', '/pricing', '/privacy-policy', '/terms-of-service'];
+const PUBLIC_PATHS = [
+  '/',
+  '/pricing',
+  '/privacy-policy',
+  '/privacy',
+  '/terms-of-service',
+  '/support',
+];
 
 export async function middleware(req: NextRequest) {
   // Redirect authenticated users from home to dashboard
