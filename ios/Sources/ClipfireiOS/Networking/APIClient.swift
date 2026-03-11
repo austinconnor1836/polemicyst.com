@@ -222,6 +222,106 @@ public struct APIClient {
         try await post(path: "/api/feedVideos/\(feedVideoId)/truth-analysis/chat", body: AnalysisChatSendRequest(message: message, clipId: clipId))
     }
 
+    // MARK: Publications
+
+    public func fetchPublications() async throws -> [Publication] {
+        try await get(path: "/api/publications")
+    }
+
+    public func fetchPublication(id: String) async throws -> Publication {
+        try await get(path: "/api/publications/\(id)")
+    }
+
+    public func createPublication(_ request: CreatePublicationRequest) async throws -> Publication {
+        try await post(path: "/api/publications", body: request)
+    }
+
+    public func updatePublication(id: String, body: UpdatePublicationRequest) async throws -> Publication {
+        try await put(path: "/api/publications/\(id)", body: body)
+    }
+
+    public func deletePublication(id: String) async throws {
+        try await delete(path: "/api/publications/\(id)")
+    }
+
+    // MARK: Articles
+
+    public func fetchArticles(publicationId: String? = nil) async throws -> [Article] {
+        var path = "/api/articles"
+        if let publicationId { path += "?publicationId=\(publicationId)" }
+        return try await get(path: path)
+    }
+
+    public func fetchArticle(id: String) async throws -> Article {
+        try await get(path: "/api/articles/\(id)")
+    }
+
+    public func createArticle(_ request: CreateArticleRequest) async throws -> Article {
+        try await post(path: "/api/articles", body: request)
+    }
+
+    public func updateArticle(id: String, title: String, bodyMarkdown: String) async throws -> Article {
+        struct Body: Encodable { let title: String; let bodyMarkdown: String }
+        return try await put(path: "/api/articles/\(id)", body: Body(title: title, bodyMarkdown: bodyMarkdown))
+    }
+
+    public func deleteArticle(id: String) async throws {
+        try await delete(path: "/api/articles/\(id)")
+    }
+
+    public func generateArticle(id: String, request: GenerateArticleRequest) async throws -> Article {
+        try await post(path: "/api/articles/\(id)/generate", body: request)
+    }
+
+    public func generateGraphics(articleId: String) async throws -> GenerateGraphicsResponse {
+        struct EmptyBody: Encodable {}
+        return try await post(path: "/api/articles/\(articleId)/generate-graphics", body: EmptyBody())
+    }
+
+    public func rasterizeGraphics(articleId: String) async throws -> GenerateGraphicsResponse {
+        struct EmptyBody: Encodable {}
+        return try await post(path: "/api/articles/\(articleId)/rasterize-graphics", body: EmptyBody())
+    }
+
+    public func fetchArticlePublishes(articleId: String) async throws -> [ArticlePublishRecord] {
+        try await get(path: "/api/articles/\(articleId)/publishes")
+    }
+
+    public func publishArticle(articleId: String, publishLive: Bool = false) async throws -> Article {
+        try await post(path: "/api/articles/\(articleId)/publish", body: PublishArticleRequest(publishLive: publishLive))
+    }
+
+    public func publishArticleToAccount(articleId: String, publishingAccountId: String, publishLive: Bool = false) async throws -> ArticlePublishRecord {
+        try await post(path: "/api/articles/\(articleId)/publish", body: PublishArticleRequest(publishingAccountId: publishingAccountId, publishLive: publishLive))
+    }
+
+    // MARK: Publishing Accounts
+
+    public func fetchPublishingAccounts() async throws -> [PublishingAccount] {
+        try await get(path: "/api/publishing-accounts")
+    }
+
+    public func connectPublishingAccount(platform: String, cookie: String, subdomain: String? = nil) async throws -> PublishingAccount {
+        struct Body: Encodable { let platform: String; let cookie: String; let subdomain: String? }
+        return try await post(path: "/api/publishing-accounts", body: Body(platform: platform, cookie: cookie, subdomain: subdomain))
+    }
+
+    // MARK: Substack
+
+    public func connectSubstack(publicationId: String, cookie: String, subdomain: String) async throws -> SubstackConnectResponse {
+        struct Body: Encodable { let cookie: String; let subdomain: String }
+        return try await post(path: "/api/publications/\(publicationId)/substack/connect", body: Body(cookie: cookie, subdomain: subdomain))
+    }
+
+    public func disconnectSubstack(publicationId: String) async throws {
+        struct EmptyBody: Encodable {}
+        let _: SubstackConnectResponse = try await post(path: "/api/publications/\(publicationId)/substack/disconnect", body: EmptyBody())
+    }
+
+    public func verifySubstack(publicationId: String) async throws -> SubstackConnectResponse {
+        try await get(path: "/api/publications/\(publicationId)/substack/verify")
+    }
+
     // MARK: Version Check
 
     public func checkVersion(currentVersion: String) async throws -> VersionCheckResponse {

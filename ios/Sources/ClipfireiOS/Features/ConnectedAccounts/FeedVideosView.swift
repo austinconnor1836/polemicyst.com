@@ -106,35 +106,13 @@ public struct FeedVideosView: View {
                         ProgressView().progressViewStyle(.circular)
                     }
                 }
-                .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
-                .alert("Error", isPresented: $showErrorAlert) {
-                    Button("OK", role: .cancel) { viewModel.errorMessage = nil }
-                } message: {
-                    Text(viewModel.errorMessage ?? "")
-                }
-                .onChange(of: viewModel.clipResultMessage) { _, newValue in showClipResultAlert = newValue != nil }
-                .alert("Clip Generation", isPresented: $showClipResultAlert) {
-                    Button("OK", role: .cancel) { viewModel.clipResultMessage = nil }
-                } message: {
-                    Text(viewModel.clipResultMessage ?? "")
-                }
-                .alert("Delete Video", isPresented: $showDeleteAlert, presenting: videoToDelete) { video in
-                    Button("Delete", role: .destructive) {
-                        Task { await viewModel.deleteFeedVideo(video) }
-                    }
-                    Button("Cancel", role: .cancel) { }
-                } message: { _ in
-                    Text("Are you sure you want to delete this video? This action cannot be undone.")
-                }
-                .sheet(item: $viewModel.upgradeError) { error in
-                    UpgradePromptView(
-                        message: error.localizedDescription,
-                        quotaLimit: error.quotaLimit,
-                        quotaUsage: error.quotaUsage,
-                        onDismiss: { viewModel.upgradeError = nil }
-                    )
-                    .presentationDetents([.medium])
-                }
+                .modifier(FeedVideosAlerts(
+                    viewModel: viewModel,
+                    showErrorAlert: $showErrorAlert,
+                    showClipResultAlert: $showClipResultAlert,
+                    showDeleteAlert: $showDeleteAlert,
+                    videoToDelete: $videoToDelete
+                ))
         }
     }
 
@@ -215,6 +193,49 @@ public struct FeedVideosView: View {
         }
         .buttonStyle(.plain)
         .disabled(isDeleting)
+    }
+}
+
+// MARK: - Alerts modifier (extracted to help Swift type-checker)
+
+private struct FeedVideosAlerts: ViewModifier {
+    @ObservedObject var viewModel: FeedVideosViewModel
+    @Binding var showErrorAlert: Bool
+    @Binding var showClipResultAlert: Bool
+    @Binding var showDeleteAlert: Bool
+    @Binding var videoToDelete: FeedVideo?
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
+            .alert("Error", isPresented: $showErrorAlert) {
+                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+            } message: {
+                Text(viewModel.errorMessage ?? "")
+            }
+            .onChange(of: viewModel.clipResultMessage) { _, newValue in showClipResultAlert = newValue != nil }
+            .alert("Clip Generation", isPresented: $showClipResultAlert) {
+                Button("OK", role: .cancel) { viewModel.clipResultMessage = nil }
+            } message: {
+                Text(viewModel.clipResultMessage ?? "")
+            }
+            .alert("Delete Video", isPresented: $showDeleteAlert, presenting: videoToDelete) { video in
+                Button("Delete", role: .destructive) {
+                    Task { await viewModel.deleteFeedVideo(video) }
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: { _ in
+                Text("Are you sure you want to delete this video? This action cannot be undone.")
+            }
+            .sheet(item: $viewModel.upgradeError) { error in
+                UpgradePromptView(
+                    message: error.localizedDescription,
+                    quotaLimit: error.quotaLimit,
+                    quotaUsage: error.quotaUsage,
+                    onDismiss: { viewModel.upgradeError = nil }
+                )
+                .presentationDetents([.medium])
+            }
     }
 }
 
