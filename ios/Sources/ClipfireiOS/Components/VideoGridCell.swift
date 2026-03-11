@@ -101,7 +101,7 @@ public struct VideoGridCell: View {
             }
 
             if let date {
-                Text(date, style: .relative)
+                Text(date, style: .date)
                     .font(.caption2)
                     .foregroundStyle(DesignTokens.muted)
                     .lineLimit(1)

@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 
 @MainActor
@@ -146,12 +147,7 @@ public struct ClipsListView: View {
     private func clipGridCell(_ clip: ClipVideo) -> some View {
         let isDeleting = viewModel.deletingId == clip.id
         return NavigationLink(value: clip.id) {
-            VideoGridCell(
-                title: clip.videoTitle ?? "Untitled Clip",
-                subtitle: clip.sourceVideo?.videoTitle,
-                placeholderIcon: "film.stack",
-                duration: clip.duration
-            )
+            ClipGridCell(clip: clip)
                 .overlay(alignment: .topTrailing) {
                     Button {
                         clipToDelete = clip
@@ -188,15 +184,15 @@ public struct ClipsListView: View {
 
 public struct ClipDetailView: View {
     public let clip: ClipVideo
+    @State private var isSharePresented = false
 
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignTokens.largeSpacing) {
+                videoPlayerSection
                 headerSection
                 detailsSection
-                if clip.s3Url != nil {
-                    actionsSection
-                }
+                actionsSection
             }
             .padding()
         }
@@ -208,15 +204,47 @@ public struct ClipDetailView: View {
     }
 
     @ViewBuilder
+    private var videoPlayerSection: some View {
+        if let urlString = clip.s3Url, let url = URL(string: urlString) {
+            ClipPlayerView(url: url)
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .cornerRadius(DesignTokens.cornerRadius)
+        } else {
+            ZStack {
+                Rectangle()
+                    .fill(DesignTokens.surface)
+                    .aspectRatio(16 / 9, contentMode: .fit)
+                VStack(spacing: DesignTokens.smallSpacing) {
+                    Image(systemName: "film.stack")
+                        .font(.system(size: 40))
+                        .foregroundStyle(DesignTokens.muted)
+                    Text("No video available")
+                        .font(.caption)
+                        .foregroundStyle(DesignTokens.textSecondary)
+                }
+            }
+            .cornerRadius(DesignTokens.cornerRadius)
+        }
+    }
+
+    @ViewBuilder
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: DesignTokens.smallSpacing) {
             Text(clip.videoTitle ?? "Untitled Clip")
                 .font(.title2).bold()
                 .foregroundStyle(DesignTokens.textPrimary)
 
-            Text(clip.createdAt, style: .date)
-                .font(.subheadline)
-                .foregroundStyle(DesignTokens.textSecondary)
+            HStack(spacing: DesignTokens.smallSpacing) {
+                if let duration = clip.duration {
+                    Label(formatDuration(duration), systemImage: "clock")
+                        .font(.subheadline)
+                        .foregroundStyle(DesignTokens.textSecondary)
+                }
+
+                Text(clip.createdAt, style: .date)
+                    .font(.subheadline)
+                    .foregroundStyle(DesignTokens.textSecondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
@@ -227,14 +255,8 @@ public struct ClipDetailView: View {
     @ViewBuilder
     private var detailsSection: some View {
         VStack(alignment: .leading, spacing: DesignTokens.spacing) {
-            DetailRow(label: "Clip ID", value: clip.id)
-
             if let sourceTitle = clip.sourceVideo?.videoTitle {
                 DetailRow(label: "Source Video", value: sourceTitle)
-            }
-
-            if let s3Key = clip.s3Key {
-                DetailRow(label: "Storage Key", value: s3Key)
             }
         }
         .padding()
@@ -246,8 +268,8 @@ public struct ClipDetailView: View {
     private var actionsSection: some View {
         VStack(spacing: DesignTokens.spacing) {
             if let urlString = clip.s3Url, let url = URL(string: urlString) {
-                Link(destination: url) {
-                    Label("Open in Browser", systemImage: "safari")
+                ShareLink(item: url) {
+                    Label("Share Clip", systemImage: "square.and.arrow.up")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -257,6 +279,91 @@ public struct ClipDetailView: View {
                 }
             }
         }
+    }
+
+    private func formatDuration(_ seconds: Double) -> String {
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%d:%02d", mins, secs)
+    }
+}
+
+/// Grid cell for clips — shows a video-frame thumbnail from the clip's S3 URL.
+struct ClipGridCell: View {
+    let clip: ClipVideo
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Thumbnail from the clip video itself
+            if let urlString = clip.s3Url, let url = URL(string: urlString) {
+                VideoThumbnailView(videoUrl: url, placeholderIcon: "film.stack")
+            } else {
+                ZStack {
+                    Rectangle()
+                        .fill(DesignTokens.background)
+                        .aspectRatio(16 / 9, contentMode: .fit)
+                    Image(systemName: "film.stack")
+                        .font(.title2)
+                        .foregroundStyle(DesignTokens.muted)
+                }
+            }
+
+            // Info
+            VStack(alignment: .leading, spacing: 4) {
+                Text(clip.videoTitle ?? "Untitled Clip")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(DesignTokens.textPrimary)
+                    .lineLimit(2)
+
+                if let sourceTitle = clip.sourceVideo?.videoTitle {
+                    Text(sourceTitle)
+                        .font(.caption2)
+                        .foregroundStyle(DesignTokens.textSecondary)
+                        .lineLimit(1)
+                }
+
+                HStack(spacing: 4) {
+                    if let duration = clip.duration {
+                        Text(formatDuration(duration))
+                            .font(.caption2)
+                            .foregroundStyle(DesignTokens.muted)
+                    }
+                    Text(clip.createdAt, style: .date)
+                        .font(.caption2)
+                        .foregroundStyle(DesignTokens.muted)
+                        .lineLimit(1)
+                }
+            }
+            .padding(DesignTokens.smallSpacing)
+        }
+        .background(DesignTokens.surface)
+        .cornerRadius(DesignTokens.cornerRadius)
+    }
+
+    private func formatDuration(_ seconds: Double) -> String {
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%d:%02d", mins, secs)
+    }
+}
+
+/// Inline video player for S3-hosted clip MP4s.
+struct ClipPlayerView: View {
+    let url: URL
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        VideoPlayer(player: player)
+            .onAppear {
+                let p = AVPlayer(url: url)
+                p.isMuted = false
+                player = p
+            }
+            .onDisappear {
+                player?.pause()
+                player = nil
+            }
     }
 }
 
