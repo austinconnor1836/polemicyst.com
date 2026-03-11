@@ -178,7 +178,12 @@ public struct FeedVideosView: View {
     private func gridCell(for video: FeedVideo) -> some View {
         let isDeleting = viewModel.deletingVideoId == video.id
         return NavigationLink(value: video.id) {
-            VideoGridCell(video: video)
+            VideoGridCell(
+                title: video.title ?? "Untitled video",
+                subtitle: video.feed?.name,
+                thumbnailUrl: video.resolvedThumbnailUrl,
+                placeholderIcon: "video.fill"
+            )
                 .overlay(alignment: .topTrailing) {
                     Button {
                         videoToDelete = video
@@ -213,69 +218,3 @@ public struct FeedVideosView: View {
     }
 }
 
-// MARK: - Grid Cell
-
-private struct VideoGridCell: View {
-    let video: FeedVideo
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Thumbnail
-            if let url = video.resolvedThumbnailUrl {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(16 / 9, contentMode: .fill)
-                    case .failure:
-                        thumbnailPlaceholder
-                    case .empty:
-                        ZStack {
-                            thumbnailPlaceholder
-                            ProgressView()
-                                .tint(DesignTokens.muted)
-                        }
-                    @unknown default:
-                        thumbnailPlaceholder
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .aspectRatio(16 / 9, contentMode: .fit)
-                .clipped()
-            } else {
-                thumbnailPlaceholder
-            }
-
-            // Info
-            VStack(alignment: .leading, spacing: 4) {
-                Text(video.title ?? "Untitled video")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(DesignTokens.textPrimary)
-                    .lineLimit(2)
-
-                if let feedName = video.feed?.name {
-                    Text(feedName)
-                        .font(.caption2)
-                        .foregroundStyle(DesignTokens.textSecondary)
-                        .lineLimit(1)
-                }
-            }
-            .padding(DesignTokens.smallSpacing)
-        }
-        .background(DesignTokens.surface)
-        .cornerRadius(DesignTokens.cornerRadius)
-    }
-
-    private var thumbnailPlaceholder: some View {
-        ZStack {
-            Rectangle()
-                .fill(DesignTokens.background)
-                .aspectRatio(16 / 9, contentMode: .fit)
-            Image(systemName: "video.fill")
-                .font(.title2)
-                .foregroundStyle(DesignTokens.muted)
-        }
-    }
-}
