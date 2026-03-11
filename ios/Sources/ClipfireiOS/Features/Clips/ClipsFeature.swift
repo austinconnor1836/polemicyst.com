@@ -6,6 +6,7 @@ public final class ClipsViewModel: ObservableObject {
     @Published public var isLoading = false
     @Published public var errorMessage: String?
     @Published public var upgradeError: APIError?
+    @Published public var deletingId: String?
 
     private let api: APIClient
 
@@ -35,9 +36,11 @@ public final class ClipsViewModel: ObservableObject {
     }
 
     public func deleteClip(_ clip: ClipVideo) async {
+        deletingId = clip.id
+        defer { deletingId = nil }
         do {
             try await api.deleteClip(id: clip.id)
-            clips.removeAll { $0.id == clip.id }
+            withAnimation { clips.removeAll { $0.id == clip.id } }
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
@@ -50,6 +53,8 @@ public final class ClipsViewModel: ObservableObject {
 public struct ClipsListView: View {
     @StateObject private var viewModel: ClipsViewModel
     @State private var showErrorAlert = false
+    @State private var showDeleteAlert = false
+    @State private var clipToDelete: ClipVideo?
 
     public init(viewModel: ClipsViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -78,6 +83,14 @@ public struct ClipsListView: View {
                 Button("OK", role: .cancel) { viewModel.errorMessage = nil }
             } message: {
                 Text(viewModel.errorMessage ?? "")
+            }
+            .alert("Delete Clip", isPresented: $showDeleteAlert, presenting: clipToDelete) { clip in
+                Button("Delete", role: .destructive) {
+                    Task { await viewModel.deleteClip(clip) }
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: { clip in
+                Text("Delete \"\(clip.videoTitle ?? "this clip")\"? This cannot be undone.")
             }
             .sheet(item: $viewModel.upgradeError) { error in
                 UpgradePromptView(
@@ -109,57 +122,67 @@ public struct ClipsListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private let columns = [
+        GridItem(.adaptive(minimum: 160), spacing: DesignTokens.spacing)
+    ]
+
     @ViewBuilder
     private var clipsList: some View {
-        List {
-            ForEach(viewModel.clips) { clip in
-                NavigationLink(value: clip.id) {
-                    ClipRowView(clip: clip)
-                }
-                .listRowBackground(DesignTokens.surface)
-            }
-            .onDelete { indexSet in
-                for index in indexSet {
-                    let clip = viewModel.clips[index]
-                    Task { await viewModel.deleteClip(clip) }
+        ScrollView {
+            LazyVGrid(columns: columns, spacing: DesignTokens.spacing) {
+                ForEach(viewModel.clips) { clip in
+                    clipGridCell(clip)
                 }
             }
+            .padding(DesignTokens.spacing)
         }
-        .listStyle(.plain)
         .navigationDestination(for: String.self) { clipId in
             if let clip = viewModel.clips.first(where: { $0.id == clipId }) {
                 ClipDetailView(clip: clip)
             }
         }
     }
-}
 
-struct ClipRowView: View {
-    let clip: ClipVideo
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.smallSpacing) {
-            Text(clip.videoTitle ?? "Untitled Clip")
-                .font(.headline)
-                .foregroundStyle(DesignTokens.textPrimary)
-                .lineLimit(1)
-
-            if let source = clip.sourceVideo?.videoTitle {
-                HStack(spacing: 4) {
-                    Image(systemName: "link")
-                        .font(.caption2)
-                    Text(source)
-                        .lineLimit(1)
+    private func clipGridCell(_ clip: ClipVideo) -> some View {
+        let isDeleting = viewModel.deletingId == clip.id
+        return NavigationLink(value: clip.id) {
+            VideoGridCell(
+                title: clip.videoTitle ?? "Untitled Clip",
+                subtitle: clip.sourceVideo?.videoTitle,
+                placeholderIcon: "film.stack",
+                duration: clip.duration
+            )
+                .overlay(alignment: .topTrailing) {
+                    Button {
+                        clipToDelete = clip
+                        showDeleteAlert = true
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .black.opacity(0.6))
+                    }
+                    .padding(6)
                 }
-                .font(.subheadline)
-                .foregroundStyle(DesignTokens.textSecondary)
-            }
-
-            Text(clip.createdAt, style: .date)
-                .font(.caption)
-                .foregroundStyle(DesignTokens.muted)
+                .overlay {
+                    if isDeleting {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: DesignTokens.cornerRadius)
+                                .fill(.black.opacity(0.5))
+                            VStack(spacing: 6) {
+                                ProgressView()
+                                    .tint(.white)
+                                Text("Deleting…")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                    }
+                }
         }
-        .padding(.vertical, DesignTokens.smallSpacing)
+        .buttonStyle(.plain)
+        .disabled(isDeleting)
     }
 }
 

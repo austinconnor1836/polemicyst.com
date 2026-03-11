@@ -285,11 +285,19 @@ public struct ClipVideo: Identifiable, Codable {
     public let s3Key: String?
     public let s3Url: String?
     public let videoTitle: String?
+    public let trimStartS: Double?
+    public let trimEndS: Double?
     public let createdAt: Date
     public let sourceVideo: ClipSourceVideo?
 
+    public var duration: Double? {
+        guard let start = trimStartS, let end = trimEndS else { return nil }
+        return end - start
+    }
+
     public init(id: String, userId: String, sourceVideoId: String? = nil,
                 s3Key: String? = nil, s3Url: String? = nil, videoTitle: String? = nil,
+                trimStartS: Double? = nil, trimEndS: Double? = nil,
                 createdAt: Date, sourceVideo: ClipSourceVideo? = nil) {
         self.id = id
         self.userId = userId
@@ -297,6 +305,8 @@ public struct ClipVideo: Identifiable, Codable {
         self.s3Key = s3Key
         self.s3Url = s3Url
         self.videoTitle = videoTitle
+        self.trimStartS = trimStartS
+        self.trimEndS = trimEndS
         self.createdAt = createdAt
         self.sourceVideo = sourceVideo
     }
