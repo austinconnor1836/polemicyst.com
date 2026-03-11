@@ -33,6 +33,8 @@ model User {
   feedVideos          FeedVideo[]
   brands              Brand[]
   automationRule      AutomationRule?
+  publications        Publication[]
+  publishingAccounts  PublishingAccount[]
 }
 
 model TemplatePreferences {
@@ -457,4 +459,111 @@ model AnalysisChatMessage {
   createdAt        DateTime @default(now())
 
   @@index([chatId])
+}
+
+model Publication {
+  id                    String    @id @default(cuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                  String
+  tagline               String?
+  configMarkdown        String    @db.Text
+  configJson            Json?
+  substackUrl           String?
+  substackConnected     Boolean   @default(false)
+  substackCookieEnc     String?
+  substackPublicationId String?
+  isDefault             Boolean   @default(false)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  articles              Article[]
+
+  @@index([userId])
+  @@unique([userId, name])
+}
+
+model Article {
+  id               String    @id @default(cuid())
+  publicationId    String
+  publication      Publication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+  userId           String
+  title            String
+  subtitle         String?
+  bodyMarkdown     String?   @db.Text
+  bodyHtml         String?   @db.Text
+  sourceType       String?
+  sourceId         String?
+  sourceContext     Json?
+  generationModel  String?
+  status           String    @default("draft")
+  substackDraftId  String?
+  substackPostId   String?
+  publishError     String?
+  publishedAt      DateTime?
+  tags             Json?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  graphics         ArticleGraphic[]
+  publishes        ArticlePublish[]
+
+  @@index([publicationId])
+  @@index([userId])
+}
+
+model ArticleGraphic {
+  id          String   @id @default(cuid())
+  articleId   String
+  article     Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  type        String
+  label       String?
+  htmlContent String?  @db.Text
+  s3Key       String?
+  s3Url       String?
+  config      Json?
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([articleId])
+}
+
+model PublishingAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform          String
+  displayName       String
+  subdomain         String?
+  platformUrl       String?
+  platformAccountId String?
+  credentialEnc     String?
+  connected         Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  publishes         ArticlePublish[]
+
+  @@index([userId])
+}
+
+model ArticlePublish {
+  id                  String   @id @default(cuid())
+  articleId           String
+  article             Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  publishingAccountId String
+  publishingAccount   PublishingAccount @relation(fields: [publishingAccountId], references: [id], onDelete: Cascade)
+  platformDraftId     String?
+  platformPostId      String?
+  platformUrl         String?
+  status              String   @default("draft")
+  publishError        String?
+  publishedAt         DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([articleId])
+  @@index([publishingAccountId])
+  @@unique([articleId, publishingAccountId])
 }
