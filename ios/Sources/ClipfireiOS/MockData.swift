@@ -161,4 +161,33 @@ public enum MockData {
             sourceVideo: ClipSourceVideo(id: "fv-1", videoTitle: "Senate Passes Infrastructure Bill")
         ),
     ]
+
+    // MARK: - Publications
+
+    public static let publications: [Publication] = [
+        Publication(
+            id: "pub-1",
+            name: "Capitol Dispatch",
+            tagline: "Daily political analysis",
+            configMarkdown: "# Capitol Dispatch\nA daily newsletter covering U.S. politics.",
+            isDefault: true,
+            substackUrl: nil,
+            substackConnected: false,
+            createdAt: Date().addingTimeInterval(-86400 * 30),
+            updatedAt: Date().addingTimeInterval(-86400),
+            _count: PublicationCount(articles: 12)
+        ),
+        Publication(
+            id: "pub-2",
+            name: "Tech & Policy",
+            tagline: "Where technology meets regulation",
+            configMarkdown: "# Tech & Policy\nExploring the intersection of technology and government.",
+            isDefault: false,
+            substackUrl: nil,
+            substackConnected: false,
+            createdAt: Date().addingTimeInterval(-86400 * 14),
+            updatedAt: Date().addingTimeInterval(-86400 * 2),
+            _count: PublicationCount(articles: 5)
+        ),
+    ]
 }

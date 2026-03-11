@@ -7,6 +7,8 @@ struct ClipfireApp: App {
     @State private var tabSelection = 0
     @State private var forceUpdateRequired = false
     @State private var forceUpdateStoreUrl = ""
+    @State private var showContentPicker = false
+    @State private var showPublicationWizard = false
 
     private let apiClient: APIClient
 
@@ -26,30 +28,63 @@ struct ClipfireApp: App {
                 if forceUpdateRequired && !ScreenshotMode.isActive {
                     ForceUpdateView(storeUrl: forceUpdateStoreUrl)
                 } else if authService.isAuthenticated || ScreenshotMode.isActive {
-                    TabView(selection: $tabSelection) {
-                        ClipsListView(viewModel: ClipsViewModel(api: apiClient))
-                            .tabItem {
-                                Label("Clips", systemImage: "film.stack")
-                            }
-                            .tag(0)
+                    ZStack(alignment: .bottomTrailing) {
+                        TabView(selection: $tabSelection) {
+                            ClipsListView(viewModel: ClipsViewModel(api: apiClient))
+                                .tabItem {
+                                    Label("Clips", systemImage: "film.stack")
+                                }
+                                .tag(0)
 
-                        ConnectedAccountsView(viewModel: ConnectedAccountsViewModel(api: apiClient), authService: authService)
-                            .tabItem {
-                                Label("Accounts", systemImage: "link")
-                            }
-                            .tag(1)
+                            ConnectedAccountsView(viewModel: ConnectedAccountsViewModel(api: apiClient), authService: authService)
+                                .tabItem {
+                                    Label("Accounts", systemImage: "link")
+                                }
+                                .tag(1)
 
-                        FeedVideosView(viewModel: FeedVideosViewModel(api: apiClient))
-                            .tabItem {
-                                Label("Videos", systemImage: "list.bullet")
-                            }
-                            .tag(2)
+                            FeedVideosView(viewModel: FeedVideosViewModel(api: apiClient))
+                                .tabItem {
+                                    Label("Videos", systemImage: "list.bullet")
+                                }
+                                .tag(2)
 
-                        SettingsTabView(apiClient: apiClient, authService: authService)
-                            .tabItem {
-                                Label("Settings", systemImage: "gearshape.fill")
+                            PublicationsListView(viewModel: PublicationsViewModel(api: apiClient))
+                                .tabItem {
+                                    Label("Publish", systemImage: "newspaper")
+                                }
+                                .tag(3)
+
+                            SettingsTabView(apiClient: apiClient, authService: authService)
+                                .tabItem {
+                                    Label("Settings", systemImage: "gearshape.fill")
+                                }
+                                .tag(4)
+                        }
+
+                        FloatingActionButton {
+                            showContentPicker = true
+                        }
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 70)
+                    }
+                    .sheet(isPresented: $showContentPicker) {
+                        ContentTypePicker(
+                            onPublication: {
+                                showContentPicker = false
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showPublicationWizard = true
+                                }
+                            },
+                            onVideo: {
+                                showContentPicker = false
+                                tabSelection = 1
                             }
-                            .tag(3)
+                        )
+                    }
+                    .sheet(isPresented: $showPublicationWizard) {
+                        CreateContentWizard(api: apiClient, onNavigateToPublish: {
+                            tabSelection = 1
+                        })
                     }
                 } else {
                     LoginView(authService: authService)

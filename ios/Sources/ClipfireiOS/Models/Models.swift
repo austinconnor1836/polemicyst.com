@@ -697,6 +697,167 @@ public struct AnalysisChatSendMessage: Codable {
     public let content: String
 }
 
+// MARK: - Publications
+
+public struct Publication: Identifiable, Codable {
+    public let id: String
+    public let name: String
+    public let tagline: String?
+    public let configMarkdown: String
+    public let isDefault: Bool
+    public let substackUrl: String?
+    public let substackConnected: Bool
+    public let createdAt: Date
+    public let updatedAt: Date
+    public let _count: PublicationCount?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, tagline, configMarkdown, isDefault
+        case substackUrl, substackConnected, createdAt, updatedAt, _count
+    }
+}
+
+public struct PublicationCount: Codable {
+    public let articles: Int
+}
+
+public struct CreatePublicationRequest: Encodable {
+    public let name: String
+    public let tagline: String?
+
+    public init(name: String, tagline: String? = nil) {
+        self.name = name
+        self.tagline = tagline
+    }
+}
+
+public struct UpdatePublicationRequest: Encodable {
+    public let name: String?
+    public let tagline: String?
+    public let configMarkdown: String?
+
+    public init(name: String? = nil, tagline: String? = nil, configMarkdown: String? = nil) {
+        self.name = name
+        self.tagline = tagline
+        self.configMarkdown = configMarkdown
+    }
+}
+
+// MARK: - Articles
+
+public struct Article: Identifiable, Codable {
+    public let id: String
+    public let publicationId: String
+    public let title: String
+    public let subtitle: String?
+    public let bodyMarkdown: String?
+    public let bodyHtml: String?
+    public let generationModel: String?
+    public let status: String
+    public let publishError: String?
+    public let publishedAt: Date?
+    public let createdAt: Date
+    public let updatedAt: Date
+    public let publication: ArticlePublication?
+    public let graphics: [ArticleGraphic]?
+}
+
+public struct ArticlePublication: Codable {
+    public let id: String
+    public let name: String
+    public let configMarkdown: String?
+    public let substackConnected: Bool?
+    public let substackUrl: String?
+}
+
+public struct ArticleGraphic: Identifiable, Codable {
+    public let id: String
+    public let type: String
+    public let label: String?
+    public let htmlContent: String?
+    public let s3Url: String?
+}
+
+public struct CreateArticleRequest: Encodable {
+    public let publicationId: String
+    public let title: String
+
+    public init(publicationId: String, title: String) {
+        self.publicationId = publicationId
+        self.title = title
+    }
+}
+
+public struct GenerateArticleRequest: Encodable {
+    public let topic: String
+    public let sourceContent: String?
+    public let instructions: String?
+
+    public init(topic: String, sourceContent: String? = nil, instructions: String? = nil) {
+        self.topic = topic
+        self.sourceContent = sourceContent
+        self.instructions = instructions
+    }
+}
+
+public struct GenerateGraphicsResponse: Codable {
+    public let graphics: [ArticleGraphic]
+}
+
+// MARK: - Article Publishing
+
+public struct ArticlePublishRecord: Identifiable, Codable {
+    public let id: String
+    public let publishingAccountId: String
+    public let platform: String
+    public let displayName: String
+    public let status: String
+    public let platformUrl: String?
+    public let publishError: String?
+    public let publishedAt: Date?
+    public let createdAt: Date
+}
+
+public struct PublishArticleRequest: Encodable {
+    public let publishingAccountId: String?
+    public let publishLive: Bool
+
+    public init(publishingAccountId: String? = nil, publishLive: Bool = false) {
+        self.publishingAccountId = publishingAccountId
+        self.publishLive = publishLive
+    }
+}
+
+// MARK: - Publishing Accounts
+
+public struct PublishingAccount: Identifiable, Codable {
+    public let id: String
+    public let platform: String
+    public let displayName: String
+    public let platformUrl: String?
+    public let connected: Bool
+    public let createdAt: Date
+}
+
+// MARK: - Substack
+
+public struct SubstackConnectResponse: Codable {
+    public let connected: Bool
+    public let publicationName: String?
+    public let expired: Bool
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        connected = (try? c.decode(Bool.self, forKey: .connected)) ?? false
+        publicationName = try? c.decode(String.self, forKey: .publicationName)
+        expired = (try? c.decode(Bool.self, forKey: .expired)) ?? false
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case connected, publicationName, expired
+    }
+}
+
 // MARK: - API Error
 
 public struct APIErrorResponse: Codable {

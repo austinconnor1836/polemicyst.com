@@ -5,6 +5,7 @@ import Combine
 public final class ConnectedAccountsViewModel: ObservableObject {
     @Published public private(set) var feeds: [VideoFeed] = []
     @Published public private(set) var brands: [Brand] = []
+    @Published public private(set) var publishingAccounts: [PublishingAccount] = []
     @Published public var isLoading = false
     @Published public var errorMessage: String?
     @Published public var upgradeError: APIError?
@@ -30,6 +31,16 @@ public final class ConnectedAccountsViewModel: ObservableObject {
         } catch {
             if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Failed to load accounts: \(error.localizedDescription)"
+        }
+    }
+
+    public func loadPublishingAccounts() async {
+        do {
+            publishingAccounts = try await api.fetchPublishingAccounts()
+        } catch is CancellationError {
+            return
+        } catch {
+            // Non-blocking — publishing accounts are supplementary
         }
     }
 
@@ -107,6 +118,10 @@ public final class ConnectedAccountsViewModel: ObservableObject {
         feeds.insert(feed, at: 0)
     }
 
+    public func addPublishingAccount(_ account: PublishingAccount) {
+        publishingAccounts.insert(account, at: 0)
+    }
+
     public func deleteAccount(_ feed: VideoFeed) async {
         do {
             try await api.deleteFeed(id: feed.id)
@@ -124,6 +139,7 @@ public struct ConnectedAccountsView: View {
     @StateObject private var viewModel: ConnectedAccountsViewModel
     @State private var showPlatformPicker = false
     @State private var showYouTubePicker = false
+    @State private var showSubstackConnection = false
     @State private var showCreateBrand = false
     @State private var newBrandName = ""
     @State private var selectedAccountSettings: VideoFeed?
@@ -138,52 +154,61 @@ public struct ConnectedAccountsView: View {
 
     public var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                if let sub = viewModel.subscription {
-                    HStack(spacing: DesignTokens.largeSpacing) {
-                        QuotaBar(
-                            label: "Accounts",
-                            current: sub.usage.feeds,
-                            maximum: sub.plan.limits.maxConnectedAccounts
-                        )
-                        QuotaBar(
-                            label: "Clips/mo",
-                            current: sub.usage.clipsThisMonth,
-                            maximum: sub.plan.limits.maxClipsPerMonth
-                        )
+            ZStack(alignment: .bottomLeading) {
+                VStack(spacing: 0) {
+                    if let sub = viewModel.subscription {
+                        HStack(spacing: DesignTokens.largeSpacing) {
+                            QuotaBar(
+                                label: "Accounts",
+                                current: sub.usage.feeds,
+                                maximum: sub.plan.limits.maxConnectedAccounts
+                            )
+                            QuotaBar(
+                                label: "Clips/mo",
+                                current: sub.usage.clipsThisMonth,
+                                maximum: sub.plan.limits.maxClipsPerMonth
+                            )
+                        }
+                        .padding()
+                        .background(DesignTokens.surface)
                     }
-                    .padding()
-                    .background(DesignTokens.surface)
+
+                    accountsList
                 }
 
-                accountsList
+                Menu {
+                    Button {
+                        showPlatformPicker = true
+                    } label: {
+                        Label("Connect Account", systemImage: "plus.circle")
+                    }
+                    Button {
+                        newBrandName = ""
+                        showCreateBrand = true
+                    } label: {
+                        Label("Create Brand", systemImage: "tag")
+                    }
+                } label: {
+                    Image(systemName: "link.badge.plus")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(DesignTokens.accent)
+                        .frame(width: 44, height: 44)
+                        .background(DesignTokens.surface)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(DesignTokens.accent.opacity(0.3), lineWidth: 1.5))
+                        .shadow(color: Color.black.opacity(0.15), radius: 4, x: 0, y: 2)
+                }
+                .padding(.leading, 20)
+                .padding(.bottom, 20)
             }
             .background(DesignTokens.background.ignoresSafeArea())
             .navigationTitle("Connected Accounts")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button {
-                            showPlatformPicker = true
-                        } label: {
-                            Label("Connect Account", systemImage: "plus.circle")
-                        }
-                        Button {
-                            newBrandName = ""
-                            showCreateBrand = true
-                        } label: {
-                            Label("Create Brand", systemImage: "tag")
-                        }
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                    }
-                }
-            }
             .task {
                 await viewModel.loadSubscription()
                 async let accountsTask: () = viewModel.loadAccounts()
                 async let brandsTask: () = viewModel.loadBrands()
-                _ = await (accountsTask, brandsTask)
+                async let publishingTask: () = viewModel.loadPublishingAccounts()
+                _ = await (accountsTask, brandsTask, publishingTask)
             }
             .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
             .alert("Error", isPresented: $showErrorAlert) {
@@ -227,6 +252,11 @@ public struct ConnectedAccountsView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showSubstackConnection) {
+                SubstackConnectionView(api: viewModel.api) { account in
+                    viewModel.addPublishingAccount(account)
+                }
+            }
             .sheet(item: $selectedAccountSettings) { feed in
                 AccountSettingsView(
                     viewModel: AccountSettingsViewModel(feed: feed, api: viewModel.api)
@@ -240,16 +270,19 @@ public struct ConnectedAccountsView: View {
     }
 
     private func handlePlatformSelected(_ platform: PlatformOption) {
-        if platform == .youtube {
-            // Always use OAuth for YouTube
+        switch platform {
+        case .youtube:
             showYouTubePicker = true
+        case .substack:
+            showSubstackConnection = true
+        default:
+            break
         }
-        // Future platforms (Facebook, Instagram, TikTok, Twitter) will be added here
     }
 
     @ViewBuilder
     private var accountsList: some View {
-        if viewModel.feeds.isEmpty && !viewModel.isLoading {
+        if viewModel.feeds.isEmpty && viewModel.publishingAccounts.isEmpty && !viewModel.isLoading {
             VStack(spacing: DesignTokens.spacing) {
                 Image(systemName: "link.badge.plus")
                     .font(.system(size: 48))
@@ -257,7 +290,7 @@ public struct ConnectedAccountsView: View {
                 Text("No connected accounts")
                     .font(.title3)
                     .foregroundStyle(DesignTokens.textPrimary)
-                Text("Connect a YouTube channel to start generating clips.")
+                Text("Connect a YouTube channel or publishing platform to get started.")
                     .font(.subheadline)
                     .foregroundStyle(DesignTokens.textSecondary)
                     .multilineTextAlignment(.center)
@@ -278,6 +311,31 @@ public struct ConnectedAccountsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
+                // Publishing Platforms section
+                if !viewModel.publishingAccounts.isEmpty {
+                    Section("Publishing Platforms") {
+                        ForEach(viewModel.publishingAccounts) { account in
+                            HStack(spacing: DesignTokens.spacing) {
+                                PlatformBrandIcon(platform: account.platform, size: 32)
+
+                                VStack(alignment: .leading, spacing: DesignTokens.smallSpacing) {
+                                    Text(account.displayName)
+                                        .font(.headline)
+                                        .foregroundStyle(DesignTokens.textPrimary)
+                                    Text(account.platform.capitalized)
+                                        .font(.caption)
+                                        .foregroundStyle(DesignTokens.muted)
+                                }
+
+                                Spacer()
+                            }
+                            .padding(.vertical, DesignTokens.smallSpacing)
+                            .listRowBackground(DesignTokens.surface)
+                        }
+                    }
+                }
+
+                // Video Feeds section
                 let groups = viewModel.feedsByBrand
                 ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
                     Section {
@@ -314,6 +372,8 @@ public struct ConnectedAccountsView: View {
                             }
                         } else if viewModel.brands.count > 0 {
                             Text("Ungrouped")
+                        } else if !viewModel.publishingAccounts.isEmpty && !viewModel.feeds.isEmpty {
+                            Text("Video Feeds")
                         }
                     }
                 }
