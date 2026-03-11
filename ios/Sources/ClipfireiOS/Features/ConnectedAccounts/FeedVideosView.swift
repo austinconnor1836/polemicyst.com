@@ -25,6 +25,7 @@ public final class FeedVideosViewModel: ObservableObject {
         do {
             videos = try await api.fetchFeedVideos()
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Unable to load feed videos: \(error.localizedDescription)"
         }
     }
@@ -39,6 +40,7 @@ public final class FeedVideosViewModel: ObservableObject {
             try await api.deleteFeedVideo(id: video.id)
             withAnimation { videos.removeAll { $0.id == video.id } }
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Failed to delete video: \(error.localizedDescription)"
         }
         deletingVideoId = nil
@@ -56,6 +58,7 @@ public final class FeedVideosViewModel: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Failed to trigger clip generation: \(error.localizedDescription)"
         }
     }
@@ -65,6 +68,9 @@ public struct FeedVideosView: View {
     @StateObject private var viewModel: FeedVideosViewModel
     @State private var showGenerateSheet = false
     @State private var videoToDelete: FeedVideo?
+    @State private var showErrorAlert = false
+    @State private var showClipResultAlert = false
+    @State private var showDeleteAlert = false
 
     public init(viewModel: FeedVideosViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -100,33 +106,24 @@ public struct FeedVideosView: View {
                         ProgressView().progressViewStyle(.circular)
                     }
                 }
-                .alert("Error", isPresented: Binding(
-                    get: { viewModel.errorMessage != nil },
-                    set: { if !$0 { viewModel.errorMessage = nil } }
-                )) {
-                    Button("OK", role: .cancel) { }
+                .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
+                .alert("Error", isPresented: $showErrorAlert) {
+                    Button("OK", role: .cancel) { viewModel.errorMessage = nil }
                 } message: {
                     Text(viewModel.errorMessage ?? "")
                 }
-                .alert("Clip Generation", isPresented: Binding(
-                    get: { viewModel.clipResultMessage != nil },
-                    set: { if !$0 { viewModel.clipResultMessage = nil } }
-                )) {
-                    Button("OK", role: .cancel) { }
+                .onChange(of: viewModel.clipResultMessage) { _, newValue in showClipResultAlert = newValue != nil }
+                .alert("Clip Generation", isPresented: $showClipResultAlert) {
+                    Button("OK", role: .cancel) { viewModel.clipResultMessage = nil }
                 } message: {
                     Text(viewModel.clipResultMessage ?? "")
                 }
-                .alert("Delete Video", isPresented: Binding(
-                    get: { videoToDelete != nil },
-                    set: { if !$0 { videoToDelete = nil } }
-                )) {
+                .alert("Delete Video", isPresented: $showDeleteAlert, presenting: videoToDelete) { video in
                     Button("Delete", role: .destructive) {
-                        if let video = videoToDelete {
-                            Task { await viewModel.deleteFeedVideo(video) }
-                        }
+                        Task { await viewModel.deleteFeedVideo(video) }
                     }
                     Button("Cancel", role: .cancel) { }
-                } message: {
+                } message: { _ in
                     Text("Are you sure you want to delete this video? This action cannot be undone.")
                 }
                 .sheet(item: $viewModel.upgradeError) { error in
@@ -185,6 +182,7 @@ public struct FeedVideosView: View {
                 .overlay(alignment: .topTrailing) {
                     Button {
                         videoToDelete = video
+                        showDeleteAlert = true
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 20))

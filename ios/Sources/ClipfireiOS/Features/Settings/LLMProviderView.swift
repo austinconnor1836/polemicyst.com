@@ -26,6 +26,7 @@ public final class LLMProviderViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Failed to load provider settings: \(error.localizedDescription)"
         }
     }
@@ -46,6 +47,7 @@ public final class LLMProviderViewModel: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Failed to update provider: \(error.localizedDescription)"
         }
     }
@@ -53,6 +55,7 @@ public final class LLMProviderViewModel: ObservableObject {
 
 public struct LLMProviderView: View {
     @StateObject private var viewModel: LLMProviderViewModel
+    @State private var showErrorAlert = false
 
     private static let allProviders: [(id: String, label: String, icon: String)] = [
         ("ollama", "Ollama", "desktopcomputer"),
@@ -86,11 +89,9 @@ public struct LLMProviderView: View {
                     ProgressView().progressViewStyle(.circular)
                 }
             }
-            .alert("Error", isPresented: Binding(
-                get: { viewModel.errorMessage != nil },
-                set: { if !$0 { viewModel.errorMessage = nil } }
-            )) {
-                Button("OK", role: .cancel) { }
+            .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
+            .alert("Error", isPresented: $showErrorAlert) {
+                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }

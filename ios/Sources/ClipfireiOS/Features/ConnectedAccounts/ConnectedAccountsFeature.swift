@@ -28,6 +28,7 @@ public final class ConnectedAccountsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Failed to load accounts: \(error.localizedDescription)"
         }
     }
@@ -47,6 +48,7 @@ public final class ConnectedAccountsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Failed to create brand: \(error.localizedDescription)"
         }
     }
@@ -59,6 +61,7 @@ public final class ConnectedAccountsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Failed to delete brand: \(error.localizedDescription)"
         }
     }
@@ -111,6 +114,7 @@ public final class ConnectedAccountsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Failed to remove account: \(error.localizedDescription)"
         }
     }
@@ -123,6 +127,7 @@ public struct ConnectedAccountsView: View {
     @State private var showCreateBrand = false
     @State private var newBrandName = ""
     @State private var selectedAccountSettings: VideoFeed?
+    @State private var showErrorAlert = false
 
     private let authService: AuthService?
 
@@ -180,11 +185,9 @@ public struct ConnectedAccountsView: View {
                 async let brandsTask: () = viewModel.loadBrands()
                 _ = await (accountsTask, brandsTask)
             }
-            .alert("Error", isPresented: Binding(
-                get: { viewModel.errorMessage != nil },
-                set: { if !$0 { viewModel.errorMessage = nil } }
-            )) {
-                Button("OK", role: .cancel) { }
+            .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
+            .alert("Error", isPresented: $showErrorAlert) {
+                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }

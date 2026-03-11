@@ -26,6 +26,7 @@ public final class AutomationSettingsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Failed to load settings: \(error.localizedDescription)"
         }
     }
@@ -41,6 +42,7 @@ public final class AutomationSettingsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Failed to save settings: \(error.localizedDescription)"
         }
     }
@@ -52,6 +54,7 @@ public final class AutomationSettingsViewModel: ObservableObject {
 
 public struct AutomationSettingsView: View {
     @StateObject private var viewModel: AutomationSettingsViewModel
+    @State private var showErrorAlert = false
 
     private static let captionStyles = [
         ("default", "Default"),
@@ -172,11 +175,9 @@ public struct AutomationSettingsView: View {
                 ProgressView().progressViewStyle(.circular)
             }
         }
-        .alert("Error", isPresented: Binding(
-            get: { viewModel.errorMessage != nil },
-            set: { if !$0 { viewModel.errorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { }
+        .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
+        .alert("Error", isPresented: $showErrorAlert) {
+            Button("OK", role: .cancel) { viewModel.errorMessage = nil }
         } message: {
             Text(viewModel.errorMessage ?? "")
         }

@@ -50,6 +50,7 @@ public final class TruthAnalysisViewModel: ObservableObject {
         } catch let error as URLError where error.code == .timedOut {
             errorMessage = "Analysis timed out. Try again — it may take up to 2 minutes."
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Analysis failed: \(error.localizedDescription)"
         }
     }

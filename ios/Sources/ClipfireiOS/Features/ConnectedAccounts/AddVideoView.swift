@@ -49,6 +49,7 @@ public final class AddVideoViewModel: ObservableObject {
             onVideoAdded?()
             return true
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return false }
             errorMessage = "Failed to import video: \(error.localizedDescription)"
             return false
         }
@@ -100,6 +101,7 @@ public final class AddVideoViewModel: ObservableObject {
             isImporting = false
             uploadProgress = nil
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Failed to upload video: \(error.localizedDescription)"
             isImporting = false
             uploadProgress = nil
@@ -125,6 +127,7 @@ struct VideoTransferable: Transferable {
 public struct AddVideoView: View {
     @StateObject private var viewModel: AddVideoViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var showErrorAlert = false
 
     public init(api: APIClient, onVideoAdded: (() -> Void)? = nil) {
         _viewModel = StateObject(wrappedValue: AddVideoViewModel(api: api, onVideoAdded: onVideoAdded))
@@ -149,11 +152,9 @@ public struct AddVideoView: View {
                         .disabled(viewModel.isImporting)
                 }
             }
-            .alert("Error", isPresented: Binding(
-                get: { viewModel.errorMessage != nil },
-                set: { if !$0 { viewModel.errorMessage = nil } }
-            )) {
-                Button("OK", role: .cancel) { }
+            .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
+            .alert("Error", isPresented: $showErrorAlert) {
+                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }
