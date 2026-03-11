@@ -30,7 +30,7 @@ public final class AnalysisChatViewModel: ObservableObject {
             }
             analysis = response.analysis
         } catch {
-            errorMessage = "Unable to load chat"
+            errorMessage = "Unable to load chat: \(error.localizedDescription)"
         }
     }
 
@@ -69,7 +69,7 @@ public final class AnalysisChatViewModel: ObservableObject {
             errorMessage = error.localizedDescription
         } catch {
             messages.removeLast()
-            errorMessage = "Failed to send message"
+            errorMessage = "Failed to send message: \(error.localizedDescription)"
         }
 
         isSending = false

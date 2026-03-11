@@ -29,7 +29,7 @@ public final class ClipsViewModel: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         } catch {
-            errorMessage = "Failed to load clips"
+            errorMessage = "Failed to load clips: \(error.localizedDescription)"
         }
     }
 
@@ -40,7 +40,7 @@ public final class ClipsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
-            errorMessage = "Failed to delete clip"
+            errorMessage = "Failed to delete clip: \(error.localizedDescription)"
         }
     }
 }

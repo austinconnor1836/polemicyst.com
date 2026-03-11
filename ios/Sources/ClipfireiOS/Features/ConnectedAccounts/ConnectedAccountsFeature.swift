@@ -28,7 +28,7 @@ public final class ConnectedAccountsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
-            errorMessage = "Failed to load accounts"
+            errorMessage = "Failed to load accounts: \(error.localizedDescription)"
         }
     }
 
@@ -47,7 +47,7 @@ public final class ConnectedAccountsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
-            errorMessage = "Failed to create brand"
+            errorMessage = "Failed to create brand: \(error.localizedDescription)"
         }
     }
 
@@ -59,7 +59,7 @@ public final class ConnectedAccountsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
-            errorMessage = "Failed to delete brand"
+            errorMessage = "Failed to delete brand: \(error.localizedDescription)"
         }
     }
 
@@ -111,7 +111,7 @@ public final class ConnectedAccountsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
-            errorMessage = "Failed to remove account"
+            errorMessage = "Failed to remove account: \(error.localizedDescription)"
         }
     }
 }

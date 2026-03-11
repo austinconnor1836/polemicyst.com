@@ -56,7 +56,7 @@ public final class AccountSettingsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
-            errorMessage = "Failed to save settings"
+            errorMessage = "Failed to save settings: \(error.localizedDescription)"
         }
     }
 

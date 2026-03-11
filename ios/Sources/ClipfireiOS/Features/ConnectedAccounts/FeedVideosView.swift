@@ -25,7 +25,7 @@ public final class FeedVideosViewModel: ObservableObject {
         do {
             videos = try await api.fetchFeedVideos()
         } catch {
-            errorMessage = "Unable to load feed videos"
+            errorMessage = "Unable to load feed videos: \(error.localizedDescription)"
         }
     }
 
@@ -39,7 +39,7 @@ public final class FeedVideosViewModel: ObservableObject {
             try await api.deleteFeedVideo(id: video.id)
             withAnimation { videos.removeAll { $0.id == video.id } }
         } catch {
-            errorMessage = "Failed to delete video"
+            errorMessage = "Failed to delete video: \(error.localizedDescription)"
         }
         deletingVideoId = nil
     }
@@ -56,7 +56,7 @@ public final class FeedVideosViewModel: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         } catch {
-            errorMessage = "Failed to trigger clip generation"
+            errorMessage = "Failed to trigger clip generation: \(error.localizedDescription)"
         }
     }
 }

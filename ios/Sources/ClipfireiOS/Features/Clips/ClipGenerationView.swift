@@ -32,7 +32,7 @@ public final class ClipGenerationViewModel: ObservableObject {
         do {
             videos = try await api.fetchFeedVideos()
         } catch {
-            errorMessage = "Failed to load videos"
+            errorMessage = "Failed to load videos: \(error.localizedDescription)"
         }
     }
 
@@ -66,7 +66,7 @@ public final class ClipGenerationViewModel: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         } catch {
-            errorMessage = "Failed to start clip generation"
+            errorMessage = "Failed to start clip generation: \(error.localizedDescription)"
         }
     }
 }

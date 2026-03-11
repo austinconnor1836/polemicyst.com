@@ -26,7 +26,7 @@ public final class AutomationSettingsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
-            errorMessage = "Failed to load settings"
+            errorMessage = "Failed to load settings: \(error.localizedDescription)"
         }
     }
 
@@ -41,7 +41,7 @@ public final class AutomationSettingsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
-            errorMessage = "Failed to save settings"
+            errorMessage = "Failed to save settings: \(error.localizedDescription)"
         }
     }
 

@@ -49,7 +49,7 @@ public final class AddVideoViewModel: ObservableObject {
             onVideoAdded?()
             return true
         } catch {
-            errorMessage = "Failed to import video"
+            errorMessage = "Failed to import video: \(error.localizedDescription)"
             return false
         }
     }
@@ -100,7 +100,7 @@ public final class AddVideoViewModel: ObservableObject {
             isImporting = false
             uploadProgress = nil
         } catch {
-            errorMessage = "Failed to upload video"
+            errorMessage = "Failed to upload video: \(error.localizedDescription)"
             isImporting = false
             uploadProgress = nil
         }

@@ -26,7 +26,7 @@ public final class LLMProviderViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
-            errorMessage = "Failed to load provider settings"
+            errorMessage = "Failed to load provider settings: \(error.localizedDescription)"
         }
     }
 
@@ -46,7 +46,7 @@ public final class LLMProviderViewModel: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         } catch {
-            errorMessage = "Failed to update provider"
+            errorMessage = "Failed to update provider: \(error.localizedDescription)"
         }
     }
 }

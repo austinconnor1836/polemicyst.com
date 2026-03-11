@@ -20,7 +20,7 @@ public final class SubscriptionViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
-            errorMessage = "Failed to load subscription"
+            errorMessage = "Failed to load subscription: \(error.localizedDescription)"
         }
     }
 }

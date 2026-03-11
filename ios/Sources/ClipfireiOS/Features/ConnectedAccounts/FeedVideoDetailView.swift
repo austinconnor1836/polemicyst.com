@@ -28,7 +28,7 @@ public final class FeedVideoDetailViewModel: ObservableObject {
             detail = try await api.fetchFeedVideoDetail(id: feedVideoId)
             startPollingIfNeeded()
         } catch {
-            errorMessage = "Unable to load video details"
+            errorMessage = "Unable to load video details: \(error.localizedDescription)"
         }
     }
 
@@ -48,7 +48,7 @@ public final class FeedVideoDetailViewModel: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         } catch {
-            errorMessage = "Failed to trigger clip generation"
+            errorMessage = "Failed to trigger clip generation: \(error.localizedDescription)"
         }
     }
 
@@ -59,7 +59,7 @@ public final class FeedVideoDetailViewModel: ObservableObject {
             return true
         } catch {
             isDeleting = false
-            errorMessage = "Failed to delete video"
+            errorMessage = "Failed to delete video: \(error.localizedDescription)"
             return false
         }
     }
