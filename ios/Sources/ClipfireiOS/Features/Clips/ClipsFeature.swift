@@ -70,8 +70,11 @@ public struct ClipsListView: View {
                     ProgressView().progressViewStyle(.circular)
                 }
             }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+            .alert("Error", isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { }
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }

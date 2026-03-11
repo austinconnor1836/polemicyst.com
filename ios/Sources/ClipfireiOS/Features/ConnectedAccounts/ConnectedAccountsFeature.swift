@@ -180,8 +180,11 @@ public struct ConnectedAccountsView: View {
                 async let brandsTask: () = viewModel.loadBrands()
                 _ = await (accountsTask, brandsTask)
             }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+            .alert("Error", isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { }
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }

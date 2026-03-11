@@ -95,14 +95,19 @@ public struct ClipGenerationView: View {
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .task { await viewModel.loadVideos() }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+            .alert("Error", isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { }
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }
-            .alert("Job Started", isPresented: .constant(viewModel.resultMessage != nil)) {
+            .alert("Job Started", isPresented: Binding(
+                get: { viewModel.resultMessage != nil },
+                set: { if !$0 { viewModel.resultMessage = nil } }
+            )) {
                 Button("OK", role: .cancel) {
-                    viewModel.resultMessage = nil
                     dismiss()
                 }
             } message: {

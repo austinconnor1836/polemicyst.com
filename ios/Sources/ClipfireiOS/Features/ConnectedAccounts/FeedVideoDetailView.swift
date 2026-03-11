@@ -131,13 +131,19 @@ public struct FeedVideoDetailView: View {
             .task { await viewModel.load() }
             .onDisappear { viewModel.stopPolling() }
             .refreshable { await viewModel.load() }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+            .alert("Error", isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { }
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }
-            .alert("Clip Generation", isPresented: .constant(viewModel.clipResultMessage != nil)) {
-                Button("OK", role: .cancel) { viewModel.clipResultMessage = nil }
+            .alert("Clip Generation", isPresented: Binding(
+                get: { viewModel.clipResultMessage != nil },
+                set: { if !$0 { viewModel.clipResultMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { }
             } message: {
                 Text(viewModel.clipResultMessage ?? "")
             }

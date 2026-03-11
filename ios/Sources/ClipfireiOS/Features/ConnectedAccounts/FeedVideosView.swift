@@ -100,24 +100,32 @@ public struct FeedVideosView: View {
                         ProgressView().progressViewStyle(.circular)
                     }
                 }
-                .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-                    Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+                .alert("Error", isPresented: Binding(
+                    get: { viewModel.errorMessage != nil },
+                    set: { if !$0 { viewModel.errorMessage = nil } }
+                )) {
+                    Button("OK", role: .cancel) { }
                 } message: {
                     Text(viewModel.errorMessage ?? "")
                 }
-                .alert("Clip Generation", isPresented: .constant(viewModel.clipResultMessage != nil)) {
-                    Button("OK", role: .cancel) { viewModel.clipResultMessage = nil }
+                .alert("Clip Generation", isPresented: Binding(
+                    get: { viewModel.clipResultMessage != nil },
+                    set: { if !$0 { viewModel.clipResultMessage = nil } }
+                )) {
+                    Button("OK", role: .cancel) { }
                 } message: {
                     Text(viewModel.clipResultMessage ?? "")
                 }
-                .alert("Delete Video", isPresented: .constant(videoToDelete != nil)) {
+                .alert("Delete Video", isPresented: Binding(
+                    get: { videoToDelete != nil },
+                    set: { if !$0 { videoToDelete = nil } }
+                )) {
                     Button("Delete", role: .destructive) {
                         if let video = videoToDelete {
-                            videoToDelete = nil
                             Task { await viewModel.deleteFeedVideo(video) }
                         }
                     }
-                    Button("Cancel", role: .cancel) { videoToDelete = nil }
+                    Button("Cancel", role: .cancel) { }
                 } message: {
                     Text("Are you sure you want to delete this video? This action cannot be undone.")
                 }
