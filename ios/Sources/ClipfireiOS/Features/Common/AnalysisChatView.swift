@@ -30,7 +30,8 @@ public final class AnalysisChatViewModel: ObservableObject {
             }
             analysis = response.analysis
         } catch {
-            errorMessage = "Unable to load chat"
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            errorMessage = "Unable to load chat: \(error.localizedDescription)"
         }
     }
 
@@ -68,8 +69,12 @@ public final class AnalysisChatViewModel: ObservableObject {
             messages.removeLast()
             errorMessage = error.localizedDescription
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled {
+                messages.removeLast()
+                return
+            }
             messages.removeLast()
-            errorMessage = "Failed to send message"
+            errorMessage = "Failed to send message: \(error.localizedDescription)"
         }
 
         isSending = false

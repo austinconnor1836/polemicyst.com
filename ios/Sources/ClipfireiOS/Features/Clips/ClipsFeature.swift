@@ -29,7 +29,8 @@ public final class ClipsViewModel: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         } catch {
-            errorMessage = "Failed to load clips"
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            errorMessage = "Failed to load clips: \(error.localizedDescription)"
         }
     }
 
@@ -40,13 +41,15 @@ public final class ClipsViewModel: ObservableObject {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
-            errorMessage = "Failed to delete clip"
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            errorMessage = "Failed to delete clip: \(error.localizedDescription)"
         }
     }
 }
 
 public struct ClipsListView: View {
     @StateObject private var viewModel: ClipsViewModel
+    @State private var showErrorAlert = false
 
     public init(viewModel: ClipsViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -70,7 +73,8 @@ public struct ClipsListView: View {
                     ProgressView().progressViewStyle(.circular)
                 }
             }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+            .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
+            .alert("Error", isPresented: $showErrorAlert) {
                 Button("OK", role: .cancel) { viewModel.errorMessage = nil }
             } message: {
                 Text(viewModel.errorMessage ?? "")

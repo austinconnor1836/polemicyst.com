@@ -32,7 +32,8 @@ public final class ClipGenerationViewModel: ObservableObject {
         do {
             videos = try await api.fetchFeedVideos()
         } catch {
-            errorMessage = "Failed to load videos"
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            errorMessage = "Failed to load videos: \(error.localizedDescription)"
         }
     }
 
@@ -66,7 +67,8 @@ public final class ClipGenerationViewModel: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         } catch {
-            errorMessage = "Failed to start clip generation"
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            errorMessage = "Failed to start clip generation: \(error.localizedDescription)"
         }
     }
 }
@@ -74,6 +76,8 @@ public final class ClipGenerationViewModel: ObservableObject {
 public struct ClipGenerationView: View {
     @StateObject private var viewModel: ClipGenerationViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var showErrorAlert = false
+    @State private var showResultAlert = false
 
     public init(viewModel: ClipGenerationViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -95,12 +99,14 @@ public struct ClipGenerationView: View {
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .task { await viewModel.loadVideos() }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+            .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
+            .alert("Error", isPresented: $showErrorAlert) {
                 Button("OK", role: .cancel) { viewModel.errorMessage = nil }
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }
-            .alert("Job Started", isPresented: .constant(viewModel.resultMessage != nil)) {
+            .onChange(of: viewModel.resultMessage) { _, newValue in showResultAlert = newValue != nil }
+            .alert("Job Started", isPresented: $showResultAlert) {
                 Button("OK", role: .cancel) {
                     viewModel.resultMessage = nil
                     dismiss()

@@ -28,7 +28,8 @@ public final class FeedVideoDetailViewModel: ObservableObject {
             detail = try await api.fetchFeedVideoDetail(id: feedVideoId)
             startPollingIfNeeded()
         } catch {
-            errorMessage = "Unable to load video details"
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            errorMessage = "Unable to load video details: \(error.localizedDescription)"
         }
     }
 
@@ -48,7 +49,8 @@ public final class FeedVideoDetailViewModel: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         } catch {
-            errorMessage = "Failed to trigger clip generation"
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            errorMessage = "Failed to trigger clip generation: \(error.localizedDescription)"
         }
     }
 
@@ -58,8 +60,9 @@ public final class FeedVideoDetailViewModel: ObservableObject {
             try await api.deleteFeedVideo(id: feedVideoId)
             return true
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return false }
             isDeleting = false
-            errorMessage = "Failed to delete video"
+            errorMessage = "Failed to delete video: \(error.localizedDescription)"
             return false
         }
     }
@@ -91,6 +94,8 @@ public struct FeedVideoDetailView: View {
     @StateObject private var viewModel: FeedVideoDetailViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirmation = false
+    @State private var showErrorAlert = false
+    @State private var showClipResultAlert = false
     private var onDelete: (() -> Void)?
 
     public init(api: APIClient, feedVideoId: String, onDelete: (() -> Void)? = nil) {
@@ -131,12 +136,14 @@ public struct FeedVideoDetailView: View {
             .task { await viewModel.load() }
             .onDisappear { viewModel.stopPolling() }
             .refreshable { await viewModel.load() }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+            .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
+            .alert("Error", isPresented: $showErrorAlert) {
                 Button("OK", role: .cancel) { viewModel.errorMessage = nil }
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }
-            .alert("Clip Generation", isPresented: .constant(viewModel.clipResultMessage != nil)) {
+            .onChange(of: viewModel.clipResultMessage) { _, newValue in showClipResultAlert = newValue != nil }
+            .alert("Clip Generation", isPresented: $showClipResultAlert) {
                 Button("OK", role: .cancel) { viewModel.clipResultMessage = nil }
             } message: {
                 Text(viewModel.clipResultMessage ?? "")
