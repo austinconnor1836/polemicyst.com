@@ -4,7 +4,11 @@ import { queueFeedDownloadJob } from '@shared/queues';
 import { findOrCreateManualFeed, createFeedVideoRecord } from '@shared/services/upload-service';
 import { extractYouTubeId } from '@/app/connected-accounts/util/thumbnails';
 import { prisma } from '@shared/lib/prisma';
-import { isYouTubeUrl, fetchYouTubeCaptionsHTTP } from '@shared/lib/youtube-captions';
+import {
+  isYouTubeUrl,
+  fetchYouTubeCaptions,
+  fetchYouTubeCaptionsHTTP,
+} from '@shared/lib/youtube-captions';
 
 export async function POST(req: NextRequest) {
   const user = await getAuthenticatedUser(req);
@@ -44,12 +48,15 @@ export async function POST(req: NextRequest) {
       userId: user.id,
     });
 
-    // For YouTube URLs, fetch captions inline (pure HTTP, ~100ms).
-    // This makes the transcript available immediately without needing
-    // the clip-metadata-worker to be running.
+    // For YouTube URLs, fetch captions inline so the transcript is
+    // available immediately without needing the clip-metadata-worker.
+    // Try pure HTTP first (~100ms), fall back to yt-dlp (~3s).
     if (isYouTubeUrl(url)) {
       try {
-        const captions = await fetchYouTubeCaptionsHTTP(url);
+        let captions = await fetchYouTubeCaptionsHTTP(url);
+        if (!captions) {
+          captions = await fetchYouTubeCaptions(url);
+        }
         if (captions) {
           await prisma.feedVideo.update({
             where: { id: newVideo.id },
@@ -60,7 +67,7 @@ export async function POST(req: NextRequest) {
             },
           });
           console.info(
-            `[from-url] Inline YouTube captions saved for ${newVideo.id} (${captions.segments.length} segments)`
+            `[from-url] YouTube captions saved for ${newVideo.id} (${captions.segments.length} segments, ${captions.source})`
           );
         }
       } catch (err) {
