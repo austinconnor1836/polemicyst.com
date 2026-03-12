@@ -21,10 +21,9 @@ RUN npm run build
 
 FROM node:20-bullseye-slim AS runner
 
-RUN apt-get update && apt-get install -y --no-install-recommends python3 curl && \
-    curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
-    chmod a+rx /usr/local/bin/yt-dlp && \
-    apt-get remove -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && \
+    pip3 install yt-dlp && \
+    apt-get remove -y python3-pip && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 ENV NODE_ENV=production
