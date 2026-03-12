@@ -9,6 +9,7 @@ struct ClipfireApp: App {
     @State private var forceUpdateStoreUrl = ""
     @State private var showContentPicker = false
     @State private var showPublicationWizard = false
+    @State private var showAddVideo = false
 
     private let apiClient: APIClient
 
@@ -77,9 +78,16 @@ struct ClipfireApp: App {
                             },
                             onVideo: {
                                 showContentPicker = false
-                                tabSelection = 1
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showAddVideo = true
+                                }
                             }
                         )
+                    }
+                    .sheet(isPresented: $showAddVideo) {
+                        AddVideoView(api: apiClient, onVideoAdded: {
+                            tabSelection = 2
+                        })
                     }
                     .sheet(isPresented: $showPublicationWizard) {
                         CreateContentWizard(api: apiClient, onNavigateToPublish: {
