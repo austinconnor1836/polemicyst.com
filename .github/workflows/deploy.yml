@@ -283,8 +283,18 @@ jobs:
         working-directory: ios
         run: xcodegen generate
 
-      - name: Download iOS Simulator runtime
-        run: xcodebuild -downloadPlatform iOS
+      - name: Ensure iOS Simulator runtime
+        run: |
+          # Select Xcode and initialize simulator services
+          sudo xcode-select -s /Applications/Xcode_16.4.app
+          xcrun simctl list > /dev/null 2>&1 || true
+          # Download iOS platform if no iPhone simulators are available
+          if ! xcrun simctl list devices available | grep -q "iPhone"; then
+            echo "No iPhone simulators found, downloading iOS platform..."
+            xcodebuild -downloadPlatform iOS || true
+          fi
+          echo "Available simulators:"
+          xcrun simctl list devices available | grep iPhone || echo "WARNING: No iPhone simulators available"
 
       - name: Run tests
         working-directory: ios
