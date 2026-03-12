@@ -3,6 +3,8 @@ import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { queueFeedDownloadJob } from '@shared/queues';
 import { findOrCreateManualFeed, createFeedVideoRecord } from '@shared/services/upload-service';
 import { extractYouTubeId } from '@/app/connected-accounts/util/thumbnails';
+import { prisma } from '@shared/lib/prisma';
+import { isYouTubeUrl, fetchYouTubeCaptionsHTTP } from '@shared/lib/youtube-captions';
 
 export async function POST(req: NextRequest) {
   const user = await getAuthenticatedUser(req);
@@ -42,12 +44,29 @@ export async function POST(req: NextRequest) {
       userId: user.id,
     });
 
-    // 4. For YouTube URLs, enqueue transcription in parallel with download.
-    // YouTube captions resolve in ~100ms while the download takes minutes.
-    const { isYouTubeUrl } = await import('@shared/lib/youtube-captions');
+    // For YouTube URLs, fetch captions inline (pure HTTP, ~100ms).
+    // This makes the transcript available immediately without needing
+    // the clip-metadata-worker to be running.
     if (isYouTubeUrl(url)) {
-      const { queueTranscriptionJob } = await import('@shared/queues');
-      await queueTranscriptionJob({ feedVideoId: newVideo.id });
+      try {
+        const captions = await fetchYouTubeCaptionsHTTP(url);
+        if (captions) {
+          await prisma.feedVideo.update({
+            where: { id: newVideo.id },
+            data: {
+              transcript: captions.transcript,
+              transcriptJson: captions.segments as any,
+              transcriptSource: captions.source,
+            },
+          });
+          console.info(
+            `[from-url] Inline YouTube captions saved for ${newVideo.id} (${captions.segments.length} segments)`
+          );
+        }
+      } catch (err) {
+        // Non-fatal — transcript can be fetched later by the worker
+        console.warn('[from-url] Inline caption fetch failed:', err);
+      }
     }
 
     return NextResponse.json(newVideo);

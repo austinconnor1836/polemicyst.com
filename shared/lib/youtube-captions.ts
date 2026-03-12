@@ -102,7 +102,79 @@ function runYtDlpSubs(
 }
 
 /**
+ * Fetch YouTube captions via pure HTTP (no yt-dlp required).
+ * Scrapes the YouTube watch page for caption tracks, then fetches the captions JSON.
+ * Suitable for use in API routes where yt-dlp is not installed.
+ */
+export async function fetchYouTubeCaptionsHTTP(videoUrl: string): Promise<CaptionResult | null> {
+  const videoId = extractVideoId(videoUrl);
+  if (!videoId) return null;
+
+  try {
+    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+    if (!res.ok) return null;
+
+    const html = await res.text();
+
+    // Extract captionTracks from ytInitialPlayerResponse
+    const playerMatch = html.match(
+      /ytInitialPlayerResponse\s*=\s*(\{[\s\S]*?\});(?:\s*var\s|<\/script>)/
+    );
+    if (!playerMatch) return null;
+
+    let playerResponse: any;
+    try {
+      playerResponse = JSON.parse(playerMatch[1]);
+    } catch {
+      return null;
+    }
+
+    const captionTracks = playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    if (!Array.isArray(captionTracks) || captionTracks.length === 0) return null;
+
+    // Prefer manual English captions, fall back to auto-generated
+    const manualTrack = captionTracks.find((t: any) => t.languageCode === 'en' && t.kind !== 'asr');
+    const autoTrack = captionTracks.find((t: any) => t.languageCode === 'en' && t.kind === 'asr');
+    // Also try any English variant (en-US, en-GB, etc.)
+    const enVariantTrack = captionTracks.find((t: any) => t.languageCode?.startsWith('en'));
+
+    const track = manualTrack || autoTrack || enVariantTrack;
+    if (!track?.baseUrl) return null;
+
+    const source: CaptionResult['source'] =
+      track === manualTrack || (track === enVariantTrack && track.kind !== 'asr')
+        ? 'youtube-manual'
+        : 'youtube-auto';
+
+    // Fetch captions in json3 format
+    const captionUrl = `${track.baseUrl}&fmt=json3`;
+    const captionRes = await fetch(captionUrl);
+    if (!captionRes.ok) return null;
+
+    const data: Json3Data = await captionRes.json();
+    const segments = parseJson3(data);
+    if (segments.length === 0) return null;
+
+    const transcript = segments.map((s) => s.text).join(' ');
+    console.info(
+      `📝 Fetched ${segments.length} ${source} caption segments for ${videoId} via HTTP`
+    );
+    return { transcript, segments, source };
+  } catch (err) {
+    console.warn(`⚠️ HTTP YouTube captions fetch failed: ${err}`);
+    return null;
+  }
+}
+
+/**
  * Attempt to fetch YouTube captions for a video URL without downloading the video.
+ * Uses yt-dlp CLI — requires yt-dlp to be installed (use in workers only).
  * Tries manual (human-uploaded) subtitles first, then falls back to auto-generated.
  * Returns null if no English captions are available.
  */
