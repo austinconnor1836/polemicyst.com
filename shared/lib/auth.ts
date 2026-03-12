@@ -25,7 +25,13 @@ export async function getSessionFromBearer(
       secret: process.env.NEXTAUTH_SECRET!,
     });
 
-    if (!decoded?.sub || !decoded?.email) return null;
+    if (!decoded?.sub || !decoded?.email) {
+      console.warn(
+        '[auth] Bearer JWT decoded but missing sub/email:',
+        decoded ? Object.keys(decoded) : 'null'
+      );
+      return null;
+    }
 
     return {
       id: (decoded as any).id ?? decoded.sub,
@@ -33,7 +39,8 @@ export async function getSessionFromBearer(
       name: decoded.name as string | undefined,
       picture: decoded.picture as string | undefined,
     };
-  } catch {
+  } catch (err) {
+    console.warn('[auth] Bearer JWT decode failed:', (err as Error).message);
     return null;
   }
 }

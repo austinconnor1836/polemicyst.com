@@ -9,6 +9,9 @@ import { getSessionFromBearer } from './auth';
  * Returns the Prisma User or null. Never throws — auth failures return null.
  */
 export async function getAuthenticatedUser(req: NextRequest) {
+  const authHeader = req.headers.get('authorization');
+  const hasBearerToken = !!authHeader?.startsWith('Bearer ');
+
   try {
     // Lazy-import authOptions to avoid circular dependencies
     const { authOptions } = await import('../../auth');
@@ -35,10 +38,18 @@ export async function getAuthenticatedUser(req: NextRequest) {
         where: { id: mobileSession.id },
       });
       if (user) return user;
+      console.warn(`[auth-helpers] Bearer JWT valid but user not found: ${mobileSession.id}`);
+    } else if (hasBearerToken) {
+      console.warn('[auth-helpers] Bearer token present but decode returned null');
     }
   } catch (err) {
     console.error('[auth-helpers] Bearer auth failed:', err);
   }
 
+  if (hasBearerToken) {
+    console.warn(
+      `[auth-helpers] Auth failed for ${req.nextUrl.pathname} (Bearer token present but invalid)`
+    );
+  }
   return null;
 }
