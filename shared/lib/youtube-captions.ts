@@ -87,17 +87,28 @@ function runYtDlpSubs(
       'en',
       '--sub-format',
       'json3',
+      '--js-runtimes',
+      'node',
       '-o',
       outputTemplate,
       ...(useAutoSub ? ['--write-auto-sub'] : ['--write-sub']),
       videoUrl,
     ];
 
+    console.info(`[yt-dlp] Running: yt-dlp ${args.join(' ')}`);
     const child = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
-    child.stdout.on('data', () => {});
+    let stdout = '';
+    child.stdout.on('data', (d) => (stdout += d.toString()));
     child.stderr.on('data', (d) => (stderr += d.toString()));
-    child.on('close', (code) => resolve({ exitCode: code ?? 1, stderr }));
+    child.on('close', (code) => {
+      if (code !== 0) {
+        console.warn(`[yt-dlp] Exit code ${code}, stderr: ${stderr.trim()}`);
+      } else if (stdout) {
+        console.info(`[yt-dlp] stdout: ${stdout.trim()}`);
+      }
+      resolve({ exitCode: code ?? 1, stderr });
+    });
   });
 }
 
