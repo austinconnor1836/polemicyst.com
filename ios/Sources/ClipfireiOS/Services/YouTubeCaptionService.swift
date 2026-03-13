@@ -1,8 +1,9 @@
 import Foundation
+import GoogleSignIn
 
 /// Fetches YouTube captions client-side using the innertube player API.
-/// This runs from the user's device (residential IP), bypassing YouTube's
-/// datacenter IP bot detection that blocks server-side fetching.
+/// When a Google OAuth token is available, sends an authenticated request
+/// for reliable access. Falls back to unauthenticated WEB client otherwise.
 public final class YouTubeCaptionService {
     public struct CaptionResult {
         public let transcript: String
@@ -10,19 +11,33 @@ public final class YouTubeCaptionService {
         public let source: String // "youtube-manual" or "youtube-auto"
     }
 
+    /// Full innertube player response metadata (available after authenticated fetch).
+    public struct PlayerInfo {
+        public let videoTitle: String?
+        public let lengthSeconds: Int?
+        public let streamingUrl: String?
+        public let captionResult: CaptionResult?
+    }
+
     private struct InnertubePayload: Encodable {
         let context: Context
         let videoId: String
+        let contentCheckOk: Bool?
+        let racyCheckOk: Bool?
 
         struct Context: Encodable {
             let client: Client
         }
 
         struct Client: Encodable {
-            let clientName = "WEB"
-            let clientVersion = "2.20240313.05.00"
-            let hl = "en"
-            let gl = "US"
+            let clientName: String
+            let clientVersion: String
+            let hl: String
+            let gl: String
+            let deviceMake: String?
+            let deviceModel: String?
+            let osName: String?
+            let osVersion: String?
         }
     }
 
@@ -50,12 +65,117 @@ public final class YouTubeCaptionService {
         url.contains("youtube.com") || url.contains("youtu.be")
     }
 
-    /// Fetch captions for a YouTube video.
-    public func fetchCaptions(videoId: String) async -> CaptionResult? {
-        // Call innertube player API
+    /// Get the current Google access token from the GIDSignIn session.
+    public static func getGoogleAccessToken() async -> String? {
+        guard let currentUser = GIDSignIn.sharedInstance.currentUser else { return nil }
+        do {
+            try await currentUser.refreshTokensIfNeeded()
+            return currentUser.accessToken.tokenString
+        } catch {
+            print("[YouTubeCaptions] Failed to refresh Google token: \(error)")
+            return nil
+        }
+    }
+
+    /// Fetch captions using an authenticated innertube request.
+    /// Uses the Google OAuth access token for reliable, bot-detection-free access.
+    public func fetchCaptionsAuthenticated(videoId: String, accessToken: String) async -> CaptionResult? {
         let payload = InnertubePayload(
-            context: .init(client: .init()),
-            videoId: videoId
+            context: .init(client: .init(
+                clientName: "IOS",
+                clientVersion: "19.45.4",
+                hl: "en",
+                gl: "US",
+                deviceMake: "Apple",
+                deviceModel: "iPhone16,2",
+                osName: "iOS",
+                osVersion: "18.1.0.22B83"
+            )),
+            videoId: videoId,
+            contentCheckOk: true,
+            racyCheckOk: true
+        )
+
+        guard let url = URL(string: "https://www.youtube.com/youtubei/v1/player?prettyPrint=false") else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue(
+            "com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)",
+            forHTTPHeaderField: "User-Agent"
+        )
+
+        do {
+            request.httpBody = try JSONEncoder().encode(payload)
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                print("[YouTubeCaptions] Authenticated innertube returned non-200")
+                return nil
+            }
+
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                print("[YouTubeCaptions] Failed to parse authenticated innertube response")
+                return nil
+            }
+
+            if let playability = json["playabilityStatus"] as? [String: Any],
+               let status = playability["status"] as? String, status != "OK" {
+                print("[YouTubeCaptions] Auth playability: \(status)")
+                return nil
+            }
+
+            guard let captions = json["captions"] as? [String: Any],
+                  let renderer = captions["playerCaptionsTracklistRenderer"] as? [String: Any],
+                  let tracks = renderer["captionTracks"] as? [[String: Any]],
+                  !tracks.isEmpty else {
+                print("[YouTubeCaptions] Auth: no caption tracks found")
+                return nil
+            }
+
+            return await extractCaptions(from: tracks, videoId: videoId)
+        } catch {
+            print("[YouTubeCaptions] Auth error: \(error)")
+            return nil
+        }
+    }
+
+    /// Fetch captions for a YouTube video.
+    /// Tries authenticated innertube first if a Google session exists, then falls back
+    /// to unauthenticated WEB client.
+    public func fetchCaptions(videoId: String) async -> CaptionResult? {
+        // Try authenticated request first
+        if let accessToken = await Self.getGoogleAccessToken() {
+            print("[YouTubeCaptions] Trying authenticated innertube...")
+            if let result = await fetchCaptionsAuthenticated(videoId: videoId, accessToken: accessToken) {
+                return result
+            }
+            print("[YouTubeCaptions] Authenticated innertube failed, trying unauthenticated...")
+        }
+
+        return await fetchCaptionsUnauthenticated(videoId: videoId)
+    }
+
+    /// Unauthenticated innertube fetch (original WEB client approach).
+    private func fetchCaptionsUnauthenticated(videoId: String) async -> CaptionResult? {
+        let payload = InnertubePayload(
+            context: .init(client: .init(
+                clientName: "WEB",
+                clientVersion: "2.20240313.05.00",
+                hl: "en",
+                gl: "US",
+                deviceMake: nil,
+                deviceModel: nil,
+                osName: nil,
+                osVersion: nil
+            )),
+            videoId: videoId,
+            contentCheckOk: nil,
+            racyCheckOk: nil
         )
 
         guard let url = URL(string: "https://www.youtube.com/youtubei/v1/player?prettyPrint=false") else {
@@ -84,14 +204,12 @@ public final class YouTubeCaptionService {
                 return nil
             }
 
-            // Check playability
             if let playability = json["playabilityStatus"] as? [String: Any],
                let status = playability["status"] as? String, status != "OK" {
                 print("[YouTubeCaptions] Playability: \(status)")
                 return nil
             }
 
-            // Extract caption tracks
             guard let captions = json["captions"] as? [String: Any],
                   let renderer = captions["playerCaptionsTracklistRenderer"] as? [String: Any],
                   let tracks = renderer["captionTracks"] as? [[String: Any]],

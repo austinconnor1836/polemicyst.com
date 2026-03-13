@@ -9,6 +9,7 @@ import {
   fetchYouTubeCaptions,
   fetchYouTubeCaptionsHTTP,
 } from '@shared/lib/youtube-captions';
+import { getValidGoogleToken } from '@shared/lib/google-token';
 
 export async function POST(req: NextRequest) {
   const user = await getAuthenticatedUser(req);
@@ -76,9 +77,10 @@ export async function POST(req: NextRequest) {
     }
 
     if (!captionsSaved && isYouTubeUrl(url)) {
-      // Try server-side caption fetching (may fail from datacenter IPs)
+      // Try server-side caption fetching — use OAuth token if available
       try {
-        let captions = await fetchYouTubeCaptionsHTTP(url);
+        const googleToken = await getValidGoogleToken(user.id).catch(() => null);
+        let captions = await fetchYouTubeCaptionsHTTP(url, googleToken || undefined);
         if (!captions) {
           captions = await fetchYouTubeCaptions(url);
         }
