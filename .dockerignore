@@ -18,6 +18,7 @@ docs/
 infrastructure/
 models/
 scripts/
+!scripts/fetch-yt-captions.py
 clip-worker/
 
 # Terraform state
