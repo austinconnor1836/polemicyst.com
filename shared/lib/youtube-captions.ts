@@ -75,6 +75,11 @@ function parseJson3(data: Json3Data): TranscriptSegment[] {
   return segments;
 }
 
+// YouTube consent cookie — auto-accepts the EU consent page.
+// Without this, server-side requests get a consent wall instead of video data.
+// This is the same technique used by youtube-transcript-api.
+const YT_CONSENT_COOKIE = 'SOCS=CAESEwgDEgk2ODE1NjQ0NjQaAmVuIAEaBgiA_LyaBg';
+
 function runYtDlpSubs(
   videoUrl: string,
   outputTemplate: string,
@@ -89,6 +94,8 @@ function runYtDlpSubs(
       'json3',
       '--js-runtimes',
       'node',
+      '--add-header',
+      `Cookie:${YT_CONSENT_COOKIE}`,
       '-o',
       outputTemplate,
       ...(useAutoSub ? ['--write-auto-sub'] : ['--write-sub']),
@@ -132,6 +139,7 @@ export async function fetchYouTubeCaptionsHTTP(videoUrl: string): Promise<Captio
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'en-US,en;q=0.9',
+        Cookie: YT_CONSENT_COOKIE,
       },
     });
     if (!res.ok) {
@@ -172,108 +180,59 @@ export async function fetchYouTubeCaptionsHTTP(videoUrl: string): Promise<Captio
 
 /**
  * Fetch captions via YouTube's innertube API (player endpoint).
- * Tries multiple client types — datacenter IPs get blocked by the WEB client,
- * so we try TVHTML5_SIMPLY_EMBEDDED_PLAYER and ANDROID as fallbacks.
+ * Sends YouTube consent cookie and tries the WEB client.
  */
 async function fetchCaptionsViaInnertube(videoId: string): Promise<CaptionResult | null> {
-  // Client configs to try in order — embedded/Android clients are less restricted
-  const clients = [
-    {
-      name: 'tv-embedded',
-      payload: {
-        context: {
-          client: {
-            clientName: 'TVHTML5_SIMPLY_EMBEDDED_PLAYER',
-            clientVersion: '2.0',
-            hl: 'en',
-            gl: 'US',
-          },
-          thirdParty: { embedUrl: 'https://www.youtube.com' },
-        },
-        videoId,
+  const payload = {
+    context: {
+      client: {
+        clientName: 'WEB',
+        clientVersion: '2.20240313.05.00',
+        hl: 'en',
+        gl: 'US',
       },
+    },
+    videoId,
+  };
+
+  try {
+    const res = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Cookie: YT_CONSENT_COOKIE,
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
-    },
-    {
-      name: 'android',
-      payload: {
-        context: {
-          client: {
-            clientName: 'ANDROID',
-            clientVersion: '19.09.37',
-            androidSdkVersion: 30,
-            hl: 'en',
-            gl: 'US',
-          },
-        },
-        videoId,
-      },
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
-      },
-    },
-    {
-      name: 'web',
-      payload: {
-        context: {
-          client: {
-            clientName: 'WEB',
-            clientVersion: '2.20240313.05.00',
-            hl: 'en',
-            gl: 'US',
-          },
-        },
-        videoId,
-      },
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      },
-    },
-  ];
+      body: JSON.stringify(payload),
+    });
 
-  for (const client of clients) {
-    try {
-      const res = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
-        method: 'POST',
-        headers: client.headers,
-        body: JSON.stringify(client.payload),
-      });
-
-      if (!res.ok) {
-        console.warn(`[captions-innertube:${client.name}] Player API returned ${res.status}`);
-        continue;
-      }
-
-      const data = await res.json();
-
-      const playabilityStatus = data?.playabilityStatus?.status;
-      if (playabilityStatus && playabilityStatus !== 'OK') {
-        console.warn(
-          `[captions-innertube:${client.name}] Playability: ${playabilityStatus} - ${data?.playabilityStatus?.reason || ''}`
-        );
-        continue;
-      }
-
-      const captionTracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-      if (!Array.isArray(captionTracks) || captionTracks.length === 0) {
-        console.warn(`[captions-innertube:${client.name}] No caption tracks for ${videoId}`);
-        continue;
-      }
-
-      return extractCaptionsFromTracks(captionTracks, videoId, `innertube-${client.name}`);
-    } catch (err) {
-      console.warn(`[captions-innertube:${client.name}] Failed: ${err}`);
+    if (!res.ok) {
+      console.warn(`[captions-innertube] Player API returned ${res.status}`);
+      return null;
     }
-  }
 
-  return null;
+    const data = await res.json();
+
+    const playabilityStatus = data?.playabilityStatus?.status;
+    if (playabilityStatus && playabilityStatus !== 'OK') {
+      console.warn(
+        `[captions-innertube] Playability: ${playabilityStatus} - ${data?.playabilityStatus?.reason || ''}`
+      );
+      return null;
+    }
+
+    const captionTracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    if (!Array.isArray(captionTracks) || captionTracks.length === 0) {
+      console.warn(`[captions-innertube] No caption tracks for ${videoId}`);
+      return null;
+    }
+
+    return extractCaptionsFromTracks(captionTracks, videoId, 'innertube');
+  } catch (err) {
+    console.warn(`[captions-innertube] Failed: ${err}`);
+    return null;
+  }
 }
 
 /**
