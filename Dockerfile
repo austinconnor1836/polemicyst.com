@@ -1,4 +1,4 @@
-FROM node:20-bullseye-slim AS base
+FROM node:20-bookworm-slim AS base
 
 WORKDIR /app
 ENV NODE_ENV=production
