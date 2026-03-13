@@ -82,6 +82,7 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLSchemes:
               - '$(GOOGLE_CLIENT_ID_REVERSED)'
+        ITSAppUsesNonExemptEncryption: false
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     scheme:
