@@ -23,7 +23,7 @@ public struct LoginView: View {
                         .frame(width: 80, height: 80)
                         .foregroundStyle(DesignTokens.accent)
 
-                    Text("Polemicyst")
+                    Text("Clipfire")
                         .font(.largeTitle.bold())
                         .foregroundStyle(DesignTokens.textPrimary)
 
