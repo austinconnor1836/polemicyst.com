@@ -1,5 +1,6 @@
 import SwiftUI
 import ClipfireiOS
+import GoogleSignIn
 
 @main
 struct ClipfireApp: App {
@@ -21,6 +22,10 @@ struct ClipfireApp: App {
         )
         self.apiClient = client
         _authService = StateObject(wrappedValue: AuthService(api: client, tokenStorage: storage))
+
+        // Restore Google Sign-In session so GIDSignIn.sharedInstance.currentUser
+        // is available for authenticated innertube requests
+        GIDSignIn.sharedInstance.restorePreviousSignIn()
     }
 
     var body: some Scene {
