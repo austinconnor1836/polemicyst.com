@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../auth';
 import { prisma } from '@shared/lib/prisma';
 import { isAdmin } from '@shared/lib/admin';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!isAdmin(session?.user?.email)) {
+  const user = await getAuthenticatedUser(req);
+  if (!isAdmin(user?.email)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
