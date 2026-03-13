@@ -610,6 +610,21 @@ public struct AutomationSettings: Codable {
     }
 }
 
+// MARK: - Innertube Transcription
+
+public struct InnertubeTranscribeRequest: Encodable {
+    public init() {}
+}
+
+public struct InnertubeTranscribeResponse: Codable {
+    public let ok: Bool?
+    public let transcript: String?
+    public let source: String?
+    public let segmentCount: Int?
+    public let streamingUrl: String?
+    public let error: String?
+}
+
 // MARK: - Truth Analysis
 
 public struct TruthAnalysisRequest: Encodable {

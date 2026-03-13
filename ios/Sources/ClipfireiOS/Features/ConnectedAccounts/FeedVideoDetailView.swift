@@ -11,6 +11,8 @@ public final class FeedVideoDetailViewModel: ObservableObject {
     @Published public var clipResultMessage: String?
     @Published public private(set) var isGenerating = false
     @Published public private(set) var isDeleting = false
+    @Published public private(set) var isTranscribing = false
+    @Published public var transcribeStatus: String?
 
     let api: APIClient
     let feedVideoId: String
@@ -30,6 +32,67 @@ public final class FeedVideoDetailViewModel: ObservableObject {
         } catch {
             if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Unable to load video details: \(error.localizedDescription)"
+        }
+    }
+
+    /// Fetch transcript via innertube (server-side, uses Google OAuth token).
+    /// Falls back to client-side innertube if server call fails.
+    public func transcribeViaInnertube() async {
+        isTranscribing = true
+        transcribeStatus = "Fetching transcript..."
+        defer {
+            isTranscribing = false
+            transcribeStatus = nil
+        }
+
+        do {
+            let response = try await api.innertubeTranscribe(feedVideoId: feedVideoId)
+            if response.ok == true {
+                transcribeStatus = "Transcript saved (\(response.segmentCount ?? 0) segments)"
+                await load()
+            } else {
+                // Server-side innertube failed — try client-side as fallback
+                transcribeStatus = "Server fetch failed, trying from device..."
+                let success = await transcribeClientSide()
+                if !success {
+                    errorMessage = response.error ?? "No captions available for this video"
+                }
+            }
+        } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+
+            // Server call failed — try client-side innertube as fallback
+            transcribeStatus = "Trying from device..."
+            let success = await transcribeClientSide()
+            if !success {
+                errorMessage = "Transcription failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Client-side innertube caption fetch + upload to server.
+    private func transcribeClientSide() async -> Bool {
+        guard let ytId = detail?.feedVideo.youtubeVideoId else { return false }
+
+        let captionService = YouTubeCaptionService()
+        guard let captions = await captionService.fetchCaptions(videoId: ytId) else {
+            return false
+        }
+
+        do {
+            let segments = captions.segments.map { segment in
+                segment.mapValues { AnyCodable($0) }
+            }
+            _ = try await api.importVideoFromURL(
+                url: "https://www.youtube.com/watch?v=\(ytId)",
+                transcript: captions.transcript,
+                transcriptSegments: segments,
+                transcriptSource: captions.source
+            )
+            await load()
+            return true
+        } catch {
+            return false
         }
     }
 
@@ -330,6 +393,45 @@ public struct FeedVideoDetailView: View {
                         .foregroundStyle(DesignTokens.textPrimary)
                 }
                 .tint(DesignTokens.muted)
+            }
+            .padding(DesignTokens.spacing)
+            .background(DesignTokens.surface)
+            .cornerRadius(DesignTokens.cornerRadius)
+        } else if video.youtubeVideoId != nil {
+            VStack(alignment: .leading, spacing: DesignTokens.spacing) {
+                Label {
+                    Text("Transcript")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(DesignTokens.textPrimary)
+                } icon: {
+                    Image(systemName: "text.alignleft")
+                        .foregroundStyle(DesignTokens.muted)
+                }
+
+                Text("No transcript yet. Fetch captions from YouTube using your Google account.")
+                    .font(.caption)
+                    .foregroundStyle(DesignTokens.textSecondary)
+
+                Button {
+                    Task { await viewModel.transcribeViaInnertube() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if viewModel.isTranscribing {
+                            ProgressView()
+                                .tint(.white)
+                                .controlSize(.small)
+                        }
+                        Text(viewModel.transcribeStatus ?? "Fetch Transcript")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DesignTokens.accent)
+                .disabled(viewModel.isTranscribing)
             }
             .padding(DesignTokens.spacing)
             .background(DesignTokens.surface)

@@ -213,6 +213,12 @@ public struct APIClient {
         try await put(path: "/api/user/automation", body: settings)
     }
 
+    // MARK: Innertube Transcription
+
+    public func innertubeTranscribe(feedVideoId: String) async throws -> InnertubeTranscribeResponse {
+        try await post(path: "/api/feedVideos/\(feedVideoId)/innertube-transcribe", body: InnertubeTranscribeRequest())
+    }
+
     // MARK: Truth Analysis
 
     public func fetchTruthAnalysis(feedVideoId: String, clipId: String? = nil) async throws -> TruthAnalysisResponse {

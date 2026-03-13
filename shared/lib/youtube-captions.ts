@@ -4,6 +4,9 @@ import path from 'path';
 import os from 'os';
 import { randomUUID } from 'crypto';
 
+// Re-export authenticated innertube for convenience
+export { fetchCaptionsViaInnertubeAuth } from './innertube';
+
 export interface TranscriptSegment {
   start: number;
   end: number;
@@ -121,18 +124,29 @@ function runYtDlpSubs(
 
 /**
  * Fetch YouTube captions via pure HTTP (no yt-dlp required).
- * Scrapes the YouTube watch page for caption tracks, then fetches the captions JSON.
- * Suitable for use in API routes where yt-dlp is not installed.
+ * When an accessToken is provided, tries authenticated innertube first (most reliable).
+ * Falls back to youtube-transcript-api, unauthenticated innertube, and watch page scraping.
  */
-export async function fetchYouTubeCaptionsHTTP(videoUrl: string): Promise<CaptionResult | null> {
+export async function fetchYouTubeCaptionsHTTP(
+  videoUrl: string,
+  accessToken?: string
+): Promise<CaptionResult | null> {
   const videoId = extractVideoId(videoUrl);
   if (!videoId) return null;
 
-  // Try youtube-transcript-api Python library first (most reliable)
+  // If we have a Google OAuth token, try authenticated innertube first (bypasses bot detection)
+  if (accessToken) {
+    const { fetchCaptionsViaInnertubeAuth } = await import('./innertube');
+    const authResult = await fetchCaptionsViaInnertubeAuth(videoId, accessToken);
+    if (authResult) return authResult;
+    console.warn('[captions-http] Authenticated innertube failed, trying fallbacks...');
+  }
+
+  // Try youtube-transcript-api Python library (most reliable unauthenticated method)
   const pytResult = await fetchCaptionsViaPython(videoId);
   if (pytResult) return pytResult;
 
-  // Try innertube API
+  // Try unauthenticated innertube API
   const innertubeResult = await fetchCaptionsViaInnertube(videoId);
   if (innertubeResult) return innertubeResult;
 
