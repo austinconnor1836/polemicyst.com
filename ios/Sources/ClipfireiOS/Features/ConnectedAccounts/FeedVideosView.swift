@@ -101,6 +101,9 @@ public struct FeedVideosView: View {
                 }
                 .task { await viewModel.load() }
                 .refreshable { await viewModel.load() }
+                .onReceive(NotificationCenter.default.publisher(for: .videoAdded)) { _ in
+                    Task { await viewModel.load() }
+                }
                 .overlay {
                     if viewModel.isLoading && viewModel.videos.isEmpty {
                         ProgressView().progressViewStyle(.circular)
