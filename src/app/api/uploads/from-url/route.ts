@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { url, filename } = await req.json();
+    const { url, filename, transcript, transcriptSegments, transcriptSource } = await req.json();
 
     if (!url || !String(url).startsWith('http')) {
       return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
@@ -48,10 +48,26 @@ export async function POST(req: NextRequest) {
       userId: user.id,
     });
 
-    // For YouTube URLs, fetch captions inline so the transcript is
-    // available immediately without needing the clip-metadata-worker.
-    // Try pure HTTP first (~100ms), fall back to yt-dlp (~3s).
-    if (isYouTubeUrl(url)) {
+    // Save transcript if provided by the client (iOS fetches captions client-side
+    // from the user's device to bypass YouTube's datacenter IP bot detection).
+    if (transcript && transcriptSegments) {
+      try {
+        await prisma.feedVideo.update({
+          where: { id: newVideo.id },
+          data: {
+            transcript,
+            transcriptJson: transcriptSegments as any,
+            transcriptSource: transcriptSource || 'youtube-auto',
+          },
+        });
+        console.info(
+          `[from-url] Client-provided captions saved for ${newVideo.id} (${Array.isArray(transcriptSegments) ? transcriptSegments.length : '?'} segments, ${transcriptSource})`
+        );
+      } catch (err) {
+        console.warn('[from-url] Failed to save client-provided captions:', err);
+      }
+    } else if (isYouTubeUrl(url)) {
+      // Fall back to server-side caption fetching (may fail from datacenter IPs).
       try {
         let captions = await fetchYouTubeCaptionsHTTP(url);
         if (!captions) {

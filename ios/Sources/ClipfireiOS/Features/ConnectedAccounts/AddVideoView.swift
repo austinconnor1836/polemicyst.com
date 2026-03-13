@@ -49,7 +49,31 @@ public final class AddVideoViewModel: ObservableObject {
         }
 
         do {
-            _ = try await api.importVideoFromURL(url: trimmed)
+            // For YouTube URLs, fetch captions client-side (residential IP bypasses bot detection)
+            var transcript: String?
+            var transcriptSegments: [[String: AnyCodable]]?
+            var transcriptSource: String?
+
+            if YouTubeCaptionService.isYouTubeURL(trimmed),
+               let videoId = YouTubeCaptionService.extractVideoId(from: trimmed) {
+                uploadProgress = "Fetching captions..."
+                let captionService = YouTubeCaptionService()
+                if let captions = await captionService.fetchCaptions(videoId: videoId) {
+                    transcript = captions.transcript
+                    transcriptSegments = captions.segments.map { segment in
+                        segment.mapValues { AnyCodable($0) }
+                    }
+                    transcriptSource = captions.source
+                }
+                uploadProgress = "Importing video..."
+            }
+
+            _ = try await api.importVideoFromURL(
+                url: trimmed,
+                transcript: transcript,
+                transcriptSegments: transcriptSegments,
+                transcriptSource: transcriptSource
+            )
             onVideoAdded?()
             NotificationCenter.default.post(name: .videoAdded, object: nil)
             return true
