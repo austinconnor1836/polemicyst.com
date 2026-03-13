@@ -1,6 +1,10 @@
 import SwiftUI
 import PhotosUI
 
+extension Notification.Name {
+    static let videoAdded = Notification.Name("videoAdded")
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -47,6 +51,7 @@ public final class AddVideoViewModel: ObservableObject {
         do {
             _ = try await api.importVideoFromURL(url: trimmed)
             onVideoAdded?()
+            NotificationCenter.default.post(name: .videoAdded, object: nil)
             return true
         } catch {
             if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return false }
@@ -98,6 +103,7 @@ public final class AddVideoViewModel: ObservableObject {
             _ = try await api.completeUpload(key: presigned.key, filename: filename)
 
             onVideoAdded?()
+            NotificationCenter.default.post(name: .videoAdded, object: nil)
             isImporting = false
             uploadProgress = nil
         } catch {
