@@ -35,6 +35,8 @@ import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { useSubscription } from '@/hooks/useSubscription';
 import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
+import { UpgradePromptDialog } from '@/components/UpgradePromptDialog';
+import { parseApiError, type ApiQuotaError } from '@/lib/api-error';
 import { formatRelativeTime } from '@/app/connected-accounts/util/time';
 import { extractYouTubeId } from '@/app/connected-accounts/util/thumbnails';
 import {
@@ -128,6 +130,7 @@ export default function ClipGroupPage() {
   const [transcribeMessage, setTranscribeMessage] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [deletingClipId, setDeletingClipId] = useState<string | null>(null);
+  const [upgradeError, setUpgradeError] = useState<ApiQuotaError | null>(null);
   const { quota, data: subscriptionData, refresh: refreshSubscription } = useSubscription();
 
   const fetchSummary = useCallback(
@@ -223,6 +226,11 @@ export default function ClipGroupPage() {
         body: JSON.stringify({ llmProvider: provider }),
       });
       if (!res.ok) {
+        const quotaErr = await parseApiError(res);
+        if (quotaErr) {
+          setUpgradeError(quotaErr);
+          return;
+        }
         throw new Error('Failed to update default');
       }
       setDefaultLLMProvider(provider);
@@ -258,6 +266,11 @@ export default function ClipGroupPage() {
     });
 
     if (!res.ok) {
+      const quotaErr = await parseApiError(res);
+      if (quotaErr) {
+        setUpgradeError(quotaErr);
+        return;
+      }
       throw new Error('Failed to trigger clip');
     }
 
@@ -642,6 +655,8 @@ export default function ClipGroupPage() {
           )}
         </>
       ) : null}
+
+      <UpgradePromptDialog error={upgradeError} onClose={() => setUpgradeError(null)} />
     </div>
   );
 }
