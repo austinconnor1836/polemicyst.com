@@ -22,10 +22,6 @@ struct ClipfireApp: App {
         )
         self.apiClient = client
         _authService = StateObject(wrappedValue: AuthService(api: client, tokenStorage: storage))
-
-        // Restore Google Sign-In session so GIDSignIn.sharedInstance.currentUser
-        // is available for authenticated innertube requests
-        GIDSignIn.sharedInstance.restorePreviousSignIn()
     }
 
     var body: some Scene {
@@ -104,6 +100,15 @@ struct ClipfireApp: App {
                 }
             }
             .task {
+                // Restore Google Sign-In session from Keychain so
+                // GIDSignIn.sharedInstance.currentUser is available
+                // for authenticated innertube caption requests
+                do {
+                    try await GIDSignIn.sharedInstance.restorePreviousSignIn()
+                } catch {
+                    // Not fatal — user may have signed in with Apple
+                    print("[App] Google session restore: \(error.localizedDescription)")
+                }
                 await checkAppVersion()
             }
         }
