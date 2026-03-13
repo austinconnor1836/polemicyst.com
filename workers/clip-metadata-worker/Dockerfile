@@ -33,3 +33,5 @@ RUN npx prisma generate --schema=./prisma/schema.prisma
 RUN npm run build
 
 EXPOSE 3001
+
+CMD ["./start.sh"]
