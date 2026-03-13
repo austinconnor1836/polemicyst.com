@@ -22,9 +22,11 @@ RUN npm run build
 
 FROM node:20-bookworm-slim AS runner
 
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-dev gcc && \
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-dev gcc git && \
     pip3 install --break-system-packages yt-dlp curl_cffi bgutil-ytdlp-pot-provider && \
-    apt-get remove -y python3-pip python3-dev gcc && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+    git clone --single-branch --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /root/bgutil-ytdlp-pot-provider && \
+    cd /root/bgutil-ytdlp-pot-provider/server && npm ci && npx tsc && \
+    apt-get remove -y python3-pip python3-dev gcc git && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 ENV NODE_ENV=production
