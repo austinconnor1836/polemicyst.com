@@ -35,8 +35,10 @@ public final class FeedVideoDetailViewModel: ObservableObject {
         }
     }
 
-    /// Fetch transcript via innertube (server-side, uses Google OAuth token).
-    /// Falls back to client-side innertube if server call fails.
+    /// Fetch transcript using the best available method:
+    /// 1. Server-side innertube (uses Google OAuth token)
+    /// 2. Client-side innertube (device's residential IP)
+    /// 3. Queue-based transcription (yt-dlp + Whisper on server)
     public func transcribeViaInnertube() async {
         isTranscribing = true
         transcribeStatus = "Fetching transcript..."
@@ -45,54 +47,56 @@ public final class FeedVideoDetailViewModel: ObservableObject {
             transcribeStatus = nil
         }
 
+        // Step 1: Try server-side innertube (fastest, uses stored OAuth token)
         do {
             let response = try await api.innertubeTranscribe(feedVideoId: feedVideoId)
             if response.ok == true {
                 transcribeStatus = "Transcript saved (\(response.segmentCount ?? 0) segments)"
                 await load()
-            } else {
-                // Server-side innertube failed — try client-side as fallback
-                transcribeStatus = "Server fetch failed, trying from device..."
-                let success = await transcribeClientSide()
-                if !success {
-                    errorMessage = response.error ?? "No captions available for this video"
-                }
+                return
             }
         } catch {
             if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            print("[Transcribe] Server innertube failed: \(error.localizedDescription)")
+        }
 
-            // Server call failed — try client-side innertube as fallback
-            transcribeStatus = "Trying from device..."
-            let success = await transcribeClientSide()
-            if !success {
-                errorMessage = "Transcription failed: \(error.localizedDescription)"
+        // Step 2: Try client-side innertube (residential IP, bypasses bot detection)
+        transcribeStatus = "Trying from device..."
+        if let ytId = detail?.feedVideo.youtubeVideoId {
+            let captionService = YouTubeCaptionService()
+            if let captions = await captionService.fetchCaptions(videoId: ytId) {
+                do {
+                    let segments = captions.segments.map { segment in
+                        segment.mapValues { AnyCodable($0) }
+                    }
+                    _ = try await api.importVideoFromURL(
+                        url: "https://www.youtube.com/watch?v=\(ytId)",
+                        transcript: captions.transcript,
+                        transcriptSegments: segments,
+                        transcriptSource: captions.source
+                    )
+                    await load()
+                    return
+                } catch {
+                    print("[Transcribe] Client-side caption upload failed: \(error)")
+                }
             }
         }
-    }
 
-    /// Client-side innertube caption fetch + upload to server.
-    private func transcribeClientSide() async -> Bool {
-        guard let ytId = detail?.feedVideo.youtubeVideoId else { return false }
-
-        let captionService = YouTubeCaptionService()
-        guard let captions = await captionService.fetchCaptions(videoId: ytId) else {
-            return false
-        }
-
+        // Step 3: Fall back to queue-based transcription (yt-dlp + Whisper)
+        transcribeStatus = "Queuing transcription..."
         do {
-            let segments = captions.segments.map { segment in
-                segment.mapValues { AnyCodable($0) }
+            let response = try await api.transcribeFeedVideo(feedVideoId: feedVideoId)
+            if response.alreadyTranscribed == true {
+                await load()
+            } else {
+                transcribeStatus = "Queued — transcript will appear shortly"
+                try? await Task.sleep(for: .seconds(2))
+                await load()
             }
-            _ = try await api.importVideoFromURL(
-                url: "https://www.youtube.com/watch?v=\(ytId)",
-                transcript: captions.transcript,
-                transcriptSegments: segments,
-                transcriptSource: captions.source
-            )
-            await load()
-            return true
         } catch {
-            return false
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            errorMessage = "Transcription failed: \(error.localizedDescription)"
         }
     }
 
@@ -409,7 +413,7 @@ public struct FeedVideoDetailView: View {
                         .foregroundStyle(DesignTokens.muted)
                 }
 
-                Text("No transcript yet. Fetch captions from YouTube using your Google account.")
+                Text("No transcript yet. Tap to fetch captions from YouTube or transcribe with AI.")
                     .font(.caption)
                     .foregroundStyle(DesignTokens.textSecondary)
 
