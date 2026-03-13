@@ -625,6 +625,12 @@ public struct InnertubeTranscribeResponse: Codable {
     public let error: String?
 }
 
+public struct TranscribeResponse: Codable {
+    public let ok: Bool?
+    public let alreadyTranscribed: Bool?
+    public let enqueued: Bool?
+}
+
 // MARK: - Truth Analysis
 
 public struct TruthAnalysisRequest: Encodable {
