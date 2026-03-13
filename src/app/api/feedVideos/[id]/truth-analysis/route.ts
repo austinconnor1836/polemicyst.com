@@ -93,6 +93,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     select: {
       id: true,
       userId: true,
+      status: true,
       transcript: true,
       transcriptJson: true,
     },
@@ -125,10 +126,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   );
 
   if (!transcript) {
-    return NextResponse.json(
-      { error: 'No transcript available for this video. Transcribe it first.' },
-      { status: 400 }
+    const isStillProcessing = ['pending', 'downloading', 'transcribing'].includes(
+      feedVideo.status ?? ''
     );
+    if (isStillProcessing) {
+      return NextResponse.json(
+        { error: 'Video is still being processed. Transcription will be available shortly.' },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json({ error: 'No transcript available for this video.' }, { status: 400 });
   }
 
   // Upsert a pending record
