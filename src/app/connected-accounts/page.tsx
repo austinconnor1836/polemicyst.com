@@ -60,6 +60,8 @@ import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { useSubscription } from '@/hooks/useSubscription';
 import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
+import { UpgradePromptDialog } from '@/components/UpgradePromptDialog';
+import { parseApiError, type ApiQuotaError } from '@/lib/api-error';
 
 export default function FeedsPage() {
   const videosHeaderRef = useRef<HTMLDivElement | null>(null);
@@ -99,6 +101,8 @@ export default function FeedsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [isBrandDialogOpen, setIsBrandDialogOpen] = useState(false);
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
+
+  const [upgradeError, setUpgradeError] = useState<ApiQuotaError | null>(null);
 
   const [selectedFeedSettings, setSelectedFeedSettings] = useState<VideoFeed | null>(null);
   const [isFeedSettingsOpen, setIsFeedSettingsOpen] = useState(false);
@@ -511,7 +515,14 @@ export default function FeedsPage() {
         }),
         headers: { 'Content-Type': 'application/json' },
       });
-      if (!res.ok) throw new Error('Failed to connect channel');
+      if (!res.ok) {
+        const quotaErr = await parseApiError(res);
+        if (quotaErr) {
+          setUpgradeError(quotaErr);
+          return;
+        }
+        throw new Error('Failed to connect channel');
+      }
       await fetchFeeds();
       toast.success('YouTube channel connected');
       setIsAddFeedOpen(false);
@@ -549,7 +560,14 @@ export default function FeedsPage() {
         body: JSON.stringify(updates),
         headers: { 'Content-Type': 'application/json' },
       });
-      if (!res.ok) throw new Error('Failed to update feed');
+      if (!res.ok) {
+        const quotaErr = await parseApiError(res);
+        if (quotaErr) {
+          setUpgradeError(quotaErr);
+          return;
+        }
+        throw new Error('Failed to update feed');
+      }
       await Promise.all([fetchFeeds(), fetchBrands()]);
       toast.success('Settings saved');
       setIsFeedSettingsOpen(false);
@@ -1438,6 +1456,8 @@ export default function FeedsPage() {
           }
         }}
       />
+
+      <UpgradePromptDialog error={upgradeError} onClose={() => setUpgradeError(null)} />
     </div>
   );
 }
