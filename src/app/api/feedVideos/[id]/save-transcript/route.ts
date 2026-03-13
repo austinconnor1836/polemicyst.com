@@ -37,7 +37,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  if (!body.transcript || !body.segments || !Array.isArray(body.segments) || body.segments.length === 0) {
+  if (
+    !body.transcript ||
+    !body.segments ||
+    !Array.isArray(body.segments) ||
+    body.segments.length === 0
+  ) {
     return NextResponse.json({ error: 'Missing transcript or segments' }, { status: 400 });
   }
 
