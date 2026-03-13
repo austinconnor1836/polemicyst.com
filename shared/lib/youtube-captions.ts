@@ -89,9 +89,6 @@ function runYtDlpSubs(
       'json3',
       '--js-runtimes',
       'node',
-      '--extractor-args',
-      'youtube:getpot_bgutil_script=/root/bgutil-ytdlp-pot-provider/server/build/generate_once.js',
-      '--verbose',
       '-o',
       outputTemplate,
       ...(useAutoSub ? ['--write-auto-sub'] : ['--write-sub']),
@@ -124,6 +121,11 @@ export async function fetchYouTubeCaptionsHTTP(videoUrl: string): Promise<Captio
   const videoId = extractVideoId(videoUrl);
   if (!videoId) return null;
 
+  // Try innertube API first (more reliable from server environments)
+  const innertubeResult = await fetchCaptionsViaInnertube(videoId);
+  if (innertubeResult) return innertubeResult;
+
+  // Fall back to watch page scraping
   try {
     const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
       headers: {
@@ -132,58 +134,142 @@ export async function fetchYouTubeCaptionsHTTP(videoUrl: string): Promise<Captio
         'Accept-Language': 'en-US,en;q=0.9',
       },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[captions-http] Watch page fetch failed: ${res.status}`);
+      return null;
+    }
 
     const html = await res.text();
 
-    // Extract captionTracks from ytInitialPlayerResponse
     const playerMatch = html.match(
       /ytInitialPlayerResponse\s*=\s*(\{[\s\S]*?\});(?:\s*var\s|<\/script>)/
     );
-    if (!playerMatch) return null;
+    if (!playerMatch) {
+      console.warn('[captions-http] No ytInitialPlayerResponse found in page');
+      return null;
+    }
 
     let playerResponse: any;
     try {
       playerResponse = JSON.parse(playerMatch[1]);
     } catch {
+      console.warn('[captions-http] Failed to parse player response JSON');
       return null;
     }
 
     const captionTracks = playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    if (!Array.isArray(captionTracks) || captionTracks.length === 0) return null;
+    if (!Array.isArray(captionTracks) || captionTracks.length === 0) {
+      console.warn(`[captions-http] No caption tracks found for ${videoId}`);
+      return null;
+    }
 
-    // Prefer manual English captions, fall back to auto-generated
-    const manualTrack = captionTracks.find((t: any) => t.languageCode === 'en' && t.kind !== 'asr');
-    const autoTrack = captionTracks.find((t: any) => t.languageCode === 'en' && t.kind === 'asr');
-    // Also try any English variant (en-US, en-GB, etc.)
-    const enVariantTrack = captionTracks.find((t: any) => t.languageCode?.startsWith('en'));
-
-    const track = manualTrack || autoTrack || enVariantTrack;
-    if (!track?.baseUrl) return null;
-
-    const source: CaptionResult['source'] =
-      track === manualTrack || (track === enVariantTrack && track.kind !== 'asr')
-        ? 'youtube-manual'
-        : 'youtube-auto';
-
-    // Fetch captions in json3 format
-    const captionUrl = `${track.baseUrl}&fmt=json3`;
-    const captionRes = await fetch(captionUrl);
-    if (!captionRes.ok) return null;
-
-    const data: Json3Data = await captionRes.json();
-    const segments = parseJson3(data);
-    if (segments.length === 0) return null;
-
-    const transcript = segments.map((s) => s.text).join(' ');
-    console.info(
-      `📝 Fetched ${segments.length} ${source} caption segments for ${videoId} via HTTP`
-    );
-    return { transcript, segments, source };
+    return extractCaptionsFromTracks(captionTracks, videoId, 'HTTP');
   } catch (err) {
     console.warn(`⚠️ HTTP YouTube captions fetch failed: ${err}`);
     return null;
   }
+}
+
+/**
+ * Fetch captions via YouTube's innertube API (player endpoint).
+ * This bypasses the watch page and is more reliable from server IPs.
+ */
+async function fetchCaptionsViaInnertube(videoId: string): Promise<CaptionResult | null> {
+  try {
+    const payload = {
+      context: {
+        client: {
+          clientName: 'WEB',
+          clientVersion: '2.20240313.05.00',
+          hl: 'en',
+          gl: 'US',
+        },
+      },
+      videoId,
+    };
+
+    const res = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      console.warn(`[captions-innertube] Player API returned ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+
+    // Check for playability errors
+    const playabilityStatus = data?.playabilityStatus?.status;
+    if (playabilityStatus && playabilityStatus !== 'OK') {
+      console.warn(
+        `[captions-innertube] Playability: ${playabilityStatus} - ${data?.playabilityStatus?.reason || ''}`
+      );
+      return null;
+    }
+
+    const captionTracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    if (!Array.isArray(captionTracks) || captionTracks.length === 0) {
+      console.warn(`[captions-innertube] No caption tracks for ${videoId}`);
+      return null;
+    }
+
+    return extractCaptionsFromTracks(captionTracks, videoId, 'innertube');
+  } catch (err) {
+    console.warn(`[captions-innertube] Failed: ${err}`);
+    return null;
+  }
+}
+
+/**
+ * Given an array of YouTube caption tracks, find the best English track
+ * and fetch + parse the captions.
+ */
+async function extractCaptionsFromTracks(
+  captionTracks: any[],
+  videoId: string,
+  method: string
+): Promise<CaptionResult | null> {
+  const manualTrack = captionTracks.find((t: any) => t.languageCode === 'en' && t.kind !== 'asr');
+  const autoTrack = captionTracks.find((t: any) => t.languageCode === 'en' && t.kind === 'asr');
+  const enVariantTrack = captionTracks.find((t: any) => t.languageCode?.startsWith('en'));
+
+  const track = manualTrack || autoTrack || enVariantTrack;
+  if (!track?.baseUrl) {
+    console.warn(`[captions-${method}] No English track found for ${videoId}`);
+    return null;
+  }
+
+  const source: CaptionResult['source'] =
+    track === manualTrack || (track === enVariantTrack && track.kind !== 'asr')
+      ? 'youtube-manual'
+      : 'youtube-auto';
+
+  const captionUrl = `${track.baseUrl}&fmt=json3`;
+  const captionRes = await fetch(captionUrl);
+  if (!captionRes.ok) {
+    console.warn(`[captions-${method}] Caption fetch failed: ${captionRes.status}`);
+    return null;
+  }
+
+  const data: Json3Data = await captionRes.json();
+  const segments = parseJson3(data);
+  if (segments.length === 0) {
+    console.warn(`[captions-${method}] No segments parsed for ${videoId}`);
+    return null;
+  }
+
+  const transcript = segments.map((s) => s.text).join(' ');
+  console.info(
+    `📝 Fetched ${segments.length} ${source} caption segments for ${videoId} via ${method}`
+  );
+  return { transcript, segments, source };
 }
 
 /**
