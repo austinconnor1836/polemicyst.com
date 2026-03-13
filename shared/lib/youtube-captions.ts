@@ -128,7 +128,11 @@ export async function fetchYouTubeCaptionsHTTP(videoUrl: string): Promise<Captio
   const videoId = extractVideoId(videoUrl);
   if (!videoId) return null;
 
-  // Try innertube API first (more reliable from server environments)
+  // Try youtube-transcript-api Python library first (most reliable)
+  const pytResult = await fetchCaptionsViaPython(videoId);
+  if (pytResult) return pytResult;
+
+  // Try innertube API
   const innertubeResult = await fetchCaptionsViaInnertube(videoId);
   if (innertubeResult) return innertubeResult;
 
@@ -176,6 +180,56 @@ export async function fetchYouTubeCaptionsHTTP(videoUrl: string): Promise<Captio
     console.warn(`⚠️ HTTP YouTube captions fetch failed: ${err}`);
     return null;
   }
+}
+
+/**
+ * Fetch captions via the youtube-transcript-api Python library.
+ * This library is specifically maintained to handle YouTube's anti-bot measures.
+ */
+function fetchCaptionsViaPython(videoId: string): Promise<CaptionResult | null> {
+  return new Promise((resolve) => {
+    // In Docker standalone, the script is at /app/scripts/; in dev, it's relative to repo root
+    const scriptPath = fs.existsSync('/app/scripts/fetch-yt-captions.py')
+      ? '/app/scripts/fetch-yt-captions.py'
+      : path.resolve(process.cwd(), 'scripts/fetch-yt-captions.py');
+    const child = spawn('python3', [scriptPath, videoId], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 30000,
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d) => (stdout += d.toString()));
+    child.stderr.on('data', (d) => (stderr += d.toString()));
+    child.on('close', (code) => {
+      if (code !== 0) {
+        console.warn(`[captions-python] Exit code ${code}: ${stderr.trim()}`);
+        resolve(null);
+        return;
+      }
+      try {
+        const data = JSON.parse(stdout);
+        const segments: TranscriptSegment[] = data.segments;
+        const source: CaptionResult['source'] = data.source;
+        if (!segments || segments.length === 0) {
+          console.warn('[captions-python] No segments returned');
+          resolve(null);
+          return;
+        }
+        const transcript = segments.map((s) => s.text).join(' ');
+        console.info(
+          `📝 Fetched ${segments.length} ${source} caption segments for ${videoId} via youtube-transcript-api`
+        );
+        resolve({ transcript, segments, source });
+      } catch (err) {
+        console.warn(`[captions-python] Failed to parse output: ${err}`);
+        resolve(null);
+      }
+    });
+    child.on('error', (err) => {
+      console.warn(`[captions-python] Spawn error: ${err.message}`);
+      resolve(null);
+    });
+  });
 }
 
 /**
