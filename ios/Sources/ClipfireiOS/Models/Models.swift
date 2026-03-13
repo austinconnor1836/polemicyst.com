@@ -631,6 +631,24 @@ public struct TranscribeResponse: Codable {
     public let enqueued: Bool?
 }
 
+public struct SaveTranscriptRequest: Encodable {
+    public let transcript: String
+    public let segments: [[String: AnyCodable]]
+    public let source: String
+
+    public init(transcript: String, segments: [[String: AnyCodable]], source: String) {
+        self.transcript = transcript
+        self.segments = segments
+        self.source = source
+    }
+}
+
+public struct SaveTranscriptResponse: Codable {
+    public let ok: Bool?
+    public let segmentCount: Int?
+    public let source: String?
+}
+
 // MARK: - Truth Analysis
 
 public struct TruthAnalysisRequest: Encodable {

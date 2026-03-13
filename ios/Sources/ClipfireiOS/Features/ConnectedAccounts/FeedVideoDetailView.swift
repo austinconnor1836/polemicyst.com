@@ -63,24 +63,30 @@ public final class FeedVideoDetailViewModel: ObservableObject {
         // Step 2: Try client-side innertube (residential IP, bypasses bot detection)
         transcribeStatus = "Trying from device..."
         if let ytId = detail?.feedVideo.youtubeVideoId {
+            print("[Transcribe] Step 2: trying client-side innertube for \(ytId)")
             let captionService = YouTubeCaptionService()
             if let captions = await captionService.fetchCaptions(videoId: ytId) {
+                print("[Transcribe] Got \(captions.segments.count) segments from device, saving...")
                 do {
                     let segments = captions.segments.map { segment in
                         segment.mapValues { AnyCodable($0) }
                     }
-                    _ = try await api.importVideoFromURL(
-                        url: "https://www.youtube.com/watch?v=\(ytId)",
+                    _ = try await api.saveTranscript(
+                        feedVideoId: feedVideoId,
                         transcript: captions.transcript,
-                        transcriptSegments: segments,
-                        transcriptSource: captions.source
+                        segments: segments,
+                        source: captions.source
                     )
                     await load()
                     return
                 } catch {
-                    print("[Transcribe] Client-side caption upload failed: \(error)")
+                    print("[Transcribe] Client-side caption save failed: \(error)")
                 }
+            } else {
+                print("[Transcribe] Client-side innertube returned no captions")
             }
+        } else {
+            print("[Transcribe] Step 2 skipped: no youtubeVideoId available")
         }
 
         // Step 3: Fall back to queue-based transcription (yt-dlp + Whisper)
