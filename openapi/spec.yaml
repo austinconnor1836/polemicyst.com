@@ -927,6 +927,48 @@ paths:
                   enqueued:
                     type: boolean
 
+  /api/feedVideos/{id}/innertube-transcribe:
+    post:
+      operationId: innertubeTranscribeFeedVideo
+      summary: Transcribe a YouTube video using authenticated innertube API
+      description: |
+        Uses the user's Google OAuth token to fetch captions via YouTube's innertube
+        player API. Bypasses bot detection by using a real authenticated session.
+        Falls back to unauthenticated methods if no Google account is linked.
+      tags: [FeedVideos]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  transcript:
+                    type: string
+                  source:
+                    type: string
+                    enum: [youtube-manual, youtube-auto]
+                  segmentCount:
+                    type: integer
+                  streamingUrl:
+                    type: string
+                    nullable: true
+        '400':
+          description: Not a YouTube video
+        '403':
+          description: No Google account linked
+        '404':
+          description: Feed video or captions not found
+
   /api/clips:
     get:
       operationId: getClips

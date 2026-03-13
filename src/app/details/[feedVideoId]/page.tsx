@@ -304,6 +304,20 @@ export default function ClipGroupPage() {
     setIsTranscribing(true);
     setTranscribeMessage(null);
     try {
+      // Try innertube first (uses Google OAuth token, fastest + most reliable for YouTube)
+      const innertubeRes = await fetch(`/api/feedVideos/${feedVideoId}/innertube-transcribe`, {
+        method: 'POST',
+      });
+      if (innertubeRes.ok) {
+        const data = await innertubeRes.json();
+        if (data?.ok) {
+          setTranscribeMessage(`Transcript fetched (${data.segmentCount} segments). Refreshing...`);
+          await fetchSummary({ silent: true });
+          return;
+        }
+      }
+
+      // Fall back to queue-based transcription (yt-dlp / Whisper)
       const res = await fetch(`/api/feedVideos/${feedVideoId}/transcribe`, {
         method: 'POST',
       });
