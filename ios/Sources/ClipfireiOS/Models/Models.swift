@@ -381,10 +381,22 @@ public struct TriggerClipRequest: Codable {
 public struct ImportFromURLRequest: Codable {
     public let url: String
     public let filename: String?
+    public let transcript: String?
+    public let transcriptSegments: [[String: AnyCodable]]?
+    public let transcriptSource: String?
 
-    public init(url: String, filename: String? = nil) {
+    public init(
+        url: String,
+        filename: String? = nil,
+        transcript: String? = nil,
+        transcriptSegments: [[String: AnyCodable]]? = nil,
+        transcriptSource: String? = nil
+    ) {
         self.url = url
         self.filename = filename
+        self.transcript = transcript
+        self.transcriptSegments = transcriptSegments
+        self.transcriptSource = transcriptSource
     }
 }
 

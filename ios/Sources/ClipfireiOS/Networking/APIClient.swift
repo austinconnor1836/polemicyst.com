@@ -117,8 +117,23 @@ public struct APIClient {
 
     // MARK: Upload / Import
 
-    public func importVideoFromURL(url: String, filename: String? = nil) async throws -> FeedVideo {
-        try await post(path: "/api/uploads/from-url", body: ImportFromURLRequest(url: url, filename: filename))
+    public func importVideoFromURL(
+        url: String,
+        filename: String? = nil,
+        transcript: String? = nil,
+        transcriptSegments: [[String: AnyCodable]]? = nil,
+        transcriptSource: String? = nil
+    ) async throws -> FeedVideo {
+        try await post(
+            path: "/api/uploads/from-url",
+            body: ImportFromURLRequest(
+                url: url,
+                filename: filename,
+                transcript: transcript,
+                transcriptSegments: transcriptSegments,
+                transcriptSource: transcriptSource
+            )
+        )
     }
 
     public func getPresignedUploadURL(filename: String, contentType: String = "video/mp4") async throws -> PresignedUploadResponse {
