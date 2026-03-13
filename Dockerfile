@@ -7,6 +7,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
 
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 RUN NODE_ENV=development npm ci --ignore-scripts --legacy-peer-deps
 RUN npx prisma generate
 
