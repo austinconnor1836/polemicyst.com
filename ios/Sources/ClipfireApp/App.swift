@@ -11,6 +11,7 @@ struct ClipfireApp: App {
     @State private var showContentPicker = false
     @State private var showPublicationWizard = false
     @State private var showAddVideo = false
+    @State private var showSocialPostComposer = false
 
     private let apiClient: APIClient
 
@@ -38,21 +39,21 @@ struct ClipfireApp: App {
                                 }
                                 .tag(0)
 
+                            SocialPostsListView(viewModel: SocialPostsViewModel(api: apiClient), api: apiClient)
+                                .tabItem {
+                                    Label("Post", systemImage: "text.bubble")
+                                }
+                                .tag(1)
+
                             ConnectedAccountsView(viewModel: ConnectedAccountsViewModel(api: apiClient), authService: authService)
                                 .tabItem {
                                     Label("Accounts", systemImage: "link")
                                 }
-                                .tag(1)
+                                .tag(2)
 
                             FeedVideosView(viewModel: FeedVideosViewModel(api: apiClient))
                                 .tabItem {
                                     Label("Videos", systemImage: "list.bullet")
-                                }
-                                .tag(2)
-
-                            PublicationsListView(viewModel: PublicationsViewModel(api: apiClient))
-                                .tabItem {
-                                    Label("Publish", systemImage: "newspaper")
                                 }
                                 .tag(3)
 
@@ -82,6 +83,12 @@ struct ClipfireApp: App {
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                     showAddVideo = true
                                 }
+                            },
+                            onSocialPost: {
+                                showContentPicker = false
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showSocialPostComposer = true
+                                }
                             }
                         )
                     }
@@ -92,6 +99,11 @@ struct ClipfireApp: App {
                     }
                     .sheet(isPresented: $showPublicationWizard) {
                         CreateContentWizard(api: apiClient, onNavigateToPublish: {
+                            tabSelection = 2
+                        })
+                    }
+                    .sheet(isPresented: $showSocialPostComposer) {
+                        SocialPostComposerSheet(api: apiClient, onPosted: {
                             tabSelection = 1
                         })
                     }
@@ -153,6 +165,13 @@ struct SettingsTabView: View {
                     LLMProviderView(viewModel: LLMProviderViewModel(api: apiClient))
                 } label: {
                     Label("LLM Provider", systemImage: "cpu")
+                }
+                .listRowBackground(DesignTokens.surface)
+
+                NavigationLink {
+                    PublishDefaultsView(viewModel: PublishDefaultsViewModel(api: apiClient))
+                } label: {
+                    Label("Publish Defaults", systemImage: "paperplane.fill")
                 }
                 .listRowBackground(DesignTokens.surface)
 

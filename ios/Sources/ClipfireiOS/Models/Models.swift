@@ -960,6 +960,93 @@ public struct SubstackConnectResponse: Codable {
     }
 }
 
+// MARK: - Social Posts
+
+public struct SocialPost: Identifiable, Codable {
+    public let id: String
+    public let userId: String
+    public let content: String
+    public let platforms: [String]
+    public let status: String
+    public let createdAt: Date
+    public let updatedAt: Date
+    public let publishes: [SocialPostPublish]?
+
+    public init(id: String, userId: String, content: String, platforms: [String],
+                status: String, createdAt: Date, updatedAt: Date,
+                publishes: [SocialPostPublish]? = nil) {
+        self.id = id
+        self.userId = userId
+        self.content = content
+        self.platforms = platforms
+        self.status = status
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.publishes = publishes
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, userId, content, platforms, status, createdAt, updatedAt, publishes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        userId = try c.decode(String.self, forKey: .userId)
+        content = try c.decode(String.self, forKey: .content)
+        status = try c.decode(String.self, forKey: .status)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+        publishes = try c.decodeIfPresent([SocialPostPublish].self, forKey: .publishes)
+
+        if let arr = try? c.decode([String].self, forKey: .platforms) {
+            platforms = arr
+        } else {
+            platforms = []
+        }
+    }
+}
+
+public struct SocialPostPublish: Identifiable, Codable {
+    public let id: String
+    public let socialPostId: String
+    public let platform: String
+    public let status: String
+    public let platformPostId: String?
+    public let platformUrl: String?
+    public let publishError: String?
+    public let publishedAt: Date?
+    public let createdAt: Date
+}
+
+public struct SocialPlatformInfo: Identifiable, Codable {
+    public let platform: String
+    public let displayName: String
+    public let connected: Bool
+    public let supportsText: Bool
+
+    public var id: String { platform }
+}
+
+public struct SocialPlatformsResponse: Codable {
+    public let platforms: [SocialPlatformInfo]
+    public let defaults: [String]
+}
+
+public struct PublishDefaultsResponse: Codable {
+    public let platforms: [String]
+}
+
+public struct CreateSocialPostRequest: Encodable {
+    public let content: String
+    public let platforms: [String]
+
+    public init(content: String, platforms: [String]) {
+        self.content = content
+        self.platforms = platforms
+    }
+}
+
 // MARK: - API Error
 
 public struct APIErrorResponse: Codable {

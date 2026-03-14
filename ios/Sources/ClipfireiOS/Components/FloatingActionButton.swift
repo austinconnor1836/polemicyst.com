@@ -23,15 +23,39 @@ public struct FloatingActionButton: View {
 public struct ContentTypePicker: View {
     let onPublication: () -> Void
     let onVideo: () -> Void
+    var onSocialPost: (() -> Void)?
 
-    public init(onPublication: @escaping () -> Void, onVideo: @escaping () -> Void) {
+    public init(onPublication: @escaping () -> Void, onVideo: @escaping () -> Void, onSocialPost: (() -> Void)? = nil) {
         self.onPublication = onPublication
         self.onVideo = onVideo
+        self.onSocialPost = onSocialPost
     }
 
     public var body: some View {
         NavigationStack {
             List {
+                if let onSocialPost {
+                    Button {
+                        onSocialPost()
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Social Post")
+                                    .font(.body)
+                                    .foregroundStyle(DesignTokens.textPrimary)
+                                Text("Post text to your social accounts")
+                                    .font(.caption)
+                                    .foregroundStyle(DesignTokens.muted)
+                            }
+                        } icon: {
+                            Image(systemName: "text.bubble")
+                                .foregroundStyle(DesignTokens.accent)
+                                .frame(width: 32)
+                        }
+                    }
+                    .listRowBackground(DesignTokens.surface)
+                }
+
                 Button {
                     onPublication()
                 } label: {
@@ -77,6 +101,6 @@ public struct ContentTypePicker: View {
             .navigationTitle("Create")
             .navigationBarTitleDisplayMode(.inline)
         }
-        .presentationDetents([.height(220)])
+        .presentationDetents([.height(280)])
     }
 }

@@ -357,6 +357,33 @@ public struct APIClient {
         try await get(path: "/api/publications/\(publicationId)/substack/verify")
     }
 
+    // MARK: Social Posts
+
+    public func fetchSocialPosts() async throws -> [SocialPost] {
+        try await get(path: "/api/social-posts")
+    }
+
+    public func createSocialPost(_ request: CreateSocialPostRequest) async throws -> SocialPost {
+        try await post(path: "/api/social-posts", body: request)
+    }
+
+    public func deleteSocialPost(id: String) async throws {
+        try await delete(path: "/api/social-posts/\(id)")
+    }
+
+    public func fetchSocialPlatforms() async throws -> SocialPlatformsResponse {
+        try await get(path: "/api/social-posts/platforms")
+    }
+
+    public func fetchPublishDefaults() async throws -> PublishDefaultsResponse {
+        try await get(path: "/api/user/publish-defaults")
+    }
+
+    public func updatePublishDefaults(platforms: [String]) async throws -> PublishDefaultsResponse {
+        struct Body: Encodable { let platforms: [String] }
+        return try await put(path: "/api/user/publish-defaults", body: Body(platforms: platforms))
+    }
+
     // MARK: Version Check
 
     public func checkVersion(currentVersion: String) async throws -> VersionCheckResponse {
