@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../../auth';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { S3Client, CompleteMultipartUploadCommand } from '@aws-sdk/client-s3';
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
@@ -19,8 +18,8 @@ const s3 = new S3Client({
 });
 
 export async function POST(req: NextRequest) {
-  const session = (await getServerSession(authOptions)) as any;
-  if (!session?.user?.email) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

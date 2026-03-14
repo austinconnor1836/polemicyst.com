@@ -403,21 +403,6 @@ public struct ImportFromURLRequest: Codable {
     }
 }
 
-public struct PresignedUploadRequest: Codable {
-    public let filename: String
-    public let contentType: String
-
-    public init(filename: String, contentType: String = "video/mp4") {
-        self.filename = filename
-        self.contentType = contentType
-    }
-}
-
-public struct PresignedUploadResponse: Codable {
-    public let url: String
-    public let key: String
-}
-
 public struct CompleteUploadRequest: Codable {
     public let key: String
     public let filename: String
@@ -425,6 +410,61 @@ public struct CompleteUploadRequest: Codable {
     public init(key: String, filename: String) {
         self.key = key
         self.filename = filename
+    }
+}
+
+// MARK: - Multipart Upload
+
+public struct MultipartInitiateRequest: Encodable {
+    public let filename: String
+    public let contentType: String
+
+    public init(filename: String, contentType: String) {
+        self.filename = filename
+        self.contentType = contentType
+    }
+}
+
+public struct MultipartInitiateResponse: Codable {
+    public let uploadId: String
+    public let key: String
+}
+
+public struct MultipartPartURLRequest: Encodable {
+    public let uploadId: String
+    public let key: String
+    public let partNumber: Int
+
+    public init(uploadId: String, key: String, partNumber: Int) {
+        self.uploadId = uploadId
+        self.key = key
+        self.partNumber = partNumber
+    }
+}
+
+public struct MultipartPartURLResponse: Codable {
+    public let url: String
+}
+
+public struct MultipartCompleteRequest: Encodable {
+    public let uploadId: String
+    public let key: String
+    public let parts: [MultipartCompletePart]
+
+    public init(uploadId: String, key: String, parts: [MultipartCompletePart]) {
+        self.uploadId = uploadId
+        self.key = key
+        self.parts = parts
+    }
+}
+
+public struct MultipartCompletePart: Codable {
+    public let PartNumber: Int
+    public let ETag: String
+
+    public init(partNumber: Int, etag: String) {
+        self.PartNumber = partNumber
+        self.ETag = etag
     }
 }
 
