@@ -82,6 +82,8 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLSchemes:
               - '$(GOOGLE_CLIENT_ID_REVERSED)'
+        UIBackgroundModes:
+          - fetch
         ITSAppUsesNonExemptEncryption: false
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true

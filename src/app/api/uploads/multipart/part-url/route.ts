@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       Key: key,
       UploadId: uploadId,
       PartNumber: partNumber,
-      Expires: 300,
+      Expires: 3600, // 1 hour — background uploads may be delayed by the OS
     });
 
     const durationMs = Date.now() - startMs;
