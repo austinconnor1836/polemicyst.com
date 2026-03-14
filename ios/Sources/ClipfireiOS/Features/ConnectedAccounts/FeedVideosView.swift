@@ -104,6 +104,8 @@ public struct FeedVideosView: View {
     @State private var showErrorAlert = false
     @State private var showClipResultAlert = false
     @State private var showDeleteAlert = false
+    @State private var uploadStatusMessage: String?
+    @State private var uploadIsError = false
 
     public init(viewModel: FeedVideosViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -115,7 +117,12 @@ public struct FeedVideosView: View {
 
     public var body: some View {
         NavigationStack {
-            gridContent
+            VStack(spacing: 0) {
+                if let uploadStatusMessage {
+                    uploadStatusBanner(message: uploadStatusMessage, isError: uploadIsError)
+                }
+                gridContent
+            }
                 .background(DesignTokens.background.ignoresSafeArea())
                 .navigationTitle("Videos")
                 .toolbar {
@@ -135,7 +142,23 @@ public struct FeedVideosView: View {
                 .task { await viewModel.load() }
                 .refreshable { await viewModel.load() }
                 .onReceive(NotificationCenter.default.publisher(for: .videoAdded)) { _ in
+                    withAnimation { uploadStatusMessage = nil }
                     Task { await viewModel.load() }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .uploadStarted)) { notification in
+                    let filename = notification.userInfo?["filename"] as? String ?? "video"
+                    let displayName = filename.count > 40 ? String(filename.prefix(40)) + "…" : filename
+                    withAnimation {
+                        uploadIsError = false
+                        uploadStatusMessage = "Uploading \(displayName)…"
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .uploadFailed)) { notification in
+                    let error = notification.userInfo?["error"] as? String ?? "Unknown error"
+                    withAnimation {
+                        uploadIsError = true
+                        uploadStatusMessage = "Upload failed: \(error)"
+                    }
                 }
                 .overlay {
                     if viewModel.isLoading && viewModel.videos.isEmpty {
@@ -150,6 +173,37 @@ public struct FeedVideosView: View {
                     videoToDelete: $videoToDelete
                 ))
         }
+    }
+
+    private func uploadStatusBanner(message: String, isError: Bool) -> some View {
+        HStack(spacing: 8) {
+            if isError {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.white)
+            } else {
+                ProgressView()
+                    .tint(.white)
+                    .controlSize(.small)
+            }
+            Text(message)
+                .font(.footnote)
+                .fontWeight(.medium)
+                .foregroundStyle(.white)
+                .lineLimit(2)
+            Spacer()
+            if isError {
+                Button {
+                    withAnimation { uploadStatusMessage = nil }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+            }
+        }
+        .padding(.horizontal, DesignTokens.spacing)
+        .padding(.vertical, 10)
+        .background(isError ? Color.red : DesignTokens.accent)
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     @ViewBuilder

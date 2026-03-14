@@ -4,6 +4,8 @@ import GoogleSignIn
 
 extension Notification.Name {
     static let videoAdded = Notification.Name("videoAdded")
+    static let uploadFailed = Notification.Name("uploadFailed")
+    static let uploadStarted = Notification.Name("uploadStarted")
 }
 
 // MARK: - Background Upload Service
@@ -41,24 +43,30 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
     private static let maxConcurrency = 4
 
     func uploadVideo(api: APIClient, data: Data, filename: String) {
-        // Use a plain Thread + semaphore approach to completely escape structured concurrency
         Thread.detachNewThread { [weak self] in
             guard let self else { return }
             let semaphore = DispatchSemaphore(value: 0)
+
+            Task { @MainActor in
+                NotificationCenter.default.post(
+                    name: .uploadStarted,
+                    object: nil,
+                    userInfo: ["filename": filename, "size": data.count]
+                )
+            }
+
             Task {
                 do {
                     let contentType = filename.hasSuffix(".mov") ? "video/quicktime" : "video/mp4"
                     let totalSize = data.count
                     let totalParts = (totalSize + Self.chunkSize - 1) / Self.chunkSize
 
-                    // 1. Initiate multipart upload
                     NSLog("[Upload] Initiating multipart upload: %d bytes (%d parts), contentType=%@", totalSize, totalParts, contentType)
                     let initResponse = try await api.initiateMultipartUpload(filename: filename, contentType: contentType)
                     let uploadId = initResponse.uploadId
                     let key = initResponse.key
                     NSLog("[Upload] Multipart initiated: uploadId=%@, key=%@", uploadId, key)
 
-                    // 2. Upload parts with concurrency limit
                     let completedParts = try await self.uploadParts(
                         api: api,
                         data: data,
@@ -68,12 +76,10 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
                         totalParts: totalParts
                     )
 
-                    // 3. Complete multipart upload
                     NSLog("[Upload] Completing multipart upload with %d parts", completedParts.count)
                     try await api.completeMultipartUpload(uploadId: uploadId, key: key, parts: completedParts)
                     NSLog("[Upload] Multipart upload complete for %@", filename)
 
-                    // 4. Register with backend
                     _ = try await api.completeUpload(key: key, filename: filename)
 
                     await MainActor.run {
@@ -81,13 +87,58 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
                     }
                     NSLog("[Upload] Complete: %@", filename)
                 } catch {
-                    NSLog("[Upload] Background upload failed: %@", error.localizedDescription)
+                    let errorDetail = self.describeUploadError(error)
+                    NSLog("[Upload] Background upload failed: %@ (detail: %@)", error.localizedDescription, errorDetail)
+                    await MainActor.run {
+                        NotificationCenter.default.post(
+                            name: .uploadFailed,
+                            object: nil,
+                            userInfo: [
+                                "filename": filename,
+                                "error": errorDetail,
+                            ]
+                        )
+                    }
                 }
                 semaphore.signal()
             }
 
             semaphore.wait()
         }
+    }
+
+    private func describeUploadError(_ error: Error) -> String {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .statusCode(let code):
+                switch code {
+                case 401: return "Authentication expired. Please sign out and sign back in."
+                case 413: return "File is too large for the server to accept."
+                case 500: return "Server error. Please try again later."
+                default: return "Server returned HTTP \(code)."
+                }
+            case .serverError(let code, let response):
+                return "Server error (\(code)): \(response.error)"
+            }
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorNotConnectedToInternet:
+                return "No internet connection."
+            case NSURLErrorTimedOut:
+                return "Upload timed out. Check your connection and try again."
+            case NSURLErrorNetworkConnectionLost:
+                return "Connection lost during upload. Please try again."
+            case NSURLErrorSecureConnectionFailed, NSURLErrorServerCertificateUntrusted:
+                return "Secure connection failed."
+            default:
+                return "Network error: \(error.localizedDescription)"
+            }
+        }
+
+        return error.localizedDescription
     }
 
     private func uploadParts(
@@ -187,8 +238,16 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
     }
 
     func importFromURL(api: APIClient, url: String, transcript: String?, transcriptSegments: [[String: AnyCodable]]?, transcriptSource: String?, captionError: String?) {
-        Thread.detachNewThread {
+        Thread.detachNewThread { [weak self] in
             let semaphore = DispatchSemaphore(value: 0)
+
+            Task { @MainActor in
+                NotificationCenter.default.post(
+                    name: .uploadStarted,
+                    object: nil,
+                    userInfo: ["filename": url]
+                )
+            }
 
             Task {
                 do {
@@ -202,10 +261,21 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
                     await MainActor.run {
                         NotificationCenter.default.post(name: .videoAdded, object: nil)
                     }
-                    print("[AddVideo] URL import complete: \(url)")
+                    NSLog("[Upload] URL import complete: %@", url)
                 } catch {
                     if !(error is CancellationError) {
-                        print("[AddVideo] URL import failed: \(error.localizedDescription)")
+                        let errorDetail = self?.describeUploadError(error) ?? error.localizedDescription
+                        NSLog("[Upload] URL import failed: %@ (detail: %@)", error.localizedDescription, errorDetail)
+                        await MainActor.run {
+                            NotificationCenter.default.post(
+                                name: .uploadFailed,
+                                object: nil,
+                                userInfo: [
+                                    "filename": url,
+                                    "error": errorDetail,
+                                ]
+                            )
+                        }
                     }
                 }
                 semaphore.signal()

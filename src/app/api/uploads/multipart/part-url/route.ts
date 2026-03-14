@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import AWS from 'aws-sdk';
+import { logUpload, getUploadContext } from '@shared/lib/upload-logger';
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
@@ -18,6 +19,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const startMs = Date.now();
+  const { userAgent } = getUploadContext(req);
+
   try {
     const { uploadId, key, partNumber } = await req.json();
 
@@ -26,12 +30,58 @@ export async function POST(req: NextRequest) {
       Key: key,
       UploadId: uploadId,
       PartNumber: partNumber,
-      Expires: 300, // 5 min
+      Expires: 300,
+    });
+
+    const durationMs = Date.now() - startMs;
+
+    await logUpload({
+      userId: user.id,
+      stage: 'part-url',
+      status: 'success',
+      key,
+      uploadId,
+      partNumber,
+      durationMs,
+      userAgent,
     });
 
     return NextResponse.json({ url });
   } catch (error) {
-    console.error('Presign part error:', error);
-    return NextResponse.json({ error: 'Failed to generate part URL' }, { status: 500 });
+    const durationMs = Date.now() - startMs;
+    const errMsg = error instanceof Error ? error.message : String(error);
+
+    let uploadId: string | undefined;
+    let key: string | undefined;
+    let partNumber: number | undefined;
+    try {
+      const body = await req.clone().json();
+      uploadId = body.uploadId;
+      key = body.key;
+      partNumber = body.partNumber;
+    } catch {
+      /* ignore parse error on retry */
+    }
+
+    await logUpload({
+      userId: user.id,
+      stage: 'part-url',
+      status: 'failed',
+      key,
+      uploadId,
+      partNumber,
+      durationMs,
+      error: errMsg,
+      userAgent,
+      metadata: { stack: error instanceof Error ? error.stack : undefined },
+    });
+
+    console.error(
+      `[upload:part-url] FAILED user=${user.id} uploadId=${uploadId} part=${partNumber} error=${errMsg} (${durationMs}ms)`
+    );
+    return NextResponse.json(
+      { error: 'Failed to generate part URL', detail: errMsg },
+      { status: 500 }
+    );
   }
 }

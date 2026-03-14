@@ -10,12 +10,16 @@ import {
   fetchYouTubeCaptionsHTTP,
 } from '@shared/lib/youtube-captions';
 import { getValidGoogleToken } from '@shared/lib/google-token';
+import { logUpload, getUploadContext } from '@shared/lib/upload-logger';
 
 export async function POST(req: NextRequest) {
   const user = await getAuthenticatedUser(req);
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  const startMs = Date.now();
+  const { userAgent } = getUploadContext(req);
 
   try {
     const { url, filename, transcript, transcriptSegments, transcriptSource, captionError } =
@@ -115,9 +119,46 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const durationMs = Date.now() - startMs;
+    await logUpload({
+      userId: user.id,
+      stage: 'from-url',
+      status: 'success',
+      filename: filename || url,
+      durationMs,
+      userAgent,
+      metadata: {
+        feedVideoId: newVideo.id,
+        url,
+        captionsSaved,
+        transcriptSource: transcriptSource || null,
+        captionError: captionError || null,
+      },
+    });
+
+    console.info(
+      `[upload:from-url] SUCCESS user=${user.id} feedVideoId=${newVideo.id} url=${url} captions=${captionsSaved} (${durationMs}ms)`
+    );
+
     return NextResponse.json(newVideo);
   } catch (error) {
-    console.error('Import from URL error:', error);
-    return NextResponse.json({ error: 'Failed to register video' }, { status: 500 });
+    const durationMs = Date.now() - startMs;
+    const errMsg = error instanceof Error ? error.message : String(error);
+
+    await logUpload({
+      userId: user.id,
+      stage: 'from-url',
+      status: 'failed',
+      durationMs,
+      error: errMsg,
+      userAgent,
+      metadata: { stack: error instanceof Error ? error.stack : undefined },
+    });
+
+    console.error(`[upload:from-url] FAILED user=${user.id} error=${errMsg} (${durationMs}ms)`);
+    return NextResponse.json(
+      { error: 'Failed to register video', detail: errMsg },
+      { status: 500 }
+    );
   }
 }
