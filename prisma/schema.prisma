@@ -16,26 +16,28 @@ datasource db {
 }
 
 model User {
-  id                  String               @id @default(uuid())
-  name                String?
-  email               String?              @unique
-  emailVerified       DateTime?
-  stripeCustomerId    String?
-  subscriptionPlan    String               @default("free") // 'free', 'pro', etc.
-  image               String?
-  defaultLLMProvider  String               @default("ollama")
-  accounts            Account[]
-  sessions            Session[]
-  videos              Video[]
-  templatePreferences TemplatePreferences?
-  clipCropTemplates   ClipCropTemplate[]
-  videoFeeds          VideoFeed[]
-  feedVideos          FeedVideo[]
-  brands              Brand[]
-  automationRule      AutomationRule?
-  publications        Publication[]
-  publishingAccounts  PublishingAccount[]
-  uploadLogs          UploadLog[]
+  id                       String               @id @default(uuid())
+  name                     String?
+  email                    String?              @unique
+  emailVerified            DateTime?
+  stripeCustomerId         String?
+  subscriptionPlan         String               @default("free") // 'free', 'pro', etc.
+  image                    String?
+  defaultLLMProvider       String               @default("ollama")
+  defaultPublishPlatforms  Json?                // string[] of platform identifiers for social posting defaults
+  accounts                 Account[]
+  sessions                 Session[]
+  videos                   Video[]
+  templatePreferences      TemplatePreferences?
+  clipCropTemplates        ClipCropTemplate[]
+  videoFeeds               VideoFeed[]
+  feedVideos               FeedVideo[]
+  brands                   Brand[]
+  automationRule           AutomationRule?
+  publications             Publication[]
+  publishingAccounts       PublishingAccount[]
+  uploadLogs               UploadLog[]
+  socialPosts              SocialPost[]
 }
 
 model TemplatePreferences {
@@ -592,4 +594,38 @@ model ArticlePublish {
   @@index([articleId])
   @@index([publishingAccountId])
   @@unique([articleId, publishingAccountId])
+}
+
+model SocialPost {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content    String   @db.Text
+  platforms  Json     // string[] of platforms this post was sent to
+  status     String   @default("pending") // pending | publishing | completed | failed
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  publishes  SocialPostPublish[]
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model SocialPostPublish {
+  id             String    @id @default(cuid())
+  socialPostId   String
+  socialPost     SocialPost @relation(fields: [socialPostId], references: [id], onDelete: Cascade)
+  platform       String    // twitter | facebook | bluesky | threads
+  status         String    @default("pending") // pending | published | failed
+  platformPostId String?
+  platformUrl    String?
+  publishError   String?
+  publishedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([socialPostId])
+  @@index([platform])
+  @@unique([socialPostId, platform])
 }
