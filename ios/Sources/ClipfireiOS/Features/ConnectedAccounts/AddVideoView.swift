@@ -42,44 +42,55 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
     /// Max concurrent part uploads (matching web client)
     private static let maxConcurrency = 4
 
-    func uploadVideo(api: APIClient, data: Data, filename: String) {
+    func uploadVideo(api: APIClient, fileURL: URL, filename: String) {
+        // Use a plain Thread + semaphore approach to completely escape structured concurrency
         Thread.detachNewThread { [weak self] in
             guard let self else { return }
             let semaphore = DispatchSemaphore(value: 0)
 
             Task { @MainActor in
+                let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int) ?? 0
                 NotificationCenter.default.post(
                     name: .uploadStarted,
                     object: nil,
-                    userInfo: ["filename": filename, "size": data.count]
+                    userInfo: ["filename": filename, "size": fileSize]
                 )
             }
 
             Task {
+                defer {
+                    // Clean up temp file
+                    try? FileManager.default.removeItem(at: fileURL)
+                }
                 do {
                     let contentType = filename.hasSuffix(".mov") ? "video/quicktime" : "video/mp4"
-                    let totalSize = data.count
-                    let totalParts = (totalSize + Self.chunkSize - 1) / Self.chunkSize
+                    let fileSize = try FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int ?? 0
+                    let totalParts = (fileSize + Self.chunkSize - 1) / Self.chunkSize
 
-                    NSLog("[Upload] Initiating multipart upload: %d bytes (%d parts), contentType=%@", totalSize, totalParts, contentType)
+                    // 1. Initiate multipart upload
+                    NSLog("[Upload] Initiating multipart upload: %d bytes (%d parts), contentType=%@", fileSize, totalParts, contentType)
                     let initResponse = try await api.initiateMultipartUpload(filename: filename, contentType: contentType)
                     let uploadId = initResponse.uploadId
                     let key = initResponse.key
                     NSLog("[Upload] Multipart initiated: uploadId=%@, key=%@", uploadId, key)
 
+                    // 2. Upload parts with concurrency limit (reads chunks from disk)
                     let completedParts = try await self.uploadParts(
                         api: api,
-                        data: data,
+                        fileURL: fileURL,
+                        fileSize: fileSize,
                         uploadId: uploadId,
                         key: key,
                         contentType: contentType,
                         totalParts: totalParts
                     )
 
+                    // 3. Complete multipart upload
                     NSLog("[Upload] Completing multipart upload with %d parts", completedParts.count)
                     try await api.completeMultipartUpload(uploadId: uploadId, key: key, parts: completedParts)
                     NSLog("[Upload] Multipart upload complete for %@", filename)
 
+                    // 4. Register with backend
                     _ = try await api.completeUpload(key: key, filename: filename)
 
                     await MainActor.run {
@@ -143,13 +154,13 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
 
     private func uploadParts(
         api: APIClient,
-        data: Data,
+        fileURL: URL,
+        fileSize: Int,
         uploadId: String,
         key: String,
         contentType: String,
         totalParts: Int
     ) async throws -> [MultipartCompletePart] {
-        // Use a task group with max concurrency
         return try await withThrowingTaskGroup(of: MultipartCompletePart.self) { group in
             var completedParts: [MultipartCompletePart] = []
             var nextPart = 1
@@ -161,7 +172,8 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
                 group.addTask {
                     try await self.uploadSinglePart(
                         api: api,
-                        data: data,
+                        fileURL: fileURL,
+                        fileSize: fileSize,
                         uploadId: uploadId,
                         key: key,
                         contentType: contentType,
@@ -180,7 +192,8 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
                     group.addTask {
                         try await self.uploadSinglePart(
                             api: api,
-                            data: data,
+                            fileURL: fileURL,
+                            fileSize: fileSize,
                             uploadId: uploadId,
                             key: key,
                             contentType: contentType,
@@ -197,17 +210,24 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
 
     private func uploadSinglePart(
         api: APIClient,
-        data: Data,
+        fileURL: URL,
+        fileSize: Int,
         uploadId: String,
         key: String,
         contentType: String,
         partNumber: Int,
         totalParts: Int
     ) async throws -> MultipartCompletePart {
-        // Calculate byte range for this part
-        let start = (partNumber - 1) * Self.chunkSize
-        let end = min(start + Self.chunkSize, data.count)
-        let chunk = data[start..<end]
+        // Read only this chunk from disk (avoids loading entire file into memory)
+        let offset = (partNumber - 1) * Self.chunkSize
+        let length = min(Self.chunkSize, fileSize - offset)
+
+        let fileHandle = try FileHandle(forReadingFrom: fileURL)
+        defer { try? fileHandle.close() }
+        try fileHandle.seek(toOffset: UInt64(offset))
+        guard let chunk = try fileHandle.read(upToCount: length) else {
+            throw APIError.statusCode(500)
+        }
 
         // Get presigned URL for this part
         let partURLResponse = try await api.getMultipartPartURL(uploadId: uploadId, key: key, partNumber: partNumber)
@@ -397,12 +417,11 @@ public final class AddVideoViewModel: ObservableObject {
             return
         }
 
-        let data = movie.data
         let filename = movie.filename
         selectedFileName = filename
 
-        // Hand off to background service — survives modal dismissal
-        BackgroundUploadService.shared.uploadVideo(api: api, data: data, filename: filename)
+        // Hand off to background service — reads chunks from disk, survives modal dismissal
+        BackgroundUploadService.shared.uploadVideo(api: api, fileURL: movie.fileURL, filename: filename)
 
         // Signal the modal to dismiss
         onVideoAdded?()
@@ -414,12 +433,16 @@ public final class AddVideoViewModel: ObservableObject {
 // MARK: - Video Transferable
 
 struct VideoTransferable: Transferable {
-    let data: Data
+    let fileURL: URL
     let filename: String
 
     static var transferRepresentation: some TransferRepresentation {
-        DataRepresentation(importedContentType: .movie) { data in
-            VideoTransferable(data: data, filename: "video-\(UUID().uuidString.prefix(8)).mp4")
+        FileRepresentation(importedContentType: .movie) { receivedFile in
+            // Copy to a temp location we control (the received file is cleaned up by the system)
+            let filename = "video-\(UUID().uuidString.prefix(8)).mp4"
+            let dest = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+            try FileManager.default.copyItem(at: receivedFile.file, to: dest)
+            return VideoTransferable(fileURL: dest, filename: filename)
         }
     }
 }
