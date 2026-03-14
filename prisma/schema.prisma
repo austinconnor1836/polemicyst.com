@@ -35,6 +35,7 @@ model User {
   automationRule      AutomationRule?
   publications        Publication[]
   publishingAccounts  PublishingAccount[]
+  uploadLogs          UploadLog[]
 }
 
 model TemplatePreferences {
@@ -275,6 +276,31 @@ model JobLog {
   @@index([jobType])
   @@index([status])
   @@index([createdAt])
+}
+
+model UploadLog {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stage        String   // initiate | part-url | part-upload | complete-multipart | register | from-url
+  status       String   // started | success | failed
+  filename     String?
+  key          String?
+  uploadId     String?
+  partNumber   Int?
+  fileSize     Int?
+  contentType  String?
+  durationMs   Int?
+  error        String?  @db.Text
+  metadata     Json?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([stage])
+  @@index([status])
+  @@index([createdAt])
+  @@index([uploadId])
 }
 
 model ClipCropTemplate {
