@@ -59,33 +59,33 @@ interface Json3Event {
 }
 
 /**
- * Fetch video info from YouTube's innertube player API using the user's
- * Google OAuth access token. Returns caption tracks and streaming URLs.
+ * Fetch video info from YouTube's innertube player API.
  *
- * Using the IOS client context with an OAuth Bearer token gives the most
- * reliable access to streaming data and captions without bot-detection issues.
+ * NOTE: OAuth Bearer tokens do NOT work with innertube — Google returns
+ * ACCESS_TOKEN_SCOPE_INSUFFICIENT regardless of scopes. Innertube only
+ * accepts unauthenticated requests (works from residential IPs, blocked
+ * from datacenter IPs) or cookie-based auth.
+ *
+ * This function is primarily useful when called from a residential IP
+ * (e.g., the iOS client-side path).
  */
 export async function fetchInnertubePlayer(
-  videoId: string,
-  accessToken: string
+  videoId: string
 ): Promise<InnertubePlayerResponse | null> {
   const payload = {
     context: {
       client: {
-        clientName: 'IOS',
-        clientVersion: '19.45.4',
-        deviceMake: 'Apple',
-        deviceModel: 'iPhone16,2',
+        clientName: 'WEB',
+        clientVersion: '2.20240313.05.00',
         hl: 'en',
         gl: 'US',
-        osName: 'iOS',
-        osVersion: '18.1.0.22B83',
       },
     },
     videoId,
-    contentCheckOk: true,
-    racyCheckOk: true,
   };
+
+  const YT_CONSENT_COOKIE =
+    'SOCS=CAESEwgDEgk2ODE1NjQ0NjQaAmVuIAEaBgiA_LyaBg';
 
   try {
     const res = await fetch(
@@ -94,36 +94,36 @@ export async function fetchInnertubePlayer(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+          Cookie: YT_CONSENT_COOKIE,
           'User-Agent':
-            'com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         },
         body: JSON.stringify(payload),
       }
     );
 
     if (!res.ok) {
-      console.warn(`[innertube-auth] Player API returned ${res.status}`);
+      console.warn(`[innertube] Player API returned ${res.status}`);
       return null;
     }
 
     return (await res.json()) as InnertubePlayerResponse;
   } catch (err) {
-    console.warn(`[innertube-auth] Player request failed: ${err}`);
+    console.warn(`[innertube] Player request failed: ${err}`);
     return null;
   }
 }
 
 /**
- * Fetch captions from innertube using the user's OAuth token.
- * This is the preferred method — it bypasses datacenter bot detection
- * since the request is authenticated with a real Google account.
+ * Fetch captions from innertube (unauthenticated).
+ * Works from residential IPs; blocked from datacenter IPs.
+ * On the server, this is a best-effort attempt that falls back to yt-dlp/Whisper.
  */
 export async function fetchCaptionsViaInnertubeAuth(
   videoId: string,
-  accessToken: string
+  _accessToken?: string
 ): Promise<CaptionResult | null> {
-  const playerData = await fetchInnertubePlayer(videoId, accessToken);
+  const playerData = await fetchInnertubePlayer(videoId);
   if (!playerData) return null;
 
   const status = playerData.playabilityStatus?.status;
