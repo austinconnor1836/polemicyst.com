@@ -129,14 +129,15 @@ export async function fetchCaptionsViaInnertubeAuth(
   const status = playerData.playabilityStatus?.status;
   if (status && status !== 'OK') {
     console.warn(
-      `[innertube-auth] Playability: ${status} — ${playerData.playabilityStatus?.reason || ''}`
+      `[innertube] Playability: ${status} — ${playerData.playabilityStatus?.reason || ''} (checking for captions anyway)`
     );
-    return null;
   }
 
+  // Check for captions regardless of playability — YouTube's WEB client
+  // returns UNPLAYABLE for many videos now but may still include captions.
   const tracks = playerData.captions?.playerCaptionsTracklistRenderer?.captionTracks;
   if (!tracks || tracks.length === 0) {
-    console.warn(`[innertube-auth] No caption tracks for ${videoId}`);
+    console.warn(`[innertube] No caption tracks for ${videoId} (playability: ${status || 'unknown'})`);
     return null;
   }
 

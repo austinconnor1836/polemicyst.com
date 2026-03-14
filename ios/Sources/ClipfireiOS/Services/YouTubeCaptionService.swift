@@ -62,19 +62,25 @@ public final class YouTubeCaptionService {
         lastError = nil
         var errors: [String] = []
 
-        // Method 1: WEB innertube client
+        // Method 1: Embedded player (least restricted by YouTube)
+        if let result = await fetchViaInnertube(videoId: videoId, clientName: "TVHTML5_SIMPLY_EMBEDDED_PLAYER", clientVersion: "2.0") {
+            return result
+        }
+        errors.append("innertube-embed: \(lastError ?? "unknown")")
+
+        // Method 2: WEB innertube client
         if let result = await fetchViaInnertube(videoId: videoId, clientName: "WEB", clientVersion: "2.20240313.05.00") {
             return result
         }
         errors.append("innertube-web: \(lastError ?? "unknown")")
 
-        // Method 2: MWEB innertube client
+        // Method 3: MWEB innertube client
         if let result = await fetchViaInnertube(videoId: videoId, clientName: "MWEB", clientVersion: "2.20240304.08.00") {
             return result
         }
         errors.append("innertube-mweb: \(lastError ?? "unknown")")
 
-        // Method 3: Watch page HTML scraper
+        // Method 4: Watch page HTML scraper
         if let result = await fetchViaWatchPage(videoId: videoId) {
             return result
         }
@@ -123,20 +129,18 @@ public final class YouTubeCaptionService {
                 return nil
             }
 
-            if let playability = json["playabilityStatus"] as? [String: Any],
-               let status = playability["status"] as? String, status != "OK" {
-                let reason = playability["reason"] as? String ?? ""
-                lastError = "\(status) \(reason)".trimmingCharacters(in: .whitespaces)
-                print("[YouTubeCaptions] Innertube playability: \(lastError!)")
-                return nil
-            }
+            // Check for captions regardless of playability status — YouTube's
+            // WEB client returns UNPLAYABLE for many videos now (SABR migration)
+            // but may still include caption tracks in the response.
+            let playabilityStatus = (json["playabilityStatus"] as? [String: Any])?["status"] as? String
 
             guard let captions = json["captions"] as? [String: Any],
                   let renderer = captions["playerCaptionsTracklistRenderer"] as? [String: Any],
                   let tracks = renderer["captionTracks"] as? [[String: Any]],
                   !tracks.isEmpty else {
-                lastError = "no caption tracks"
-                print("[YouTubeCaptions] Innertube: no caption tracks found")
+                let reason = (json["playabilityStatus"] as? [String: Any])?["reason"] as? String ?? ""
+                lastError = "\(playabilityStatus ?? "unknown") \(reason)".trimmingCharacters(in: .whitespaces)
+                print("[YouTubeCaptions] \(clientName): no caption tracks (playability: \(lastError!))")
                 return nil
             }
 
