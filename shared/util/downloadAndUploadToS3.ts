@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { PassThrough, pipeline as streamPipeline } from 'stream';
+import { PassThrough, pipeline as streamPipeline, Readable } from 'stream';
 import { promisify } from 'util';
 import AWS from 'aws-sdk';
 import { getS3Key } from '../lib/s3';
@@ -14,8 +14,11 @@ const s3 = new AWS.S3({
   signatureVersion: 'v4',
 });
 
-const pipeline = promisify(streamPipeline);
+const pipelineAsync = promisify(streamPipeline);
 
+/**
+ * Download a video and upload to S3. Uses yt-dlp for YouTube URLs.
+ */
 export async function downloadAndUploadToS3(
   videoUrl: string,
   videoId: string | null
@@ -69,7 +72,7 @@ export async function downloadAndUploadToS3(
       .promise();
 
     // Pipe yt-dlp stdout to S3 upload
-    await pipeline(yt.stdout, passThrough);
+    await pipelineAsync(yt.stdout, passThrough);
 
     // Wait for yt-dlp to exit
     const exitCode: number = await new Promise((resolve) => {
@@ -89,4 +92,32 @@ export async function downloadAndUploadToS3(
   } finally {
     if (timeout) clearTimeout(timeout);
   }
+}
+
+/**
+ * Stream a video from a direct URL to S3 (no yt-dlp).
+ * Used when we have a direct streaming URL from innertube.
+ */
+export async function streamUrlToS3(streamingUrl: string, videoId: string): Promise<string> {
+  const s3Key = getS3Key(`feeds/${videoId}.mp4`);
+
+  const res = await fetch(streamingUrl);
+  if (!res.ok || !res.body) {
+    throw new Error(`Failed to fetch streaming URL: HTTP ${res.status}`);
+  }
+
+  const passThrough = new PassThrough();
+  const webStream = res.body as any;
+  Readable.fromWeb(webStream).pipe(passThrough);
+
+  const data = await s3
+    .upload({
+      Bucket: S3_BUCKET,
+      Key: s3Key,
+      Body: passThrough,
+      ContentType: 'video/mp4',
+    })
+    .promise();
+
+  return data.Location;
 }

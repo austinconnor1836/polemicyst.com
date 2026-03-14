@@ -5,7 +5,7 @@ dotenv.config({ path: '.env.local', override: false });
 
 import { Worker, Job, Queue } from 'bullmq';
 import { prisma } from '@shared/lib/prisma';
-import { getRedisConnection } from '@shared/queues';
+import { getRedisConnection, queueTranscriptionJob } from '@shared/queues';
 import { transcribeFeedVideo } from '@shared/lib/transcription';
 import {
   buildCandidatesFromTranscript,
@@ -18,6 +18,10 @@ import { checkClipQuota } from '@shared/lib/plans';
 import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
 import { TrainingCollector } from '@shared/lib/training-collector';
 import { logJob } from '@shared/lib/job-logger';
+import { downloadAndUploadToS3, streamUrlToS3 } from '@shared/util/downloadAndUploadToS3';
+import { isYouTubeUrl, extractVideoId } from '@shared/lib/youtube-captions';
+import { fetchInnertubePlayer, getBestStreamingUrl } from '@shared/lib/innertube';
+import { getValidGoogleToken } from '@shared/lib/google-token';
 
 const redisConnection = getRedisConnection();
 
@@ -500,6 +504,84 @@ new Worker(
       }
 
       console.error('❌ Transcription failed:', err);
+    }
+  },
+  { connection: redisConnection as any }
+);
+
+// ────────────────────────────────────────────
+// Feed-download worker: downloads YouTube/external videos to S3
+// ────────────────────────────────────────────
+
+new Worker(
+  'feed-download',
+  async (job) => {
+    const { feedVideoId, url, title, userId } = job.data ?? {};
+    if (!feedVideoId || !url) {
+      console.warn(`⚠️ Skipping feed-download job ${job.id}: missing feedVideoId or url`);
+      return;
+    }
+
+    const feedVideo = await prisma.feedVideo.findUnique({ where: { id: feedVideoId } });
+    if (!feedVideo) {
+      console.warn(`feed-download: FeedVideo ${feedVideoId} missing, skipping`);
+      return;
+    }
+
+    console.log(`⬇️ feed-download: starting download for ${feedVideoId} (${url})`);
+
+    try {
+      let s3Url: string | null = null;
+
+      // For YouTube URLs, try authenticated innertube streaming first
+      if (isYouTubeUrl(url) && userId) {
+        const ytVideoId = extractVideoId(url);
+        if (ytVideoId) {
+          try {
+            const token = await getValidGoogleToken(userId).catch(() => null);
+            if (token) {
+              console.log(`[feed-download] Trying innertube streaming for ${ytVideoId}...`);
+              const playerData = await fetchInnertubePlayer(ytVideoId, token);
+              if (playerData) {
+                const streamUrl = getBestStreamingUrl(playerData);
+                if (streamUrl) {
+                  console.log(`[feed-download] Got streaming URL, downloading to S3...`);
+                  s3Url = await streamUrlToS3(streamUrl, feedVideo.videoId || feedVideoId);
+                  console.log(`[feed-download] Innertube stream download succeeded`);
+                }
+              }
+            }
+          } catch (err) {
+            console.warn(`[feed-download] Innertube streaming failed, trying yt-dlp:`, err);
+          }
+        }
+      }
+
+      // Fall back to yt-dlp
+      if (!s3Url) {
+        s3Url = await downloadAndUploadToS3(url, feedVideo.videoId || feedVideoId);
+      }
+
+      await prisma.feedVideo.update({
+        where: { id: feedVideoId },
+        data: { s3Url, status: 'ready' },
+      });
+
+      console.log(`✅ feed-download: ${feedVideoId} -> ${s3Url}`);
+
+      // Re-queue transcription so Whisper can use the S3 file
+      await queueTranscriptionJob({
+        feedVideoId,
+        sourceUrl: s3Url,
+        title: title || feedVideo.title,
+      });
+    } catch (err) {
+      console.error(`❌ feed-download error for ${feedVideoId}:`, err);
+      await prisma.feedVideo.update({
+        where: { id: feedVideoId },
+        data: { status: 'failed' },
+      });
+      throw err;
     }
   },
   { connection: redisConnection as any }
