@@ -63,7 +63,11 @@ public final class AuthService: ObservableObject {
                 return
             }
 
-            let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: rootVC)
+            let result = try await GIDSignIn.sharedInstance.signIn(
+                withPresenting: rootVC,
+                hint: nil,
+                additionalScopes: ["https://www.googleapis.com/auth/youtube.readonly"]
+            )
 
             guard let idToken = result.user.idToken?.tokenString else {
                 errorMessage = "Google Sign-In did not return an ID token"

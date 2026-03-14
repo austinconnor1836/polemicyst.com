@@ -63,27 +63,7 @@ public final class AddVideoViewModel: ObservableObject {
 
                 // Get Google access token for authenticated innertube requests
                 var googleAccessToken: String?
-                let hasGoogleSession = GIDSignIn.sharedInstance.currentUser != nil
                 if let gidUser = GIDSignIn.sharedInstance.currentUser {
-                    // Ensure YouTube scope is granted (needed for innertube Bearer auth)
-                    let youtubeScope = "https://www.googleapis.com/auth/youtube.readonly"
-                    let hasYouTubeScope = gidUser.grantedScopes?.contains(youtubeScope) ?? false
-
-                    if !hasYouTubeScope {
-                        uploadProgress = "Requesting YouTube access..."
-                        if let windowScene = UIApplication.shared.connectedScenes
-                            .compactMap({ $0 as? UIWindowScene }).first,
-                           let rootVC = windowScene.windows.first?.rootViewController {
-                            do {
-                                _ = try await gidUser.addScopes([youtubeScope], presenting: rootVC)
-                                print("[AddVideo] YouTube scope granted")
-                            } catch {
-                                print("[AddVideo] YouTube scope request failed: \(error)")
-                            }
-                        }
-                        uploadProgress = "Fetching captions..."
-                    }
-
                     do {
                         let refreshed = try await gidUser.refreshTokensIfNeeded()
                         googleAccessToken = refreshed.accessToken.tokenString
@@ -93,7 +73,7 @@ public final class AddVideoViewModel: ObservableObject {
                         print("[AddVideo] Could not refresh Google token: \(error)")
                     }
                 } else {
-                    print("[AddVideo] No Google session available (hasGoogleSession=\(hasGoogleSession))")
+                    print("[AddVideo] No Google session available")
                 }
 
                 let captionService = YouTubeCaptionService()
