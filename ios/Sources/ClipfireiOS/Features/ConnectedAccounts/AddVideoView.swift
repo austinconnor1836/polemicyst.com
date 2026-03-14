@@ -42,6 +42,33 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
     /// Max concurrent part uploads (matching web client)
     private static let maxConcurrency = 4
 
+    /// Loads video from PhotosPickerItem in background, then uploads via multipart.
+    /// Modal is already dismissed when this is called.
+    func loadAndUploadVideo(api: APIClient, item: PhotosPickerItem) {
+        Thread.detachNewThread {
+            let semaphore = DispatchSemaphore(value: 0)
+            Task {
+                NSLog("[Upload] Loading video from photo library...")
+                guard let movie = try? await item.loadTransferable(type: VideoTransferable.self) else {
+                    NSLog("[Upload] Failed to load video from photo library")
+                    await MainActor.run {
+                        NotificationCenter.default.post(
+                            name: .uploadFailed,
+                            object: nil,
+                            userInfo: ["filename": "video", "error": "Unable to load selected video"]
+                        )
+                    }
+                    semaphore.signal()
+                    return
+                }
+                NSLog("[Upload] Video loaded: %@ (%@)", movie.filename, movie.fileURL.path)
+                BackgroundUploadService.shared.uploadVideo(api: api, fileURL: movie.fileURL, filename: movie.filename)
+                semaphore.signal()
+            }
+            semaphore.wait()
+        }
+    }
+
     func uploadVideo(api: APIClient, fileURL: URL, filename: String) {
         // Use a plain Thread + semaphore approach to completely escape structured concurrency
         Thread.detachNewThread { [weak self] in
@@ -407,23 +434,9 @@ public final class AddVideoViewModel: ObservableObject {
     func handleSelectedPhoto(_ item: PhotosPickerItem?) async {
         guard let item else { return }
 
-        isImporting = true
-        uploadProgress = "Loading video..."
+        // Dismiss immediately — loading + upload happens entirely in background
+        BackgroundUploadService.shared.loadAndUploadVideo(api: api, item: item)
 
-        guard let movie = try? await item.loadTransferable(type: VideoTransferable.self) else {
-            errorMessage = "Unable to load selected video"
-            isImporting = false
-            uploadProgress = nil
-            return
-        }
-
-        let filename = movie.filename
-        selectedFileName = filename
-
-        // Hand off to background service — reads chunks from disk, survives modal dismissal
-        BackgroundUploadService.shared.uploadVideo(api: api, fileURL: movie.fileURL, filename: filename)
-
-        // Signal the modal to dismiss
         onVideoAdded?()
         NotificationCenter.default.post(name: .videoAdded, object: nil)
         readyToDismiss = true
