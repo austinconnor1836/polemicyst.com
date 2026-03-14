@@ -196,6 +196,7 @@ public struct FeedVideoDetail: Codable {
     public let videoId: String?
     public let title: String?
     public let s3Url: String?
+    public let status: String?
     public let thumbnailUrl: String?
     public let createdAt: Date
     public let feed: FeedVideoDetailFeed?

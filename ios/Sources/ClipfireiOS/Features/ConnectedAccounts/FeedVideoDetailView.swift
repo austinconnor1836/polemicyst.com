@@ -157,7 +157,9 @@ public final class FeedVideoDetailViewModel: ObservableObject {
         pollTask?.cancel()
         pollTask = nil
 
-        guard let state = detail?.jobState, state == "active" || state == "waiting" else { return }
+        let isJobRunning = detail?.jobState == "active" || detail?.jobState == "waiting"
+        let isDownloading = detail?.feedVideo.status == "pending"
+        guard isJobRunning || isDownloading else { return }
 
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -289,9 +291,13 @@ public struct FeedVideoDetailView: View {
 
     @ViewBuilder
     private func contentView(_ detail: FeedVideoDetailResponse) -> some View {
+        let isProcessing = detail.feedVideo.status == "pending"
         ScrollView {
             VStack(alignment: .leading, spacing: DesignTokens.largeSpacing) {
                 mediaSection(detail.feedVideo)
+                if isProcessing {
+                    processingBanner
+                }
                 metadataSection(detail)
                 transcriptSection(detail.feedVideo)
                 TruthAnalysisView(
@@ -303,6 +309,28 @@ public struct FeedVideoDetailView: View {
             }
             .padding(DesignTokens.spacing)
         }
+    }
+
+    @ViewBuilder
+    private var processingBanner: some View {
+        HStack(spacing: DesignTokens.spacing) {
+            ProgressView()
+                .controlSize(.small)
+                .tint(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Video is downloading...")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(DesignTokens.textPrimary)
+                Text("Transcript and analysis will be available once the download completes.")
+                    .font(.caption)
+                    .foregroundStyle(DesignTokens.textSecondary)
+            }
+        }
+        .padding(DesignTokens.spacing)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.1))
+        .cornerRadius(DesignTokens.cornerRadius)
     }
 
     // MARK: - Media
@@ -421,6 +449,7 @@ public struct FeedVideoDetailView: View {
             .background(DesignTokens.surface)
             .cornerRadius(DesignTokens.cornerRadius)
         } else if video.youtubeVideoId != nil {
+            let isDownloading = video.status == "pending"
             VStack(alignment: .leading, spacing: DesignTokens.spacing) {
                 Label {
                     Text("Transcript")
@@ -432,9 +461,15 @@ public struct FeedVideoDetailView: View {
                         .foregroundStyle(DesignTokens.muted)
                 }
 
-                Text("No transcript yet. Tap to fetch captions from YouTube or transcribe with AI.")
-                    .font(.caption)
-                    .foregroundStyle(DesignTokens.textSecondary)
+                if isDownloading {
+                    Text("Transcript will be available once the video finishes downloading.")
+                        .font(.caption)
+                        .foregroundStyle(DesignTokens.textSecondary)
+                } else {
+                    Text("No transcript yet. Tap to fetch captions from YouTube or transcribe with AI.")
+                        .font(.caption)
+                        .foregroundStyle(DesignTokens.textSecondary)
+                }
 
                 Button {
                     Task { await viewModel.transcribeViaInnertube() }
@@ -453,8 +488,8 @@ public struct FeedVideoDetailView: View {
                     .padding(.vertical, 10)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(DesignTokens.accent)
-                .disabled(viewModel.isTranscribing)
+                .tint(isDownloading ? DesignTokens.muted : DesignTokens.accent)
+                .disabled(viewModel.isTranscribing || isDownloading)
             }
             .padding(DesignTokens.spacing)
             .background(DesignTokens.surface)
@@ -467,6 +502,7 @@ public struct FeedVideoDetailView: View {
     @ViewBuilder
     private func generateSection(_ detail: FeedVideoDetailResponse) -> some View {
         let isJobRunning = detail.jobState == "active" || detail.jobState == "waiting"
+        let isDownloading = detail.feedVideo.status == "pending"
 
         Button {
             Task { await viewModel.triggerClip() }
@@ -477,15 +513,15 @@ public struct FeedVideoDetailView: View {
                         .tint(.white)
                         .controlSize(.small)
                 }
-                Text(isJobRunning ? "Generating..." : "Generate Clips")
+                Text(isJobRunning ? "Generating..." : isDownloading ? "Waiting for download..." : "Generate Clips")
                     .fontWeight(.semibold)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, DesignTokens.spacing)
         }
         .buttonStyle(.borderedProminent)
-        .tint(DesignTokens.accent)
-        .disabled(viewModel.isGenerating || isJobRunning)
+        .tint(isDownloading ? DesignTokens.muted : DesignTokens.accent)
+        .disabled(viewModel.isGenerating || isJobRunning || isDownloading)
         .cornerRadius(DesignTokens.cornerRadius)
     }
 

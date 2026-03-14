@@ -21,6 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       videoId: true,
       title: true,
       s3Url: true,
+      status: true,
       thumbnailUrl: true,
       createdAt: true,
       feed: { select: { id: true, name: true, sourceType: true } },
