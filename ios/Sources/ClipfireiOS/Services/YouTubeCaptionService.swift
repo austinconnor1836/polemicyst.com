@@ -1,8 +1,9 @@
 import Foundation
 
 /// Fetches YouTube captions client-side using multiple methods.
-/// This runs from the user's device (residential IP), bypassing YouTube's
-/// datacenter IP bot detection that blocks server-side fetching.
+/// Runs from the device's residential IP, bypassing YouTube's datacenter
+/// bot detection. Does NOT use OAuth Bearer tokens — Google rejects them
+/// on innertube with ACCESS_TOKEN_SCOPE_INSUFFICIENT regardless of scopes.
 public final class YouTubeCaptionService {
     public struct CaptionResult {
         public let transcript: String
@@ -13,30 +14,6 @@ public final class YouTubeCaptionService {
     /// Error info for server-side debugging when all methods fail.
     public private(set) var lastError: String?
 
-    // Authenticated IOS client payload (used with OAuth Bearer token)
-    private struct AuthInnertubePayload: Encodable {
-        let context: Context
-        let videoId: String
-        let contentCheckOk = true
-        let racyCheckOk = true
-
-        struct Context: Encodable {
-            let client: Client
-        }
-
-        struct Client: Encodable {
-            let clientName = "IOS"
-            let clientVersion = "19.45.4"
-            let deviceMake = "Apple"
-            let deviceModel = "iPhone16,2"
-            let hl = "en"
-            let gl = "US"
-            let osName = "iOS"
-            let osVersion = "18.1.0.22B83"
-        }
-    }
-
-    // Unauthenticated MWEB client payload (fallback)
     private struct MwebInnertubePayload: Encodable {
         let context: Context
         let videoId: String
@@ -79,27 +56,20 @@ public final class YouTubeCaptionService {
     }
 
     /// Fetch captions for a YouTube video.
-    /// Tries authenticated innertube (if accessToken provided), then unauthenticated innertube,
-    /// then falls back to scraping the watch page HTML.
+    /// Tries unauthenticated innertube (MWEB client) first, then falls back
+    /// to scraping the watch page HTML. OAuth Bearer tokens are NOT used —
+    /// Google rejects them on innertube with ACCESS_TOKEN_SCOPE_INSUFFICIENT.
     public func fetchCaptions(videoId: String, accessToken: String? = nil) async -> CaptionResult? {
         lastError = nil
         var errors: [String] = []
 
-        // Method 1: Authenticated innertube (IOS client + OAuth Bearer token)
-        if let token = accessToken {
-            if let result = await fetchViaInnertubeAuth(videoId: videoId, accessToken: token) {
-                return result
-            }
-            errors.append("innertube-auth: \(lastError ?? "unknown")")
-        }
-
-        // Method 2: Unauthenticated innertube (MWEB client)
+        // Method 1: Unauthenticated innertube (MWEB client)
         if let result = await fetchViaInnertube(videoId: videoId) {
             return result
         }
         errors.append("innertube: \(lastError ?? "unknown")")
 
-        // Method 3: Watch page HTML scraper
+        // Method 2: Watch page HTML scraper
         if let result = await fetchViaWatchPage(videoId: videoId) {
             return result
         }
@@ -110,74 +80,7 @@ public final class YouTubeCaptionService {
         return nil
     }
 
-    // MARK: - Method 1: Authenticated Innertube (IOS client + Bearer token)
-
-    private func fetchViaInnertubeAuth(videoId: String, accessToken: String) async -> CaptionResult? {
-        let payload = AuthInnertubePayload(
-            context: .init(client: .init()),
-            videoId: videoId
-        )
-
-        guard let url = URL(string: "https://www.youtube.com/youtubei/v1/player?prettyPrint=false") else {
-            lastError = "bad URL"
-            return nil
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue(
-            "com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)",
-            forHTTPHeaderField: "User-Agent"
-        )
-
-        do {
-            request.httpBody = try JSONEncoder().encode(payload)
-            let (data, response) = try await URLSession.shared.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                lastError = "HTTP \(code)"
-                print("[YouTubeCaptions] Auth innertube returned HTTP \(code)")
-                return nil
-            }
-
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                lastError = "parse failed"
-                print("[YouTubeCaptions] Failed to parse auth innertube response")
-                return nil
-            }
-
-            // Check playability
-            if let playability = json["playabilityStatus"] as? [String: Any],
-               let status = playability["status"] as? String, status != "OK" {
-                let reason = playability["reason"] as? String ?? ""
-                lastError = "\(status) \(reason)".trimmingCharacters(in: .whitespaces)
-                print("[YouTubeCaptions] Auth innertube playability: \(lastError!)")
-                return nil
-            }
-
-            // Extract caption tracks
-            guard let captions = json["captions"] as? [String: Any],
-                  let renderer = captions["playerCaptionsTracklistRenderer"] as? [String: Any],
-                  let tracks = renderer["captionTracks"] as? [[String: Any]],
-                  !tracks.isEmpty else {
-                lastError = "no caption tracks"
-                print("[YouTubeCaptions] Auth innertube: no caption tracks found")
-                return nil
-            }
-
-            print("[YouTubeCaptions] Auth innertube succeeded for \(videoId)")
-            return await fetchCaptionData(from: tracks, videoId: videoId)
-        } catch {
-            lastError = error.localizedDescription
-            print("[YouTubeCaptions] Auth innertube error: \(error)")
-            return nil
-        }
-    }
-
-    // MARK: - Method 2: Unauthenticated Innertube (MWEB)
+    // MARK: - Method 1: Unauthenticated Innertube (MWEB)
 
     private func fetchViaInnertube(videoId: String) async -> CaptionResult? {
         let payload = MwebInnertubePayload(
@@ -215,7 +118,6 @@ public final class YouTubeCaptionService {
                 return nil
             }
 
-            // Check playability
             if let playability = json["playabilityStatus"] as? [String: Any],
                let status = playability["status"] as? String, status != "OK" {
                 let reason = playability["reason"] as? String ?? ""
@@ -224,7 +126,6 @@ public final class YouTubeCaptionService {
                 return nil
             }
 
-            // Extract caption tracks
             guard let captions = json["captions"] as? [String: Any],
                   let renderer = captions["playerCaptionsTracklistRenderer"] as? [String: Any],
                   let tracks = renderer["captionTracks"] as? [[String: Any]],
@@ -242,7 +143,7 @@ public final class YouTubeCaptionService {
         }
     }
 
-    // MARK: - Method 3: Watch Page HTML Scraper
+    // MARK: - Method 2: Watch Page HTML Scraper
 
     private func fetchViaWatchPage(videoId: String) async -> CaptionResult? {
         guard let url = URL(string: "https://www.youtube.com/watch?v=\(videoId)&hl=en") else {
@@ -271,14 +172,12 @@ public final class YouTubeCaptionService {
                 return nil
             }
 
-            // Extract ytInitialPlayerResponse JSON from HTML
             guard let playerJson = extractPlayerResponse(from: html) else {
                 lastError = "no ytInitialPlayerResponse"
                 print("[YouTubeCaptions] Watch page: no ytInitialPlayerResponse found")
                 return nil
             }
 
-            // Extract caption tracks
             guard let captions = playerJson["captions"] as? [String: Any],
                   let renderer = captions["playerCaptionsTracklistRenderer"] as? [String: Any],
                   let tracks = renderer["captionTracks"] as? [[String: Any]],
@@ -297,12 +196,10 @@ public final class YouTubeCaptionService {
     }
 
     private func extractPlayerResponse(from html: String) -> [String: Any]? {
-        // Look for: var ytInitialPlayerResponse = {...};
         let marker = "var ytInitialPlayerResponse = "
         guard let startRange = html.range(of: marker) else { return nil }
         let jsonStart = html[startRange.upperBound...]
 
-        // Find the matching closing brace
         var depth = 0
         var endIndex = jsonStart.startIndex
         for (i, char) in jsonStart.enumerated() {
@@ -326,7 +223,6 @@ public final class YouTubeCaptionService {
     // MARK: - Shared Caption Fetching
 
     private func fetchCaptionData(from tracks: [[String: Any]], videoId: String) async -> CaptionResult? {
-        // Find best English track: manual > auto > any en variant
         let manualTrack = tracks.first { ($0["languageCode"] as? String) == "en" && ($0["kind"] as? String) != "asr" }
         let autoTrack = tracks.first { ($0["languageCode"] as? String) == "en" && ($0["kind"] as? String) == "asr" }
         let enVariant = tracks.first { ($0["languageCode"] as? String)?.hasPrefix("en") == true }
@@ -354,7 +250,6 @@ public final class YouTubeCaptionService {
             return nil
         }
 
-        // Fetch caption data in json3 format
         let captionUrl = baseUrl + "&fmt=json3"
         guard let url = URL(string: captionUrl) else {
             lastError = "bad caption URL"
@@ -399,7 +294,6 @@ public final class YouTubeCaptionService {
         var segments: [[String: Any]] = []
 
         for event in events {
-            // Skip append events
             if event["aAppend"] != nil { continue }
             guard let segs = event["segs"] as? [[String: Any]] else { continue }
 
@@ -409,11 +303,9 @@ public final class YouTubeCaptionService {
                 .replacingOccurrences(of: "\n", with: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
-            // Skip empty or [Music] style markers
             if text.isEmpty { continue }
             if text.hasPrefix("[") && text.hasSuffix("]") { continue }
 
-            // tStartMs can be Int or Double depending on YouTube's response
             let tStartMs: Double
             if let d = event["tStartMs"] as? Double {
                 tStartMs = d
