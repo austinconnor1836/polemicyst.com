@@ -6,6 +6,216 @@ extension Notification.Name {
     static let videoAdded = Notification.Name("videoAdded")
 }
 
+// MARK: - Background Upload Service
+
+/// Singleton that performs uploads outside the SwiftUI view lifecycle.
+/// Uses its own URLSession so uploads survive modal dismissal.
+final class BackgroundUploadService: NSObject, URLSessionDelegate {
+    static let shared = BackgroundUploadService()
+
+    private lazy var uploadSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 300
+        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }()
+
+    private override init() { super.init() }
+
+    // Accept self-signed certs for localhost in debug builds
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        #if DEBUG
+        if challenge.protectionSpace.host == "localhost",
+           let trust = challenge.protectionSpace.serverTrust {
+            return (.useCredential, URLCredential(trust: trust))
+        }
+        #endif
+        return (.performDefaultHandling, nil)
+    }
+
+    /// 10 MB chunk size (matching web client)
+    private static let chunkSize = 10 * 1024 * 1024
+    /// Max concurrent part uploads (matching web client)
+    private static let maxConcurrency = 4
+
+    func uploadVideo(api: APIClient, data: Data, filename: String) {
+        // Use a plain Thread + semaphore approach to completely escape structured concurrency
+        Thread.detachNewThread { [weak self] in
+            guard let self else { return }
+            let semaphore = DispatchSemaphore(value: 0)
+            Task {
+                do {
+                    let contentType = filename.hasSuffix(".mov") ? "video/quicktime" : "video/mp4"
+                    let totalSize = data.count
+                    let totalParts = (totalSize + Self.chunkSize - 1) / Self.chunkSize
+
+                    // 1. Initiate multipart upload
+                    NSLog("[Upload] Initiating multipart upload: %d bytes (%d parts), contentType=%@", totalSize, totalParts, contentType)
+                    let initResponse = try await api.initiateMultipartUpload(filename: filename, contentType: contentType)
+                    let uploadId = initResponse.uploadId
+                    let key = initResponse.key
+                    NSLog("[Upload] Multipart initiated: uploadId=%@, key=%@", uploadId, key)
+
+                    // 2. Upload parts with concurrency limit
+                    let completedParts = try await self.uploadParts(
+                        api: api,
+                        data: data,
+                        uploadId: uploadId,
+                        key: key,
+                        contentType: contentType,
+                        totalParts: totalParts
+                    )
+
+                    // 3. Complete multipart upload
+                    NSLog("[Upload] Completing multipart upload with %d parts", completedParts.count)
+                    try await api.completeMultipartUpload(uploadId: uploadId, key: key, parts: completedParts)
+                    NSLog("[Upload] Multipart upload complete for %@", filename)
+
+                    // 4. Register with backend
+                    _ = try await api.completeUpload(key: key, filename: filename)
+
+                    await MainActor.run {
+                        NotificationCenter.default.post(name: .videoAdded, object: nil)
+                    }
+                    NSLog("[Upload] Complete: %@", filename)
+                } catch {
+                    NSLog("[Upload] Background upload failed: %@", error.localizedDescription)
+                }
+                semaphore.signal()
+            }
+
+            semaphore.wait()
+        }
+    }
+
+    private func uploadParts(
+        api: APIClient,
+        data: Data,
+        uploadId: String,
+        key: String,
+        contentType: String,
+        totalParts: Int
+    ) async throws -> [MultipartCompletePart] {
+        // Use a task group with max concurrency
+        return try await withThrowingTaskGroup(of: MultipartCompletePart.self) { group in
+            var completedParts: [MultipartCompletePart] = []
+            var nextPart = 1
+
+            // Seed initial batch
+            for _ in 0..<min(Self.maxConcurrency, totalParts) {
+                let partNumber = nextPart
+                nextPart += 1
+                group.addTask {
+                    try await self.uploadSinglePart(
+                        api: api,
+                        data: data,
+                        uploadId: uploadId,
+                        key: key,
+                        contentType: contentType,
+                        partNumber: partNumber,
+                        totalParts: totalParts
+                    )
+                }
+            }
+
+            // As each completes, add the next
+            for try await part in group {
+                completedParts.append(part)
+                if nextPart <= totalParts {
+                    let partNumber = nextPart
+                    nextPart += 1
+                    group.addTask {
+                        try await self.uploadSinglePart(
+                            api: api,
+                            data: data,
+                            uploadId: uploadId,
+                            key: key,
+                            contentType: contentType,
+                            partNumber: partNumber,
+                            totalParts: totalParts
+                        )
+                    }
+                }
+            }
+
+            return completedParts.sorted { $0.PartNumber < $1.PartNumber }
+        }
+    }
+
+    private func uploadSinglePart(
+        api: APIClient,
+        data: Data,
+        uploadId: String,
+        key: String,
+        contentType: String,
+        partNumber: Int,
+        totalParts: Int
+    ) async throws -> MultipartCompletePart {
+        // Calculate byte range for this part
+        let start = (partNumber - 1) * Self.chunkSize
+        let end = min(start + Self.chunkSize, data.count)
+        let chunk = data[start..<end]
+
+        // Get presigned URL for this part
+        let partURLResponse = try await api.getMultipartPartURL(uploadId: uploadId, key: key, partNumber: partNumber)
+        guard let partURL = URL(string: partURLResponse.url) else {
+            throw APIError.statusCode(500)
+        }
+
+        // Upload chunk to S3
+        var request = URLRequest(url: partURL)
+        request.httpMethod = "PUT"
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+
+        let (_, response) = try await self.uploadSession.upload(for: request, from: chunk)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            NSLog("[Upload] Part %d/%d failed with status %d", partNumber, totalParts, statusCode)
+            throw APIError.statusCode(statusCode)
+        }
+
+        // Extract ETag from response headers
+        guard let etag = http.value(forHTTPHeaderField: "ETag") else {
+            NSLog("[Upload] Part %d/%d missing ETag header", partNumber, totalParts)
+            throw APIError.statusCode(500)
+        }
+
+        NSLog("[Upload] Part %d/%d uploaded (%d bytes)", partNumber, totalParts, chunk.count)
+        return MultipartCompletePart(partNumber: partNumber, etag: etag)
+    }
+
+    func importFromURL(api: APIClient, url: String, transcript: String?, transcriptSegments: [[String: AnyCodable]]?, transcriptSource: String?, captionError: String?) {
+        Thread.detachNewThread {
+            let semaphore = DispatchSemaphore(value: 0)
+
+            Task {
+                do {
+                    _ = try await api.importVideoFromURL(
+                        url: url,
+                        transcript: transcript,
+                        transcriptSegments: transcriptSegments,
+                        transcriptSource: transcriptSource,
+                        captionError: captionError
+                    )
+                    await MainActor.run {
+                        NotificationCenter.default.post(name: .videoAdded, object: nil)
+                    }
+                    print("[AddVideo] URL import complete: \(url)")
+                } catch {
+                    if !(error is CancellationError) {
+                        print("[AddVideo] URL import failed: \(error.localizedDescription)")
+                    }
+                }
+                semaphore.signal()
+            }
+
+            semaphore.wait()
+        }
+    }
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -39,81 +249,71 @@ public final class AddVideoViewModel: ObservableObject {
 
     // MARK: - URL Import
 
-    func importFromURL() async -> Bool {
+    func importFromURL() async {
         let trimmed = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
+        guard !trimmed.isEmpty else { return }
 
         isImporting = true
         uploadProgress = "Importing video..."
-        defer {
-            isImporting = false
-            uploadProgress = nil
-        }
 
-        do {
-            // For YouTube URLs, fetch captions client-side (residential IP bypasses bot detection)
-            var transcript: String?
-            var transcriptSegments: [[String: AnyCodable]]?
-            var transcriptSource: String?
+        // For YouTube URLs, fetch captions client-side (residential IP bypasses bot detection)
+        var transcript: String?
+        var transcriptSegments: [[String: AnyCodable]]?
+        var transcriptSource: String?
+        var captionError: String?
 
-            var captionError: String?
+        if YouTubeCaptionService.isYouTubeURL(trimmed),
+           let videoId = YouTubeCaptionService.extractVideoId(from: trimmed) {
+            uploadProgress = "Fetching captions..."
 
-            if YouTubeCaptionService.isYouTubeURL(trimmed),
-               let videoId = YouTubeCaptionService.extractVideoId(from: trimmed) {
-                uploadProgress = "Fetching captions..."
-
-                // Get Google access token for authenticated innertube requests
-                var googleAccessToken: String?
-                let hasGoogleSession = GIDSignIn.sharedInstance.currentUser != nil
-                if let gidUser = GIDSignIn.sharedInstance.currentUser {
-                    do {
-                        let refreshed = try await gidUser.refreshTokensIfNeeded()
-                        googleAccessToken = refreshed.accessToken.tokenString
-                        print("[AddVideo] Google token available (scopes: \(gidUser.grantedScopes?.joined(separator: ", ") ?? "none"))")
-                    } catch {
-                        captionError = "token-refresh-failed: \(error.localizedDescription)"
-                        print("[AddVideo] Could not refresh Google token: \(error)")
-                    }
-                } else {
-                    print("[AddVideo] No Google session available (hasGoogleSession=\(hasGoogleSession))")
+            // Get Google access token for authenticated innertube requests
+            var googleAccessToken: String?
+            let hasGoogleSession = GIDSignIn.sharedInstance.currentUser != nil
+            if let gidUser = GIDSignIn.sharedInstance.currentUser {
+                do {
+                    let refreshed = try await gidUser.refreshTokensIfNeeded()
+                    googleAccessToken = refreshed.accessToken.tokenString
+                    print("[AddVideo] Google token available (scopes: \(gidUser.grantedScopes?.joined(separator: ", ") ?? "none"))")
+                } catch {
+                    captionError = "token-refresh-failed: \(error.localizedDescription)"
+                    print("[AddVideo] Could not refresh Google token: \(error)")
                 }
-
-                let captionService = YouTubeCaptionService()
-                if let captions = await captionService.fetchCaptions(videoId: videoId, accessToken: googleAccessToken) {
-                    transcript = captions.transcript
-                    transcriptSegments = captions.segments.map { segment in
-                        segment.mapValues { AnyCodable($0) }
-                    }
-                    transcriptSource = captions.source
-                    print("[AddVideo] Captions fetched: \(captions.segments.count) segments (\(captions.source))")
-                } else {
-                    captionError = captionError ?? captionService.lastError ?? "unknown"
-                    print("[AddVideo] Caption fetch failed: \(captionError!)")
-                }
-                uploadProgress = "Importing video..."
+            } else {
+                print("[AddVideo] No Google session available (hasGoogleSession=\(hasGoogleSession))")
             }
 
-            _ = try await api.importVideoFromURL(
-                url: trimmed,
-                transcript: transcript,
-                transcriptSegments: transcriptSegments,
-                transcriptSource: transcriptSource,
-                captionError: captionError
-            )
-            onVideoAdded?()
-            NotificationCenter.default.post(name: .videoAdded, object: nil)
-            return true
-        } catch {
-            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return false }
-            errorMessage = "Failed to import video: \(error.localizedDescription)"
-            return false
+            let captionService = YouTubeCaptionService()
+            if let captions = await captionService.fetchCaptions(videoId: videoId, accessToken: googleAccessToken) {
+                transcript = captions.transcript
+                transcriptSegments = captions.segments.map { segment in
+                    segment.mapValues { AnyCodable($0) }
+                }
+                transcriptSource = captions.source
+                print("[AddVideo] Captions fetched: \(captions.segments.count) segments (\(captions.source))")
+            } else {
+                captionError = captionError ?? captionService.lastError ?? "unknown"
+                print("[AddVideo] Caption fetch failed: \(captionError!)")
+            }
         }
+
+        // Hand off to background service — survives modal dismissal
+        BackgroundUploadService.shared.importFromURL(
+            api: api,
+            url: trimmed,
+            transcript: transcript,
+            transcriptSegments: transcriptSegments,
+            transcriptSource: transcriptSource,
+            captionError: captionError
+        )
+
+        // Dismiss the modal immediately
+        onVideoAdded?()
+        NotificationCenter.default.post(name: .videoAdded, object: nil)
+        readyToDismiss = true
     }
 
     // MARK: - File Upload
 
-    /// Loads video data, then signals the caller to dismiss the modal.
-    /// Returns the loaded data so the caller can start the background upload.
     func handleSelectedPhoto(_ item: PhotosPickerItem?) async {
         guard let item else { return }
 
@@ -131,42 +331,13 @@ public final class AddVideoViewModel: ObservableObject {
         let filename = movie.filename
         selectedFileName = filename
 
-        // Signal the modal to dismiss — upload continues in background
+        // Hand off to background service — survives modal dismissal
+        BackgroundUploadService.shared.uploadVideo(api: api, data: data, filename: filename)
+
+        // Signal the modal to dismiss
         onVideoAdded?()
         NotificationCenter.default.post(name: .videoAdded, object: nil)
         readyToDismiss = true
-
-        // Continue upload in background after modal dismisses
-        await performBackgroundUpload(data: data, filename: filename)
-    }
-
-    /// Performs the S3 upload + backend registration in the background.
-    /// The modal is already dismissed at this point.
-    private func performBackgroundUpload(data: Data, filename: String) async {
-        do {
-            let contentType = filename.hasSuffix(".mov") ? "video/quicktime" : "video/mp4"
-            let presigned = try await api.getPresignedUploadURL(filename: filename, contentType: contentType)
-
-            guard let presignedURL = URL(string: presigned.url) else {
-                print("[Upload] Invalid presigned URL")
-                return
-            }
-
-            try await api.uploadToPresignedURL(presignedURL, fileData: data, contentType: contentType)
-
-            // Register with backend — this auto-queues transcription
-            _ = try await api.completeUpload(key: presigned.key, filename: filename)
-
-            // Notify Videos tab to refresh (will pick up the new video with server-generated data)
-            NotificationCenter.default.post(name: .videoAdded, object: nil)
-            print("[Upload] Complete: \(filename)")
-        } catch {
-            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
-            print("[Upload] Background upload failed: \(error.localizedDescription)")
-        }
-
-        isImporting = false
-        uploadProgress = nil
     }
 }
 
@@ -219,7 +390,10 @@ public struct AddVideoView: View {
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }
-            .disabled(viewModel.isImporting)
+            .disabled(viewModel.isImporting && !viewModel.readyToDismiss)
+            .onChange(of: viewModel.readyToDismiss) { _, ready in
+                if ready { dismiss() }
+            }
         }
     }
 
@@ -280,9 +454,7 @@ public struct AddVideoView: View {
     private var importButton: some View {
         Button {
             Task {
-                if await viewModel.importFromURL() {
-                    dismiss()
-                }
+                await viewModel.importFromURL()
             }
         } label: {
             HStack(spacing: 8) {
@@ -352,9 +524,6 @@ public struct AddVideoView: View {
                     await viewModel.handleSelectedPhoto(newItem)
                     viewModel.selectedPhotoItem = nil
                 }
-            }
-            .onChange(of: viewModel.readyToDismiss) { _, ready in
-                if ready { dismiss() }
             }
         }
     }

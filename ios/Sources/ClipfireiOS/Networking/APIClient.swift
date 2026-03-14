@@ -138,19 +138,19 @@ public struct APIClient {
         )
     }
 
-    public func getPresignedUploadURL(filename: String, contentType: String = "video/mp4") async throws -> PresignedUploadResponse {
-        try await post(path: "/api/uploads/presigned", body: PresignedUploadRequest(filename: filename, contentType: contentType))
+    // MARK: Multipart Upload
+
+    public func initiateMultipartUpload(filename: String, contentType: String) async throws -> MultipartInitiateResponse {
+        try await post(path: "/api/uploads/multipart/initiate", body: MultipartInitiateRequest(filename: filename, contentType: contentType))
     }
 
-    public func uploadToPresignedURL(_ presignedURL: URL, fileData: Data, contentType: String = "video/mp4") async throws {
-        var request = URLRequest(url: presignedURL)
-        request.httpMethod = "PUT"
-        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
-        request.setValue("\(fileData.count)", forHTTPHeaderField: "Content-Length")
-        let (_, response) = try await session.upload(for: request, from: fileData)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError.statusCode((response as? HTTPURLResponse)?.statusCode ?? 500)
-        }
+    public func getMultipartPartURL(uploadId: String, key: String, partNumber: Int) async throws -> MultipartPartURLResponse {
+        try await post(path: "/api/uploads/multipart/part-url", body: MultipartPartURLRequest(uploadId: uploadId, key: key, partNumber: partNumber))
+    }
+
+    public func completeMultipartUpload(uploadId: String, key: String, parts: [MultipartCompletePart]) async throws {
+        struct Response: Decodable { let success: Bool }
+        let _: Response = try await post(path: "/api/uploads/multipart/complete", body: MultipartCompleteRequest(uploadId: uploadId, key: key, parts: parts))
     }
 
     public func completeUpload(key: String, filename: String) async throws -> FeedVideo {
