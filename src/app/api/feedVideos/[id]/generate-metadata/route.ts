@@ -12,10 +12,7 @@ export const dynamic = 'force-dynamic';
  * Uses Gemini (preferred) or Ollama as the LLM provider.
  * Called automatically after transcription completes, or manually by the user.
  */
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getAuthenticatedUser(req);
   if (!user) {
@@ -84,10 +81,7 @@ ${transcript.slice(0, 8000)}
   return generateWithOllama(prompt);
 }
 
-async function generateWithGemini(
-  apiKey: string,
-  prompt: string
-): Promise<MetadataResult> {
+async function generateWithGemini(apiKey: string, prompt: string): Promise<MetadataResult> {
   const model = 'gemini-2.0-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
@@ -108,15 +102,12 @@ async function generateWithGemini(
   }
 
   const data = await res.json();
-  const text =
-    data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
   return parseMetadataJson(text);
 }
 
 async function generateWithOllama(prompt: string): Promise<MetadataResult> {
-  const baseUrl = (
-    process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
-  ).replace(/\/$/, '');
+  const baseUrl = (process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/$/, '');
   const model = process.env.OLLAMA_MODEL || 'llama3';
 
   const res = await fetch(`${baseUrl}/api/generate`, {

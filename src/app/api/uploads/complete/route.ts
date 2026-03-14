@@ -42,9 +42,7 @@ export async function POST(req: NextRequest) {
         status: 'queued',
         message: 'Transcription auto-queued after file upload',
       });
-      console.info(
-        `[upload-complete] Transcription queued for ${newVideo.id} (${filename})`
-      );
+      console.info(`[upload-complete] Transcription queued for ${newVideo.id} (${filename})`);
     } catch (err) {
       console.warn('[upload-complete] Failed to queue transcription (non-fatal):', err);
     }
