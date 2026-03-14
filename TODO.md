@@ -293,6 +293,12 @@ These improve retention and reduce churn once users are paying.
 
 ---
 
+## Bugs
+
+- [ ] **iOS: HTTP 500 errors on app launch** — Sometimes on app load, multiple tabs show "HTTP 500 Failed" errors. Signing out and signing back in fixes it. Likely a stale/expired JWT or race condition during token refresh on launch. Investigate whether the token is being sent before it's fully restored, or if the server is rejecting an expired token with a 500 instead of a 401.
+
+---
+
 ## Random Features
 
 - Some way to view admin
