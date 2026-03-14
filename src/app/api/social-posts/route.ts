@@ -20,7 +20,10 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(posts);
 }
 
-async function publishToTwitter(userId: string, content: string): Promise<{
+async function publishToTwitter(
+  userId: string,
+  content: string
+): Promise<{
   success: boolean;
   platformPostId?: string;
   platformUrl?: string;
@@ -54,7 +57,10 @@ async function publishToTwitter(userId: string, content: string): Promise<{
   }
 }
 
-async function publishToBluesky(userId: string, content: string): Promise<{
+async function publishToBluesky(
+  userId: string,
+  content: string
+): Promise<{
   success: boolean;
   platformPostId?: string;
   platformUrl?: string;
@@ -99,7 +105,10 @@ async function publishToBluesky(userId: string, content: string): Promise<{
   }
 }
 
-async function publishToFacebook(userId: string, content: string): Promise<{
+async function publishToFacebook(
+  userId: string,
+  content: string
+): Promise<{
   success: boolean;
   platformPostId?: string;
   platformUrl?: string;
@@ -113,17 +122,14 @@ async function publishToFacebook(userId: string, content: string): Promise<{
       return { success: false, error: 'Facebook account not connected' };
     }
 
-    const res = await fetch(
-      `https://graph.facebook.com/v19.0/me/feed`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: content,
-          access_token: account.access_token,
-        }),
-      }
-    );
+    const res = await fetch(`https://graph.facebook.com/v19.0/me/feed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: content,
+        access_token: account.access_token,
+      }),
+    });
 
     const data = await res.json();
     if (!res.ok) {
@@ -141,7 +147,10 @@ async function publishToFacebook(userId: string, content: string): Promise<{
   }
 }
 
-async function publishToThreads(userId: string, content: string): Promise<{
+async function publishToThreads(
+  userId: string,
+  content: string
+): Promise<{
   success: boolean;
   platformPostId?: string;
   platformUrl?: string;
@@ -156,35 +165,29 @@ async function publishToThreads(userId: string, content: string): Promise<{
     }
 
     // Step 1: Create a media container
-    const createRes = await fetch(
-      `https://graph.threads.net/v1.0/me/threads`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          media_type: 'TEXT',
-          text: content,
-          access_token: account.access_token,
-        }),
-      }
-    );
+    const createRes = await fetch(`https://graph.threads.net/v1.0/me/threads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        media_type: 'TEXT',
+        text: content,
+        access_token: account.access_token,
+      }),
+    });
     const createData = await createRes.json();
     if (!createRes.ok) {
       return { success: false, error: createData.error?.message || 'Threads create failed' };
     }
 
     // Step 2: Publish
-    const publishRes = await fetch(
-      `https://graph.threads.net/v1.0/me/threads_publish`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          creation_id: createData.id,
-          access_token: account.access_token,
-        }),
-      }
-    );
+    const publishRes = await fetch(`https://graph.threads.net/v1.0/me/threads_publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        creation_id: createData.id,
+        access_token: account.access_token,
+      }),
+    });
     const publishData = await publishRes.json();
     if (!publishRes.ok) {
       return { success: false, error: publishData.error?.message || 'Threads publish failed' };
@@ -201,7 +204,10 @@ async function publishToThreads(userId: string, content: string): Promise<{
   }
 }
 
-type PublishFn = (userId: string, content: string) => Promise<{
+type PublishFn = (
+  userId: string,
+  content: string
+) => Promise<{
   success: boolean;
   platformPostId?: string;
   platformUrl?: string;
