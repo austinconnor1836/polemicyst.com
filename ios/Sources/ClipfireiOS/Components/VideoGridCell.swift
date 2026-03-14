@@ -8,6 +8,7 @@ public struct VideoGridCell: View {
     let placeholderIcon: String
     let duration: Double?
     let date: Date?
+    let isProcessing: Bool
 
     public init(
         title: String,
@@ -15,7 +16,8 @@ public struct VideoGridCell: View {
         thumbnailUrl: URL? = nil,
         placeholderIcon: String = "video.fill",
         duration: Double? = nil,
-        date: Date? = nil
+        date: Date? = nil,
+        isProcessing: Bool = false
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -23,6 +25,7 @@ public struct VideoGridCell: View {
         self.placeholderIcon = placeholderIcon
         self.duration = duration
         self.date = date
+        self.isProcessing = isProcessing
     }
 
     public var body: some View {
@@ -32,6 +35,23 @@ public struct VideoGridCell: View {
         }
         .background(DesignTokens.surface)
         .cornerRadius(DesignTokens.cornerRadius)
+        .overlay {
+            if isProcessing {
+                ZStack {
+                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadius)
+                        .fill(.black.opacity(0.4))
+                    VStack(spacing: 6) {
+                        ProgressView()
+                            .tint(.white)
+                            .controlSize(.small)
+                        Text("Processing...")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.white)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Thumbnail

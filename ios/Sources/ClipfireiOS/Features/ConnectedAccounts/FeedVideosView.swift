@@ -15,6 +15,8 @@ public final class FeedVideosViewModel: ObservableObject {
         self.api = api
     }
 
+    private var pollTask: Task<Void, Never>?
+
     public func load() async {
         if ScreenshotMode.isActive {
             videos = MockData.feedVideos
@@ -24,10 +26,41 @@ public final class FeedVideosViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             videos = try await api.fetchFeedVideos()
+            startPollingIfNeeded()
         } catch {
             if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Unable to load feed videos: \(error.localizedDescription)"
         }
+    }
+
+    func startPollingIfNeeded() {
+        pollTask?.cancel()
+        pollTask = nil
+
+        let hasProcessing = videos.contains { $0.transcript == nil }
+        guard hasProcessing else { return }
+
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else { break }
+                do {
+                    let updated = try await self?.api.fetchFeedVideos()
+                    if let updated {
+                        await MainActor.run { self?.videos = updated }
+                        let stillProcessing = updated.contains { $0.transcript == nil }
+                        if !stillProcessing { break }
+                    }
+                } catch {
+                    break
+                }
+            }
+        }
+    }
+
+    func stopPolling() {
+        pollTask?.cancel()
+        pollTask = nil
     }
 
     public func removeVideo(id: String) {
@@ -158,12 +191,14 @@ public struct FeedVideosView: View {
 
     private func gridCell(for video: FeedVideo) -> some View {
         let isDeleting = viewModel.deletingVideoId == video.id
+        let isProcessing = video.transcript == nil
         return NavigationLink(value: video.id) {
             VideoGridCell(
                 title: video.title ?? "Untitled video",
-                subtitle: video.feed?.name,
+                subtitle: isProcessing ? "Transcribing..." : video.feed?.name,
                 thumbnailUrl: video.resolvedThumbnailUrl,
-                placeholderIcon: "video.fill"
+                placeholderIcon: "video.fill",
+                isProcessing: isProcessing
             )
                 .overlay(alignment: .topTrailing) {
                     Button {

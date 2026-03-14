@@ -652,6 +652,14 @@ public struct SaveTranscriptResponse: Codable {
     public let source: String?
 }
 
+// MARK: - Generate Metadata
+
+public struct GenerateMetadataResponse: Codable {
+    public let ok: Bool?
+    public let title: String?
+    public let description: String?
+}
+
 // MARK: - Truth Analysis
 
 public struct TruthAnalysisRequest: Encodable {
