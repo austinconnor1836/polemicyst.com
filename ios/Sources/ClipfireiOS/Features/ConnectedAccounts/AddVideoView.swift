@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import GoogleSignIn
 
 extension Notification.Name {
     static let videoAdded = Notification.Name("videoAdded")
@@ -57,8 +58,20 @@ public final class AddVideoViewModel: ObservableObject {
             if YouTubeCaptionService.isYouTubeURL(trimmed),
                let videoId = YouTubeCaptionService.extractVideoId(from: trimmed) {
                 uploadProgress = "Fetching captions..."
+
+                // Get Google access token for authenticated innertube requests
+                var googleAccessToken: String?
+                if let gidUser = GIDSignIn.sharedInstance.currentUser {
+                    do {
+                        let refreshed = try await gidUser.refreshTokensIfNeeded()
+                        googleAccessToken = refreshed.accessToken.tokenString
+                    } catch {
+                        print("[AddVideo] Could not refresh Google token: \(error)")
+                    }
+                }
+
                 let captionService = YouTubeCaptionService()
-                if let captions = await captionService.fetchCaptions(videoId: videoId) {
+                if let captions = await captionService.fetchCaptions(videoId: videoId, accessToken: googleAccessToken) {
                     transcript = captions.transcript
                     transcriptSegments = captions.segments.map { segment in
                         segment.mapValues { AnyCodable($0) }

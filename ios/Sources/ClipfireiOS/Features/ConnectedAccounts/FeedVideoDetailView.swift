@@ -1,4 +1,5 @@
 import SwiftUI
+import GoogleSignIn
 
 // MARK: - ViewModel
 
@@ -64,8 +65,20 @@ public final class FeedVideoDetailViewModel: ObservableObject {
         transcribeStatus = "Trying from device..."
         if let ytId = detail?.feedVideo.youtubeVideoId {
             print("[Transcribe] Step 2: trying client-side innertube for \(ytId)")
+
+            // Get Google access token for authenticated requests
+            var googleAccessToken: String?
+            if let gidUser = GIDSignIn.sharedInstance.currentUser {
+                do {
+                    let refreshed = try await gidUser.refreshTokensIfNeeded()
+                    googleAccessToken = refreshed.accessToken.tokenString
+                } catch {
+                    print("[Transcribe] Could not refresh Google token: \(error)")
+                }
+            }
+
             let captionService = YouTubeCaptionService()
-            if let captions = await captionService.fetchCaptions(videoId: ytId) {
+            if let captions = await captionService.fetchCaptions(videoId: ytId, accessToken: googleAccessToken) {
                 print("[Transcribe] Got \(captions.segments.count) segments from device, saving...")
                 do {
                     let segments = captions.segments.map { segment in
