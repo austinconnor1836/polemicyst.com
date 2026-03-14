@@ -14,7 +14,7 @@ public final class YouTubeCaptionService {
     /// Error info for server-side debugging when all methods fail.
     public private(set) var lastError: String?
 
-    private struct MwebInnertubePayload: Encodable {
+    private struct InnertubePayload: Encodable {
         let context: Context
         let videoId: String
 
@@ -23,8 +23,8 @@ public final class YouTubeCaptionService {
         }
 
         struct Client: Encodable {
-            let clientName = "MWEB"
-            let clientVersion = "2.20260101.01.00"
+            let clientName: String
+            let clientVersion: String
             let hl = "en"
             let gl = "US"
         }
@@ -56,20 +56,25 @@ public final class YouTubeCaptionService {
     }
 
     /// Fetch captions for a YouTube video.
-    /// Tries unauthenticated innertube (MWEB client) first, then falls back
-    /// to scraping the watch page HTML. OAuth Bearer tokens are NOT used —
-    /// Google rejects them on innertube with ACCESS_TOKEN_SCOPE_INSUFFICIENT.
+    /// Tries WEB innertube, then MWEB innertube, then watch page HTML scraping.
+    /// OAuth Bearer tokens are NOT used — Google rejects them on innertube.
     public func fetchCaptions(videoId: String, accessToken: String? = nil) async -> CaptionResult? {
         lastError = nil
         var errors: [String] = []
 
-        // Method 1: Unauthenticated innertube (MWEB client)
-        if let result = await fetchViaInnertube(videoId: videoId) {
+        // Method 1: WEB innertube client
+        if let result = await fetchViaInnertube(videoId: videoId, clientName: "WEB", clientVersion: "2.20240313.05.00") {
             return result
         }
-        errors.append("innertube: \(lastError ?? "unknown")")
+        errors.append("innertube-web: \(lastError ?? "unknown")")
 
-        // Method 2: Watch page HTML scraper
+        // Method 2: MWEB innertube client
+        if let result = await fetchViaInnertube(videoId: videoId, clientName: "MWEB", clientVersion: "2.20240304.08.00") {
+            return result
+        }
+        errors.append("innertube-mweb: \(lastError ?? "unknown")")
+
+        // Method 3: Watch page HTML scraper
         if let result = await fetchViaWatchPage(videoId: videoId) {
             return result
         }
@@ -80,11 +85,11 @@ public final class YouTubeCaptionService {
         return nil
     }
 
-    // MARK: - Method 1: Unauthenticated Innertube (MWEB)
+    // MARK: - Innertube Client
 
-    private func fetchViaInnertube(videoId: String) async -> CaptionResult? {
-        let payload = MwebInnertubePayload(
-            context: .init(client: .init()),
+    private func fetchViaInnertube(videoId: String, clientName: String, clientVersion: String) async -> CaptionResult? {
+        let payload = InnertubePayload(
+            context: .init(client: .init(clientName: clientName, clientVersion: clientVersion)),
             videoId: videoId
         )
 
