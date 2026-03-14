@@ -112,8 +112,6 @@ public final class AddVideoViewModel: ObservableObject {
 
     // MARK: - File Upload
 
-    /// Loads video data, then signals the caller to dismiss the modal.
-    /// Returns the loaded data so the caller can start the background upload.
     func handleSelectedPhoto(_ item: PhotosPickerItem?) async {
         guard let item else { return }
 
@@ -131,42 +129,31 @@ public final class AddVideoViewModel: ObservableObject {
         let filename = movie.filename
         selectedFileName = filename
 
-        // Signal the modal to dismiss — upload continues in background
+        // Fire-and-forget: upload continues even after modal is dismissed
+        let apiRef = api
+        Task.detached {
+            do {
+                let contentType = filename.hasSuffix(".mov") ? "video/quicktime" : "video/mp4"
+                let presigned = try await apiRef.getPresignedUploadURL(filename: filename, contentType: contentType)
+                guard let presignedURL = URL(string: presigned.url) else {
+                    print("[Upload] Invalid presigned URL")
+                    return
+                }
+                try await apiRef.uploadToPresignedURL(presignedURL, fileData: data, contentType: contentType)
+                _ = try await apiRef.completeUpload(key: presigned.key, filename: filename)
+                await MainActor.run {
+                    NotificationCenter.default.post(name: .videoAdded, object: nil)
+                }
+                print("[Upload] Complete: \(filename)")
+            } catch {
+                print("[Upload] Background upload failed: \(error.localizedDescription)")
+            }
+        }
+
+        // Dismiss modal immediately — don't wait for upload
         onVideoAdded?()
         NotificationCenter.default.post(name: .videoAdded, object: nil)
         readyToDismiss = true
-
-        // Continue upload in background after modal dismisses
-        await performBackgroundUpload(data: data, filename: filename)
-    }
-
-    /// Performs the S3 upload + backend registration in the background.
-    /// The modal is already dismissed at this point.
-    private func performBackgroundUpload(data: Data, filename: String) async {
-        do {
-            let contentType = filename.hasSuffix(".mov") ? "video/quicktime" : "video/mp4"
-            let presigned = try await api.getPresignedUploadURL(filename: filename, contentType: contentType)
-
-            guard let presignedURL = URL(string: presigned.url) else {
-                print("[Upload] Invalid presigned URL")
-                return
-            }
-
-            try await api.uploadToPresignedURL(presignedURL, fileData: data, contentType: contentType)
-
-            // Register with backend — this auto-queues transcription
-            _ = try await api.completeUpload(key: presigned.key, filename: filename)
-
-            // Notify Videos tab to refresh (will pick up the new video with server-generated data)
-            NotificationCenter.default.post(name: .videoAdded, object: nil)
-            print("[Upload] Complete: \(filename)")
-        } catch {
-            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
-            print("[Upload] Background upload failed: \(error.localizedDescription)")
-        }
-
-        isImporting = false
-        uploadProgress = nil
     }
 }
 
