@@ -18,7 +18,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { url, filename, transcript, transcriptSegments, transcriptSource } = await req.json();
+    const { url, filename, transcript, transcriptSegments, transcriptSource, captionError } =
+      await req.json();
 
     if (!url || !String(url).startsWith('http')) {
       return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
       }
     } else {
       console.info(
-        `[from-url] No client-provided captions (transcript=${!!transcript}, segments=${!!transcriptSegments})`
+        `[from-url] No client-provided captions (transcript=${!!transcript}, segments=${!!transcriptSegments})${captionError ? ` — iOS error: ${captionError}` : ''}`
       );
     }
 

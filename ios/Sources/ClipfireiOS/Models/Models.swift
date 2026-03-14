@@ -384,19 +384,22 @@ public struct ImportFromURLRequest: Codable {
     public let transcript: String?
     public let transcriptSegments: [[String: AnyCodable]]?
     public let transcriptSource: String?
+    public let captionError: String?
 
     public init(
         url: String,
         filename: String? = nil,
         transcript: String? = nil,
         transcriptSegments: [[String: AnyCodable]]? = nil,
-        transcriptSource: String? = nil
+        transcriptSource: String? = nil,
+        captionError: String? = nil
     ) {
         self.url = url
         self.filename = filename
         self.transcript = transcript
         self.transcriptSegments = transcriptSegments
         self.transcriptSource = transcriptSource
+        self.captionError = captionError
     }
 }
 

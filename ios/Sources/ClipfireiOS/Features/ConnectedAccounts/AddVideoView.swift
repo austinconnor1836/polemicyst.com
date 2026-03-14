@@ -55,19 +55,26 @@ public final class AddVideoViewModel: ObservableObject {
             var transcriptSegments: [[String: AnyCodable]]?
             var transcriptSource: String?
 
+            var captionError: String?
+
             if YouTubeCaptionService.isYouTubeURL(trimmed),
                let videoId = YouTubeCaptionService.extractVideoId(from: trimmed) {
                 uploadProgress = "Fetching captions..."
 
                 // Get Google access token for authenticated innertube requests
                 var googleAccessToken: String?
+                let hasGoogleSession = GIDSignIn.sharedInstance.currentUser != nil
                 if let gidUser = GIDSignIn.sharedInstance.currentUser {
                     do {
                         let refreshed = try await gidUser.refreshTokensIfNeeded()
                         googleAccessToken = refreshed.accessToken.tokenString
+                        print("[AddVideo] Google token available (scopes: \(gidUser.grantedScopes?.joined(separator: ", ") ?? "none"))")
                     } catch {
+                        captionError = "token-refresh-failed: \(error.localizedDescription)"
                         print("[AddVideo] Could not refresh Google token: \(error)")
                     }
+                } else {
+                    print("[AddVideo] No Google session available (hasGoogleSession=\(hasGoogleSession))")
                 }
 
                 let captionService = YouTubeCaptionService()
@@ -77,6 +84,10 @@ public final class AddVideoViewModel: ObservableObject {
                         segment.mapValues { AnyCodable($0) }
                     }
                     transcriptSource = captions.source
+                    print("[AddVideo] Captions fetched: \(captions.segments.count) segments (\(captions.source))")
+                } else {
+                    captionError = captionError ?? captionService.lastError ?? "unknown"
+                    print("[AddVideo] Caption fetch failed: \(captionError!)")
                 }
                 uploadProgress = "Importing video..."
             }
@@ -85,7 +96,8 @@ public final class AddVideoViewModel: ObservableObject {
                 url: trimmed,
                 transcript: transcript,
                 transcriptSegments: transcriptSegments,
-                transcriptSource: transcriptSource
+                transcriptSource: transcriptSource,
+                captionError: captionError
             )
             onVideoAdded?()
             NotificationCenter.default.post(name: .videoAdded, object: nil)

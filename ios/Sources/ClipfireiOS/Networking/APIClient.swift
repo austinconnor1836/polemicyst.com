@@ -122,7 +122,8 @@ public struct APIClient {
         filename: String? = nil,
         transcript: String? = nil,
         transcriptSegments: [[String: AnyCodable]]? = nil,
-        transcriptSource: String? = nil
+        transcriptSource: String? = nil,
+        captionError: String? = nil
     ) async throws -> FeedVideo {
         try await post(
             path: "/api/uploads/from-url",
@@ -131,7 +132,8 @@ public struct APIClient {
                 filename: filename,
                 transcript: transcript,
                 transcriptSegments: transcriptSegments,
-                transcriptSource: transcriptSource
+                transcriptSource: transcriptSource,
+                captionError: captionError
             )
         )
     }
