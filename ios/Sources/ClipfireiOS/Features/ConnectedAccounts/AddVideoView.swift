@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import GoogleSignIn
+import UIKit
 
 extension Notification.Name {
     static let videoAdded = Notification.Name("videoAdded")
@@ -8,43 +9,136 @@ extension Notification.Name {
     static let uploadStarted = Notification.Name("uploadStarted")
 }
 
+// MARK: - Upload State (persisted to disk for crash recovery)
+
+private struct UploadState: Codable {
+    let uploadId: String
+    let key: String
+    let filename: String
+    let contentType: String
+    let sourceFileURL: String
+    let totalParts: Int
+    let fileSize: Int
+    var completedParts: [CompletedPart]
+    var nextPart: Int // 1-based, next part number to schedule
+    var taskToPartMap: [String: Int] // taskIdentifier (as String) -> partNumber
+
+    struct CompletedPart: Codable {
+        let partNumber: Int
+        let etag: String
+    }
+
+    var allPartsUploaded: Bool {
+        completedParts.count >= totalParts
+    }
+}
+
 // MARK: - Background Upload Service
 
 /// Singleton that performs uploads outside the SwiftUI view lifecycle.
-/// Uses its own URLSession so uploads survive modal dismissal.
-final class BackgroundUploadService: NSObject, URLSessionDelegate {
-    static let shared = BackgroundUploadService()
+/// Uses a background URLSession so S3 uploads survive app backgrounding/termination.
+public final class BackgroundUploadService: NSObject, URLSessionDataDelegate {
+    public static let shared = BackgroundUploadService()
 
-    private lazy var uploadSession: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 300
-        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
-    }()
+    private static let sessionIdentifier = "com.clipfire.upload"
+    private static let chunkSize = 10 * 1024 * 1024 // 10 MB (matching web client)
+    private static let maxConcurrency = 4
 
-    private override init() { super.init() }
+    private var bgSession: URLSession!
+    private(set) var api: APIClient?
 
-    // Accept self-signed certs for localhost in debug builds
-    func urlSession(
-        _ session: URLSession,
-        didReceive challenge: URLAuthenticationChallenge
-    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-        #if DEBUG
-        if challenge.protectionSpace.host == "localhost",
-           let trust = challenge.protectionSpace.serverTrust {
-            return (.useCredential, URLCredential(trust: trust))
-        }
-        #endif
-        return (.performDefaultHandling, nil)
+    /// System completion handler from handleEventsForBackgroundURLSession
+    public var systemCompletionHandler: (() -> Void)?
+
+    // In-memory tracking
+    private var uploadState: UploadState?
+    private var taskToPartMap: [Int: Int] = [:] // taskIdentifier -> partNumber
+    private var inFlightCount = 0
+    private let lock = NSLock()
+
+    private var chunksDir: URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("clipfire-chunks")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
     }
 
-    /// 10 MB chunk size (matching web client)
-    private static let chunkSize = 10 * 1024 * 1024
-    /// Max concurrent part uploads (matching web client)
-    private static let maxConcurrency = 4
+    private var stateFileURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+        return appSupport.appendingPathComponent("clipfire-upload-state.json")
+    }
+
+    private override init() {
+        super.init()
+        let config = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
+        config.isDiscretionary = false
+        config.sessionSendsLaunchEvents = true
+        config.timeoutIntervalForResource = 3600
+        bgSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }
+
+    /// Call on app launch to set the API client and reconnect to any in-progress uploads.
+    public func configure(api: APIClient) {
+        self.api = api
+        restoreState()
+        if let state = uploadState {
+            NSLog("[Upload] Restored state: %d/%d parts completed", state.completedParts.count, state.totalParts)
+            // Background session automatically reconnects and delivers pending events
+        }
+    }
+
+    // MARK: - State persistence
+
+    private func saveState() {
+        lock.lock()
+        guard var state = uploadState else {
+            lock.unlock()
+            return
+        }
+        // Sync in-memory taskToPartMap into state
+        state.taskToPartMap = Dictionary(uniqueKeysWithValues: taskToPartMap.map { ("\($0.key)", $0.value) })
+        uploadState = state
+        lock.unlock()
+
+        if let data = try? JSONEncoder().encode(state) {
+            try? data.write(to: stateFileURL, options: .atomic)
+        }
+    }
+
+    private func restoreState() {
+        guard let data = try? Data(contentsOf: stateFileURL),
+              let state = try? JSONDecoder().decode(UploadState.self, from: data) else { return }
+        uploadState = state
+        // Restore taskToPartMap
+        taskToPartMap = Dictionary(uniqueKeysWithValues: state.taskToPartMap.compactMap { key, value in
+            guard let intKey = Int(key) else { return nil }
+            return (intKey, value)
+        })
+        inFlightCount = taskToPartMap.count
+    }
+
+    private func clearState() {
+        lock.lock()
+        uploadState = nil
+        taskToPartMap = [:]
+        inFlightCount = 0
+        lock.unlock()
+        try? FileManager.default.removeItem(at: stateFileURL)
+        try? FileManager.default.removeItem(at: chunksDir)
+    }
+
+    // MARK: - Public API
 
     /// Loads video from PhotosPickerItem in background, then uploads via multipart.
     /// Modal is already dismissed when this is called.
     func loadAndUploadVideo(api: APIClient, item: PhotosPickerItem) {
+        self.api = api
+
+        var bgTaskId = UIBackgroundTaskIdentifier.invalid
+        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "loadVideo") {
+            UIApplication.shared.endBackgroundTask(bgTaskId)
+        }
+
         Thread.detachNewThread {
             let semaphore = DispatchSemaphore(value: 0)
             Task {
@@ -58,11 +152,15 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
                             userInfo: ["filename": "video", "error": "Unable to load selected video"]
                         )
                     }
+                    UIApplication.shared.endBackgroundTask(bgTaskId)
                     semaphore.signal()
                     return
                 }
                 NSLog("[Upload] Video loaded: %@ (%@)", movie.filename, movie.fileURL.path)
-                BackgroundUploadService.shared.uploadVideo(api: api, fileURL: movie.fileURL, filename: movie.filename)
+                await BackgroundUploadService.shared.startMultipartUpload(
+                    fileURL: movie.fileURL, filename: movie.filename
+                )
+                UIApplication.shared.endBackgroundTask(bgTaskId)
                 semaphore.signal()
             }
             semaphore.wait()
@@ -70,13 +168,39 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
     }
 
     func uploadVideo(api: APIClient, fileURL: URL, filename: String) {
-        // Use a plain Thread + semaphore approach to completely escape structured concurrency
-        Thread.detachNewThread { [weak self] in
-            guard let self else { return }
-            let semaphore = DispatchSemaphore(value: 0)
+        self.api = api
 
-            Task { @MainActor in
-                let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int) ?? 0
+        var bgTaskId = UIBackgroundTaskIdentifier.invalid
+        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "uploadVideo") {
+            UIApplication.shared.endBackgroundTask(bgTaskId)
+        }
+
+        Thread.detachNewThread { [weak self] in
+            let semaphore = DispatchSemaphore(value: 0)
+            Task {
+                await self?.startMultipartUpload(fileURL: fileURL, filename: filename)
+                UIApplication.shared.endBackgroundTask(bgTaskId)
+                semaphore.signal()
+            }
+            semaphore.wait()
+        }
+    }
+
+    // MARK: - Upload orchestration
+
+    private func startMultipartUpload(fileURL: URL, filename: String) async {
+        guard let api else {
+            NSLog("[Upload] API client not configured")
+            return
+        }
+
+        do {
+            let contentType = filename.hasSuffix(".mov") ? "video/quicktime" : "video/mp4"
+            let attrs = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+            let fileSize = attrs[.size] as? Int ?? 0
+            let totalParts = (fileSize + Self.chunkSize - 1) / Self.chunkSize
+
+            await MainActor.run {
                 NotificationCenter.default.post(
                     name: .uploadStarted,
                     object: nil,
@@ -84,64 +208,266 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
                 )
             }
 
-            Task {
-                defer {
-                    // Clean up temp file
-                    try? FileManager.default.removeItem(at: fileURL)
-                }
-                do {
-                    let contentType = filename.hasSuffix(".mov") ? "video/quicktime" : "video/mp4"
-                    let fileSize = try FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int ?? 0
-                    let totalParts = (fileSize + Self.chunkSize - 1) / Self.chunkSize
+            NSLog("[Upload] Initiating multipart upload: %d bytes (%d parts), contentType=%@", fileSize, totalParts, contentType)
+            let initResponse = try await api.initiateMultipartUpload(filename: filename, contentType: contentType)
+            NSLog("[Upload] Multipart initiated: uploadId=%@, key=%@", initResponse.uploadId, initResponse.key)
 
-                    // 1. Initiate multipart upload
-                    NSLog("[Upload] Initiating multipart upload: %d bytes (%d parts), contentType=%@", fileSize, totalParts, contentType)
-                    let initResponse = try await api.initiateMultipartUpload(filename: filename, contentType: contentType)
-                    let uploadId = initResponse.uploadId
-                    let key = initResponse.key
-                    NSLog("[Upload] Multipart initiated: uploadId=%@, key=%@", uploadId, key)
+            lock.lock()
+            uploadState = UploadState(
+                uploadId: initResponse.uploadId,
+                key: initResponse.key,
+                filename: filename,
+                contentType: contentType,
+                sourceFileURL: fileURL.path,
+                totalParts: totalParts,
+                fileSize: fileSize,
+                completedParts: [],
+                nextPart: 1,
+                taskToPartMap: [:]
+            )
+            lock.unlock()
+            saveState()
 
-                    // 2. Upload parts with concurrency limit (reads chunks from disk)
-                    let completedParts = try await self.uploadParts(
-                        api: api,
-                        fileURL: fileURL,
-                        fileSize: fileSize,
-                        uploadId: uploadId,
-                        key: key,
-                        contentType: contentType,
-                        totalParts: totalParts
-                    )
-
-                    // 3. Complete multipart upload
-                    NSLog("[Upload] Completing multipart upload with %d parts", completedParts.count)
-                    try await api.completeMultipartUpload(uploadId: uploadId, key: key, parts: completedParts)
-                    NSLog("[Upload] Multipart upload complete for %@", filename)
-
-                    // 4. Register with backend
-                    _ = try await api.completeUpload(key: key, filename: filename)
-
-                    await MainActor.run {
-                        NotificationCenter.default.post(name: .videoAdded, object: nil)
-                    }
-                    NSLog("[Upload] Complete: %@", filename)
-                } catch {
-                    let errorDetail = self.describeUploadError(error)
-                    NSLog("[Upload] Background upload failed: %@ (detail: %@)", error.localizedDescription, errorDetail)
-                    await MainActor.run {
-                        NotificationCenter.default.post(
-                            name: .uploadFailed,
-                            object: nil,
-                            userInfo: [
-                                "filename": filename,
-                                "error": errorDetail,
-                            ]
-                        )
-                    }
-                }
-                semaphore.signal()
+            await scheduleNextBatch()
+        } catch {
+            let errorDetail = describeUploadError(error)
+            NSLog("[Upload] Failed to start multipart upload: %@", errorDetail)
+            await MainActor.run {
+                NotificationCenter.default.post(
+                    name: .uploadFailed,
+                    object: nil,
+                    userInfo: ["filename": filename, "error": errorDetail]
+                )
             }
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+    }
 
-            semaphore.wait()
+    private func scheduleNextBatch() async {
+        guard let api = self.api else { return }
+
+        lock.lock()
+        guard let state = uploadState else {
+            lock.unlock()
+            return
+        }
+
+        let availableSlots = Self.maxConcurrency - inFlightCount
+        var partsToSchedule: [Int] = []
+        var nextPart = state.nextPart
+        let completedSet = Set(state.completedParts.map { $0.partNumber })
+
+        for _ in 0..<availableSlots {
+            // Skip already completed parts
+            while nextPart <= state.totalParts && completedSet.contains(nextPart) {
+                nextPart += 1
+            }
+            if nextPart <= state.totalParts {
+                partsToSchedule.append(nextPart)
+                nextPart += 1
+            }
+        }
+
+        uploadState?.nextPart = nextPart
+        lock.unlock()
+
+        guard !partsToSchedule.isEmpty else { return }
+
+        let sourceURL = URL(fileURLWithPath: state.sourceFileURL)
+
+        for partNumber in partsToSchedule {
+            do {
+                // Write chunk to temp file (background sessions require file-based uploads)
+                let chunkFileURL = chunksDir.appendingPathComponent("part-\(partNumber).tmp")
+                let offset = (partNumber - 1) * Self.chunkSize
+                let length = min(Self.chunkSize, state.fileSize - offset)
+
+                let fileHandle = try FileHandle(forReadingFrom: sourceURL)
+                defer { try? fileHandle.close() }
+                try fileHandle.seek(toOffset: UInt64(offset))
+                guard let chunk = try fileHandle.read(upToCount: length) else {
+                    throw APIError.statusCode(500)
+                }
+                try chunk.write(to: chunkFileURL)
+
+                // Get presigned URL for this part
+                let partURLResponse = try await api.getMultipartPartURL(
+                    uploadId: state.uploadId, key: state.key, partNumber: partNumber
+                )
+                guard let partURL = URL(string: partURLResponse.url) else {
+                    throw APIError.statusCode(500)
+                }
+
+                // Create background upload task
+                var request = URLRequest(url: partURL)
+                request.httpMethod = "PUT"
+                request.setValue(state.contentType, forHTTPHeaderField: "Content-Type")
+
+                let task = bgSession.uploadTask(with: request, fromFile: chunkFileURL)
+
+                lock.lock()
+                taskToPartMap[task.taskIdentifier] = partNumber
+                inFlightCount += 1
+                lock.unlock()
+
+                NSLog("[Upload] Scheduled part %d/%d (task %d)", partNumber, state.totalParts, task.taskIdentifier)
+                task.resume()
+            } catch {
+                NSLog("[Upload] Failed to schedule part %d: %@", partNumber, error.localizedDescription)
+                // Put part back for retry on next batch
+                lock.lock()
+                if let current = uploadState?.nextPart {
+                    uploadState?.nextPart = min(current, partNumber)
+                }
+                lock.unlock()
+            }
+        }
+
+        saveState()
+    }
+
+    private func finalizeUpload() async {
+        guard let api = self.api else { return }
+
+        lock.lock()
+        guard let state = uploadState else {
+            lock.unlock()
+            return
+        }
+        lock.unlock()
+
+        do {
+            let parts = state.completedParts
+                .sorted { $0.partNumber < $1.partNumber }
+                .map { MultipartCompletePart(partNumber: $0.partNumber, etag: $0.etag) }
+
+            NSLog("[Upload] Completing multipart upload with %d parts", parts.count)
+            try await api.completeMultipartUpload(uploadId: state.uploadId, key: state.key, parts: parts)
+            NSLog("[Upload] Multipart upload complete for %@", state.filename)
+
+            _ = try await api.completeUpload(key: state.key, filename: state.filename)
+
+            await MainActor.run {
+                NotificationCenter.default.post(name: .videoAdded, object: nil)
+            }
+            NSLog("[Upload] Complete: %@", state.filename)
+
+            // Clean up
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: state.sourceFileURL))
+            clearState()
+        } catch {
+            let errorDetail = describeUploadError(error)
+            NSLog("[Upload] Failed to finalize upload: %@", errorDetail)
+            await MainActor.run {
+                NotificationCenter.default.post(
+                    name: .uploadFailed,
+                    object: nil,
+                    userInfo: ["filename": state.filename, "error": errorDetail]
+                )
+            }
+        }
+    }
+
+    // MARK: - URLSessionDataDelegate
+
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        lock.lock()
+        guard let partNumber = taskToPartMap.removeValue(forKey: task.taskIdentifier) else {
+            lock.unlock()
+            return
+        }
+        inFlightCount = max(0, inFlightCount - 1)
+        lock.unlock()
+
+        // Clean up chunk file
+        let chunkFile = chunksDir.appendingPathComponent("part-\(partNumber).tmp")
+        try? FileManager.default.removeItem(at: chunkFile)
+
+        if let error = error {
+            NSLog("[Upload] Part %d failed: %@", partNumber, error.localizedDescription)
+            // Put part back for retry
+            lock.lock()
+            if let current = uploadState?.nextPart {
+                uploadState?.nextPart = min(current, partNumber)
+            }
+            lock.unlock()
+            saveState()
+
+            withBackgroundTask(name: "retryPart") {
+                await self.scheduleNextBatch()
+            }
+            return
+        }
+
+        guard let response = task.response as? HTTPURLResponse,
+              (200..<300).contains(response.statusCode),
+              let etag = response.value(forHTTPHeaderField: "ETag") else {
+            let status = (task.response as? HTTPURLResponse)?.statusCode ?? 0
+            NSLog("[Upload] Part %d bad response (status %d) or missing ETag", partNumber, status)
+            lock.lock()
+            if let current = uploadState?.nextPart {
+                uploadState?.nextPart = min(current, partNumber)
+            }
+            lock.unlock()
+            saveState()
+            return
+        }
+
+        NSLog("[Upload] Part %d uploaded (ETag: %@)", partNumber, etag)
+
+        lock.lock()
+        uploadState?.completedParts.append(UploadState.CompletedPart(partNumber: partNumber, etag: etag))
+        let allDone = uploadState?.allPartsUploaded ?? false
+        let total = uploadState?.totalParts ?? 0
+        let completed = uploadState?.completedParts.count ?? 0
+        lock.unlock()
+        saveState()
+
+        NSLog("[Upload] Progress: %d/%d parts", completed, total)
+
+        if allDone {
+            withBackgroundTask(name: "finalizeUpload") {
+                await self.finalizeUpload()
+            }
+        } else {
+            withBackgroundTask(name: "scheduleNext") {
+                await self.scheduleNextBatch()
+            }
+        }
+    }
+
+    public func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        #if DEBUG
+        if challenge.protectionSpace.host == "localhost",
+           let trust = challenge.protectionSpace.serverTrust {
+            return (.useCredential, URLCredential(trust: trust))
+        }
+        #endif
+        return (.performDefaultHandling, nil)
+    }
+
+    public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        NSLog("[Upload] All background session events delivered")
+        DispatchQueue.main.async { [weak self] in
+            self?.systemCompletionHandler?()
+            self?.systemCompletionHandler = nil
+        }
+    }
+
+    // MARK: - Helpers
+
+    /// Wraps an async block in a UIBackgroundTask for extended execution time.
+    private func withBackgroundTask(name: String, block: @escaping () async -> Void) {
+        var bgTaskId = UIBackgroundTaskIdentifier.invalid
+        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: name) {
+            UIApplication.shared.endBackgroundTask(bgTaskId)
+        }
+        Task {
+            await block()
+            UIApplication.shared.endBackgroundTask(bgTaskId)
         }
     }
 
@@ -177,111 +503,6 @@ final class BackgroundUploadService: NSObject, URLSessionDelegate {
         }
 
         return error.localizedDescription
-    }
-
-    private func uploadParts(
-        api: APIClient,
-        fileURL: URL,
-        fileSize: Int,
-        uploadId: String,
-        key: String,
-        contentType: String,
-        totalParts: Int
-    ) async throws -> [MultipartCompletePart] {
-        return try await withThrowingTaskGroup(of: MultipartCompletePart.self) { group in
-            var completedParts: [MultipartCompletePart] = []
-            var nextPart = 1
-
-            // Seed initial batch
-            for _ in 0..<min(Self.maxConcurrency, totalParts) {
-                let partNumber = nextPart
-                nextPart += 1
-                group.addTask {
-                    try await self.uploadSinglePart(
-                        api: api,
-                        fileURL: fileURL,
-                        fileSize: fileSize,
-                        uploadId: uploadId,
-                        key: key,
-                        contentType: contentType,
-                        partNumber: partNumber,
-                        totalParts: totalParts
-                    )
-                }
-            }
-
-            // As each completes, add the next
-            for try await part in group {
-                completedParts.append(part)
-                if nextPart <= totalParts {
-                    let partNumber = nextPart
-                    nextPart += 1
-                    group.addTask {
-                        try await self.uploadSinglePart(
-                            api: api,
-                            fileURL: fileURL,
-                            fileSize: fileSize,
-                            uploadId: uploadId,
-                            key: key,
-                            contentType: contentType,
-                            partNumber: partNumber,
-                            totalParts: totalParts
-                        )
-                    }
-                }
-            }
-
-            return completedParts.sorted { $0.PartNumber < $1.PartNumber }
-        }
-    }
-
-    private func uploadSinglePart(
-        api: APIClient,
-        fileURL: URL,
-        fileSize: Int,
-        uploadId: String,
-        key: String,
-        contentType: String,
-        partNumber: Int,
-        totalParts: Int
-    ) async throws -> MultipartCompletePart {
-        // Read only this chunk from disk (avoids loading entire file into memory)
-        let offset = (partNumber - 1) * Self.chunkSize
-        let length = min(Self.chunkSize, fileSize - offset)
-
-        let fileHandle = try FileHandle(forReadingFrom: fileURL)
-        defer { try? fileHandle.close() }
-        try fileHandle.seek(toOffset: UInt64(offset))
-        guard let chunk = try fileHandle.read(upToCount: length) else {
-            throw APIError.statusCode(500)
-        }
-
-        // Get presigned URL for this part
-        let partURLResponse = try await api.getMultipartPartURL(uploadId: uploadId, key: key, partNumber: partNumber)
-        guard let partURL = URL(string: partURLResponse.url) else {
-            throw APIError.statusCode(500)
-        }
-
-        // Upload chunk to S3
-        var request = URLRequest(url: partURL)
-        request.httpMethod = "PUT"
-        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
-
-        let (_, response) = try await self.uploadSession.upload(for: request, from: chunk)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-            NSLog("[Upload] Part %d/%d failed with status %d", partNumber, totalParts, statusCode)
-            throw APIError.statusCode(statusCode)
-        }
-
-        // Extract ETag from response headers
-        guard let etag = http.value(forHTTPHeaderField: "ETag") else {
-            NSLog("[Upload] Part %d/%d missing ETag header", partNumber, totalParts)
-            throw APIError.statusCode(500)
-        }
-
-        NSLog("[Upload] Part %d/%d uploaded (%d bytes)", partNumber, totalParts, chunk.count)
-        return MultipartCompletePart(partNumber: partNumber, etag: etag)
     }
 
     func importFromURL(api: APIClient, url: String, transcript: String?, transcriptSegments: [[String: AnyCodable]]?, transcriptSource: String?, captionError: String?) {

@@ -2,8 +2,22 @@ import SwiftUI
 import ClipfireiOS
 import GoogleSignIn
 
+// MARK: - AppDelegate (background upload session handling)
+
+class ClipfireAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        NSLog("[App] handleEventsForBackgroundURLSession: %@", identifier)
+        BackgroundUploadService.shared.systemCompletionHandler = completionHandler
+    }
+}
+
 @main
 struct ClipfireApp: App {
+    @UIApplicationDelegateAdaptor(ClipfireAppDelegate.self) var appDelegate
     @StateObject private var authService: AuthService
     @State private var tabSelection = 0
     @State private var forceUpdateRequired = false
@@ -23,6 +37,9 @@ struct ClipfireApp: App {
         )
         self.apiClient = client
         _authService = StateObject(wrappedValue: AuthService(api: client, tokenStorage: storage))
+
+        // Configure the background upload service so it can reconnect to in-progress uploads
+        BackgroundUploadService.shared.configure(api: client)
     }
 
     var body: some Scene {
