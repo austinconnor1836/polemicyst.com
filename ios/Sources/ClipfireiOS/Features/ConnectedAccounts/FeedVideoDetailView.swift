@@ -69,6 +69,25 @@ public final class FeedVideoDetailViewModel: ObservableObject {
             // Get Google access token for authenticated requests
             var googleAccessToken: String?
             if let gidUser = GIDSignIn.sharedInstance.currentUser {
+                // Ensure YouTube scope is granted (needed for innertube Bearer auth)
+                let youtubeScope = "https://www.googleapis.com/auth/youtube.readonly"
+                let hasYouTubeScope = gidUser.grantedScopes?.contains(youtubeScope) ?? false
+
+                if !hasYouTubeScope {
+                    transcribeStatus = "Requesting YouTube access..."
+                    if let windowScene = UIApplication.shared.connectedScenes
+                        .compactMap({ $0 as? UIWindowScene }).first,
+                       let rootVC = windowScene.windows.first?.rootViewController {
+                        do {
+                            _ = try await gidUser.addScopes([youtubeScope], presenting: rootVC)
+                            print("[Transcribe] YouTube scope granted")
+                        } catch {
+                            print("[Transcribe] YouTube scope request failed: \(error)")
+                        }
+                    }
+                    transcribeStatus = "Trying from device..."
+                }
+
                 do {
                     let refreshed = try await gidUser.refreshTokensIfNeeded()
                     googleAccessToken = refreshed.accessToken.tokenString
