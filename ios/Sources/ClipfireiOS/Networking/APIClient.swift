@@ -229,6 +229,10 @@ public struct APIClient {
         try await post(path: "/api/feedVideos/\(feedVideoId)/save-transcript", body: SaveTranscriptRequest(transcript: transcript, segments: segments, source: source))
     }
 
+    public func generateMetadata(feedVideoId: String) async throws -> GenerateMetadataResponse {
+        try await post(path: "/api/feedVideos/\(feedVideoId)/generate-metadata", body: InnertubeTranscribeRequest())
+    }
+
     // MARK: Truth Analysis
 
     public func fetchTruthAnalysis(feedVideoId: String, clipId: String? = nil) async throws -> TruthAnalysisResponse {

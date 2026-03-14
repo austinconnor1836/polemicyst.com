@@ -22,6 +22,7 @@ public final class AddVideoViewModel: ObservableObject {
     @Published var selectedPhotoItem: PhotosPickerItem?
     @Published var selectedFileName: String?
     @Published var uploadProgress: String?
+    @Published var readyToDismiss = false
 
     let api: APIClient
     var onVideoAdded: (() -> Void)?
@@ -111,13 +112,14 @@ public final class AddVideoViewModel: ObservableObject {
 
     // MARK: - File Upload
 
+    /// Loads video data, then signals the caller to dismiss the modal.
+    /// Returns the loaded data so the caller can start the background upload.
     func handleSelectedPhoto(_ item: PhotosPickerItem?) async {
         guard let item else { return }
 
         isImporting = true
         uploadProgress = "Loading video..."
 
-        // Load video data from photo library
         guard let movie = try? await item.loadTransferable(type: VideoTransferable.self) else {
             errorMessage = "Unable to load selected video"
             isImporting = false
@@ -129,38 +131,42 @@ public final class AddVideoViewModel: ObservableObject {
         let filename = movie.filename
         selectedFileName = filename
 
-        uploadProgress = "Requesting upload URL..."
+        // Signal the modal to dismiss — upload continues in background
+        onVideoAdded?()
+        NotificationCenter.default.post(name: .videoAdded, object: nil)
+        readyToDismiss = true
 
+        // Continue upload in background after modal dismisses
+        await performBackgroundUpload(data: data, filename: filename)
+    }
+
+    /// Performs the S3 upload + backend registration in the background.
+    /// The modal is already dismissed at this point.
+    private func performBackgroundUpload(data: Data, filename: String) async {
         do {
-            // 1. Get presigned URL
             let contentType = filename.hasSuffix(".mov") ? "video/quicktime" : "video/mp4"
             let presigned = try await api.getPresignedUploadURL(filename: filename, contentType: contentType)
 
             guard let presignedURL = URL(string: presigned.url) else {
-                errorMessage = "Invalid upload URL"
-                isImporting = false
-                uploadProgress = nil
+                print("[Upload] Invalid presigned URL")
                 return
             }
 
-            // 2. Upload to S3
-            uploadProgress = "Uploading video..."
             try await api.uploadToPresignedURL(presignedURL, fileData: data, contentType: contentType)
 
-            // 3. Register with backend
-            uploadProgress = "Finalizing..."
+            // Register with backend — this auto-queues transcription
             _ = try await api.completeUpload(key: presigned.key, filename: filename)
 
-            onVideoAdded?()
+            // Notify Videos tab to refresh (will pick up the new video with server-generated data)
             NotificationCenter.default.post(name: .videoAdded, object: nil)
-            isImporting = false
-            uploadProgress = nil
+            print("[Upload] Complete: \(filename)")
         } catch {
             if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
-            errorMessage = "Failed to upload video: \(error.localizedDescription)"
-            isImporting = false
-            uploadProgress = nil
+            print("[Upload] Background upload failed: \(error.localizedDescription)")
         }
+
+        isImporting = false
+        uploadProgress = nil
     }
 }
 
@@ -344,11 +350,11 @@ public struct AddVideoView: View {
             .onChange(of: viewModel.selectedPhotoItem) { _, newItem in
                 Task {
                     await viewModel.handleSelectedPhoto(newItem)
-                    if viewModel.errorMessage == nil && newItem != nil {
-                        dismiss()
-                    }
                     viewModel.selectedPhotoItem = nil
                 }
+            }
+            .onChange(of: viewModel.readyToDismiss) { _, ready in
+                if ready { dismiss() }
             }
         }
     }
