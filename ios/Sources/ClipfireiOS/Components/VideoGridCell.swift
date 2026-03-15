@@ -5,6 +5,7 @@ public struct VideoGridCell: View {
     let title: String
     let subtitle: String?
     let thumbnailUrl: URL?
+    let videoUrl: URL?
     let placeholderIcon: String
     let duration: Double?
     let date: Date?
@@ -14,6 +15,7 @@ public struct VideoGridCell: View {
         title: String,
         subtitle: String? = nil,
         thumbnailUrl: URL? = nil,
+        videoUrl: URL? = nil,
         placeholderIcon: String = "video.fill",
         duration: Double? = nil,
         date: Date? = nil,
@@ -22,6 +24,7 @@ public struct VideoGridCell: View {
         self.title = title
         self.subtitle = subtitle
         self.thumbnailUrl = thumbnailUrl
+        self.videoUrl = videoUrl
         self.placeholderIcon = placeholderIcon
         self.duration = duration
         self.date = date
@@ -80,6 +83,8 @@ public struct VideoGridCell: View {
             .frame(maxWidth: .infinity)
             .aspectRatio(16 / 9, contentMode: .fit)
             .clipped()
+        } else if let videoUrl {
+            VideoThumbnailView(videoUrl: videoUrl, placeholderIcon: placeholderIcon)
         } else {
             thumbnailPlaceholder
         }
