@@ -53,6 +53,7 @@ import {
   Settings,
   Loader2,
   Tags,
+  CheckCircle2,
 } from 'lucide-react';
 import { BrandSection } from '@/app/connected-accounts/_components/BrandSection';
 import { BrandDialog } from '@/app/connected-accounts/_components/BrandDialog';
@@ -1307,8 +1308,57 @@ export default function FeedsPage() {
                 </Button>
               </DialogFooter>
             </>
+          ) : selectedPlatform === 'facebook' ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Connect Facebook</DialogTitle>
+                <DialogDescription>
+                  {(session?.user as any)?.providers?.includes('facebook')
+                    ? 'Your Facebook account is connected.'
+                    : 'Sign in with Facebook to publish clips and posts to your Pages.'}
+                </DialogDescription>
+              </DialogHeader>
+
+              {(session?.user as any)?.providers?.includes('facebook') ? (
+                <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-6 text-center">
+                  <CheckCircle2 className="mx-auto h-8 w-8 text-green-500 mb-2" />
+                  <p className="text-sm font-medium mb-1">Facebook connected</p>
+                  <p className="text-xs text-muted-foreground">
+                    You can now publish clips and posts to your Facebook Pages.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed p-6 text-center">
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Connect your Facebook account to publish clips and posts to your Pages.
+                  </p>
+                  <Button
+                    onClick={() => signIn('facebook', { callbackUrl: '/connected-accounts' })}
+                  >
+                    Sign in with Facebook
+                  </Button>
+                </div>
+              )}
+
+              <DialogFooter className="pt-4 gap-2 sm:gap-2">
+                {(session?.user as any)?.providers?.includes('facebook') ? (
+                  <Button
+                    onClick={() => {
+                      setSelectedPlatform(null);
+                      setIsConnectOpen(false);
+                    }}
+                  >
+                    Done
+                  </Button>
+                ) : (
+                  <Button variant="outline" onClick={() => setSelectedPlatform(null)}>
+                    Back
+                  </Button>
+                )}
+              </DialogFooter>
+            </>
           ) : (
-            /* Future platforms (Facebook, Instagram, TikTok, Twitter) will go here */
+            /* Future platforms (Instagram, TikTok, Twitter) will go here */
             <>
               <DialogHeader>
                 <DialogTitle>Connect {selectedPlatform}</DialogTitle>
