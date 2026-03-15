@@ -33,6 +33,15 @@ resource "aws_security_group" "ecs_tasks" {
     security_groups = [aws_security_group.alb.id]
   }
 
+  # HTTPS for VPC Interface Endpoints (ECR, CloudWatch Logs)
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    self        = true
+    description = "Allow HTTPS from within SG for VPC Interface Endpoints"
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
