@@ -10,10 +10,10 @@ public struct APIClient {
     public init(baseURL: URL, session: URLSession? = nil, tokenStorage: TokenStorage? = nil) {
         self.baseURL = baseURL
         #if DEBUG
-        if session == nil && baseURL.host() == "localhost" {
+        if session == nil {
             let config = URLSessionConfiguration.default
             config.timeoutIntervalForRequest = 120
-            let delegate = LocalhostSessionDelegate()
+            let delegate = LocalDevSessionDelegate()
             self.session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         } else {
             self.session = session ?? .shared
@@ -506,17 +506,32 @@ public enum APIError: Error, LocalizedError {
 }
 
 #if DEBUG
-/// Accepts self-signed certificates for localhost during development.
-final class LocalhostSessionDelegate: NSObject, URLSessionDelegate {
+/// Accepts self-signed certificates for local development (localhost + LAN IPs).
+final class LocalDevSessionDelegate: NSObject, URLSessionDelegate {
+    private func isLocalHost(_ host: String) -> Bool {
+        if host == "localhost" || host == "127.0.0.1" { return true }
+        // Private network ranges: 192.168.x.x, 10.x.x.x, 172.16-31.x.x
+        let parts = host.split(separator: ".").compactMap { Int($0) }
+        guard parts.count == 4 else { return false }
+        if parts[0] == 192 && parts[1] == 168 { return true }
+        if parts[0] == 10 { return true }
+        if parts[0] == 172 && (16...31).contains(parts[1]) { return true }
+        // Tailscale CGNAT range: 100.64-127.x.x
+        if parts[0] == 100 && (64...127).contains(parts[1]) { return true }
+        return false
+    }
+
     func urlSession(
         _ session: URLSession,
-        didReceive challenge: URLAuthenticationChallenge
-    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-        guard challenge.protectionSpace.host == "localhost",
-              let trust = challenge.protectionSpace.serverTrust else {
-            return (.performDefaultHandling, nil)
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        if isLocalHost(challenge.protectionSpace.host),
+           let trust = challenge.protectionSpace.serverTrust {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } else {
+            completionHandler(.performDefaultHandling, nil)
         }
-        return (.useCredential, URLCredential(trust: trust))
     }
 }
 #endif
