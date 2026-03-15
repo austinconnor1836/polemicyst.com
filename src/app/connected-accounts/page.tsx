@@ -1345,7 +1345,7 @@ export default function FeedsPage() {
                   <Button
                     onClick={() => {
                       setSelectedPlatform(null);
-                      setIsConnectOpen(false);
+                      setIsAddFeedOpen(false);
                     }}
                   >
                     Done
