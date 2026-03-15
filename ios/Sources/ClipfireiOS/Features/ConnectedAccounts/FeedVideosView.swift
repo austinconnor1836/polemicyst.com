@@ -106,6 +106,8 @@ public struct FeedVideosView: View {
     @State private var showDeleteAlert = false
     @State private var uploadStatusMessage: String?
     @State private var uploadIsError = false
+    @State private var isUploading = false
+    @State private var uploadingFilename: String?
 
     public init(viewModel: FeedVideosViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -123,6 +125,15 @@ public struct FeedVideosView: View {
                 }
                 gridContent
             }
+                .navigationDestination(for: String.self) { videoId in
+                    FeedVideoDetailView(
+                        api: viewModel.api,
+                        feedVideoId: videoId,
+                        onDelete: {
+                            viewModel.removeVideo(id: videoId)
+                        }
+                    )
+                }
                 .background(DesignTokens.background.ignoresSafeArea())
                 .navigationTitle("Videos")
                 .toolbar {
@@ -141,21 +152,31 @@ public struct FeedVideosView: View {
                 }
                 .task { await viewModel.load() }
                 .refreshable { await viewModel.load() }
-                .onReceive(NotificationCenter.default.publisher(for: .videoAdded)) { _ in
-                    withAnimation { uploadStatusMessage = nil }
-                    Task { await viewModel.load() }
-                }
                 .onReceive(NotificationCenter.default.publisher(for: .uploadStarted)) { notification in
                     let filename = notification.userInfo?["filename"] as? String ?? "video"
                     let displayName = filename.count > 40 ? String(filename.prefix(40)) + "…" : filename
                     withAnimation {
+                        isUploading = true
+                        uploadingFilename = displayName
                         uploadIsError = false
                         uploadStatusMessage = "Uploading \(displayName)…"
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .videoAdded)) { _ in
+                    Task {
+                        await viewModel.load()
+                        withAnimation {
+                            isUploading = false
+                            uploadingFilename = nil
+                            uploadStatusMessage = nil
+                        }
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .uploadFailed)) { notification in
                     let error = notification.userInfo?["error"] as? String ?? "Unknown error"
                     withAnimation {
+                        isUploading = false
+                        uploadingFilename = nil
                         uploadIsError = true
                         uploadStatusMessage = "Upload failed: \(error)"
                     }
@@ -208,7 +229,7 @@ public struct FeedVideosView: View {
 
     @ViewBuilder
     private var gridContent: some View {
-        if viewModel.videos.isEmpty && !viewModel.isLoading {
+        if viewModel.videos.isEmpty && !viewModel.isLoading && !isUploading {
             VStack(spacing: DesignTokens.spacing) {
                 Image(systemName: "video.slash")
                     .font(.system(size: 48))
@@ -225,20 +246,19 @@ public struct FeedVideosView: View {
         } else {
             ScrollView {
                 LazyVGrid(columns: columns, spacing: DesignTokens.spacing) {
+                    if isUploading {
+                        VideoGridCell(
+                            title: uploadingFilename ?? "Uploading video…",
+                            subtitle: "Uploading…",
+                            placeholderIcon: "arrow.up.circle.fill",
+                            isProcessing: true
+                        )
+                    }
                     ForEach(viewModel.videos) { video in
                         gridCell(for: video)
                     }
                 }
                 .padding(DesignTokens.spacing)
-            }
-            .navigationDestination(for: String.self) { videoId in
-                FeedVideoDetailView(
-                    api: viewModel.api,
-                    feedVideoId: videoId,
-                    onDelete: {
-                        viewModel.removeVideo(id: videoId)
-                    }
-                )
             }
         }
     }

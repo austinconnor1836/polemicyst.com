@@ -111,7 +111,7 @@ struct ClipfireApp: App {
                     }
                     .sheet(isPresented: $showAddVideo) {
                         AddVideoView(api: apiClient, onVideoAdded: {
-                            tabSelection = 2
+                            tabSelection = 3
                         })
                     }
                     .sheet(isPresented: $showPublicationWizard) {

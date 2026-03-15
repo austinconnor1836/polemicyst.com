@@ -134,6 +134,15 @@ public final class BackgroundUploadService: NSObject, URLSessionDataDelegate {
     func loadAndUploadVideo(api: APIClient, item: PhotosPickerItem) {
         self.api = api
 
+        // Post on next run loop so it fires after sheet dismiss completes
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .uploadStarted,
+                object: nil,
+                userInfo: ["filename": "video"]
+            )
+        }
+
         var bgTaskId = UIBackgroundTaskIdentifier.invalid
         bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "loadVideo") {
             UIApplication.shared.endBackgroundTask(bgTaskId)
@@ -194,6 +203,9 @@ public final class BackgroundUploadService: NSObject, URLSessionDataDelegate {
             return
         }
 
+        // Clear any stale state from a previous upload so inFlightCount/taskToPartMap don't carry over
+        clearState()
+
         do {
             let contentType = filename.hasSuffix(".mov") ? "video/quicktime" : "video/mp4"
             let attrs = try FileManager.default.attributesOfItem(atPath: fileURL.path)
@@ -252,7 +264,7 @@ public final class BackgroundUploadService: NSObject, URLSessionDataDelegate {
             return
         }
 
-        let availableSlots = Self.maxConcurrency - inFlightCount
+        let availableSlots = max(0, Self.maxConcurrency - inFlightCount)
         var partsToSchedule: [Int] = []
         var nextPart = state.nextPart
         let completedSet = Set(state.completedParts.map { $0.partNumber })
@@ -645,8 +657,8 @@ public final class AddVideoViewModel: ObservableObject {
         )
 
         // Dismiss the modal immediately
+        // Don't post .videoAdded — BackgroundUploadService will post it when import completes
         onVideoAdded?()
-        NotificationCenter.default.post(name: .videoAdded, object: nil)
         readyToDismiss = true
     }
 
@@ -656,10 +668,10 @@ public final class AddVideoViewModel: ObservableObject {
         guard let item else { return }
 
         // Dismiss immediately — loading + upload happens entirely in background
+        // loadAndUploadVideo posts .uploadStarted on the next run loop (after sheet dismiss)
         BackgroundUploadService.shared.loadAndUploadVideo(api: api, item: item)
 
         onVideoAdded?()
-        NotificationCenter.default.post(name: .videoAdded, object: nil)
         readyToDismiss = true
     }
 }
