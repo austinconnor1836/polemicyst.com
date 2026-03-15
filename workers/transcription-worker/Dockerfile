@@ -15,7 +15,9 @@ WORKDIR /app
 COPY ./workers/transcription-worker .
 
 COPY ./shared ./shared
-RUN rm -f ./shared/lib/auth.ts ./shared/lib/auth-helpers.ts
+RUN rm -f ./shared/lib/auth.ts ./shared/lib/auth-helpers.ts && \
+    rm -rf ./shared/lib/publishing && \
+    rm -f ./shared/util/youtube-api.ts
 COPY ./prisma/ ./prisma/
 COPY tsconfig.docker.json tsconfig.json
 RUN chmod +x ./start.sh
