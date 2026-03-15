@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 import GoogleSignIn
 
@@ -182,6 +183,7 @@ public struct FeedVideoDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var showErrorAlert = false
     @State private var showClipResultAlert = false
+    @State private var player: AVPlayer?
     private var onDelete: (() -> Void)?
 
     public init(api: APIClient, feedVideoId: String, onDelete: (() -> Void)? = nil) {
@@ -219,8 +221,14 @@ public struct FeedVideoDetailView: View {
             } message: {
                 Text("Are you sure you want to delete this video? This action cannot be undone.")
             }
-            .task { await viewModel.load() }
-            .onDisappear { viewModel.stopPolling() }
+            .task {
+                await viewModel.load()
+                setupPlayerIfNeeded()
+            }
+            .onDisappear {
+                player?.pause()
+                viewModel.stopPolling()
+            }
             .refreshable { await viewModel.load() }
             .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
             .alert("Error", isPresented: $showErrorAlert) {
@@ -312,27 +320,17 @@ public struct FeedVideoDetailView: View {
         if let ytId = video.youtubeVideoId {
             YouTubeThumbnailView(videoId: ytId)
                 .cornerRadius(DesignTokens.cornerRadius)
-        } else if let url = video.resolvedThumbnailUrl {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(16 / 9, contentMode: .fill)
-                case .failure:
-                    mediaPlaceholder
-                case .empty:
-                    ZStack { mediaPlaceholder; ProgressView().tint(DesignTokens.muted) }
-                @unknown default:
-                    mediaPlaceholder
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(16 / 9, contentMode: .fit)
-            .clipped()
-            .cornerRadius(DesignTokens.cornerRadius)
+        } else if let player {
+            videoPlayerView(player)
         } else {
             mediaPlaceholder
-                .cornerRadius(DesignTokens.cornerRadius)
         }
+    }
+
+    private func videoPlayerView(_ player: AVPlayer) -> some View {
+        VideoPlayer(player: player)
+            .aspectRatio(16 / 9, contentMode: .fit)
+            .cornerRadius(DesignTokens.cornerRadius)
     }
 
     private var mediaPlaceholder: some View {
@@ -344,6 +342,16 @@ public struct FeedVideoDetailView: View {
                 .font(.system(size: 40))
                 .foregroundStyle(DesignTokens.muted)
         }
+        .cornerRadius(DesignTokens.cornerRadius)
+    }
+
+    private func setupPlayerIfNeeded() {
+        guard player == nil,
+              let video = viewModel.detail?.feedVideo,
+              video.youtubeVideoId == nil,
+              let s3 = video.s3Url,
+              let url = URL(string: s3) else { return }
+        player = AVPlayer(url: url)
     }
 
     // MARK: - Metadata

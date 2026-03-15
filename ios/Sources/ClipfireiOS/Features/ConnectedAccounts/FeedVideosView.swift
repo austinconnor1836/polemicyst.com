@@ -251,6 +251,7 @@ public struct FeedVideosView: View {
                 title: video.title ?? "Untitled video",
                 subtitle: isProcessing ? "Transcribing..." : video.feed?.name,
                 thumbnailUrl: video.resolvedThumbnailUrl,
+                videoUrl: video.s3Url.flatMap { URL(string: $0) },
                 placeholderIcon: "video.fill",
                 isProcessing: isProcessing
             )
