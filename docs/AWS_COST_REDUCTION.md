@@ -91,9 +91,11 @@ Confirmed via `aws ce get-cost-and-usage`:
 
 ---
 
-## Fixes Applied (2026-03-15)
+## Fixes Applied (2026-03-15 → 2026-03-16)
 
-### Terraform changes (in repo, pending `terraform apply`)
+All infrastructure and operational fixes have been applied.
+
+### Terraform changes (applied 2026-03-15)
 
 1. **Added S3 Gateway VPC Endpoint** (FREE) — `infrastructure/vpc.tf`
    - All S3 traffic now routes through the AWS backbone, never touching NAT
@@ -113,16 +115,21 @@ Confirmed via `aws ce get-cost-and-usage`:
 5. **Added HTTPS ingress rule to ECS security group** — `infrastructure/ecs.tf`
    - Required for Interface VPC endpoints to work (tasks need to reach endpoint ENIs on port 443)
 
-### Still needed (manual / not in Terraform)
+### Manual fixes (applied 2026-03-16)
 
-1. **Scale crash-looping prod services to 0 immediately**:
+1. **Crash-looping prod services scaled to 0** — `prod-clip-worker` and `polemicyst-prod-web` confirmed at desired=0, running=0.
 
-   ```bash
-   aws ecs update-service --cluster polemicyst-cluster --service prod-clip-worker --desired-count 0
-   aws ecs update-service --cluster polemicyst-cluster --service polemicyst-prod-web --desired-count 0
-   ```
+2. **Released leaked Elastic IP** — `eipalloc-059a3cc70181fa0ac` released (was ~$3.60/month).
 
-2. **Fix prod Docker builds** before redeploying:
+3. **ECR lifecycle policies** added to all 3 repositories (`polemicyst-web`, `polemicyst-clip-worker`, `polemicyst-llm-worker`):
+   - Expire untagged images after 1 day
+   - Keep last 10 tagged images
+
+4. **Clip workers switched to Fargate Spot** — both `prod-clip-worker` and `dev-clip-worker` recreated with `FARGATE_SPOT` capacity provider (~70% cost reduction). Safe because clip jobs are idempotent and retried via BullMQ.
+
+### Still needed before redeploying prod
+
+1. **Fix prod Docker builds**:
    - `prod-clip-worker` needs `shared/lib/prisma` in its build context
    - `prod-web` needs `@prisma/debug` (likely missing `prisma generate` step)
 
@@ -172,73 +179,19 @@ Goal: Tear down all running resources while preserving data and IaC.
 
 When ready to go live again, apply these changes before redeploying.
 
-### 2a. Add VPC Endpoints (free, massive savings)
+### ~~2a. Add VPC Endpoints~~ — DONE (2026-03-15)
 
-Add to `infrastructure/vpc.tf`:
+Applied in `infrastructure/vpc.tf` and confirmed live:
 
-```hcl
-# S3 Gateway Endpoint (free — avoids NAT for all S3 traffic)
-resource "aws_vpc_endpoint" "s3" {
-  vpc_id       = aws_vpc.main.id
-  service_name = "com.amazonaws.${var.aws_region}.s3"
+- S3 Gateway Endpoint (FREE)
+- ECR Docker + ECR API Interface Endpoints (~$14/month)
+- CloudWatch Logs Interface Endpoint (~$7/month)
 
-  route_table_ids = aws_route_table.private[*].id
+### ~~2b. Reduce to 1 NAT Gateway~~ — DONE (2026-03-15)
 
-  tags = {
-    Name = "${var.app_name}-s3-endpoint"
-  }
-}
+Reduced from `count = 2` to `count = 1` in `infrastructure/vpc.tf`. Both private subnets share one NAT Gateway. Leaked second EIP released (2026-03-16).
 
-# ECR Docker API (Interface endpoint — ~$7/month but saves NAT data costs)
-resource "aws_vpc_endpoint" "ecr_dkr" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.ecs_tasks.id]
-  private_dns_enabled = true
-
-  tags = {
-    Name = "${var.app_name}-ecr-dkr-endpoint"
-  }
-}
-
-# ECR API
-resource "aws_vpc_endpoint" "ecr_api" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.ecs_tasks.id]
-  private_dns_enabled = true
-
-  tags = {
-    Name = "${var.app_name}-ecr-api-endpoint"
-  }
-}
-
-# CloudWatch Logs
-resource "aws_vpc_endpoint" "logs" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.aws_region}.logs"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.ecs_tasks.id]
-  private_dns_enabled = true
-
-  tags = {
-    Name = "${var.app_name}-logs-endpoint"
-  }
-}
-```
-
-> **Note**: The S3 gateway endpoint is **free**. Interface endpoints (ECR, CloudWatch) cost ~$7/month each. Even with those costs, the savings from reduced NAT data processing will be massive. Alternatively, skip Interface endpoints and keep 1 NAT Gateway for ECR/logs traffic only.
-
-### 2b. Reduce to 1 NAT Gateway ($32.50 → $32.50, but half the fixed cost)
-
-In `infrastructure/vpc.tf`, change `count = 2` to `count = 1` for both `aws_eip.nat` and `aws_nat_gateway.main`. Point both private route tables at the single NAT Gateway.
-
-Or, if VPC endpoints cover S3 + ECR + CloudWatch, consider **removing NAT Gateways entirely** — the only remaining outbound traffic would be Gemini API calls and YouTube downloads from the clip worker. Those could use a public subnet with `assign_public_ip = true` instead.
+Consider **removing the NAT Gateway entirely** — with VPC endpoints covering S3 + ECR + CloudWatch, the only remaining outbound traffic is Gemini API calls and YouTube downloads. Those could use a public subnet with `assign_public_ip = true` instead.
 
 ### 2c. Single RDS instance with two databases
 
@@ -252,9 +205,9 @@ Set `multi_az = false`. Not needed for a pre-launch app.
 
 Savings: ~$28/month.
 
-### 2e. Use Fargate Spot for clip worker
+### ~~2e. Use Fargate Spot for clip worker~~ — DONE (2026-03-16)
 
-In `infrastructure/ecs_services.tf`, change clip worker from `launch_type = "FARGATE"` to use `capacity_provider_strategy` with `FARGATE_SPOT` (like the Ollama services already do).
+Both `prod-clip-worker` and `dev-clip-worker` ECS services recreated with `FARGATE_SPOT` capacity provider strategy. Terraform code updated in `infrastructure/ecs_services.tf`. ECR lifecycle policies also added to all 3 repos (expire untagged after 1 day, keep 10 tagged).
 
 Savings: ~$44/month (70% of $63).
 
