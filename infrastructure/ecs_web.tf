@@ -53,6 +53,12 @@ resource "aws_ecs_service" "web" {
   launch_type                       = "FARGATE"
   health_check_grace_period_seconds = 60
 
+  # Stop restarting after consecutive failures — prevents crash-loop cost spikes.
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   network_configuration {
     subnets          = aws_subnet.private[*].id
     security_groups  = [aws_security_group.ecs_tasks.id]
