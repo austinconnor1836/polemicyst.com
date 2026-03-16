@@ -18,7 +18,8 @@ WORKDIR /app
 
 COPY ./workers/clip-metadata-worker/package*.json ./workers/clip-metadata-worker/
 COPY ./shared ./shared
-RUN rm -f ./shared/lib/auth.ts ./shared/lib/auth-helpers.ts
+RUN rm -f ./shared/lib/auth.ts ./shared/lib/auth-helpers.ts && \
+    rm -rf ./shared/lib/publishing ./shared/util/youtube-api.ts
 
 WORKDIR /app/workers/clip-metadata-worker
 RUN npm install
@@ -32,3 +33,5 @@ RUN npx prisma generate --schema=./prisma/schema.prisma
 RUN npm run build
 
 EXPOSE 3001
+
+CMD ["./start.sh"]

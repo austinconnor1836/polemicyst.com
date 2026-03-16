@@ -15,6 +15,8 @@ public final class FeedVideosViewModel: ObservableObject {
         self.api = api
     }
 
+    private var pollTask: Task<Void, Never>?
+
     public func load() async {
         if ScreenshotMode.isActive {
             videos = MockData.feedVideos
@@ -24,9 +26,41 @@ public final class FeedVideosViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             videos = try await api.fetchFeedVideos()
+            startPollingIfNeeded()
         } catch {
-            errorMessage = "Unable to load feed videos"
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            errorMessage = "Unable to load feed videos: \(error.localizedDescription)"
         }
+    }
+
+    func startPollingIfNeeded() {
+        pollTask?.cancel()
+        pollTask = nil
+
+        let hasProcessing = videos.contains { $0.transcript == nil }
+        guard hasProcessing else { return }
+
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else { break }
+                do {
+                    let updated = try await self?.api.fetchFeedVideos()
+                    if let updated {
+                        await MainActor.run { self?.videos = updated }
+                        let stillProcessing = updated.contains { $0.transcript == nil }
+                        if !stillProcessing { break }
+                    }
+                } catch {
+                    break
+                }
+            }
+        }
+    }
+
+    func stopPolling() {
+        pollTask?.cancel()
+        pollTask = nil
     }
 
     public func removeVideo(id: String) {
@@ -39,7 +73,8 @@ public final class FeedVideosViewModel: ObservableObject {
             try await api.deleteFeedVideo(id: video.id)
             withAnimation { videos.removeAll { $0.id == video.id } }
         } catch {
-            errorMessage = "Failed to delete video"
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            errorMessage = "Failed to delete video: \(error.localizedDescription)"
         }
         deletingVideoId = nil
     }
@@ -56,7 +91,8 @@ public final class FeedVideosViewModel: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         } catch {
-            errorMessage = "Failed to trigger clip generation"
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            errorMessage = "Failed to trigger clip generation: \(error.localizedDescription)"
         }
     }
 }
@@ -65,6 +101,13 @@ public struct FeedVideosView: View {
     @StateObject private var viewModel: FeedVideosViewModel
     @State private var showGenerateSheet = false
     @State private var videoToDelete: FeedVideo?
+    @State private var showErrorAlert = false
+    @State private var showClipResultAlert = false
+    @State private var showDeleteAlert = false
+    @State private var uploadStatusMessage: String?
+    @State private var uploadIsError = false
+    @State private var isUploading = false
+    @State private var uploadingFilename: String?
 
     public init(viewModel: FeedVideosViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -76,7 +119,21 @@ public struct FeedVideosView: View {
 
     public var body: some View {
         NavigationStack {
-            gridContent
+            VStack(spacing: 0) {
+                if let uploadStatusMessage {
+                    uploadStatusBanner(message: uploadStatusMessage, isError: uploadIsError)
+                }
+                gridContent
+            }
+                .navigationDestination(for: String.self) { videoId in
+                    FeedVideoDetailView(
+                        api: viewModel.api,
+                        feedVideoId: videoId,
+                        onDelete: {
+                            viewModel.removeVideo(id: videoId)
+                        }
+                    )
+                }
                 .background(DesignTokens.background.ignoresSafeArea())
                 .navigationTitle("Videos")
                 .toolbar {
@@ -95,47 +152,84 @@ public struct FeedVideosView: View {
                 }
                 .task { await viewModel.load() }
                 .refreshable { await viewModel.load() }
+                .onReceive(NotificationCenter.default.publisher(for: .uploadStarted)) { notification in
+                    let filename = notification.userInfo?["filename"] as? String ?? "video"
+                    let displayName = filename.count > 40 ? String(filename.prefix(40)) + "…" : filename
+                    withAnimation {
+                        isUploading = true
+                        uploadingFilename = displayName
+                        uploadIsError = false
+                        uploadStatusMessage = "Uploading \(displayName)…"
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .videoAdded)) { _ in
+                    Task {
+                        await viewModel.load()
+                        withAnimation {
+                            isUploading = false
+                            uploadingFilename = nil
+                            uploadStatusMessage = nil
+                        }
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .uploadFailed)) { notification in
+                    let error = notification.userInfo?["error"] as? String ?? "Unknown error"
+                    withAnimation {
+                        isUploading = false
+                        uploadingFilename = nil
+                        uploadIsError = true
+                        uploadStatusMessage = "Upload failed: \(error)"
+                    }
+                }
                 .overlay {
                     if viewModel.isLoading && viewModel.videos.isEmpty {
                         ProgressView().progressViewStyle(.circular)
                     }
                 }
-                .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-                    Button("OK", role: .cancel) { viewModel.errorMessage = nil }
-                } message: {
-                    Text(viewModel.errorMessage ?? "")
-                }
-                .alert("Clip Generation", isPresented: .constant(viewModel.clipResultMessage != nil)) {
-                    Button("OK", role: .cancel) { viewModel.clipResultMessage = nil }
-                } message: {
-                    Text(viewModel.clipResultMessage ?? "")
-                }
-                .alert("Delete Video", isPresented: .constant(videoToDelete != nil)) {
-                    Button("Delete", role: .destructive) {
-                        if let video = videoToDelete {
-                            videoToDelete = nil
-                            Task { await viewModel.deleteFeedVideo(video) }
-                        }
-                    }
-                    Button("Cancel", role: .cancel) { videoToDelete = nil }
-                } message: {
-                    Text("Are you sure you want to delete this video? This action cannot be undone.")
-                }
-                .sheet(item: $viewModel.upgradeError) { error in
-                    UpgradePromptView(
-                        message: error.localizedDescription,
-                        quotaLimit: error.quotaLimit,
-                        quotaUsage: error.quotaUsage,
-                        onDismiss: { viewModel.upgradeError = nil }
-                    )
-                    .presentationDetents([.medium])
-                }
+                .modifier(FeedVideosAlerts(
+                    viewModel: viewModel,
+                    showErrorAlert: $showErrorAlert,
+                    showClipResultAlert: $showClipResultAlert,
+                    showDeleteAlert: $showDeleteAlert,
+                    videoToDelete: $videoToDelete
+                ))
         }
+    }
+
+    private func uploadStatusBanner(message: String, isError: Bool) -> some View {
+        HStack(spacing: 8) {
+            if isError {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.white)
+            } else {
+                ProgressView()
+                    .tint(.white)
+                    .controlSize(.small)
+            }
+            Text(message)
+                .font(.footnote)
+                .fontWeight(.medium)
+                .foregroundStyle(.white)
+                .lineLimit(2)
+            Spacer()
+            if isError {
+                Button {
+                    withAnimation { uploadStatusMessage = nil }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+            }
+        }
+        .padding(.horizontal, DesignTokens.spacing)
+        .padding(.vertical, 10)
+        .background(isError ? Color.red : DesignTokens.accent)
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     @ViewBuilder
     private var gridContent: some View {
-        if viewModel.videos.isEmpty && !viewModel.isLoading {
+        if viewModel.videos.isEmpty && !viewModel.isLoading && !isUploading {
             VStack(spacing: DesignTokens.spacing) {
                 Image(systemName: "video.slash")
                     .font(.system(size: 48))
@@ -152,31 +246,39 @@ public struct FeedVideosView: View {
         } else {
             ScrollView {
                 LazyVGrid(columns: columns, spacing: DesignTokens.spacing) {
+                    if isUploading {
+                        VideoGridCell(
+                            title: uploadingFilename ?? "Uploading video…",
+                            subtitle: "Uploading…",
+                            placeholderIcon: "arrow.up.circle.fill",
+                            isProcessing: true
+                        )
+                    }
                     ForEach(viewModel.videos) { video in
                         gridCell(for: video)
                     }
                 }
                 .padding(DesignTokens.spacing)
             }
-            .navigationDestination(for: String.self) { videoId in
-                FeedVideoDetailView(
-                    api: viewModel.api,
-                    feedVideoId: videoId,
-                    onDelete: {
-                        viewModel.removeVideo(id: videoId)
-                    }
-                )
-            }
         }
     }
 
     private func gridCell(for video: FeedVideo) -> some View {
         let isDeleting = viewModel.deletingVideoId == video.id
+        let isProcessing = video.transcript == nil
         return NavigationLink(value: video.id) {
-            VideoGridCell(video: video)
+            VideoGridCell(
+                title: video.title ?? "Untitled video",
+                subtitle: isProcessing ? "Transcribing..." : video.feed?.name,
+                thumbnailUrl: video.resolvedThumbnailUrl,
+                videoUrl: video.s3Url.flatMap { URL(string: $0) },
+                placeholderIcon: "video.fill",
+                isProcessing: isProcessing
+            )
                 .overlay(alignment: .topTrailing) {
                     Button {
                         videoToDelete = video
+                        showDeleteAlert = true
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 20))
@@ -207,69 +309,46 @@ public struct FeedVideosView: View {
     }
 }
 
-// MARK: - Grid Cell
+// MARK: - Alerts modifier (extracted to help Swift type-checker)
 
-private struct VideoGridCell: View {
-    let video: FeedVideo
+private struct FeedVideosAlerts: ViewModifier {
+    @ObservedObject var viewModel: FeedVideosViewModel
+    @Binding var showErrorAlert: Bool
+    @Binding var showClipResultAlert: Bool
+    @Binding var showDeleteAlert: Bool
+    @Binding var videoToDelete: FeedVideo?
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Thumbnail
-            if let url = video.resolvedThumbnailUrl {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(16 / 9, contentMode: .fill)
-                    case .failure:
-                        thumbnailPlaceholder
-                    case .empty:
-                        ZStack {
-                            thumbnailPlaceholder
-                            ProgressView()
-                                .tint(DesignTokens.muted)
-                        }
-                    @unknown default:
-                        thumbnailPlaceholder
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .aspectRatio(16 / 9, contentMode: .fit)
-                .clipped()
-            } else {
-                thumbnailPlaceholder
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
+            .alert("Error", isPresented: $showErrorAlert) {
+                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+            } message: {
+                Text(viewModel.errorMessage ?? "")
             }
-
-            // Info
-            VStack(alignment: .leading, spacing: 4) {
-                Text(video.title ?? "Untitled video")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(DesignTokens.textPrimary)
-                    .lineLimit(2)
-
-                if let feedName = video.feed?.name {
-                    Text(feedName)
-                        .font(.caption2)
-                        .foregroundStyle(DesignTokens.textSecondary)
-                        .lineLimit(1)
-                }
+            .onChange(of: viewModel.clipResultMessage) { _, newValue in showClipResultAlert = newValue != nil }
+            .alert("Clip Generation", isPresented: $showClipResultAlert) {
+                Button("OK", role: .cancel) { viewModel.clipResultMessage = nil }
+            } message: {
+                Text(viewModel.clipResultMessage ?? "")
             }
-            .padding(DesignTokens.smallSpacing)
-        }
-        .background(DesignTokens.surface)
-        .cornerRadius(DesignTokens.cornerRadius)
-    }
-
-    private var thumbnailPlaceholder: some View {
-        ZStack {
-            Rectangle()
-                .fill(DesignTokens.background)
-                .aspectRatio(16 / 9, contentMode: .fit)
-            Image(systemName: "video.fill")
-                .font(.title2)
-                .foregroundStyle(DesignTokens.muted)
-        }
+            .alert("Delete Video", isPresented: $showDeleteAlert, presenting: videoToDelete) { video in
+                Button("Delete", role: .destructive) {
+                    Task { await viewModel.deleteFeedVideo(video) }
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: { _ in
+                Text("Are you sure you want to delete this video? This action cannot be undone.")
+            }
+            .sheet(item: $viewModel.upgradeError) { error in
+                UpgradePromptView(
+                    message: error.localizedDescription,
+                    quotaLimit: error.quotaLimit,
+                    quotaUsage: error.quotaUsage,
+                    onDismiss: { viewModel.upgradeError = nil }
+                )
+                .presentationDetents([.medium])
+            }
     }
 }
+

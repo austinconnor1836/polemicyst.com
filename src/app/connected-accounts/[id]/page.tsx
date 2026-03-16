@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { ArrowLeftIcon } from '@heroicons/react/24/solid';
 import { useSubscription } from '@/hooks/useSubscription';
 import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
+import { UpgradePromptDialog } from '@/components/UpgradePromptDialog';
+import { parseApiError, type ApiQuotaError } from '@/lib/api-error';
 
 type GeneratedClip = {
   id: string;
@@ -41,6 +43,7 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
   const [isTriggering, setIsTriggering] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previousClipCountRef = useRef(0);
+  const [upgradeError, setUpgradeError] = useState<ApiQuotaError | null>(null);
   const { quota, data: subscriptionData, refresh: refreshSubscription } = useSubscription();
 
   const fetchFeedVideo = useCallback(async () => {
@@ -106,7 +109,14 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
         }),
       });
 
-      if (!res.ok) throw new Error('Failed to trigger clip generation');
+      if (!res.ok) {
+        const quotaErr = await parseApiError(res);
+        if (quotaErr) {
+          setUpgradeError(quotaErr);
+          return;
+        }
+        throw new Error('Failed to trigger clip generation');
+      }
 
       setFeedVideo((prev) =>
         prev ? { ...prev, clipGenerationStatus: 'queued', clipGenerationError: null } : prev
@@ -300,6 +310,8 @@ export default function FeedVideoDetailPage({ params }: { params: { id: string }
           </div>
         )}
       </div>
+
+      <UpgradePromptDialog error={upgradeError} onClose={() => setUpgradeError(null)} />
     </div>
   );
 }

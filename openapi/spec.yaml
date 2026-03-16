@@ -519,6 +519,117 @@ components:
           type: string
           description: Stripe-hosted URL to redirect the user to
 
+    SocialPost:
+      type: object
+      required: [id, userId, content, platforms, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        content:
+          type: string
+        platforms:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [pending, publishing, completed, failed]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        publishes:
+          type: array
+          items:
+            $ref: '#/components/schemas/SocialPostPublish'
+
+    SocialPostPublish:
+      type: object
+      required: [id, socialPostId, platform, status, createdAt]
+      properties:
+        id:
+          type: string
+        socialPostId:
+          type: string
+        platform:
+          type: string
+          enum: [twitter, facebook, bluesky, threads]
+        status:
+          type: string
+          enum: [pending, published, failed]
+        platformPostId:
+          type: string
+          nullable: true
+        platformUrl:
+          type: string
+          nullable: true
+        publishError:
+          type: string
+          nullable: true
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateSocialPostRequest:
+      type: object
+      required: [content, platforms]
+      properties:
+        content:
+          type: string
+          minLength: 1
+        platforms:
+          type: array
+          items:
+            type: string
+            enum: [twitter, facebook, bluesky, threads]
+          minItems: 1
+
+    SocialPlatformInfo:
+      type: object
+      required: [platform, displayName, connected, supportsText]
+      properties:
+        platform:
+          type: string
+        displayName:
+          type: string
+        connected:
+          type: boolean
+        supportsText:
+          type: boolean
+
+    SocialPlatformsResponse:
+      type: object
+      required: [platforms, defaults]
+      properties:
+        platforms:
+          type: array
+          items:
+            $ref: '#/components/schemas/SocialPlatformInfo'
+        defaults:
+          type: array
+          items:
+            type: string
+
+    PublishDefaultsResponse:
+      type: object
+      required: [platforms]
+      properties:
+        platforms:
+          type: array
+          items:
+            type: string
+
     SubscriptionPlan:
       type: object
       required: [id, name, limits, features]
@@ -927,6 +1038,48 @@ paths:
                   enqueued:
                     type: boolean
 
+  /api/feedVideos/{id}/innertube-transcribe:
+    post:
+      operationId: innertubeTranscribeFeedVideo
+      summary: Transcribe a YouTube video using authenticated innertube API
+      description: |
+        Uses the user's Google OAuth token to fetch captions via YouTube's innertube
+        player API. Bypasses bot detection by using a real authenticated session.
+        Falls back to unauthenticated methods if no Google account is linked.
+      tags: [FeedVideos]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  transcript:
+                    type: string
+                  source:
+                    type: string
+                    enum: [youtube-manual, youtube-auto]
+                  segmentCount:
+                    type: integer
+                  streamingUrl:
+                    type: string
+                    nullable: true
+        '400':
+          description: Not a YouTube video
+        '403':
+          description: No Google account linked
+        '404':
+          description: Feed video or captions not found
+
   /api/clips:
     get:
       operationId: getClips
@@ -1291,6 +1444,186 @@ paths:
                 $ref: '#/components/schemas/StripeSessionResponse'
         '400':
           description: No Stripe customer found for the user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/social-posts:
+    get:
+      operationId: listSocialPosts
+      summary: List user's social posts
+      tags: [Social Posts]
+      responses:
+        '200':
+          description: List of social posts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SocialPost'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      operationId: createSocialPost
+      summary: Create and publish a social post
+      tags: [Social Posts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSocialPostRequest'
+      responses:
+        '201':
+          description: Post created and published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialPost'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/social-posts/{id}:
+    get:
+      operationId: getSocialPost
+      summary: Get a specific social post
+      tags: [Social Posts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Social post details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialPost'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      operationId: deleteSocialPost
+      summary: Delete a social post
+      tags: [Social Posts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Post deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/social-posts/platforms:
+    get:
+      operationId: getSocialPlatforms
+      summary: Get available social platforms and user defaults
+      tags: [Social Posts]
+      responses:
+        '200':
+          description: Available platforms and defaults
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialPlatformsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/user/publish-defaults:
+    get:
+      operationId: getPublishDefaults
+      summary: Get default publish platforms
+      tags: [Social Posts]
+      responses:
+        '200':
+          description: Default platforms
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishDefaultsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      operationId: updatePublishDefaults
+      summary: Update default publish platforms
+      tags: [Social Posts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishDefaultsResponse'
+      responses:
+        '200':
+          description: Updated defaults
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishDefaultsResponse'
+        '400':
+          description: Invalid request
           content:
             application/json:
               schema:

@@ -283,15 +283,41 @@ jobs:
         working-directory: ios
         run: xcodegen generate
 
+      - name: Ensure iOS Simulator runtime
+        run: |
+          # Select Xcode and initialize simulator services
+          sudo xcode-select -s /Applications/Xcode_16.4.app
+          xcrun simctl list > /dev/null 2>&1 || true
+          # Download iOS platform if no iPhone simulators are available
+          if ! xcrun simctl list devices available | grep -q "iPhone"; then
+            echo "No iPhone simulators found, downloading iOS platform..."
+            xcodebuild -downloadPlatform iOS || true
+          fi
+          echo "Available simulators:"
+          xcrun simctl list devices available | grep iPhone || echo "WARNING: No iPhone simulators available"
+
       - name: Run tests
         working-directory: ios
         run: |
           set -o pipefail
+          # Pick the first available iPhone simulator
+          DEST=$(xcrun simctl list devices available -j \
+            | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for runtime, devices in data['devices'].items():
+              if 'iOS' in runtime:
+                  for d in devices:
+                      if 'iPhone' in d['name']:
+                          print(d['name']); sys.exit(0)
+          print('iPhone 16')
+          ")
+          echo "Using simulator: $DEST"
           xcodebuild test \
             -project Clipfire.xcodeproj \
             -scheme ClipfireApp \
             -skip-testing:ClipfireUITests \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination "platform=iOS Simulator,name=$DEST" \
             | xcpretty --color
 
   build-ios-dev:

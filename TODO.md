@@ -71,7 +71,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 ### UX Polish
 
 - [x] Show quota warnings before user hits limit (e.g., "9/10 clips used this month")
-- [ ] Show upgrade prompts inline when 403 is returned on the web app (feeds page, clip generation)
+- [x] Show upgrade prompts inline when 403 is returned on the web app (feeds page, clip generation)
 - [ ] Add loading/progress states for clip generation on feeds page
 - [ ] Error handling for Stripe portal session failures
 
@@ -277,7 +277,7 @@ iOS has full quota handling and billing UI. Android has none. Each item below is
 These improve retention and reduce churn once users are paying.
 
 - [x] **Quota warning banners** — Show a warning when user reaches 80% of their clip or feed quota (e.g., "9/10 clips used this month — upgrade for more").
-- [ ] **Inline upgrade prompts on 403** — When the web app receives a 403 on feeds page or clip generation, show an inline upgrade CTA instead of a generic error.
+- [x] **Inline upgrade prompts on 403** — When the web app receives a 403 on feeds page or clip generation, show an inline upgrade CTA instead of a generic error.
 - [ ] **Clip generation progress states** — Add loading/progress indicators on the feeds page when clips are being generated in the background.
 - [ ] **Stripe portal error handling** — Handle failures when creating a Stripe portal session (e.g., Stripe is down) with a user-friendly message.
 - [ ] **Verify social platform export flows** — Test Bluesky, Meta/Instagram, YouTube, and Twitter publishing end-to-end. Fix any broken OAuth flows or API changes.
@@ -290,6 +290,12 @@ These improve retention and reduce churn once users are paying.
 - Mark items `[x]` immediately upon completion and push the updated TODO.md.
 - Priority 1 items may require environment variables / secrets that agents cannot access — flag these as blocked and move to the next item.
 - Priority 2 items are pure code changes and can be done without production access.
+
+---
+
+## Bugs
+
+- [ ] **iOS: HTTP 500 errors on app launch** — Sometimes on app load, multiple tabs show "HTTP 500 Failed" errors. Signing out and signing back in fixes it. Likely a stale/expired JWT or race condition during token refresh on launch. Investigate whether the token is being sent before it's fully restored, or if the server is rejecting an expired token with a 500 instead of a 401.
 
 ---
 

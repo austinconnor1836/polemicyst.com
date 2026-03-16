@@ -2,6 +2,7 @@ import SwiftUI
 
 public enum PlatformOption: String, Identifiable, CaseIterable {
     case youtube
+    case substack
     case facebook
     case instagram
     case tiktok
@@ -12,6 +13,7 @@ public enum PlatformOption: String, Identifiable, CaseIterable {
     public var name: String {
         switch self {
         case .youtube: return "YouTube"
+        case .substack: return "Substack"
         case .facebook: return "Facebook"
         case .instagram: return "Instagram"
         case .tiktok: return "TikTok"
@@ -22,6 +24,7 @@ public enum PlatformOption: String, Identifiable, CaseIterable {
     public var systemImage: String {
         switch self {
         case .youtube: return "play.rectangle.fill"
+        case .substack: return "text.document.fill"
         case .facebook: return "person.2.fill"
         case .instagram: return "camera.fill"
         case .tiktok: return "music.note"
@@ -29,9 +32,17 @@ public enum PlatformOption: String, Identifiable, CaseIterable {
         }
     }
 
+    /// Whether this platform uses a brand icon instead of SF Symbol
+    public var hasBrandIcon: Bool {
+        switch self {
+        case .substack: return true
+        default: return false
+        }
+    }
+
     public var isAvailable: Bool {
         switch self {
-        case .youtube: return true
+        case .youtube, .substack: return true
         case .facebook, .instagram, .tiktok, .twitter: return false
         }
     }
@@ -72,7 +83,7 @@ public struct PlatformPickerView: View {
                 }
             }
         }
-        .presentationDetents([.height(240)])
+        .presentationDetents([.height(300)])
     }
 
     @ViewBuilder
@@ -81,10 +92,15 @@ public struct PlatformPickerView: View {
             onSelect(platform)
         } label: {
             VStack(spacing: 6) {
-                Image(systemName: platform.systemImage)
-                    .font(.system(size: 24))
-                    .foregroundStyle(platform.isAvailable ? DesignTokens.accent : DesignTokens.muted)
-                    .frame(height: 28)
+                if platform.hasBrandIcon {
+                    PlatformBrandIcon(platform: platform.rawValue, size: 28)
+                        .frame(height: 28)
+                } else {
+                    Image(systemName: platform.systemImage)
+                        .font(.system(size: 24))
+                        .foregroundStyle(platform.isAvailable ? DesignTokens.accent : DesignTokens.muted)
+                        .frame(height: 28)
+                }
 
                 Text(platform.name)
                     .font(.caption)

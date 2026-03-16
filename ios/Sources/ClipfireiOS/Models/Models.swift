@@ -285,11 +285,19 @@ public struct ClipVideo: Identifiable, Codable {
     public let s3Key: String?
     public let s3Url: String?
     public let videoTitle: String?
+    public let trimStartS: Double?
+    public let trimEndS: Double?
     public let createdAt: Date
     public let sourceVideo: ClipSourceVideo?
 
+    public var duration: Double? {
+        guard let start = trimStartS, let end = trimEndS else { return nil }
+        return end - start
+    }
+
     public init(id: String, userId: String, sourceVideoId: String? = nil,
                 s3Key: String? = nil, s3Url: String? = nil, videoTitle: String? = nil,
+                trimStartS: Double? = nil, trimEndS: Double? = nil,
                 createdAt: Date, sourceVideo: ClipSourceVideo? = nil) {
         self.id = id
         self.userId = userId
@@ -297,6 +305,8 @@ public struct ClipVideo: Identifiable, Codable {
         self.s3Key = s3Key
         self.s3Url = s3Url
         self.videoTitle = videoTitle
+        self.trimStartS = trimStartS
+        self.trimEndS = trimEndS
         self.createdAt = createdAt
         self.sourceVideo = sourceVideo
     }
@@ -371,26 +381,26 @@ public struct TriggerClipRequest: Codable {
 public struct ImportFromURLRequest: Codable {
     public let url: String
     public let filename: String?
+    public let transcript: String?
+    public let transcriptSegments: [[String: AnyCodable]]?
+    public let transcriptSource: String?
+    public let captionError: String?
 
-    public init(url: String, filename: String? = nil) {
+    public init(
+        url: String,
+        filename: String? = nil,
+        transcript: String? = nil,
+        transcriptSegments: [[String: AnyCodable]]? = nil,
+        transcriptSource: String? = nil,
+        captionError: String? = nil
+    ) {
         self.url = url
         self.filename = filename
+        self.transcript = transcript
+        self.transcriptSegments = transcriptSegments
+        self.transcriptSource = transcriptSource
+        self.captionError = captionError
     }
-}
-
-public struct PresignedUploadRequest: Codable {
-    public let filename: String
-    public let contentType: String
-
-    public init(filename: String, contentType: String = "video/mp4") {
-        self.filename = filename
-        self.contentType = contentType
-    }
-}
-
-public struct PresignedUploadResponse: Codable {
-    public let url: String
-    public let key: String
 }
 
 public struct CompleteUploadRequest: Codable {
@@ -400,6 +410,61 @@ public struct CompleteUploadRequest: Codable {
     public init(key: String, filename: String) {
         self.key = key
         self.filename = filename
+    }
+}
+
+// MARK: - Multipart Upload
+
+public struct MultipartInitiateRequest: Encodable {
+    public let filename: String
+    public let contentType: String
+
+    public init(filename: String, contentType: String) {
+        self.filename = filename
+        self.contentType = contentType
+    }
+}
+
+public struct MultipartInitiateResponse: Codable {
+    public let uploadId: String
+    public let key: String
+}
+
+public struct MultipartPartURLRequest: Encodable {
+    public let uploadId: String
+    public let key: String
+    public let partNumber: Int
+
+    public init(uploadId: String, key: String, partNumber: Int) {
+        self.uploadId = uploadId
+        self.key = key
+        self.partNumber = partNumber
+    }
+}
+
+public struct MultipartPartURLResponse: Codable {
+    public let url: String
+}
+
+public struct MultipartCompleteRequest: Encodable {
+    public let uploadId: String
+    public let key: String
+    public let parts: [MultipartCompletePart]
+
+    public init(uploadId: String, key: String, parts: [MultipartCompletePart]) {
+        self.uploadId = uploadId
+        self.key = key
+        self.parts = parts
+    }
+}
+
+public struct MultipartCompletePart: Codable {
+    public let PartNumber: Int
+    public let ETag: String
+
+    public init(partNumber: Int, etag: String) {
+        self.PartNumber = partNumber
+        self.ETag = etag
     }
 }
 
@@ -588,6 +653,53 @@ public struct AutomationSettings: Codable {
     }
 }
 
+// MARK: - Innertube Transcription
+
+public struct InnertubeTranscribeRequest: Encodable {
+    public init() {}
+}
+
+public struct InnertubeTranscribeResponse: Codable {
+    public let ok: Bool?
+    public let transcript: String?
+    public let source: String?
+    public let segmentCount: Int?
+    public let streamingUrl: String?
+    public let error: String?
+}
+
+public struct TranscribeResponse: Codable {
+    public let ok: Bool?
+    public let alreadyTranscribed: Bool?
+    public let enqueued: Bool?
+}
+
+public struct SaveTranscriptRequest: Encodable {
+    public let transcript: String
+    public let segments: [[String: AnyCodable]]
+    public let source: String
+
+    public init(transcript: String, segments: [[String: AnyCodable]], source: String) {
+        self.transcript = transcript
+        self.segments = segments
+        self.source = source
+    }
+}
+
+public struct SaveTranscriptResponse: Codable {
+    public let ok: Bool?
+    public let segmentCount: Int?
+    public let source: String?
+}
+
+// MARK: - Generate Metadata
+
+public struct GenerateMetadataResponse: Codable {
+    public let ok: Bool?
+    public let title: String?
+    public let description: String?
+}
+
 // MARK: - Truth Analysis
 
 public struct TruthAnalysisRequest: Encodable {
@@ -685,6 +797,254 @@ public struct AnalysisChatSendResponse: Codable {
 public struct AnalysisChatSendMessage: Codable {
     public let role: String
     public let content: String
+}
+
+// MARK: - Publications
+
+public struct Publication: Identifiable, Codable {
+    public let id: String
+    public let name: String
+    public let tagline: String?
+    public let configMarkdown: String
+    public let isDefault: Bool
+    public let substackUrl: String?
+    public let substackConnected: Bool
+    public let createdAt: Date
+    public let updatedAt: Date
+    public let _count: PublicationCount?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, tagline, configMarkdown, isDefault
+        case substackUrl, substackConnected, createdAt, updatedAt, _count
+    }
+}
+
+public struct PublicationCount: Codable {
+    public let articles: Int
+}
+
+public struct CreatePublicationRequest: Encodable {
+    public let name: String
+    public let tagline: String?
+
+    public init(name: String, tagline: String? = nil) {
+        self.name = name
+        self.tagline = tagline
+    }
+}
+
+public struct UpdatePublicationRequest: Encodable {
+    public let name: String?
+    public let tagline: String?
+    public let configMarkdown: String?
+
+    public init(name: String? = nil, tagline: String? = nil, configMarkdown: String? = nil) {
+        self.name = name
+        self.tagline = tagline
+        self.configMarkdown = configMarkdown
+    }
+}
+
+// MARK: - Articles
+
+public struct Article: Identifiable, Codable {
+    public let id: String
+    public let publicationId: String
+    public let title: String
+    public let subtitle: String?
+    public let bodyMarkdown: String?
+    public let bodyHtml: String?
+    public let generationModel: String?
+    public let status: String
+    public let publishError: String?
+    public let publishedAt: Date?
+    public let createdAt: Date
+    public let updatedAt: Date
+    public let publication: ArticlePublication?
+    public let graphics: [ArticleGraphic]?
+}
+
+public struct ArticlePublication: Codable {
+    public let id: String
+    public let name: String
+    public let configMarkdown: String?
+    public let substackConnected: Bool?
+    public let substackUrl: String?
+}
+
+public struct ArticleGraphic: Identifiable, Codable {
+    public let id: String
+    public let type: String
+    public let label: String?
+    public let htmlContent: String?
+    public let s3Url: String?
+}
+
+public struct CreateArticleRequest: Encodable {
+    public let publicationId: String
+    public let title: String
+
+    public init(publicationId: String, title: String) {
+        self.publicationId = publicationId
+        self.title = title
+    }
+}
+
+public struct GenerateArticleRequest: Encodable {
+    public let topic: String
+    public let sourceContent: String?
+    public let instructions: String?
+
+    public init(topic: String, sourceContent: String? = nil, instructions: String? = nil) {
+        self.topic = topic
+        self.sourceContent = sourceContent
+        self.instructions = instructions
+    }
+}
+
+public struct GenerateGraphicsResponse: Codable {
+    public let graphics: [ArticleGraphic]
+}
+
+// MARK: - Article Publishing
+
+public struct ArticlePublishRecord: Identifiable, Codable {
+    public let id: String
+    public let publishingAccountId: String
+    public let platform: String
+    public let displayName: String
+    public let status: String
+    public let platformUrl: String?
+    public let publishError: String?
+    public let publishedAt: Date?
+    public let createdAt: Date
+}
+
+public struct PublishArticleRequest: Encodable {
+    public let publishingAccountId: String?
+    public let publishLive: Bool
+
+    public init(publishingAccountId: String? = nil, publishLive: Bool = false) {
+        self.publishingAccountId = publishingAccountId
+        self.publishLive = publishLive
+    }
+}
+
+// MARK: - Publishing Accounts
+
+public struct PublishingAccount: Identifiable, Codable {
+    public let id: String
+    public let platform: String
+    public let displayName: String
+    public let platformUrl: String?
+    public let connected: Bool
+    public let createdAt: Date
+}
+
+// MARK: - Substack
+
+public struct SubstackConnectResponse: Codable {
+    public let connected: Bool
+    public let publicationName: String?
+    public let expired: Bool
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        connected = (try? c.decode(Bool.self, forKey: .connected)) ?? false
+        publicationName = try? c.decode(String.self, forKey: .publicationName)
+        expired = (try? c.decode(Bool.self, forKey: .expired)) ?? false
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case connected, publicationName, expired
+    }
+}
+
+// MARK: - Social Posts
+
+public struct SocialPost: Identifiable, Codable {
+    public let id: String
+    public let userId: String
+    public let content: String
+    public let platforms: [String]
+    public let status: String
+    public let createdAt: Date
+    public let updatedAt: Date
+    public let publishes: [SocialPostPublish]?
+
+    public init(id: String, userId: String, content: String, platforms: [String],
+                status: String, createdAt: Date, updatedAt: Date,
+                publishes: [SocialPostPublish]? = nil) {
+        self.id = id
+        self.userId = userId
+        self.content = content
+        self.platforms = platforms
+        self.status = status
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.publishes = publishes
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, userId, content, platforms, status, createdAt, updatedAt, publishes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        userId = try c.decode(String.self, forKey: .userId)
+        content = try c.decode(String.self, forKey: .content)
+        status = try c.decode(String.self, forKey: .status)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+        publishes = try c.decodeIfPresent([SocialPostPublish].self, forKey: .publishes)
+
+        if let arr = try? c.decode([String].self, forKey: .platforms) {
+            platforms = arr
+        } else {
+            platforms = []
+        }
+    }
+}
+
+public struct SocialPostPublish: Identifiable, Codable {
+    public let id: String
+    public let socialPostId: String
+    public let platform: String
+    public let status: String
+    public let platformPostId: String?
+    public let platformUrl: String?
+    public let publishError: String?
+    public let publishedAt: Date?
+    public let createdAt: Date
+}
+
+public struct SocialPlatformInfo: Identifiable, Codable {
+    public let platform: String
+    public let displayName: String
+    public let connected: Bool
+    public let supportsText: Bool
+
+    public var id: String { platform }
+}
+
+public struct SocialPlatformsResponse: Codable {
+    public let platforms: [SocialPlatformInfo]
+    public let defaults: [String]
+}
+
+public struct PublishDefaultsResponse: Codable {
+    public let platforms: [String]
+}
+
+public struct CreateSocialPostRequest: Encodable {
+    public let content: String
+    public let platforms: [String]
+
+    public init(content: String, platforms: [String]) {
+        self.content = content
+        self.platforms = platforms
+    }
 }
 
 // MARK: - API Error

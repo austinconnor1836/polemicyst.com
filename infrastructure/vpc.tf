@@ -60,12 +60,12 @@ resource "aws_route_table_association" "public" {
 }
 
 resource "aws_eip" "nat" {
-  count  = 2
+  count  = 1
   domain = "vpc"
 }
 
 resource "aws_nat_gateway" "main" {
-  count         = 2
+  count         = 1
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
 
@@ -82,7 +82,7 @@ resource "aws_route_table" "private" {
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main[count.index].id
+    nat_gateway_id = aws_nat_gateway.main[0].id
   }
 
   tags = {
@@ -98,4 +98,62 @@ resource "aws_route_table_association" "private" {
 
 data "aws_availability_zones" "available" {
   state = "available"
+}
+
+# ---------------------------------------------------------------------------
+# VPC Endpoints — route AWS-service traffic through the VPC backbone instead
+# of through the NAT Gateway.  S3 Gateway is free; Interface endpoints cost
+# ~$7/mo each but eliminate far more NAT data-processing charges.
+# ---------------------------------------------------------------------------
+
+# S3 Gateway Endpoint (FREE — no hourly or data charges)
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id       = aws_vpc.main.id
+  service_name = "com.amazonaws.${var.aws_region}.s3"
+  route_table_ids = concat(
+    [aws_route_table.public.id],
+    aws_route_table.private[*].id
+  )
+  tags = {
+    Name = "${var.app_name}-s3-endpoint"
+  }
+}
+
+# ECR Docker — pulls container images without NAT
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.ecs_tasks.id]
+  private_dns_enabled = true
+  tags = {
+    Name = "${var.app_name}-ecr-dkr-endpoint"
+  }
+}
+
+# ECR API — image manifest/auth calls without NAT
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.ecs_tasks.id]
+  private_dns_enabled = true
+  tags = {
+    Name = "${var.app_name}-ecr-api-endpoint"
+  }
+}
+
+# CloudWatch Logs — log streaming without NAT
+resource "aws_vpc_endpoint" "logs" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.logs"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.ecs_tasks.id]
+  private_dns_enabled = true
+  tags = {
+    Name = "${var.app_name}-logs-endpoint"
+  }
 }

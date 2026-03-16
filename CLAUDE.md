@@ -214,6 +214,16 @@ Switch to the private model when:
 
 ## Change log
 
+### 2026-03-16
+
+- **Fixed $1,225/month NAT Gateway cost spike** — root cause was crash-looping prod ECS services pulling ~27 TB/month of Docker images through NAT.
+- **Fixed prod Docker builds**:
+  - Web Dockerfile: added `@prisma/engines` to runner stage (standalone output excludes transitive Prisma deps), added `NODE_OPTIONS="--max-old-space-size=4096"`.
+  - Clip Worker Dockerfile: added `module-alias` for `@shared/*` runtime resolution, fixed `start.sh` entry point path, narrowed `tsconfig.docker.json` includes.
+- **AWS cost optimizations applied**: VPC Endpoints (S3 Gateway free, ECR/Logs Interface), NAT Gateways 2→1, ECR lifecycle policies, Fargate Spot for clip workers, leaked EIP released.
+- **Prevention measures**: ECS deployment circuit breakers (rollback on failure) on all services, AWS budget alert at $150/month.
+- **Architecture diagrams**: added `docs/architecture/` with 7 Mermaid diagrams (system overview, AWS infra, data flow, queue architecture, auth flow, deployment) + Vercel migration assessment.
+
 ### 2026-03-09
 
 - Added **AI analysis chat** — full-screen chat page where users discuss truth analysis results with the AI. Multi-turn conversation with persistent DB history.

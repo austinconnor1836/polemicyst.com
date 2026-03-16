@@ -4,6 +4,7 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "outDir": "./dist",
+    "rootDir": "../..",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -14,11 +15,19 @@
       "*": ["./node_modules/*"]
     }
   },
-  "include": ["**/*.ts", "../../shared/**/*.ts"],
-  "exclude": [
-    "node_modules",
-    "scripts",
-    "../../shared/lib/auth.ts",
-    "../../shared/lib/auth-helpers.ts"
-  ]
+  "include": [
+    "**/*.ts",
+    "../../shared/lib/prisma.ts",
+    "../../shared/lib/cost-tracking.ts",
+    "../../shared/lib/job-logger.ts",
+    "../../shared/lib/plans.ts",
+    "../../shared/lib/training-collector.ts",
+    "../../shared/lib/transcription.ts",
+    "../../shared/lib/innertube.ts",
+    "../../shared/lib/youtube-captions.ts",
+    "../../shared/lib/scoring/**/*.ts",
+    "../../shared/queues/**/*.ts",
+    "../../shared/util/ffmpegUtils.ts"
+  ],
+  "exclude": ["node_modules", "scripts"]
 }

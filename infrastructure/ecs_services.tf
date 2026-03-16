@@ -71,6 +71,11 @@ resource "aws_ecs_service" "redis" {
   desired_count   = 1
   launch_type     = "FARGATE"
 
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   network_configuration {
     subnets          = aws_subnet.private[*].id
     security_groups  = [aws_security_group.ecs_tasks.id]
@@ -170,6 +175,11 @@ resource "aws_ecs_service" "provocativeness" {
     weight            = 100
   }
 
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   network_configuration {
     subnets          = aws_subnet.private[*].id
     security_groups  = [aws_security_group.ecs_tasks.id]
@@ -265,6 +275,11 @@ resource "aws_ecs_service" "comedic" {
     weight            = 100
   }
 
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   network_configuration {
     subnets          = aws_subnet.private[*].id
     security_groups  = [aws_security_group.ecs_tasks.id]
@@ -324,7 +339,19 @@ resource "aws_ecs_service" "clip_worker" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.clip_worker[each.key].arn
   desired_count   = each.value.clip_worker_desired_count
-  launch_type     = "FARGATE"
+
+  # Use Fargate Spot for cost savings (~70% cheaper).
+  # Clip jobs are idempotent and retried via BullMQ, so Spot interruptions are safe.
+  capacity_provider_strategy {
+    capacity_provider = "FARGATE_SPOT"
+    weight            = 100
+  }
+
+  # Stop restarting after consecutive failures — prevents crash-loop cost spikes.
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
 
   network_configuration {
     subnets          = aws_subnet.private[*].id

@@ -5,7 +5,13 @@ import fs from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 import { randomUUID } from 'crypto';
-import { fetchYouTubeCaptions, isYouTubeUrl } from './youtube-captions';
+import {
+  fetchYouTubeCaptions,
+  isYouTubeUrl,
+  extractVideoId,
+} from './youtube-captions';
+import { fetchCaptionsViaInnertubeAuth } from './innertube';
+import { getValidGoogleToken } from './google-token';
 
 export async function transcribeFeedVideo(
   feedVideoId: string,
@@ -31,6 +37,34 @@ export async function transcribeFeedVideo(
   const youtubeUrl = findYouTubeUrl(feedVideo);
   if (youtubeUrl && !localFilePath) {
     console.info('⚡ Attempting YouTube captions fast path...');
+
+    // Try authenticated innertube first (most reliable for YouTube)
+    const videoId = extractVideoId(youtubeUrl);
+    if (videoId && feedVideo.userId) {
+      try {
+        const token = await getValidGoogleToken(feedVideo.userId).catch(() => null);
+        if (token) {
+          const authCaptions = await fetchCaptionsViaInnertubeAuth(videoId, token);
+          if (authCaptions) {
+            console.info(
+              `✅ Got transcript via innertube (auth) — ${authCaptions.source} (${authCaptions.segments.length} segments)`
+            );
+            await prisma.feedVideo.update({
+              where: { id: feedVideoId },
+              data: {
+                transcript: authCaptions.transcript,
+                transcriptJson: authCaptions.segments as any,
+                transcriptSource: authCaptions.source,
+              },
+            });
+            return { transcript: authCaptions.transcript, segments: authCaptions.segments };
+          }
+        }
+      } catch (err) {
+        console.warn('⚠️ Authenticated innertube failed, trying yt-dlp fallback:', err);
+      }
+    }
+
     try {
       const captions = await fetchYouTubeCaptions(youtubeUrl);
       if (captions) {

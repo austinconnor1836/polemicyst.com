@@ -10,10 +10,10 @@ public struct APIClient {
     public init(baseURL: URL, session: URLSession? = nil, tokenStorage: TokenStorage? = nil) {
         self.baseURL = baseURL
         #if DEBUG
-        if session == nil && baseURL.host() == "localhost" {
+        if session == nil {
             let config = URLSessionConfiguration.default
             config.timeoutIntervalForRequest = 120
-            let delegate = LocalhostSessionDelegate()
+            let delegate = LocalDevSessionDelegate()
             self.session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         } else {
             self.session = session ?? .shared
@@ -28,7 +28,26 @@ public struct APIClient {
         }
         #endif
         self.decoder = JSONDecoder()
-        self.decoder.dateDecodingStrategy = .iso8601
+        self.decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let dateString = try container.decode(String.self)
+
+            // Try ISO 8601 with fractional seconds first (Prisma default)
+            let formatterWithFractional = ISO8601DateFormatter()
+            formatterWithFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatterWithFractional.date(from: dateString) {
+                return date
+            }
+
+            // Fall back to ISO 8601 without fractional seconds
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime]
+            if let date = formatter.date(from: dateString) {
+                return date
+            }
+
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Cannot decode date: \(dateString)")
+        }
         self.encoder = JSONEncoder()
         self.tokenStorage = tokenStorage
     }
@@ -98,23 +117,40 @@ public struct APIClient {
 
     // MARK: Upload / Import
 
-    public func importVideoFromURL(url: String, filename: String? = nil) async throws -> FeedVideo {
-        try await post(path: "/api/uploads/from-url", body: ImportFromURLRequest(url: url, filename: filename))
+    public func importVideoFromURL(
+        url: String,
+        filename: String? = nil,
+        transcript: String? = nil,
+        transcriptSegments: [[String: AnyCodable]]? = nil,
+        transcriptSource: String? = nil,
+        captionError: String? = nil
+    ) async throws -> FeedVideo {
+        try await post(
+            path: "/api/uploads/from-url",
+            body: ImportFromURLRequest(
+                url: url,
+                filename: filename,
+                transcript: transcript,
+                transcriptSegments: transcriptSegments,
+                transcriptSource: transcriptSource,
+                captionError: captionError
+            )
+        )
     }
 
-    public func getPresignedUploadURL(filename: String, contentType: String = "video/mp4") async throws -> PresignedUploadResponse {
-        try await post(path: "/api/uploads/presigned", body: PresignedUploadRequest(filename: filename, contentType: contentType))
+    // MARK: Multipart Upload
+
+    public func initiateMultipartUpload(filename: String, contentType: String) async throws -> MultipartInitiateResponse {
+        try await post(path: "/api/uploads/multipart/initiate", body: MultipartInitiateRequest(filename: filename, contentType: contentType))
     }
 
-    public func uploadToPresignedURL(_ presignedURL: URL, fileData: Data, contentType: String = "video/mp4") async throws {
-        var request = URLRequest(url: presignedURL)
-        request.httpMethod = "PUT"
-        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
-        request.setValue("\(fileData.count)", forHTTPHeaderField: "Content-Length")
-        let (_, response) = try await session.upload(for: request, from: fileData)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError.statusCode((response as? HTTPURLResponse)?.statusCode ?? 500)
-        }
+    public func getMultipartPartURL(uploadId: String, key: String, partNumber: Int) async throws -> MultipartPartURLResponse {
+        try await post(path: "/api/uploads/multipart/part-url", body: MultipartPartURLRequest(uploadId: uploadId, key: key, partNumber: partNumber))
+    }
+
+    public func completeMultipartUpload(uploadId: String, key: String, parts: [MultipartCompletePart]) async throws {
+        struct Response: Decodable { let success: Bool }
+        let _: Response = try await post(path: "/api/uploads/multipart/complete", body: MultipartCompleteRequest(uploadId: uploadId, key: key, parts: parts))
     }
 
     public func completeUpload(key: String, filename: String) async throws -> FeedVideo {
@@ -179,6 +215,24 @@ public struct APIClient {
         try await put(path: "/api/user/automation", body: settings)
     }
 
+    // MARK: Transcription
+
+    public func innertubeTranscribe(feedVideoId: String) async throws -> InnertubeTranscribeResponse {
+        try await post(path: "/api/feedVideos/\(feedVideoId)/innertube-transcribe", body: InnertubeTranscribeRequest())
+    }
+
+    public func transcribeFeedVideo(feedVideoId: String) async throws -> TranscribeResponse {
+        try await post(path: "/api/feedVideos/\(feedVideoId)/transcribe", body: InnertubeTranscribeRequest())
+    }
+
+    public func saveTranscript(feedVideoId: String, transcript: String, segments: [[String: AnyCodable]], source: String) async throws -> SaveTranscriptResponse {
+        try await post(path: "/api/feedVideos/\(feedVideoId)/save-transcript", body: SaveTranscriptRequest(transcript: transcript, segments: segments, source: source))
+    }
+
+    public func generateMetadata(feedVideoId: String) async throws -> GenerateMetadataResponse {
+        try await post(path: "/api/feedVideos/\(feedVideoId)/generate-metadata", body: InnertubeTranscribeRequest())
+    }
+
     // MARK: Truth Analysis
 
     public func fetchTruthAnalysis(feedVideoId: String, clipId: String? = nil) async throws -> TruthAnalysisResponse {
@@ -201,6 +255,133 @@ public struct APIClient {
 
     public func sendAnalysisChatMessage(feedVideoId: String, message: String, clipId: String? = nil) async throws -> AnalysisChatSendResponse {
         try await post(path: "/api/feedVideos/\(feedVideoId)/truth-analysis/chat", body: AnalysisChatSendRequest(message: message, clipId: clipId))
+    }
+
+    // MARK: Publications
+
+    public func fetchPublications() async throws -> [Publication] {
+        try await get(path: "/api/publications")
+    }
+
+    public func fetchPublication(id: String) async throws -> Publication {
+        try await get(path: "/api/publications/\(id)")
+    }
+
+    public func createPublication(_ request: CreatePublicationRequest) async throws -> Publication {
+        try await post(path: "/api/publications", body: request)
+    }
+
+    public func updatePublication(id: String, body: UpdatePublicationRequest) async throws -> Publication {
+        try await put(path: "/api/publications/\(id)", body: body)
+    }
+
+    public func deletePublication(id: String) async throws {
+        try await delete(path: "/api/publications/\(id)")
+    }
+
+    // MARK: Articles
+
+    public func fetchArticles(publicationId: String? = nil) async throws -> [Article] {
+        var path = "/api/articles"
+        if let publicationId { path += "?publicationId=\(publicationId)" }
+        return try await get(path: path)
+    }
+
+    public func fetchArticle(id: String) async throws -> Article {
+        try await get(path: "/api/articles/\(id)")
+    }
+
+    public func createArticle(_ request: CreateArticleRequest) async throws -> Article {
+        try await post(path: "/api/articles", body: request)
+    }
+
+    public func updateArticle(id: String, title: String, bodyMarkdown: String) async throws -> Article {
+        struct Body: Encodable { let title: String; let bodyMarkdown: String }
+        return try await put(path: "/api/articles/\(id)", body: Body(title: title, bodyMarkdown: bodyMarkdown))
+    }
+
+    public func deleteArticle(id: String) async throws {
+        try await delete(path: "/api/articles/\(id)")
+    }
+
+    public func generateArticle(id: String, request: GenerateArticleRequest) async throws -> Article {
+        try await post(path: "/api/articles/\(id)/generate", body: request)
+    }
+
+    public func generateGraphics(articleId: String) async throws -> GenerateGraphicsResponse {
+        struct EmptyBody: Encodable {}
+        return try await post(path: "/api/articles/\(articleId)/generate-graphics", body: EmptyBody())
+    }
+
+    public func rasterizeGraphics(articleId: String) async throws -> GenerateGraphicsResponse {
+        struct EmptyBody: Encodable {}
+        return try await post(path: "/api/articles/\(articleId)/rasterize-graphics", body: EmptyBody())
+    }
+
+    public func fetchArticlePublishes(articleId: String) async throws -> [ArticlePublishRecord] {
+        try await get(path: "/api/articles/\(articleId)/publishes")
+    }
+
+    public func publishArticle(articleId: String, publishLive: Bool = false) async throws -> Article {
+        try await post(path: "/api/articles/\(articleId)/publish", body: PublishArticleRequest(publishLive: publishLive))
+    }
+
+    public func publishArticleToAccount(articleId: String, publishingAccountId: String, publishLive: Bool = false) async throws -> ArticlePublishRecord {
+        try await post(path: "/api/articles/\(articleId)/publish", body: PublishArticleRequest(publishingAccountId: publishingAccountId, publishLive: publishLive))
+    }
+
+    // MARK: Publishing Accounts
+
+    public func fetchPublishingAccounts() async throws -> [PublishingAccount] {
+        try await get(path: "/api/publishing-accounts")
+    }
+
+    public func connectPublishingAccount(platform: String, cookie: String, subdomain: String? = nil) async throws -> PublishingAccount {
+        struct Body: Encodable { let platform: String; let cookie: String; let subdomain: String? }
+        return try await post(path: "/api/publishing-accounts", body: Body(platform: platform, cookie: cookie, subdomain: subdomain))
+    }
+
+    // MARK: Substack
+
+    public func connectSubstack(publicationId: String, cookie: String, subdomain: String) async throws -> SubstackConnectResponse {
+        struct Body: Encodable { let cookie: String; let subdomain: String }
+        return try await post(path: "/api/publications/\(publicationId)/substack/connect", body: Body(cookie: cookie, subdomain: subdomain))
+    }
+
+    public func disconnectSubstack(publicationId: String) async throws {
+        struct EmptyBody: Encodable {}
+        let _: SubstackConnectResponse = try await post(path: "/api/publications/\(publicationId)/substack/disconnect", body: EmptyBody())
+    }
+
+    public func verifySubstack(publicationId: String) async throws -> SubstackConnectResponse {
+        try await get(path: "/api/publications/\(publicationId)/substack/verify")
+    }
+
+    // MARK: Social Posts
+
+    public func fetchSocialPosts() async throws -> [SocialPost] {
+        try await get(path: "/api/social-posts")
+    }
+
+    public func createSocialPost(_ request: CreateSocialPostRequest) async throws -> SocialPost {
+        try await post(path: "/api/social-posts", body: request)
+    }
+
+    public func deleteSocialPost(id: String) async throws {
+        try await delete(path: "/api/social-posts/\(id)")
+    }
+
+    public func fetchSocialPlatforms() async throws -> SocialPlatformsResponse {
+        try await get(path: "/api/social-posts/platforms")
+    }
+
+    public func fetchPublishDefaults() async throws -> PublishDefaultsResponse {
+        try await get(path: "/api/user/publish-defaults")
+    }
+
+    public func updatePublishDefaults(platforms: [String]) async throws -> PublishDefaultsResponse {
+        struct Body: Encodable { let platforms: [String] }
+        return try await put(path: "/api/user/publish-defaults", body: Body(platforms: platforms))
     }
 
     // MARK: Version Check
@@ -325,17 +506,32 @@ public enum APIError: Error, LocalizedError {
 }
 
 #if DEBUG
-/// Accepts self-signed certificates for localhost during development.
-final class LocalhostSessionDelegate: NSObject, URLSessionDelegate {
+/// Accepts self-signed certificates for local development (localhost + LAN IPs).
+final class LocalDevSessionDelegate: NSObject, URLSessionDelegate {
+    private func isLocalHost(_ host: String) -> Bool {
+        if host == "localhost" || host == "127.0.0.1" { return true }
+        // Private network ranges: 192.168.x.x, 10.x.x.x, 172.16-31.x.x
+        let parts = host.split(separator: ".").compactMap { Int($0) }
+        guard parts.count == 4 else { return false }
+        if parts[0] == 192 && parts[1] == 168 { return true }
+        if parts[0] == 10 { return true }
+        if parts[0] == 172 && (16...31).contains(parts[1]) { return true }
+        // Tailscale CGNAT range: 100.64-127.x.x
+        if parts[0] == 100 && (64...127).contains(parts[1]) { return true }
+        return false
+    }
+
     func urlSession(
         _ session: URLSession,
-        didReceive challenge: URLAuthenticationChallenge
-    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-        guard challenge.protectionSpace.host == "localhost",
-              let trust = challenge.protectionSpace.serverTrust else {
-            return (.performDefaultHandling, nil)
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        if isLocalHost(challenge.protectionSpace.host),
+           let trust = challenge.protectionSpace.serverTrust {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } else {
+            completionHandler(.performDefaultHandling, nil)
         }
-        return (.useCredential, URLCredential(trust: trust))
     }
 }
 #endif

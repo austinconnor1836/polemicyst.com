@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
-import { getClipGenerationQueue } from '@shared/queues';
+import { getClipGenerationQueue, queueTranscriptionJob } from '@shared/queues';
 import { checkClipQuota } from '@/lib/plans';
 import {
   getStrictnessConfig,
@@ -8,6 +8,8 @@ import {
   type ViralitySettingsValue,
 } from '@shared/virality';
 import { findOrCreateManualFeed, createFeedVideoRecord } from '@shared/services/upload-service';
+import { logJob } from '@shared/lib/job-logger';
+import { logUpload, getUploadContext } from '@shared/lib/upload-logger';
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
@@ -18,8 +20,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const startMs = Date.now();
+  const { userAgent } = getUploadContext(req);
+
   try {
     const { key, filename } = await req.json();
+
+    console.info(
+      `[upload:register] user=${user.id} email=${user.email} key=${key} filename=${filename}`
+    );
 
     const manualFeed = await findOrCreateManualFeed(user.id);
     const s3Url = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
@@ -29,12 +38,43 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       title: filename || 'Untitled Upload',
       s3Url,
+      status: 'ready',
     });
+
+    const durationMs = Date.now() - startMs;
+
+    await logUpload({
+      userId: user.id,
+      stage: 'register',
+      status: 'success',
+      filename,
+      key,
+      durationMs,
+      userAgent,
+      metadata: { feedVideoId: newVideo.id, feedId: manualFeed.id },
+    });
+
+    console.info(
+      `[upload:register] SUCCESS user=${user.id} feedVideoId=${newVideo.id} key=${key} (${durationMs}ms)`
+    );
+
+    try {
+      await queueTranscriptionJob({ feedVideoId: newVideo.id });
+      await logJob({
+        feedVideoId: newVideo.id,
+        jobType: 'transcription',
+        status: 'queued',
+        message: 'Transcription auto-queued after file upload',
+      });
+      console.info(`[upload:register] Transcription queued for ${newVideo.id} (${filename})`);
+    } catch (err) {
+      console.warn('[upload:register] Failed to queue transcription (non-fatal):', err);
+    }
 
     if (manualFeed.autoGenerateClips && manualFeed.viralitySettings) {
       const clipQuota = await checkClipQuota(user.id, user.subscriptionPlan);
       if (!clipQuota.allowed) {
-        console.warn(`[Auto-Gen] Clip quota exceeded for user ${user.id}. Skipping.`);
+        console.warn(`[upload:register] Clip quota exceeded for user ${user.id}. Skipping.`);
       } else {
         try {
           const rawSettings = manualFeed.viralitySettings as Partial<ViralitySettingsValue>;
@@ -59,14 +99,30 @@ export async function POST(req: NextRequest) {
             { jobId: newVideo.id, removeOnComplete: true, removeOnFail: true }
           );
         } catch (err) {
-          console.error('[Auto-Gen] Failed to enqueue job:', err);
+          console.error('[upload:register] Failed to enqueue clip-generation:', err);
         }
       }
     }
 
     return NextResponse.json(newVideo);
   } catch (error) {
-    console.error('Upload completion error:', error);
-    return NextResponse.json({ error: 'Failed to register upload' }, { status: 500 });
+    const durationMs = Date.now() - startMs;
+    const errMsg = error instanceof Error ? error.message : String(error);
+
+    await logUpload({
+      userId: user.id,
+      stage: 'register',
+      status: 'failed',
+      durationMs,
+      error: errMsg,
+      userAgent,
+      metadata: { stack: error instanceof Error ? error.stack : undefined },
+    });
+
+    console.error(`[upload:register] FAILED user=${user.id} error=${errMsg} (${durationMs}ms)`);
+    return NextResponse.json(
+      { error: 'Failed to register upload', detail: errMsg },
+      { status: 500 }
+    );
   }
 }

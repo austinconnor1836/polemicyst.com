@@ -1,4 +1,6 @@
+import AVKit
 import SwiftUI
+import GoogleSignIn
 
 // MARK: - ViewModel
 
@@ -11,6 +13,8 @@ public final class FeedVideoDetailViewModel: ObservableObject {
     @Published public var clipResultMessage: String?
     @Published public private(set) var isGenerating = false
     @Published public private(set) var isDeleting = false
+    @Published public private(set) var isTranscribing = false
+    @Published public var transcribeStatus: String?
 
     let api: APIClient
     let feedVideoId: String
@@ -28,7 +32,91 @@ public final class FeedVideoDetailViewModel: ObservableObject {
             detail = try await api.fetchFeedVideoDetail(id: feedVideoId)
             startPollingIfNeeded()
         } catch {
-            errorMessage = "Unable to load video details"
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            errorMessage = "Unable to load video details: \(error.localizedDescription)"
+        }
+    }
+
+    /// Fetch transcript using the best available method:
+    /// 1. Server-side innertube (uses Google OAuth token)
+    /// 2. Client-side innertube (device's residential IP)
+    /// 3. Queue-based transcription (yt-dlp + Whisper on server)
+    public func transcribeViaInnertube() async {
+        isTranscribing = true
+        transcribeStatus = "Fetching transcript..."
+        defer {
+            isTranscribing = false
+            transcribeStatus = nil
+        }
+
+        // Step 1: Try server-side innertube (fastest, uses stored OAuth token)
+        do {
+            let response = try await api.innertubeTranscribe(feedVideoId: feedVideoId)
+            if response.ok == true {
+                transcribeStatus = "Transcript saved (\(response.segmentCount ?? 0) segments)"
+                await load()
+                return
+            }
+        } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            print("[Transcribe] Server innertube failed: \(error.localizedDescription)")
+        }
+
+        // Step 2: Try client-side innertube (residential IP, bypasses bot detection)
+        transcribeStatus = "Trying from device..."
+        if let ytId = detail?.feedVideo.youtubeVideoId {
+            print("[Transcribe] Step 2: trying client-side innertube for \(ytId)")
+
+            // Get Google access token for authenticated requests
+            var googleAccessToken: String?
+            if let gidUser = GIDSignIn.sharedInstance.currentUser {
+                do {
+                    let refreshed = try await gidUser.refreshTokensIfNeeded()
+                    googleAccessToken = refreshed.accessToken.tokenString
+                } catch {
+                    print("[Transcribe] Could not refresh Google token: \(error)")
+                }
+            }
+
+            let captionService = YouTubeCaptionService()
+            if let captions = await captionService.fetchCaptions(videoId: ytId, accessToken: googleAccessToken) {
+                print("[Transcribe] Got \(captions.segments.count) segments from device, saving...")
+                do {
+                    let segments = captions.segments.map { segment in
+                        segment.mapValues { AnyCodable($0) }
+                    }
+                    _ = try await api.saveTranscript(
+                        feedVideoId: feedVideoId,
+                        transcript: captions.transcript,
+                        segments: segments,
+                        source: captions.source
+                    )
+                    await load()
+                    return
+                } catch {
+                    print("[Transcribe] Client-side caption save failed: \(error)")
+                }
+            } else {
+                print("[Transcribe] Client-side innertube returned no captions")
+            }
+        } else {
+            print("[Transcribe] Step 2 skipped: no youtubeVideoId available")
+        }
+
+        // Step 3: Fall back to queue-based transcription (yt-dlp + Whisper)
+        transcribeStatus = "Queuing transcription..."
+        do {
+            let response = try await api.transcribeFeedVideo(feedVideoId: feedVideoId)
+            if response.alreadyTranscribed == true {
+                await load()
+            } else {
+                transcribeStatus = "Queued — transcript will appear shortly"
+                try? await Task.sleep(for: .seconds(2))
+                await load()
+            }
+        } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            errorMessage = "Transcription failed: \(error.localizedDescription)"
         }
     }
 
@@ -48,7 +136,8 @@ public final class FeedVideoDetailViewModel: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         } catch {
-            errorMessage = "Failed to trigger clip generation"
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
+            errorMessage = "Failed to trigger clip generation: \(error.localizedDescription)"
         }
     }
 
@@ -58,8 +147,9 @@ public final class FeedVideoDetailViewModel: ObservableObject {
             try await api.deleteFeedVideo(id: feedVideoId)
             return true
         } catch {
+            if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return false }
             isDeleting = false
-            errorMessage = "Failed to delete video"
+            errorMessage = "Failed to delete video: \(error.localizedDescription)"
             return false
         }
     }
@@ -91,6 +181,9 @@ public struct FeedVideoDetailView: View {
     @StateObject private var viewModel: FeedVideoDetailViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirmation = false
+    @State private var showErrorAlert = false
+    @State private var showClipResultAlert = false
+    @State private var player: AVPlayer?
     private var onDelete: (() -> Void)?
 
     public init(api: APIClient, feedVideoId: String, onDelete: (() -> Void)? = nil) {
@@ -128,15 +221,23 @@ public struct FeedVideoDetailView: View {
             } message: {
                 Text("Are you sure you want to delete this video? This action cannot be undone.")
             }
-            .task { await viewModel.load() }
-            .onDisappear { viewModel.stopPolling() }
+            .task {
+                await viewModel.load()
+                setupPlayerIfNeeded()
+            }
+            .onDisappear {
+                player?.pause()
+                viewModel.stopPolling()
+            }
             .refreshable { await viewModel.load() }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+            .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
+            .alert("Error", isPresented: $showErrorAlert) {
                 Button("OK", role: .cancel) { viewModel.errorMessage = nil }
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }
-            .alert("Clip Generation", isPresented: .constant(viewModel.clipResultMessage != nil)) {
+            .onChange(of: viewModel.clipResultMessage) { _, newValue in showClipResultAlert = newValue != nil }
+            .alert("Clip Generation", isPresented: $showClipResultAlert) {
                 Button("OK", role: .cancel) { viewModel.clipResultMessage = nil }
             } message: {
                 Text(viewModel.clipResultMessage ?? "")
@@ -219,27 +320,17 @@ public struct FeedVideoDetailView: View {
         if let ytId = video.youtubeVideoId {
             YouTubeThumbnailView(videoId: ytId)
                 .cornerRadius(DesignTokens.cornerRadius)
-        } else if let url = video.resolvedThumbnailUrl {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(16 / 9, contentMode: .fill)
-                case .failure:
-                    mediaPlaceholder
-                case .empty:
-                    ZStack { mediaPlaceholder; ProgressView().tint(DesignTokens.muted) }
-                @unknown default:
-                    mediaPlaceholder
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(16 / 9, contentMode: .fit)
-            .clipped()
-            .cornerRadius(DesignTokens.cornerRadius)
+        } else if let player {
+            videoPlayerView(player)
         } else {
             mediaPlaceholder
-                .cornerRadius(DesignTokens.cornerRadius)
         }
+    }
+
+    private func videoPlayerView(_ player: AVPlayer) -> some View {
+        VideoPlayer(player: player)
+            .aspectRatio(16 / 9, contentMode: .fit)
+            .cornerRadius(DesignTokens.cornerRadius)
     }
 
     private var mediaPlaceholder: some View {
@@ -251,6 +342,16 @@ public struct FeedVideoDetailView: View {
                 .font(.system(size: 40))
                 .foregroundStyle(DesignTokens.muted)
         }
+        .cornerRadius(DesignTokens.cornerRadius)
+    }
+
+    private func setupPlayerIfNeeded() {
+        guard player == nil,
+              let video = viewModel.detail?.feedVideo,
+              video.youtubeVideoId == nil,
+              let s3 = video.s3Url,
+              let url = URL(string: s3) else { return }
+        player = AVPlayer(url: url)
     }
 
     // MARK: - Metadata
@@ -323,6 +424,45 @@ public struct FeedVideoDetailView: View {
                         .foregroundStyle(DesignTokens.textPrimary)
                 }
                 .tint(DesignTokens.muted)
+            }
+            .padding(DesignTokens.spacing)
+            .background(DesignTokens.surface)
+            .cornerRadius(DesignTokens.cornerRadius)
+        } else if video.youtubeVideoId != nil {
+            VStack(alignment: .leading, spacing: DesignTokens.spacing) {
+                Label {
+                    Text("Transcript")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(DesignTokens.textPrimary)
+                } icon: {
+                    Image(systemName: "text.alignleft")
+                        .foregroundStyle(DesignTokens.muted)
+                }
+
+                Text("No transcript yet. Tap to fetch captions from YouTube or transcribe with AI.")
+                    .font(.caption)
+                    .foregroundStyle(DesignTokens.textSecondary)
+
+                Button {
+                    Task { await viewModel.transcribeViaInnertube() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if viewModel.isTranscribing {
+                            ProgressView()
+                                .tint(.white)
+                                .controlSize(.small)
+                        }
+                        Text(viewModel.transcribeStatus ?? "Fetch Transcript")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DesignTokens.accent)
+                .disabled(viewModel.isTranscribing)
             }
             .padding(DesignTokens.spacing)
             .background(DesignTokens.surface)

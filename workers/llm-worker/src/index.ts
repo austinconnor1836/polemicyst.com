@@ -1,12 +1,16 @@
 import { Worker, Job } from 'bullmq';
 import { z } from 'zod';
-import { getRedisConnection } from '@shared/queues';
+import Redis from 'ioredis';
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
 const SCORING_TYPE = process.env.SCORING_TYPE || 'PROVOCATIVENESS';
 const MODEL_NAME = process.env.MODEL_NAME || 'llama3';
 
-const connection = getRedisConnection();
+const connection = new Redis({
+  host: process.env.REDIS_HOST || 'localhost',
+  port: parseInt(process.env.REDIS_PORT || '6379', 10),
+  maxRetriesPerRequest: null,
+});
 
 // Prompts
 const PROMPTS = {

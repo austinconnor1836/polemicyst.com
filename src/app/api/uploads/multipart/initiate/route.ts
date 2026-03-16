@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../../auth';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { S3Client, CreateMultipartUploadCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
+import { logUpload, getUploadContext } from '@shared/lib/upload-logger';
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
@@ -20,16 +20,23 @@ const s3 = new S3Client({
 });
 
 export async function POST(req: NextRequest) {
-  const session = (await getServerSession(authOptions)) as any;
-  if (!session?.user?.email) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  const startMs = Date.now();
+  const { userAgent } = getUploadContext(req);
 
   try {
     const { filename, contentType } = await req.json();
 
     const fileExt = filename.split('.').pop() || 'mp4';
-    const key = `uploads/${session.user.email}/${randomUUID()}.${fileExt}`;
+    const key = `uploads/${user.email}/${randomUUID()}.${fileExt}`;
+
+    console.info(
+      `[upload:initiate] user=${user.id} email=${user.email} filename=${filename} contentType=${contentType} key=${key}`
+    );
 
     const command = new CreateMultipartUploadCommand({
       Bucket: S3_BUCKET,
@@ -38,10 +45,43 @@ export async function POST(req: NextRequest) {
     });
 
     const { UploadId } = await s3.send(command);
+    const durationMs = Date.now() - startMs;
+
+    await logUpload({
+      userId: user.id,
+      stage: 'initiate',
+      status: 'success',
+      filename,
+      key,
+      uploadId: UploadId,
+      contentType: contentType || 'video/mp4',
+      durationMs,
+      userAgent,
+    });
+
+    console.info(
+      `[upload:initiate] SUCCESS user=${user.id} uploadId=${UploadId} key=${key} (${durationMs}ms)`
+    );
 
     return NextResponse.json({ uploadId: UploadId, key });
   } catch (error) {
-    console.error('Initiate multipart error:', error);
-    return NextResponse.json({ error: 'Failed to initiate upload' }, { status: 500 });
+    const durationMs = Date.now() - startMs;
+    const errMsg = error instanceof Error ? error.message : String(error);
+
+    await logUpload({
+      userId: user.id,
+      stage: 'initiate',
+      status: 'failed',
+      durationMs,
+      error: errMsg,
+      userAgent,
+      metadata: { stack: error instanceof Error ? error.stack : undefined },
+    });
+
+    console.error(`[upload:initiate] FAILED user=${user.id} error=${errMsg} (${durationMs}ms)`);
+    return NextResponse.json(
+      { error: 'Failed to initiate upload', detail: errMsg },
+      { status: 500 }
+    );
   }
 }

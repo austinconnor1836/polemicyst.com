@@ -1,4 +1,4 @@
-FROM node:20-bullseye-slim AS base
+FROM node:20-bookworm-slim AS base
 
 WORKDIR /app
 ENV NODE_ENV=production
@@ -7,6 +7,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
 
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 RUN NODE_ENV=development npm ci --ignore-scripts --legacy-peer-deps
 RUN npx prisma generate
 
@@ -17,9 +18,15 @@ COPY src ./src
 COPY shared ./shared
 COPY workers ./workers
 COPY _posts ./_posts
-RUN npm run build
+RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
-FROM node:20-bullseye-slim AS runner
+FROM node:20-bookworm-slim AS runner
+
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-dev gcc git && \
+    pip3 install --break-system-packages yt-dlp curl_cffi bgutil-ytdlp-pot-provider youtube-transcript-api && \
+    git clone --single-branch --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /root/bgutil-ytdlp-pot-provider && \
+    cd /root/bgutil-ytdlp-pot-provider/server && npm ci && npx tsc && \
+    apt-get remove -y python3-pip python3-dev gcc git && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 ENV NODE_ENV=production
@@ -29,9 +36,10 @@ COPY --from=base /app/.next/standalone ./
 COPY --from=base /app/.next/static ./.next/static
 COPY --from=base /app/public ./public
 COPY --from=base /app/prisma ./prisma
-COPY --from=base /app/node_modules/prisma ./node_modules/prisma
-COPY --from=base /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
-RUN mkdir -p node_modules/.bin && ln -s ../prisma/build/index.js node_modules/.bin/prisma && chmod +x node_modules/prisma/build/index.js
+# Install prisma CLI + its transitive dependencies needed for `prisma migrate deploy`.
+# The standalone Next.js output doesn't include @prisma/engines or @prisma/debug.
+RUN npm install --no-save prisma @prisma/engines
+COPY scripts/fetch-yt-captions.py ./scripts/fetch-yt-captions.py
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
