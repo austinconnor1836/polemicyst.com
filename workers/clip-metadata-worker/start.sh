@@ -9,5 +9,5 @@ if [ "$ENVIRONMENT" = "dev" ]; then
   exec npm run dev
 else
   echo "Starting Clip Worker in production mode..."
-  exec node dist/index.js
+  exec node dist/workers/clip-metadata-worker/index.js
 fi

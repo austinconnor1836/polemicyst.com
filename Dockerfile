@@ -18,7 +18,7 @@ COPY src ./src
 COPY shared ./shared
 COPY workers ./workers
 COPY _posts ./_posts
-RUN npm run build
+RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
 FROM node:20-bookworm-slim AS runner
 
@@ -36,7 +36,9 @@ COPY --from=base /app/.next/standalone ./
 COPY --from=base /app/.next/static ./.next/static
 COPY --from=base /app/public ./public
 COPY --from=base /app/prisma ./prisma
-RUN npm install --no-save prisma
+# Install prisma CLI + its transitive dependencies needed for `prisma migrate deploy`.
+# The standalone Next.js output doesn't include @prisma/engines or @prisma/debug.
+RUN npm install --no-save prisma @prisma/engines
 COPY scripts/fetch-yt-captions.py ./scripts/fetch-yt-captions.py
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
