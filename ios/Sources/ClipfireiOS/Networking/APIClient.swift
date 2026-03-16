@@ -69,6 +69,11 @@ public struct APIClient {
         )
     }
 
+    public func exchangeFacebookToken(_ accessToken: String) async throws -> FacebookTokenResponse {
+        struct Body: Encodable { let accessToken: String }
+        return try await post(path: "/api/auth/mobile/facebook", body: Body(accessToken: accessToken))
+    }
+
     // MARK: YouTube Channels
 
     public func fetchYouTubeChannels() async throws -> [YouTubeChannel] {
