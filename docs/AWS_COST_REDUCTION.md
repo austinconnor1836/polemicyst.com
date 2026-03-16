@@ -127,11 +127,21 @@ All infrastructure and operational fixes have been applied.
 
 4. **Clip workers switched to Fargate Spot** — both `prod-clip-worker` and `dev-clip-worker` recreated with `FARGATE_SPOT` capacity provider (~70% cost reduction). Safe because clip jobs are idempotent and retried via BullMQ.
 
-### Still needed before redeploying prod
+5. **Prod Docker builds fixed** (PR #188, merged):
+   - **Web**: Added `@prisma/engines` to runner stage install (standalone output excludes transitive Prisma deps). Added `NODE_OPTIONS="--max-old-space-size=4096"` to prevent OOM during build.
+   - **Clip Worker**: Added `module-alias` to resolve `@shared/*` path aliases at runtime. Fixed `start.sh` entry point path. Narrowed `tsconfig.docker.json` includes to only used shared modules.
 
-1. **Fix prod Docker builds**:
-   - `prod-clip-worker` needs `shared/lib/prisma` in its build context
-   - `prod-web` needs `@prisma/debug` (likely missing `prisma generate` step)
+### Prevention measures (applied 2026-03-16)
+
+1. **ECS deployment circuit breakers** (PR #189) — `deployment_circuit_breaker` with `rollback = true` on all 5 ECS services. Stops ECS from infinitely restarting crashed tasks.
+
+2. **AWS budget alert** — `Monthly-Cost-Alert-150` sends email to `aconnor731@gmail.com` at 50%, 80%, and 100% of $150/month.
+
+3. **VPC Endpoints** — Even if crash-looping recurs, ECR pulls go through VPC endpoints (fixed cost) instead of NAT ($0.045/GB).
+
+### Prod is ready to redeploy
+
+All Docker builds are fixed and verified. Scale prod services back up when ready.
 
 ---
 
