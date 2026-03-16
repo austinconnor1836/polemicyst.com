@@ -1,3 +1,4 @@
+import 'module-alias/register';
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env' });
 // For containers, respect already-set env (e.g., DATABASE_URL pointing at service DNS)
