@@ -1,0 +1,2858 @@
+{
+  "seeds": {
+    "1": {
+      "seed": 1,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 150,
+          "losses": 6,
+          "total_games": 156,
+          "win_percentage": 96.2,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 127,
+          "losses": 23,
+          "total_games": 150,
+          "win_percentage": 84.7,
+          "reach_percentage": 96.2
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 88,
+          "losses": 39,
+          "total_games": 127,
+          "win_percentage": 69.3,
+          "reach_percentage": 81.4
+        },
+        {
+          "round": "Elite 8",
+          "wins": 56,
+          "losses": 32,
+          "total_games": 88,
+          "win_percentage": 63.6,
+          "reach_percentage": 56.4
+        },
+        {
+          "round": "Final Four",
+          "wins": 33,
+          "losses": 23,
+          "total_games": 56,
+          "win_percentage": 58.9,
+          "reach_percentage": 35.9
+        },
+        {
+          "round": "Championship",
+          "wins": 22,
+          "losses": 11,
+          "total_games": 33,
+          "win_percentage": 66.7,
+          "reach_percentage": 21.2
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 2018,
+          "winner": "UMBC",
+          "winner_seed": 16,
+          "loser": "Virginia",
+          "score": "74-54",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2023,
+          "winner": "Fairleigh Dickinson",
+          "winner_seed": 16,
+          "loser": "Purdue",
+          "score": "63-58",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "losses",
+      "championships": [
+        {
+          "year": 1987,
+          "team": "Indiana"
+        },
+        {
+          "year": 1990,
+          "team": "UNLV"
+        },
+        {
+          "year": 1992,
+          "team": "Duke"
+        },
+        {
+          "year": 1993,
+          "team": "North Carolina"
+        },
+        {
+          "year": 1994,
+          "team": "Arkansas"
+        },
+        {
+          "year": 1995,
+          "team": "UCLA"
+        },
+        {
+          "year": 1996,
+          "team": "Kentucky"
+        },
+        {
+          "year": 1999,
+          "team": "UConn"
+        },
+        {
+          "year": 2000,
+          "team": "Michigan State"
+        },
+        {
+          "year": 2001,
+          "team": "Duke"
+        },
+        {
+          "year": 2002,
+          "team": "Maryland"
+        },
+        {
+          "year": 2005,
+          "team": "North Carolina"
+        },
+        {
+          "year": 2007,
+          "team": "Florida"
+        },
+        {
+          "year": 2008,
+          "team": "Kansas"
+        },
+        {
+          "year": 2009,
+          "team": "North Carolina"
+        },
+        {
+          "year": 2010,
+          "team": "Duke"
+        },
+        {
+          "year": 2012,
+          "team": "Kentucky"
+        },
+        {
+          "year": 2013,
+          "team": "Louisville"
+        },
+        {
+          "year": 2015,
+          "team": "Duke"
+        },
+        {
+          "year": 2017,
+          "team": "North Carolina"
+        },
+        {
+          "year": 2018,
+          "team": "Villanova"
+        },
+        {
+          "year": 2019,
+          "team": "Virginia"
+        },
+        {
+          "year": 2021,
+          "team": "Baylor"
+        },
+        {
+          "year": 2022,
+          "team": "Kansas"
+        },
+        {
+          "year": 2024,
+          "team": "UConn"
+        }
+      ],
+      "opponent_seed": 16,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 1-seeds."
+    },
+    "2": {
+      "seed": 2,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 148,
+          "losses": 8,
+          "total_games": 156,
+          "win_percentage": 94.9,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 105,
+          "losses": 43,
+          "total_games": 148,
+          "win_percentage": 70.9,
+          "reach_percentage": 94.9
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 56,
+          "losses": 49,
+          "total_games": 105,
+          "win_percentage": 53.3,
+          "reach_percentage": 67.3
+        },
+        {
+          "round": "Elite 8",
+          "wins": 26,
+          "losses": 30,
+          "total_games": 56,
+          "win_percentage": 46.4,
+          "reach_percentage": 35.9
+        },
+        {
+          "round": "Final Four",
+          "wins": 13,
+          "losses": 13,
+          "total_games": 26,
+          "win_percentage": 50.0,
+          "reach_percentage": 16.7
+        },
+        {
+          "round": "Championship",
+          "wins": 6,
+          "losses": 7,
+          "total_games": 13,
+          "win_percentage": 46.2,
+          "reach_percentage": 8.3
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 1991,
+          "winner": "Richmond",
+          "winner_seed": 15,
+          "loser": "Syracuse",
+          "score": "73-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1993,
+          "winner": "Santa Clara",
+          "winner_seed": 15,
+          "loser": "Arizona",
+          "score": "64-61",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1997,
+          "winner": "Coppin State",
+          "winner_seed": 15,
+          "loser": "South Carolina",
+          "score": "78-65",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2001,
+          "winner": "Hampton",
+          "winner_seed": 15,
+          "loser": "Iowa State",
+          "score": "58-57",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2012,
+          "winner": "Lehigh",
+          "winner_seed": 15,
+          "loser": "Duke",
+          "score": "75-70",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2012,
+          "winner": "Norfolk State",
+          "winner_seed": 15,
+          "loser": "Missouri",
+          "score": "86-84",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2013,
+          "winner": "Florida Gulf Coast",
+          "winner_seed": 15,
+          "loser": "Georgetown",
+          "score": "78-68",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Middle Tennessee",
+          "winner_seed": 15,
+          "loser": "Michigan State",
+          "score": "90-81",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2021,
+          "winner": "Oral Roberts",
+          "winner_seed": 15,
+          "loser": "Ohio State",
+          "score": "75-72",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2022,
+          "winner": "Saint Peter's",
+          "winner_seed": 15,
+          "loser": "Kentucky",
+          "score": "85-79",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2023,
+          "winner": "Princeton",
+          "winner_seed": 15,
+          "loser": "Arizona",
+          "score": "59-55",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "losses",
+      "championships": [
+        {
+          "year": 1986,
+          "team": "Louisville"
+        },
+        {
+          "year": 1991,
+          "team": "Duke"
+        },
+        {
+          "year": 1998,
+          "team": "Kentucky"
+        },
+        {
+          "year": 2004,
+          "team": "UConn"
+        },
+        {
+          "year": 2016,
+          "team": "Villanova"
+        }
+      ],
+      "opponent_seed": 15,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 2-seeds."
+    },
+    "3": {
+      "seed": 3,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 137,
+          "losses": 19,
+          "total_games": 156,
+          "win_percentage": 87.8,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 82,
+          "losses": 55,
+          "total_games": 137,
+          "win_percentage": 59.9,
+          "reach_percentage": 87.8
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 35,
+          "losses": 47,
+          "total_games": 82,
+          "win_percentage": 42.7,
+          "reach_percentage": 52.6
+        },
+        {
+          "round": "Elite 8",
+          "wins": 14,
+          "losses": 21,
+          "total_games": 35,
+          "win_percentage": 40.0,
+          "reach_percentage": 22.4
+        },
+        {
+          "round": "Final Four",
+          "wins": 6,
+          "losses": 8,
+          "total_games": 14,
+          "win_percentage": 42.9,
+          "reach_percentage": 9.0
+        },
+        {
+          "round": "Championship",
+          "wins": 2,
+          "losses": 4,
+          "total_games": 6,
+          "win_percentage": 33.3,
+          "reach_percentage": 3.8
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 1986,
+          "winner": "Arkansas-Little Rock",
+          "winner_seed": 14,
+          "loser": "Notre Dame",
+          "score": "90-83",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1986,
+          "winner": "Cleveland State",
+          "winner_seed": 14,
+          "loser": "Indiana",
+          "score": "83-79",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1987,
+          "winner": "Austin Peay",
+          "winner_seed": 14,
+          "loser": "Illinois",
+          "score": "68-67",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1988,
+          "winner": "Murray State",
+          "winner_seed": 14,
+          "loser": "NC State",
+          "score": "78-75",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1989,
+          "winner": "Siena",
+          "winner_seed": 14,
+          "loser": "Stanford",
+          "score": "80-78",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1990,
+          "winner": "Northern Iowa",
+          "winner_seed": 14,
+          "loser": "Missouri",
+          "score": "74-71",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1991,
+          "winner": "Xavier",
+          "winner_seed": 14,
+          "loser": "Nebraska",
+          "score": "89-84",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1992,
+          "winner": "East Tennessee State",
+          "winner_seed": 14,
+          "loser": "Arizona",
+          "score": "87-80",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1995,
+          "winner": "Old Dominion",
+          "winner_seed": 14,
+          "loser": "Villanova",
+          "score": "89-81",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1995,
+          "winner": "Weber State",
+          "winner_seed": 14,
+          "loser": "Michigan State",
+          "score": "79-72",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1997,
+          "winner": "Chattanooga",
+          "winner_seed": 14,
+          "loser": "Georgia",
+          "score": "73-70",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1998,
+          "winner": "Richmond",
+          "winner_seed": 14,
+          "loser": "South Carolina",
+          "score": "62-61",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1999,
+          "winner": "Weber State",
+          "winner_seed": 14,
+          "loser": "North Carolina",
+          "score": "76-74",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2005,
+          "winner": "Bucknell",
+          "winner_seed": 14,
+          "loser": "Kansas",
+          "score": "64-63",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2006,
+          "winner": "Northwestern State",
+          "winner_seed": 14,
+          "loser": "Iowa",
+          "score": "64-63",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2010,
+          "winner": "Ohio",
+          "winner_seed": 14,
+          "loser": "Georgetown",
+          "score": "97-83",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2013,
+          "winner": "Harvard",
+          "winner_seed": 14,
+          "loser": "New Mexico",
+          "score": "68-62",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2014,
+          "winner": "Mercer",
+          "winner_seed": 14,
+          "loser": "Duke",
+          "score": "78-71",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2015,
+          "winner": "Georgia State",
+          "winner_seed": 14,
+          "loser": "Baylor",
+          "score": "57-56",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2015,
+          "winner": "UAB",
+          "winner_seed": 14,
+          "loser": "Iowa State",
+          "score": "60-59",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Stephen F. Austin",
+          "winner_seed": 14,
+          "loser": "West Virginia",
+          "score": "70-56",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2021,
+          "winner": "Abilene Christian",
+          "winner_seed": 14,
+          "loser": "Texas",
+          "score": "53-52",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Oakland",
+          "winner_seed": 14,
+          "loser": "Kentucky",
+          "score": "80-76",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "losses",
+      "championships": [
+        {
+          "year": 1989,
+          "team": "Michigan"
+        },
+        {
+          "year": 2003,
+          "team": "Syracuse"
+        },
+        {
+          "year": 2006,
+          "team": "Florida"
+        },
+        {
+          "year": 2011,
+          "team": "UConn"
+        }
+      ],
+      "opponent_seed": 14,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 3-seeds."
+    },
+    "4": {
+      "seed": 4,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 131,
+          "losses": 25,
+          "total_games": 156,
+          "win_percentage": 84.0,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 72,
+          "losses": 59,
+          "total_games": 131,
+          "win_percentage": 55.0,
+          "reach_percentage": 84.0
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 32,
+          "losses": 40,
+          "total_games": 72,
+          "win_percentage": 44.4,
+          "reach_percentage": 46.2
+        },
+        {
+          "round": "Elite 8",
+          "wins": 14,
+          "losses": 18,
+          "total_games": 32,
+          "win_percentage": 43.8,
+          "reach_percentage": 20.5
+        },
+        {
+          "round": "Final Four",
+          "wins": 5,
+          "losses": 9,
+          "total_games": 14,
+          "win_percentage": 35.7,
+          "reach_percentage": 9.0
+        },
+        {
+          "round": "Championship",
+          "wins": 2,
+          "losses": 3,
+          "total_games": 5,
+          "win_percentage": 40.0,
+          "reach_percentage": 3.2
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 1985,
+          "winner": "Navy",
+          "winner_seed": 13,
+          "loser": "LSU",
+          "score": "78-55",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1987,
+          "winner": "Southwest Missouri State",
+          "winner_seed": 13,
+          "loser": "Clemson",
+          "score": "65-60",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1988,
+          "winner": "Richmond",
+          "winner_seed": 13,
+          "loser": "Indiana",
+          "score": "72-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1991,
+          "winner": "Penn State",
+          "winner_seed": 13,
+          "loser": "UCLA",
+          "score": "74-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1992,
+          "winner": "SW Louisiana",
+          "winner_seed": 13,
+          "loser": "Oklahoma",
+          "score": "87-83",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1993,
+          "winner": "Southern",
+          "winner_seed": 13,
+          "loser": "Georgia Tech",
+          "score": "93-78",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1995,
+          "winner": "Manhattan",
+          "winner_seed": 13,
+          "loser": "Oklahoma",
+          "score": "77-67",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1996,
+          "winner": "Princeton",
+          "winner_seed": 13,
+          "loser": "UCLA",
+          "score": "43-41",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1998,
+          "winner": "Valparaiso",
+          "winner_seed": 13,
+          "loser": "Ole Miss",
+          "score": "70-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2001,
+          "winner": "Indiana State",
+          "winner_seed": 13,
+          "loser": "Oklahoma",
+          "score": "70-68",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2001,
+          "winner": "Kent State",
+          "winner_seed": 13,
+          "loser": "Indiana",
+          "score": "77-73",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2005,
+          "winner": "Vermont",
+          "winner_seed": 13,
+          "loser": "Syracuse",
+          "score": "60-57",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2006,
+          "winner": "Bradley",
+          "winner_seed": 13,
+          "loser": "Kansas",
+          "score": "77-73",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2008,
+          "winner": "San Diego",
+          "winner_seed": 13,
+          "loser": "UConn",
+          "score": "70-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2009,
+          "winner": "Cleveland State",
+          "winner_seed": 13,
+          "loser": "Wake Forest",
+          "score": "84-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2010,
+          "winner": "Murray State",
+          "winner_seed": 13,
+          "loser": "Vanderbilt",
+          "score": "66-65",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2011,
+          "winner": "Morehead State",
+          "winner_seed": 13,
+          "loser": "Louisville",
+          "score": "62-61",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2012,
+          "winner": "Ohio",
+          "winner_seed": 13,
+          "loser": "Michigan",
+          "score": "65-60",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2013,
+          "winner": "La Salle",
+          "winner_seed": 13,
+          "loser": "Kansas State",
+          "score": "63-61",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Hawaii",
+          "winner_seed": 13,
+          "loser": "California",
+          "score": "77-66",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2018,
+          "winner": "Buffalo",
+          "winner_seed": 13,
+          "loser": "Arizona",
+          "score": "89-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2018,
+          "winner": "Marshall",
+          "winner_seed": 13,
+          "loser": "Wichita State",
+          "score": "81-75",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "UC Irvine",
+          "winner_seed": 13,
+          "loser": "Kansas State",
+          "score": "70-64",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2021,
+          "winner": "Ohio",
+          "winner_seed": 13,
+          "loser": "Virginia",
+          "score": "62-58",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2021,
+          "winner": "North Texas",
+          "winner_seed": 13,
+          "loser": "Purdue",
+          "score": "78-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2023,
+          "winner": "Furman",
+          "winner_seed": 13,
+          "loser": "Virginia",
+          "score": "68-67",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Yale",
+          "winner_seed": 13,
+          "loser": "Auburn",
+          "score": "78-76",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "losses",
+      "championships": [
+        {
+          "year": 1997,
+          "team": "Arizona"
+        },
+        {
+          "year": 2023,
+          "team": "UConn"
+        }
+      ],
+      "opponent_seed": 13,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 4-seeds."
+    },
+    "5": {
+      "seed": 5,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 104,
+          "losses": 52,
+          "total_games": 156,
+          "win_percentage": 66.7,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 52,
+          "losses": 52,
+          "total_games": 104,
+          "win_percentage": 50.0,
+          "reach_percentage": 66.7
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 19,
+          "losses": 33,
+          "total_games": 52,
+          "win_percentage": 36.5,
+          "reach_percentage": 33.3
+        },
+        {
+          "round": "Elite 8",
+          "wins": 7,
+          "losses": 12,
+          "total_games": 19,
+          "win_percentage": 36.8,
+          "reach_percentage": 12.2
+        },
+        {
+          "round": "Final Four",
+          "wins": 3,
+          "losses": 4,
+          "total_games": 7,
+          "win_percentage": 42.9,
+          "reach_percentage": 4.5
+        },
+        {
+          "round": "Championship",
+          "wins": 1,
+          "losses": 2,
+          "total_games": 3,
+          "win_percentage": 33.3,
+          "reach_percentage": 1.9
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 1985,
+          "winner": "Kentucky",
+          "winner_seed": 12,
+          "loser": "Washington",
+          "score": "66-58",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1990,
+          "winner": "Dayton",
+          "winner_seed": 12,
+          "loser": "Illinois",
+          "score": "88-86",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1994,
+          "winner": "Tulsa",
+          "winner_seed": 12,
+          "loser": "UCLA",
+          "score": "112-102",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2001,
+          "winner": "Gonzaga",
+          "winner_seed": 12,
+          "loser": "Virginia",
+          "score": "86-85",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2002,
+          "winner": "Missouri",
+          "winner_seed": 12,
+          "loser": "Miami (FL)",
+          "score": "93-80",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2008,
+          "winner": "Western Kentucky",
+          "winner_seed": 12,
+          "loser": "Drake",
+          "score": "101-99",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2010,
+          "winner": "Cornell",
+          "winner_seed": 12,
+          "loser": "Temple",
+          "score": "78-65",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2011,
+          "winner": "Richmond",
+          "winner_seed": 12,
+          "loser": "Vanderbilt",
+          "score": "69-66",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Yale",
+          "winner_seed": 12,
+          "loser": "Baylor",
+          "score": "79-75",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Little Rock",
+          "winner_seed": 12,
+          "loser": "Purdue",
+          "score": "85-83",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "Murray State",
+          "winner_seed": 12,
+          "loser": "Marquette",
+          "score": "83-64",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2022,
+          "winner": "New Mexico State",
+          "winner_seed": 12,
+          "loser": "UConn",
+          "score": "70-63",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2022,
+          "winner": "Richmond",
+          "winner_seed": 12,
+          "loser": "Iowa",
+          "score": "67-63",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Grand Canyon",
+          "winner_seed": 12,
+          "loser": "Saint Mary's",
+          "score": "75-66",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "losses",
+      "championships": [],
+      "opponent_seed": 12,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 5-seeds."
+    },
+    "6": {
+      "seed": 6,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 103,
+          "losses": 53,
+          "total_games": 156,
+          "win_percentage": 66.0,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 49,
+          "losses": 54,
+          "total_games": 103,
+          "win_percentage": 47.6,
+          "reach_percentage": 66.0
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 17,
+          "losses": 32,
+          "total_games": 49,
+          "win_percentage": 34.7,
+          "reach_percentage": 31.4
+        },
+        {
+          "round": "Elite 8",
+          "wins": 8,
+          "losses": 9,
+          "total_games": 17,
+          "win_percentage": 47.1,
+          "reach_percentage": 10.9
+        },
+        {
+          "round": "Final Four",
+          "wins": 3,
+          "losses": 5,
+          "total_games": 8,
+          "win_percentage": 37.5,
+          "reach_percentage": 5.1
+        },
+        {
+          "round": "Championship",
+          "wins": 2,
+          "losses": 1,
+          "total_games": 3,
+          "win_percentage": 66.7,
+          "reach_percentage": 1.9
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 2006,
+          "winner": "George Mason",
+          "winner_seed": 11,
+          "loser": "Michigan State",
+          "score": "75-65",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Gonzaga",
+          "winner_seed": 11,
+          "loser": "Seton Hall",
+          "score": "68-52",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Northern Iowa",
+          "winner_seed": 11,
+          "loser": "Texas",
+          "score": "75-72",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Wichita State",
+          "winner_seed": 11,
+          "loser": "Arizona",
+          "score": "65-55",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2018,
+          "winner": "Loyola Chicago",
+          "winner_seed": 11,
+          "loser": "Miami",
+          "score": "64-62",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2021,
+          "winner": "UCLA",
+          "winner_seed": 11,
+          "loser": "BYU",
+          "score": "73-62",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "NC State",
+          "winner_seed": 11,
+          "loser": "Texas Tech",
+          "score": "80-67",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Duquesne",
+          "winner_seed": 11,
+          "loser": "BYU",
+          "score": "71-67",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Oregon",
+          "winner_seed": 11,
+          "loser": "South Carolina",
+          "score": "87-73",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "losses",
+      "championships": [
+        {
+          "year": 1988,
+          "team": "Kansas"
+        }
+      ],
+      "opponent_seed": 11,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 6-seeds."
+    },
+    "7": {
+      "seed": 7,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 97,
+          "losses": 59,
+          "total_games": 156,
+          "win_percentage": 62.2,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 35,
+          "losses": 62,
+          "total_games": 97,
+          "win_percentage": 36.1,
+          "reach_percentage": 62.2
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 14,
+          "losses": 21,
+          "total_games": 35,
+          "win_percentage": 40.0,
+          "reach_percentage": 22.4
+        },
+        {
+          "round": "Elite 8",
+          "wins": 4,
+          "losses": 10,
+          "total_games": 14,
+          "win_percentage": 28.6,
+          "reach_percentage": 9.0
+        },
+        {
+          "round": "Final Four",
+          "wins": 1,
+          "losses": 3,
+          "total_games": 4,
+          "win_percentage": 25.0,
+          "reach_percentage": 2.6
+        },
+        {
+          "round": "Championship",
+          "wins": 0,
+          "losses": 1,
+          "total_games": 1,
+          "win_percentage": 0.0,
+          "reach_percentage": 0.6
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 1998,
+          "winner": "West Virginia",
+          "winner_seed": 10,
+          "loser": "Temple",
+          "score": "82-52",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "Florida",
+          "winner_seed": 10,
+          "loser": "Nevada",
+          "score": "70-61",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "Iowa",
+          "winner_seed": 10,
+          "loser": "Cincinnati",
+          "score": "79-72",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "Minnesota",
+          "winner_seed": 10,
+          "loser": "Louisville",
+          "score": "86-76",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2021,
+          "winner": "Rutgers",
+          "winner_seed": 10,
+          "loser": "Clemson",
+          "score": "60-56",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Colorado",
+          "winner_seed": 10,
+          "loser": "Florida",
+          "score": "102-100",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "losses",
+      "championships": [
+        {
+          "year": 2014,
+          "team": "UConn"
+        }
+      ],
+      "opponent_seed": 10,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 7-seeds."
+    },
+    "8": {
+      "seed": 8,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 81,
+          "losses": 75,
+          "total_games": 156,
+          "win_percentage": 51.9,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 26,
+          "losses": 55,
+          "total_games": 81,
+          "win_percentage": 32.1,
+          "reach_percentage": 51.9
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 12,
+          "losses": 14,
+          "total_games": 26,
+          "win_percentage": 46.2,
+          "reach_percentage": 16.7
+        },
+        {
+          "round": "Elite 8",
+          "wins": 5,
+          "losses": 7,
+          "total_games": 12,
+          "win_percentage": 41.7,
+          "reach_percentage": 7.7
+        },
+        {
+          "round": "Final Four",
+          "wins": 3,
+          "losses": 2,
+          "total_games": 5,
+          "win_percentage": 60.0,
+          "reach_percentage": 3.2
+        },
+        {
+          "round": "Championship",
+          "wins": 1,
+          "losses": 2,
+          "total_games": 3,
+          "win_percentage": 33.3,
+          "reach_percentage": 1.9
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 2019,
+          "winner": "Baylor",
+          "winner_seed": 9,
+          "loser": "Syracuse",
+          "score": "78-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "UCF",
+          "winner_seed": 9,
+          "loser": "VCU",
+          "score": "73-58",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "Washington",
+          "winner_seed": 9,
+          "loser": "Utah State",
+          "score": "78-61",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "Oklahoma",
+          "winner_seed": 9,
+          "loser": "Ole Miss",
+          "score": "95-72",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Texas A&M",
+          "winner_seed": 9,
+          "loser": "Nebraska",
+          "score": "98-83",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Northwestern",
+          "winner_seed": 9,
+          "loser": "Florida Atlantic",
+          "score": "77-65",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "losses",
+      "championships": [
+        {
+          "year": 1985,
+          "team": "Villanova"
+        }
+      ],
+      "opponent_seed": 9,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 8-seeds."
+    },
+    "9": {
+      "seed": 9,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 75,
+          "losses": 81,
+          "total_games": 156,
+          "win_percentage": 48.1,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 19,
+          "losses": 56,
+          "total_games": 75,
+          "win_percentage": 25.3,
+          "reach_percentage": 48.1
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 5,
+          "losses": 14,
+          "total_games": 19,
+          "win_percentage": 26.3,
+          "reach_percentage": 12.2
+        },
+        {
+          "round": "Elite 8",
+          "wins": 2,
+          "losses": 3,
+          "total_games": 5,
+          "win_percentage": 40.0,
+          "reach_percentage": 3.2
+        },
+        {
+          "round": "Final Four",
+          "wins": 1,
+          "losses": 1,
+          "total_games": 2,
+          "win_percentage": 50.0,
+          "reach_percentage": 1.3
+        },
+        {
+          "round": "Championship",
+          "wins": 0,
+          "losses": 1,
+          "total_games": 1,
+          "win_percentage": 0.0,
+          "reach_percentage": 0.6
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 2019,
+          "winner": "Baylor",
+          "winner_seed": 9,
+          "loser": "Syracuse",
+          "score": "78-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "UCF",
+          "winner_seed": 9,
+          "loser": "VCU",
+          "score": "73-58",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "Washington",
+          "winner_seed": 9,
+          "loser": "Utah State",
+          "score": "78-61",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "Oklahoma",
+          "winner_seed": 9,
+          "loser": "Ole Miss",
+          "score": "95-72",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Texas A&M",
+          "winner_seed": 9,
+          "loser": "Nebraska",
+          "score": "98-83",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Northwestern",
+          "winner_seed": 9,
+          "loser": "Florida Atlantic",
+          "score": "77-65",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "wins",
+      "championships": [],
+      "opponent_seed": 8,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 9-seeds."
+    },
+    "10": {
+      "seed": 10,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 59,
+          "losses": 97,
+          "total_games": 156,
+          "win_percentage": 37.8,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 23,
+          "losses": 36,
+          "total_games": 59,
+          "win_percentage": 39.0,
+          "reach_percentage": 37.8
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 10,
+          "losses": 13,
+          "total_games": 23,
+          "win_percentage": 43.5,
+          "reach_percentage": 14.7
+        },
+        {
+          "round": "Elite 8",
+          "wins": 3,
+          "losses": 7,
+          "total_games": 10,
+          "win_percentage": 30.0,
+          "reach_percentage": 6.4
+        },
+        {
+          "round": "Final Four",
+          "wins": 1,
+          "losses": 2,
+          "total_games": 3,
+          "win_percentage": 33.3,
+          "reach_percentage": 1.9
+        },
+        {
+          "round": "Championship",
+          "wins": 0,
+          "losses": 1,
+          "total_games": 1,
+          "win_percentage": 0.0,
+          "reach_percentage": 0.6
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 1998,
+          "winner": "West Virginia",
+          "winner_seed": 10,
+          "loser": "Temple",
+          "score": "82-52",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "Florida",
+          "winner_seed": 10,
+          "loser": "Nevada",
+          "score": "70-61",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "Iowa",
+          "winner_seed": 10,
+          "loser": "Cincinnati",
+          "score": "79-72",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "Minnesota",
+          "winner_seed": 10,
+          "loser": "Louisville",
+          "score": "86-76",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2021,
+          "winner": "Rutgers",
+          "winner_seed": 10,
+          "loser": "Clemson",
+          "score": "60-56",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Colorado",
+          "winner_seed": 10,
+          "loser": "Florida",
+          "score": "102-100",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "wins",
+      "championships": [],
+      "opponent_seed": 7,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 10-seeds."
+    },
+    "11": {
+      "seed": 11,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 56,
+          "losses": 100,
+          "total_games": 156,
+          "win_percentage": 35.9,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 27,
+          "losses": 29,
+          "total_games": 56,
+          "win_percentage": 48.2,
+          "reach_percentage": 35.9
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 14,
+          "losses": 13,
+          "total_games": 27,
+          "win_percentage": 51.9,
+          "reach_percentage": 17.3
+        },
+        {
+          "round": "Elite 8",
+          "wins": 5,
+          "losses": 9,
+          "total_games": 14,
+          "win_percentage": 35.7,
+          "reach_percentage": 9.0
+        },
+        {
+          "round": "Final Four",
+          "wins": 4,
+          "losses": 1,
+          "total_games": 5,
+          "win_percentage": 80.0,
+          "reach_percentage": 3.2
+        },
+        {
+          "round": "Championship",
+          "wins": 1,
+          "losses": 3,
+          "total_games": 4,
+          "win_percentage": 25.0,
+          "reach_percentage": 2.6
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 2006,
+          "winner": "George Mason",
+          "winner_seed": 11,
+          "loser": "Michigan State",
+          "score": "75-65",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Gonzaga",
+          "winner_seed": 11,
+          "loser": "Seton Hall",
+          "score": "68-52",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Northern Iowa",
+          "winner_seed": 11,
+          "loser": "Texas",
+          "score": "75-72",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Wichita State",
+          "winner_seed": 11,
+          "loser": "Arizona",
+          "score": "65-55",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2018,
+          "winner": "Loyola Chicago",
+          "winner_seed": 11,
+          "loser": "Miami",
+          "score": "64-62",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2021,
+          "winner": "UCLA",
+          "winner_seed": 11,
+          "loser": "BYU",
+          "score": "73-62",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "NC State",
+          "winner_seed": 11,
+          "loser": "Texas Tech",
+          "score": "80-67",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Duquesne",
+          "winner_seed": 11,
+          "loser": "BYU",
+          "score": "71-67",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Oregon",
+          "winner_seed": 11,
+          "loser": "South Carolina",
+          "score": "87-73",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "wins",
+      "championships": [],
+      "opponent_seed": 6,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 11-seeds."
+    },
+    "12": {
+      "seed": 12,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 52,
+          "losses": 104,
+          "total_games": 156,
+          "win_percentage": 33.3,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 14,
+          "losses": 38,
+          "total_games": 52,
+          "win_percentage": 26.9,
+          "reach_percentage": 33.3
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 3,
+          "losses": 11,
+          "total_games": 14,
+          "win_percentage": 21.4,
+          "reach_percentage": 9.0
+        },
+        {
+          "round": "Elite 8",
+          "wins": 1,
+          "losses": 2,
+          "total_games": 3,
+          "win_percentage": 33.3,
+          "reach_percentage": 1.9
+        },
+        {
+          "round": "Final Four",
+          "wins": 0,
+          "losses": 1,
+          "total_games": 1,
+          "win_percentage": 0.0,
+          "reach_percentage": 0.6
+        },
+        {
+          "round": "Championship",
+          "wins": 0,
+          "losses": 0,
+          "total_games": 0,
+          "win_percentage": 0,
+          "reach_percentage": 0.0
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 1985,
+          "winner": "Kentucky",
+          "winner_seed": 12,
+          "loser": "Washington",
+          "score": "66-58",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1990,
+          "winner": "Dayton",
+          "winner_seed": 12,
+          "loser": "Illinois",
+          "score": "88-86",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1994,
+          "winner": "Tulsa",
+          "winner_seed": 12,
+          "loser": "UCLA",
+          "score": "112-102",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2001,
+          "winner": "Gonzaga",
+          "winner_seed": 12,
+          "loser": "Virginia",
+          "score": "86-85",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2002,
+          "winner": "Missouri",
+          "winner_seed": 12,
+          "loser": "Miami (FL)",
+          "score": "93-80",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2008,
+          "winner": "Western Kentucky",
+          "winner_seed": 12,
+          "loser": "Drake",
+          "score": "101-99",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2010,
+          "winner": "Cornell",
+          "winner_seed": 12,
+          "loser": "Temple",
+          "score": "78-65",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2011,
+          "winner": "Richmond",
+          "winner_seed": 12,
+          "loser": "Vanderbilt",
+          "score": "69-66",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Yale",
+          "winner_seed": 12,
+          "loser": "Baylor",
+          "score": "79-75",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Little Rock",
+          "winner_seed": 12,
+          "loser": "Purdue",
+          "score": "85-83",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "Murray State",
+          "winner_seed": 12,
+          "loser": "Marquette",
+          "score": "83-64",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2022,
+          "winner": "New Mexico State",
+          "winner_seed": 12,
+          "loser": "UConn",
+          "score": "70-63",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2022,
+          "winner": "Richmond",
+          "winner_seed": 12,
+          "loser": "Iowa",
+          "score": "67-63",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Grand Canyon",
+          "winner_seed": 12,
+          "loser": "Saint Mary's",
+          "score": "75-66",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "wins",
+      "championships": [],
+      "opponent_seed": 5,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 12-seeds."
+    },
+    "13": {
+      "seed": 13,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 25,
+          "losses": 131,
+          "total_games": 156,
+          "win_percentage": 16.0,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 4,
+          "losses": 21,
+          "total_games": 25,
+          "win_percentage": 16.0,
+          "reach_percentage": 16.0
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 0,
+          "losses": 4,
+          "total_games": 4,
+          "win_percentage": 0.0,
+          "reach_percentage": 2.6
+        },
+        {
+          "round": "Elite 8",
+          "wins": 0,
+          "losses": 0,
+          "total_games": 0,
+          "win_percentage": 0,
+          "reach_percentage": 0.0
+        },
+        {
+          "round": "Final Four",
+          "wins": 0,
+          "losses": 0,
+          "total_games": 0,
+          "win_percentage": 0,
+          "reach_percentage": 0.0
+        },
+        {
+          "round": "Championship",
+          "wins": 0,
+          "losses": 0,
+          "total_games": 0,
+          "win_percentage": 0,
+          "reach_percentage": 0.0
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 1985,
+          "winner": "Navy",
+          "winner_seed": 13,
+          "loser": "LSU",
+          "score": "78-55",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1987,
+          "winner": "Southwest Missouri State",
+          "winner_seed": 13,
+          "loser": "Clemson",
+          "score": "65-60",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1988,
+          "winner": "Richmond",
+          "winner_seed": 13,
+          "loser": "Indiana",
+          "score": "72-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1991,
+          "winner": "Penn State",
+          "winner_seed": 13,
+          "loser": "UCLA",
+          "score": "74-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1992,
+          "winner": "SW Louisiana",
+          "winner_seed": 13,
+          "loser": "Oklahoma",
+          "score": "87-83",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1993,
+          "winner": "Southern",
+          "winner_seed": 13,
+          "loser": "Georgia Tech",
+          "score": "93-78",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1995,
+          "winner": "Manhattan",
+          "winner_seed": 13,
+          "loser": "Oklahoma",
+          "score": "77-67",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1996,
+          "winner": "Princeton",
+          "winner_seed": 13,
+          "loser": "UCLA",
+          "score": "43-41",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1998,
+          "winner": "Valparaiso",
+          "winner_seed": 13,
+          "loser": "Ole Miss",
+          "score": "70-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2001,
+          "winner": "Indiana State",
+          "winner_seed": 13,
+          "loser": "Oklahoma",
+          "score": "70-68",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2001,
+          "winner": "Kent State",
+          "winner_seed": 13,
+          "loser": "Indiana",
+          "score": "77-73",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2005,
+          "winner": "Vermont",
+          "winner_seed": 13,
+          "loser": "Syracuse",
+          "score": "60-57",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2006,
+          "winner": "Bradley",
+          "winner_seed": 13,
+          "loser": "Kansas",
+          "score": "77-73",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2008,
+          "winner": "San Diego",
+          "winner_seed": 13,
+          "loser": "UConn",
+          "score": "70-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2009,
+          "winner": "Cleveland State",
+          "winner_seed": 13,
+          "loser": "Wake Forest",
+          "score": "84-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2010,
+          "winner": "Murray State",
+          "winner_seed": 13,
+          "loser": "Vanderbilt",
+          "score": "66-65",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2011,
+          "winner": "Morehead State",
+          "winner_seed": 13,
+          "loser": "Louisville",
+          "score": "62-61",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2012,
+          "winner": "Ohio",
+          "winner_seed": 13,
+          "loser": "Michigan",
+          "score": "65-60",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2013,
+          "winner": "La Salle",
+          "winner_seed": 13,
+          "loser": "Kansas State",
+          "score": "63-61",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Hawaii",
+          "winner_seed": 13,
+          "loser": "California",
+          "score": "77-66",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2018,
+          "winner": "Buffalo",
+          "winner_seed": 13,
+          "loser": "Arizona",
+          "score": "89-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2018,
+          "winner": "Marshall",
+          "winner_seed": 13,
+          "loser": "Wichita State",
+          "score": "81-75",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2019,
+          "winner": "UC Irvine",
+          "winner_seed": 13,
+          "loser": "Kansas State",
+          "score": "70-64",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2021,
+          "winner": "Ohio",
+          "winner_seed": 13,
+          "loser": "Virginia",
+          "score": "62-58",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2021,
+          "winner": "North Texas",
+          "winner_seed": 13,
+          "loser": "Purdue",
+          "score": "78-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2023,
+          "winner": "Furman",
+          "winner_seed": 13,
+          "loser": "Virginia",
+          "score": "68-67",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Yale",
+          "winner_seed": 13,
+          "loser": "Auburn",
+          "score": "78-76",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "wins",
+      "championships": [],
+      "opponent_seed": 4,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 13-seeds."
+    },
+    "14": {
+      "seed": 14,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 19,
+          "losses": 137,
+          "total_games": 156,
+          "win_percentage": 12.2,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 2,
+          "losses": 17,
+          "total_games": 19,
+          "win_percentage": 10.5,
+          "reach_percentage": 12.2
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 0,
+          "losses": 2,
+          "total_games": 2,
+          "win_percentage": 0.0,
+          "reach_percentage": 1.3
+        },
+        {
+          "round": "Elite 8",
+          "wins": 0,
+          "losses": 0,
+          "total_games": 0,
+          "win_percentage": 0,
+          "reach_percentage": 0.0
+        },
+        {
+          "round": "Final Four",
+          "wins": 0,
+          "losses": 0,
+          "total_games": 0,
+          "win_percentage": 0,
+          "reach_percentage": 0.0
+        },
+        {
+          "round": "Championship",
+          "wins": 0,
+          "losses": 0,
+          "total_games": 0,
+          "win_percentage": 0,
+          "reach_percentage": 0.0
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 1986,
+          "winner": "Arkansas-Little Rock",
+          "winner_seed": 14,
+          "loser": "Notre Dame",
+          "score": "90-83",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1986,
+          "winner": "Cleveland State",
+          "winner_seed": 14,
+          "loser": "Indiana",
+          "score": "83-79",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1987,
+          "winner": "Austin Peay",
+          "winner_seed": 14,
+          "loser": "Illinois",
+          "score": "68-67",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1988,
+          "winner": "Murray State",
+          "winner_seed": 14,
+          "loser": "NC State",
+          "score": "78-75",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1989,
+          "winner": "Siena",
+          "winner_seed": 14,
+          "loser": "Stanford",
+          "score": "80-78",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1990,
+          "winner": "Northern Iowa",
+          "winner_seed": 14,
+          "loser": "Missouri",
+          "score": "74-71",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1991,
+          "winner": "Xavier",
+          "winner_seed": 14,
+          "loser": "Nebraska",
+          "score": "89-84",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1992,
+          "winner": "East Tennessee State",
+          "winner_seed": 14,
+          "loser": "Arizona",
+          "score": "87-80",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1995,
+          "winner": "Old Dominion",
+          "winner_seed": 14,
+          "loser": "Villanova",
+          "score": "89-81",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1995,
+          "winner": "Weber State",
+          "winner_seed": 14,
+          "loser": "Michigan State",
+          "score": "79-72",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1997,
+          "winner": "Chattanooga",
+          "winner_seed": 14,
+          "loser": "Georgia",
+          "score": "73-70",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1998,
+          "winner": "Richmond",
+          "winner_seed": 14,
+          "loser": "South Carolina",
+          "score": "62-61",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1999,
+          "winner": "Weber State",
+          "winner_seed": 14,
+          "loser": "North Carolina",
+          "score": "76-74",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2005,
+          "winner": "Bucknell",
+          "winner_seed": 14,
+          "loser": "Kansas",
+          "score": "64-63",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2006,
+          "winner": "Northwestern State",
+          "winner_seed": 14,
+          "loser": "Iowa",
+          "score": "64-63",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2010,
+          "winner": "Ohio",
+          "winner_seed": 14,
+          "loser": "Georgetown",
+          "score": "97-83",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2013,
+          "winner": "Harvard",
+          "winner_seed": 14,
+          "loser": "New Mexico",
+          "score": "68-62",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2014,
+          "winner": "Mercer",
+          "winner_seed": 14,
+          "loser": "Duke",
+          "score": "78-71",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2015,
+          "winner": "Georgia State",
+          "winner_seed": 14,
+          "loser": "Baylor",
+          "score": "57-56",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2015,
+          "winner": "UAB",
+          "winner_seed": 14,
+          "loser": "Iowa State",
+          "score": "60-59",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Stephen F. Austin",
+          "winner_seed": 14,
+          "loser": "West Virginia",
+          "score": "70-56",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2021,
+          "winner": "Abilene Christian",
+          "winner_seed": 14,
+          "loser": "Texas",
+          "score": "53-52",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2024,
+          "winner": "Oakland",
+          "winner_seed": 14,
+          "loser": "Kentucky",
+          "score": "80-76",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "wins",
+      "championships": [],
+      "opponent_seed": 3,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 14-seeds."
+    },
+    "15": {
+      "seed": 15,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 8,
+          "losses": 148,
+          "total_games": 156,
+          "win_percentage": 5.1,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 2,
+          "losses": 6,
+          "total_games": 8,
+          "win_percentage": 25.0,
+          "reach_percentage": 5.1
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 1,
+          "losses": 1,
+          "total_games": 2,
+          "win_percentage": 50.0,
+          "reach_percentage": 1.3
+        },
+        {
+          "round": "Elite 8",
+          "wins": 0,
+          "losses": 1,
+          "total_games": 1,
+          "win_percentage": 0.0,
+          "reach_percentage": 0.6
+        },
+        {
+          "round": "Final Four",
+          "wins": 0,
+          "losses": 0,
+          "total_games": 0,
+          "win_percentage": 0,
+          "reach_percentage": 0.0
+        },
+        {
+          "round": "Championship",
+          "wins": 0,
+          "losses": 0,
+          "total_games": 0,
+          "win_percentage": 0,
+          "reach_percentage": 0.0
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 1991,
+          "winner": "Richmond",
+          "winner_seed": 15,
+          "loser": "Syracuse",
+          "score": "73-69",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1993,
+          "winner": "Santa Clara",
+          "winner_seed": 15,
+          "loser": "Arizona",
+          "score": "64-61",
+          "round": "Round of 64"
+        },
+        {
+          "year": 1997,
+          "winner": "Coppin State",
+          "winner_seed": 15,
+          "loser": "South Carolina",
+          "score": "78-65",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2001,
+          "winner": "Hampton",
+          "winner_seed": 15,
+          "loser": "Iowa State",
+          "score": "58-57",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2012,
+          "winner": "Lehigh",
+          "winner_seed": 15,
+          "loser": "Duke",
+          "score": "75-70",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2012,
+          "winner": "Norfolk State",
+          "winner_seed": 15,
+          "loser": "Missouri",
+          "score": "86-84",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2013,
+          "winner": "Florida Gulf Coast",
+          "winner_seed": 15,
+          "loser": "Georgetown",
+          "score": "78-68",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2016,
+          "winner": "Middle Tennessee",
+          "winner_seed": 15,
+          "loser": "Michigan State",
+          "score": "90-81",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2021,
+          "winner": "Oral Roberts",
+          "winner_seed": 15,
+          "loser": "Ohio State",
+          "score": "75-72",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2022,
+          "winner": "Saint Peter's",
+          "winner_seed": 15,
+          "loser": "Kentucky",
+          "score": "85-79",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2023,
+          "winner": "Princeton",
+          "winner_seed": 15,
+          "loser": "Arizona",
+          "score": "59-55",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "wins",
+      "championships": [],
+      "opponent_seed": 2,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 15-seeds."
+    },
+    "16": {
+      "seed": 16,
+      "total_tournaments": 39,
+      "total_teams": 156,
+      "rounds": [
+        {
+          "round": "Round of 64",
+          "wins": 2,
+          "losses": 154,
+          "total_games": 156,
+          "win_percentage": 1.3,
+          "reach_percentage": 100.0
+        },
+        {
+          "round": "Round of 32",
+          "wins": 0,
+          "losses": 2,
+          "total_games": 2,
+          "win_percentage": 0.0,
+          "reach_percentage": 1.3
+        },
+        {
+          "round": "Sweet 16",
+          "wins": 0,
+          "losses": 0,
+          "total_games": 0,
+          "win_percentage": 0,
+          "reach_percentage": 0.0
+        },
+        {
+          "round": "Elite 8",
+          "wins": 0,
+          "losses": 0,
+          "total_games": 0,
+          "win_percentage": 0,
+          "reach_percentage": 0.0
+        },
+        {
+          "round": "Final Four",
+          "wins": 0,
+          "losses": 0,
+          "total_games": 0,
+          "win_percentage": 0,
+          "reach_percentage": 0.0
+        },
+        {
+          "round": "Championship",
+          "wins": 0,
+          "losses": 0,
+          "total_games": 0,
+          "win_percentage": 0,
+          "reach_percentage": 0.0
+        }
+      ],
+      "notable_upsets": [
+        {
+          "year": 2018,
+          "winner": "UMBC",
+          "winner_seed": 16,
+          "loser": "Virginia",
+          "score": "74-54",
+          "round": "Round of 64"
+        },
+        {
+          "year": 2023,
+          "winner": "Fairleigh Dickinson",
+          "winner_seed": 16,
+          "loser": "Purdue",
+          "score": "63-58",
+          "round": "Round of 64"
+        }
+      ],
+      "upset_context": "wins",
+      "championships": [],
+      "opponent_seed": 1,
+      "data_range": "1985-2024",
+      "note": "Data covers the 64-team era (1985-2024). The 2020 tournament was cancelled due to COVID-19. 39 total tournaments, 156 total 16-seeds."
+    }
+  },
+  "allSeedsComparison": [
+    {
+      "seed": 1,
+      "r64_win_pct": 96.2,
+      "sweet16_reach_pct": 81.4,
+      "final4_reach_pct": 35.9,
+      "championships": 22
+    },
+    {
+      "seed": 2,
+      "r64_win_pct": 94.9,
+      "sweet16_reach_pct": 67.3,
+      "final4_reach_pct": 16.7,
+      "championships": 6
+    },
+    {
+      "seed": 3,
+      "r64_win_pct": 87.8,
+      "sweet16_reach_pct": 52.6,
+      "final4_reach_pct": 9.0,
+      "championships": 2
+    },
+    {
+      "seed": 4,
+      "r64_win_pct": 84.0,
+      "sweet16_reach_pct": 46.2,
+      "final4_reach_pct": 9.0,
+      "championships": 2
+    },
+    {
+      "seed": 5,
+      "r64_win_pct": 66.7,
+      "sweet16_reach_pct": 33.3,
+      "final4_reach_pct": 4.5,
+      "championships": 1
+    },
+    {
+      "seed": 6,
+      "r64_win_pct": 66.0,
+      "sweet16_reach_pct": 31.4,
+      "final4_reach_pct": 5.1,
+      "championships": 2
+    },
+    {
+      "seed": 7,
+      "r64_win_pct": 62.2,
+      "sweet16_reach_pct": 22.4,
+      "final4_reach_pct": 2.6,
+      "championships": 0
+    },
+    {
+      "seed": 8,
+      "r64_win_pct": 51.9,
+      "sweet16_reach_pct": 16.7,
+      "final4_reach_pct": 3.2,
+      "championships": 1
+    },
+    {
+      "seed": 9,
+      "r64_win_pct": 48.1,
+      "sweet16_reach_pct": 12.2,
+      "final4_reach_pct": 1.3,
+      "championships": 0
+    },
+    {
+      "seed": 10,
+      "r64_win_pct": 37.8,
+      "sweet16_reach_pct": 14.7,
+      "final4_reach_pct": 1.9,
+      "championships": 0
+    },
+    {
+      "seed": 11,
+      "r64_win_pct": 35.9,
+      "sweet16_reach_pct": 17.3,
+      "final4_reach_pct": 3.2,
+      "championships": 1
+    },
+    {
+      "seed": 12,
+      "r64_win_pct": 33.3,
+      "sweet16_reach_pct": 9.0,
+      "final4_reach_pct": 0.6,
+      "championships": 0
+    },
+    {
+      "seed": 13,
+      "r64_win_pct": 16.0,
+      "sweet16_reach_pct": 2.6,
+      "final4_reach_pct": 0.0,
+      "championships": 0
+    },
+    {
+      "seed": 14,
+      "r64_win_pct": 12.2,
+      "sweet16_reach_pct": 1.3,
+      "final4_reach_pct": 0.0,
+      "championships": 0
+    },
+    {
+      "seed": 15,
+      "r64_win_pct": 5.1,
+      "sweet16_reach_pct": 1.3,
+      "final4_reach_pct": 0.0,
+      "championships": 0
+    },
+    {
+      "seed": 16,
+      "r64_win_pct": 1.3,
+      "sweet16_reach_pct": 0.0,
+      "final4_reach_pct": 0.0,
+      "championships": 0
+    }
+  ],
+  "sources": [
+    {
+      "name": "NCAA.com",
+      "url": "https://www.ncaa.com/news/basketball-men/article/2025-02-05/records-every-seed-march-madness-1985-2024",
+      "description": "Official NCAA historical tournament records by seed"
+    },
+    {
+      "name": "Sports-Reference.com",
+      "url": "https://www.sports-reference.com/cbb/friv/ncaa-tourney-upsets.html",
+      "description": "College basketball tournament upset history and statistics"
+    },
+    {
+      "name": "BracketResearch.com",
+      "url": "https://bracketresearch.com/the-dna-of-a-national-championship-team/seeds-of-ncaa-tournament-champions/",
+      "description": "Championship winners by seed analysis"
+    }
+  ]
+}
