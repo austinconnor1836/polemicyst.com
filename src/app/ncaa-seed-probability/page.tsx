@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Select,
   SelectContent,
@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import ncaaData from './data.json';
 
 interface RoundData {
   round: string;
@@ -56,14 +57,16 @@ interface SeedFocus {
   championships: ChampionData[];
   opponent_seed: number;
   data_range: string;
-  sources: SourceData[];
   note: string;
 }
 
-interface ApiResponse {
-  seed_focus: SeedFocus;
-  all_seeds_comparison: SeedComparison[];
+interface NcaaDataset {
+  seeds: Record<string, SeedFocus>;
+  allSeedsComparison: SeedComparison[];
+  sources: SourceData[];
 }
+
+const dataset = ncaaData as NcaaDataset;
 
 function BarChart({
   data,
@@ -156,47 +159,10 @@ function getOrdinalSuffix(n: number): string {
 }
 
 export default function NcaaSeedProbabilityPage() {
-  const [data, setData] = useState<ApiResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedSeed, setSelectedSeed] = useState<string>('1');
 
-  const fetchData = useCallback((seed: string) => {
-    setLoading(true);
-    setError(null);
-    fetch(`/api/ncaa-seed-probability?seed=${seed}`)
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to fetch data');
-        return res.json();
-      })
-      .then((json: ApiResponse) => {
-        setData(json);
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message);
-        setLoading(false);
-      });
-  }, []);
-
-  useEffect(() => {
-    fetchData(selectedSeed);
-  }, [selectedSeed, fetchData]);
-
-  const handleSeedChange = (value: string) => {
-    setSelectedSeed(value);
-  };
-
-  if (error && !data) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-red-500 text-lg">Error: {error}</div>
-      </div>
-    );
-  }
-
-  const seedFocus = data?.seed_focus;
-  const allSeedsComparison = data?.all_seeds_comparison;
+  const seedFocus = useMemo(() => dataset.seeds[selectedSeed], [selectedSeed]);
+  const { allSeedsComparison, sources } = dataset;
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4">
@@ -205,7 +171,7 @@ export default function NcaaSeedProbabilityPage() {
           NCAA Tournament Seed Analysis
         </h1>
         <div className="w-48 shrink-0">
-          <Select value={selectedSeed} onValueChange={handleSeedChange}>
+          <Select value={selectedSeed} onValueChange={setSelectedSeed}>
             <SelectTrigger>
               <SelectValue placeholder="Select seed" />
             </SelectTrigger>
@@ -220,157 +186,137 @@ export default function NcaaSeedProbabilityPage() {
         </div>
       </div>
 
-      {seedFocus && (
-        <p className="text-sm dark:text-zinc-400 text-zinc-600 mb-8">
-          Historical data from {seedFocus.data_range} &middot; {seedFocus.total_tournaments}{' '}
-          tournaments &middot; {seedFocus.total_teams} total {seedFocus.seed}-seeds
-        </p>
-      )}
+      <p className="text-sm dark:text-zinc-400 text-zinc-600 mb-8">
+        Historical data from {seedFocus.data_range} &middot; {seedFocus.total_tournaments}{' '}
+        tournaments &middot; {seedFocus.total_teams} total {seedFocus.seed}-seeds
+      </p>
 
-      {loading && !data ? (
-        <div className="flex items-center justify-center min-h-[40vh]">
-          <div className="text-zinc-500 dark:text-zinc-400 text-lg">Loading tournament data...</div>
-        </div>
-      ) : loading ? (
-        <div className="flex items-center justify-center py-8">
-          <div className="text-zinc-500 dark:text-zinc-400 text-sm">Updating...</div>
-        </div>
-      ) : null}
+      {/* Key Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+        {seedFocus.rounds.slice(0, 4).map((round) => (
+          <div
+            key={round.round}
+            className="p-4 rounded-lg dark:bg-zinc-800 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200"
+          >
+            <div className="text-2xl font-bold dark:text-orange-400 text-orange-600">
+              {round.win_percentage}%
+            </div>
+            <div className="text-xs dark:text-zinc-400 text-zinc-600 mt-1">
+              {round.round} win rate
+            </div>
+            <div className="text-xs dark:text-zinc-500 text-zinc-400 mt-0.5">
+              {round.wins}-{round.losses}
+            </div>
+          </div>
+        ))}
+      </div>
 
-      {seedFocus && allSeedsComparison && (
-        <div className={loading ? 'opacity-50 pointer-events-none transition-opacity' : ''}>
-          {/* Key Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-            {seedFocus.rounds.slice(0, 4).map((round) => (
+      {/* Win Percentage by Round */}
+      <div className="mb-10 p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
+        <BarChart
+          data={seedFocus.rounds}
+          valueKey="win_percentage"
+          label="Win Percentage by Round"
+          color="#f97316"
+        />
+      </div>
+
+      {/* Probability of Reaching Each Round */}
+      <div className="mb-10 p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
+        <BarChart
+          data={seedFocus.rounds}
+          valueKey="reach_percentage"
+          label="Probability of Reaching Each Round"
+          color="#3b82f6"
+        />
+      </div>
+
+      {/* National Champions */}
+      {seedFocus.championships.length > 0 && (
+        <div className="mb-10 p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
+          <h3 className="text-lg font-semibold mb-4 dark:text-zinc-200 text-zinc-800">
+            {getOrdinalSuffix(seedFocus.seed)} Seed National Champions
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {seedFocus.championships.map((champ: ChampionData) => (
               <div
-                key={round.round}
-                className="p-4 rounded-lg dark:bg-zinc-800 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200"
+                key={champ.year}
+                className="flex items-center gap-2 p-3 rounded dark:bg-zinc-700/50 bg-zinc-100"
               >
-                <div className="text-2xl font-bold dark:text-orange-400 text-orange-600">
-                  {round.win_percentage}%
-                </div>
-                <div className="text-xs dark:text-zinc-400 text-zinc-600 mt-1">
-                  {round.round} win rate
-                </div>
-                <div className="text-xs dark:text-zinc-500 text-zinc-400 mt-0.5">
-                  {round.wins}-{round.losses}
-                </div>
+                <span className="font-bold dark:text-orange-400 text-orange-600">{champ.year}</span>
+                <span className="dark:text-zinc-300 text-zinc-700">{champ.team}</span>
               </div>
             ))}
           </div>
-
-          {/* Win Percentage by Round */}
-          <div className="mb-10 p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
-            <BarChart
-              data={seedFocus.rounds}
-              valueKey="win_percentage"
-              label="Win Percentage by Round"
-              color="#f97316"
-            />
-          </div>
-
-          {/* Probability of Reaching Each Round */}
-          <div className="mb-10 p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
-            <BarChart
-              data={seedFocus.rounds}
-              valueKey="reach_percentage"
-              label="Probability of Reaching Each Round"
-              color="#3b82f6"
-            />
-          </div>
-
-          {/* National Champions */}
-          {seedFocus.championships.length > 0 && (
-            <div className="mb-10 p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
-              <h3 className="text-lg font-semibold mb-4 dark:text-zinc-200 text-zinc-800">
-                {getOrdinalSuffix(seedFocus.seed)} Seed National Champions
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {seedFocus.championships.map((champ) => (
-                  <div
-                    key={champ.year}
-                    className="flex items-center gap-2 p-3 rounded dark:bg-zinc-700/50 bg-zinc-100"
-                  >
-                    <span className="font-bold dark:text-orange-400 text-orange-600">
-                      {champ.year}
-                    </span>
-                    <span className="dark:text-zinc-300 text-zinc-700">{champ.team}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Notable Upsets */}
-          {seedFocus.notable_upsets.length > 0 && (
-            <div className="mb-10 p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
-              <h3 className="text-lg font-semibold mb-4 dark:text-zinc-200 text-zinc-800">
-                {seedFocus.upset_context === 'wins'
-                  ? `Notable ${seedFocus.seed}-over-${seedFocus.opponent_seed} Upset Wins`
-                  : `Notable ${seedFocus.opponent_seed}-over-${seedFocus.seed} Upsets`}
-              </h3>
-              <div className="space-y-2">
-                {seedFocus.notable_upsets.map((upset, i) => (
-                  <div
-                    key={i}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 rounded dark:bg-zinc-700/50 bg-zinc-100 text-sm"
-                  >
-                    <span className="font-bold dark:text-zinc-300 text-zinc-700">{upset.year}</span>
-                    <span className="dark:text-zinc-300 text-zinc-700">
-                      #{upset.winner_seed} {upset.winner} def. #
-                      {seedFocus.upset_context === 'wins'
-                        ? seedFocus.opponent_seed
-                        : seedFocus.seed}{' '}
-                      {upset.loser}
-                    </span>
-                    <span className="dark:text-zinc-500 text-zinc-400">{upset.score}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* All Seeds Comparison */}
-          <div className="mb-10 p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
-            <h3 className="text-lg font-semibold mb-4 dark:text-zinc-200 text-zinc-800">
-              All Seeds Comparison
-            </h3>
-            <p className="text-sm dark:text-zinc-400 text-zinc-600 mb-4">
-              {seedFocus.seed}-seed row highlighted. &quot;Sweet 16 %&quot; and &quot;Final Four
-              %&quot; show the probability of reaching that round.
-            </p>
-            <SeedComparisonTable data={allSeedsComparison} focusSeed={seedFocus.seed} />
-          </div>
-
-          {/* Sources */}
-          {seedFocus.sources && seedFocus.sources.length > 0 && (
-            <div className="mb-6 p-4 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
-              <h4 className="text-sm font-semibold mb-2 dark:text-zinc-300 text-zinc-700">
-                Data Sources
-              </h4>
-              <ul className="space-y-1">
-                {seedFocus.sources.map((source) => (
-                  <li key={source.name} className="text-xs dark:text-zinc-400 text-zinc-500">
-                    <a
-                      href={source.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="dark:text-blue-400 text-blue-600 hover:underline"
-                    >
-                      {source.name}
-                    </a>
-                    {' — '}
-                    {source.description}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Data Note */}
-          <p className="text-xs dark:text-zinc-500 text-zinc-400 text-center">{seedFocus.note}</p>
         </div>
       )}
+
+      {/* Notable Upsets */}
+      {seedFocus.notable_upsets.length > 0 && (
+        <div className="mb-10 p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
+          <h3 className="text-lg font-semibold mb-4 dark:text-zinc-200 text-zinc-800">
+            {seedFocus.upset_context === 'wins'
+              ? `Notable ${seedFocus.seed}-over-${seedFocus.opponent_seed} Upset Wins`
+              : `Notable ${seedFocus.opponent_seed}-over-${seedFocus.seed} Upsets`}
+          </h3>
+          <div className="space-y-2">
+            {seedFocus.notable_upsets.map((upset: UpsetData, i: number) => (
+              <div
+                key={i}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 rounded dark:bg-zinc-700/50 bg-zinc-100 text-sm"
+              >
+                <span className="font-bold dark:text-zinc-300 text-zinc-700">{upset.year}</span>
+                <span className="dark:text-zinc-300 text-zinc-700">
+                  #{upset.winner_seed} {upset.winner} def. #
+                  {seedFocus.upset_context === 'wins' ? seedFocus.opponent_seed : seedFocus.seed}{' '}
+                  {upset.loser}
+                </span>
+                <span className="dark:text-zinc-500 text-zinc-400">{upset.score}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* All Seeds Comparison */}
+      <div className="mb-10 p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
+        <h3 className="text-lg font-semibold mb-4 dark:text-zinc-200 text-zinc-800">
+          All Seeds Comparison
+        </h3>
+        <p className="text-sm dark:text-zinc-400 text-zinc-600 mb-4">
+          {seedFocus.seed}-seed row highlighted. &quot;Sweet 16 %&quot; and &quot;Final Four %&quot;
+          show the probability of reaching that round.
+        </p>
+        <SeedComparisonTable data={allSeedsComparison} focusSeed={seedFocus.seed} />
+      </div>
+
+      {/* Sources */}
+      {sources.length > 0 && (
+        <div className="mb-6 p-4 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
+          <h4 className="text-sm font-semibold mb-2 dark:text-zinc-300 text-zinc-700">
+            Data Sources
+          </h4>
+          <ul className="space-y-1">
+            {sources.map((source: SourceData) => (
+              <li key={source.name} className="text-xs dark:text-zinc-400 text-zinc-500">
+                <a
+                  href={source.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="dark:text-blue-400 text-blue-600 hover:underline"
+                >
+                  {source.name}
+                </a>
+                {' — '}
+                {source.description}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Data Note */}
+      <p className="text-xs dark:text-zinc-500 text-zinc-400 text-center">{seedFocus.note}</p>
     </div>
   );
 }
