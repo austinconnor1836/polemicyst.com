@@ -19,6 +19,7 @@ import { checkClipQuota } from '@shared/lib/plans';
 import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
 import { TrainingCollector } from '@shared/lib/training-collector';
 import { logJob } from '@shared/lib/job-logger';
+import type { ReactionComposeJob } from '@shared/queues';
 
 const redisConnection = getRedisConnection();
 
@@ -501,6 +502,226 @@ new Worker(
       }
 
       console.error('❌ Transcription failed:', err);
+    }
+  },
+  { connection: redisConnection as any }
+);
+
+// --- Reaction Compose Worker ---
+// Processes the 'reaction-compose' queue — renders multi-source reaction video compositions.
+
+new Worker<ReactionComposeJob>(
+  'reaction-compose',
+  async (job) => {
+    const { compositionId, userId, layouts } = job.data;
+    const costTracker = new CostTracker(userId, compositionId);
+    const startMs = Date.now();
+
+    console.log(`🎬 Processing reaction-compose job for composition: ${compositionId}`);
+
+    const tempFiles: string[] = [];
+
+    try {
+      // 1. Load composition with tracks
+      const composition = await prisma.composition.findUnique({
+        where: { id: compositionId },
+        include: {
+          tracks: { orderBy: { sortOrder: 'asc' } },
+          outputs: true,
+        },
+      });
+
+      if (!composition || !composition.creatorS3Url) {
+        console.error(`❌ Composition ${compositionId} not found or missing creator video`);
+        await prisma.composition.update({
+          where: { id: compositionId },
+          data: { status: 'failed' },
+        });
+        return;
+      }
+
+      // 2. Download all inputs
+      const { downloadFeedVideoToTemp } = await import('@shared/util/download');
+
+      console.log('⬇️ Downloading creator video...');
+      const creatorPath = await costTracker.track(
+        'download',
+        () => downloadFeedVideoToTemp(composition.creatorS3Url!),
+        (resultPath) => {
+          let fileSizeBytes: number | undefined;
+          try {
+            const fsSync = require('fs');
+            fileSizeBytes = fsSync.statSync(resultPath).size;
+          } catch {}
+          return {
+            provider: 's3',
+            fileSizeBytes,
+            estimatedCostUsd: fileSizeBytes ? estimateS3Cost(fileSizeBytes) : 0,
+          };
+        }
+      );
+      tempFiles.push(creatorPath);
+
+      const trackInfos: Array<{
+        localPath: string;
+        startAtS: number;
+        trimStartS: number;
+        trimEndS: number | null;
+        durationS: number;
+        width: number | null;
+        height: number | null;
+        hasAudio: boolean;
+        sortOrder: number;
+      }> = [];
+
+      for (const track of composition.tracks) {
+        console.log(`⬇️ Downloading reference track: ${track.label || track.id}`);
+        const trackPath = await costTracker.track(
+          'download',
+          () => downloadFeedVideoToTemp(track.s3Url),
+          (resultPath) => {
+            let fileSizeBytes: number | undefined;
+            try {
+              const fsSync = require('fs');
+              fileSizeBytes = fsSync.statSync(resultPath).size;
+            } catch {}
+            return {
+              provider: 's3',
+              fileSizeBytes,
+              estimatedCostUsd: fileSizeBytes ? estimateS3Cost(fileSizeBytes) : 0,
+            };
+          }
+        );
+        tempFiles.push(trackPath);
+
+        trackInfos.push({
+          localPath: trackPath,
+          startAtS: track.startAtS,
+          trimStartS: track.trimStartS,
+          trimEndS: track.trimEndS,
+          durationS: track.durationS,
+          width: track.width,
+          height: track.height,
+          hasAudio: track.hasAudio,
+          sortOrder: track.sortOrder,
+        });
+      }
+
+      // 3. Render each layout
+      const { renderComposition } = await import('@shared/util/reactionCompose');
+
+      for (const layout of layouts) {
+        const output = composition.outputs.find((o) => o.layout === layout);
+        if (!output) continue;
+
+        await prisma.compositionOutput.update({
+          where: { id: output.id },
+          data: { status: 'rendering' },
+        });
+
+        console.log(`🎥 Rendering ${layout} layout...`);
+        const s3Key = `compositions/${compositionId}/rendered/${layout}.mp4`;
+
+        try {
+          const result = await costTracker.track(
+            'ffmpeg_render',
+            () =>
+              renderComposition(
+                {
+                  layout: layout as 'mobile' | 'landscape',
+                  creatorPath,
+                  creatorDurationS: composition.creatorDurationS || 60,
+                  tracks: trackInfos,
+                  audioMode: composition.audioMode as 'creator' | 'reference' | 'both',
+                  creatorVolume: composition.creatorVolume,
+                  referenceVolume: composition.referenceVolume,
+                },
+                s3Key
+              ),
+            (renderResult) => {
+              // Also track S3 upload cost
+              costTracker.add({
+                stage: 's3_upload',
+                provider: 's3',
+                estimatedCostUsd: estimateS3Cost(10 * 1024 * 1024), // ~10MB estimate
+                metadata: { s3Key },
+              });
+              return {
+                provider: 'ffmpeg',
+                estimatedCostUsd: 0,
+              };
+            }
+          );
+
+          await prisma.compositionOutput.update({
+            where: { id: output.id },
+            data: {
+              status: 'completed',
+              s3Key: result.s3Key,
+              s3Url: result.s3Url,
+              durationMs: result.durationMs,
+            },
+          });
+
+          console.log(`✅ ${layout} render complete: ${result.s3Url}`);
+        } catch (renderErr) {
+          const errMsg = renderErr instanceof Error ? renderErr.message : String(renderErr);
+          console.error(`❌ ${layout} render failed:`, errMsg);
+
+          await prisma.compositionOutput.update({
+            where: { id: output.id },
+            data: { status: 'failed', renderError: errMsg },
+          });
+        }
+      }
+
+      // 4. Update composition status
+      const updatedOutputs = await prisma.compositionOutput.findMany({
+        where: { compositionId },
+      });
+      const allCompleted = updatedOutputs.every((o) => o.status === 'completed');
+      const anyFailed = updatedOutputs.some((o) => o.status === 'failed');
+
+      await prisma.composition.update({
+        where: { id: compositionId },
+        data: {
+          status: allCompleted ? 'completed' : anyFailed ? 'failed' : 'completed',
+        },
+      });
+
+      console.log(
+        `🏁 Reaction compose job complete for ${compositionId} (${Date.now() - startMs}ms)`
+      );
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('❌ Reaction compose failed:', errorMessage);
+
+      await prisma.composition.update({
+        where: { id: compositionId },
+        data: { status: 'failed' },
+      });
+
+      throw err;
+    } finally {
+      // Flush cost events
+      try {
+        await costTracker.flush();
+      } catch (costErr) {
+        console.error('⚠️ Cost tracking flush failed (non-fatal):', costErr);
+      }
+
+      // Cleanup temp files
+      const fs = await import('fs');
+      for (const f of tempFiles) {
+        try {
+          if (fs.existsSync(f)) {
+            fs.unlinkSync(f);
+          }
+        } catch {}
+      }
+      if (tempFiles.length > 0) {
+        console.log(`🧹 Cleaned up ${tempFiles.length} temp files.`);
+      }
     }
   },
   { connection: redisConnection as any }

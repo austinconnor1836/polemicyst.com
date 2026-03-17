@@ -29,10 +29,12 @@ export async function POST(req: NextRequest) {
   const { userAgent } = getUploadContext(req);
 
   try {
-    const { filename, contentType } = await req.json();
+    const { filename, contentType, keyPrefix } = await req.json();
 
     const fileExt = filename.split('.').pop() || 'mp4';
-    const key = `uploads/${user.email}/${randomUUID()}.${fileExt}`;
+    const key = keyPrefix
+      ? `${keyPrefix}/${randomUUID()}.${fileExt}`
+      : `uploads/${user.email}/${randomUUID()}.${fileExt}`;
 
     console.info(
       `[upload:initiate] user=${user.id} email=${user.email} filename=${filename} contentType=${contentType} key=${key}`
