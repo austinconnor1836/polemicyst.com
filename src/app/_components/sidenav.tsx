@@ -14,6 +14,7 @@ import WorkIcon from '@mui/icons-material/Work';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import SettingsIcon from '@mui/icons-material/Settings';
+import VideoCallIcon from '@mui/icons-material/VideoCall';
 import { useSession } from 'next-auth/react';
 
 interface SidePanelProps {
@@ -25,6 +26,7 @@ const sideNavItems: SideNavItem[] = [
   { label: 'Automation', element: <SettingsIcon />, href: '/settings/automation' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
   { label: 'NCAA Seeds', element: <SportsBasketballIcon />, href: '/ncaa-seed-probability' },
+  { label: 'Reactions', element: <VideoCallIcon />, href: '/reactions' },
   { label: 'Billing', element: <PaymentIcon />, href: '/billing' },
   { label: 'Jobs', element: <WorkIcon />, href: '/jobs' },
 ];

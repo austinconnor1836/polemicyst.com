@@ -7,6 +7,7 @@ let feedDownloadQueue: Queue | null = null;
 let transcriptionQueue: Queue | null = null;
 let speakerTranscriptionQueue: Queue | null = null;
 let clipGenerationQueue: Queue | null = null;
+let reactionComposeQueue: Queue | null = null;
 
 export function getRedisConnection() {
   if (redis) return redis;
@@ -107,4 +108,26 @@ export function getClipGenerationQueue() {
     connection: getRedisConnection() as any,
   });
   return clipGenerationQueue;
+}
+
+export interface ReactionComposeJob {
+  compositionId: string;
+  userId: string;
+  layouts: ('mobile' | 'landscape')[];
+}
+
+export function getReactionComposeQueue() {
+  if (reactionComposeQueue) return reactionComposeQueue;
+  reactionComposeQueue = new Queue('reaction-compose', {
+    connection: getRedisConnection() as any,
+  });
+  return reactionComposeQueue;
+}
+
+export function queueReactionComposeJob(data: ReactionComposeJob) {
+  return getReactionComposeQueue().add('reaction-compose', data, {
+    jobId: data.compositionId,
+    removeOnComplete: true,
+    removeOnFail: true,
+  });
 }
