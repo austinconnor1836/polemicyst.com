@@ -345,6 +345,89 @@ export interface RenderResult {
 }
 
 /**
+ * Pre-trim the creator video using filter-level trim (frame-accurate, no keyframe snap).
+ * Produces a clean intermediate with 1 video + 1 audio stream for perfect A/V sync.
+ */
+async function preTrimCreator(
+  creatorPath: string,
+  trimStartS: number,
+  trimEndS: number,
+  creatorDurationS: number
+): Promise<{ path: string; durationS: number }> {
+  const durationS = trimEndS - trimStartS;
+  const needsTrim = trimStartS > 0.01 || trimEndS < creatorDurationS - 0.01;
+
+  const tmpPath = path.join(
+    os.tmpdir(),
+    `creator-trim-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`
+  );
+
+  console.log(
+    `[preTrimCreator] ${needsTrim ? 'Filter-trim' : 'Normalize'} ${trimStartS.toFixed(3)}s → ${trimEndS.toFixed(3)}s (${durationS.toFixed(3)}s)`
+  );
+
+  // Always normalize the creator video to ensure:
+  // - Single video stream with square SAR (setsar=1) and consistent pixel format
+  // - Single audio stream (0:a:0) — eliminates iPhone multi-mic streams
+  // - No rotation metadata — FFmpeg auto-rotates during filter_complex
+  // - Constant frame rate
+  // This prevents recurring width/scaling issues in the main render step.
+  // When trimming, uses filter_complex trim+atrim for frame-accurate cutting.
+  // -bf 0 prevents B-frame reordering delay so video starts at PTS 0.
+  // aresample=async=1:first_pts=0 forces audio to sync with video timestamps.
+  const videoFilter = needsTrim
+    ? `[0:v]trim=start=${trimStartS.toFixed(3)}:end=${trimEndS.toFixed(3)},setpts=PTS-STARTPTS,format=yuv420p,setsar=1[v]`
+    : `[0:v]format=yuv420p,setsar=1[v]`;
+  const audioFilter = needsTrim
+    ? `[0:a:0]atrim=start=${trimStartS.toFixed(3)}:end=${trimEndS.toFixed(3)},asetpts=PTS-STARTPTS,aresample=async=1:first_pts=0[a]`
+    : `[0:a:0]aresample=async=1:first_pts=0[a]`;
+  const filterComplex = [videoFilter, audioFilter].join(';');
+
+  const args = [
+    '-i',
+    creatorPath,
+    '-filter_complex',
+    filterComplex,
+    '-map',
+    '[v]',
+    '-map',
+    '[a]',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-crf',
+    '18',
+    '-bf',
+    '0',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '192k',
+    '-movflags',
+    '+faststart',
+    '-y',
+    tmpPath,
+  ];
+
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn('ffmpeg', args);
+    let stderr = '';
+    proc.stderr.on('data', (d) => {
+      stderr += d.toString();
+    });
+    proc.on('error', reject);
+    proc.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`preTrimCreator ffmpeg failed (code ${code}): ${stderr.slice(-1000)}`));
+    });
+  });
+
+  console.log(`[preTrimCreator] Done → ${tmpPath}`);
+  return { path: tmpPath, durationS };
+}
+
+/**
  * Render a composition layout to S3.
  */
 export async function renderComposition(
@@ -354,7 +437,26 @@ export async function renderComposition(
 ): Promise<RenderResult> {
   const startMs = Date.now();
 
-  const { filterComplex, outputMap } = buildFilterComplex(opts);
+  // Pre-trim creator for perfect A/V sync (uses filter-level trim, not -ss seek)
+  const trimStartS = opts.creatorTrimStartS ?? 0;
+  const trimEndS = opts.creatorTrimEndS ?? opts.creatorDurationS;
+  const trimResult = await preTrimCreator(
+    opts.creatorPath,
+    trimStartS,
+    trimEndS,
+    opts.creatorDurationS
+  );
+
+  // Build filter_complex with the pre-trimmed creator (no trim needed)
+  const trimmedOpts: ComposeOptions = {
+    ...opts,
+    creatorPath: trimResult.path,
+    creatorDurationS: trimResult.durationS,
+    creatorTrimStartS: 0,
+    creatorTrimEndS: undefined,
+  };
+
+  const { filterComplex, outputMap } = buildFilterComplex(trimmedOpts);
 
   console.log(`[renderComposition] layout=${opts.layout} filter_complex:\n${filterComplex}`);
   console.log(`[renderComposition] outputMap: ${JSON.stringify(outputMap)}`);
@@ -362,8 +464,8 @@ export async function renderComposition(
   // Build ffmpeg args
   const ffmpegArgs: string[] = [];
 
-  // Input: creator video
-  ffmpegArgs.push('-i', opts.creatorPath);
+  // Input: pre-trimmed creator (clean 1 video + 1 audio, synced)
+  ffmpegArgs.push('-i', trimResult.path);
 
   // Inputs: reference tracks
   for (const track of opts.tracks) {
@@ -379,9 +481,7 @@ export async function renderComposition(
   }
 
   // Output settings — write to temp file for proper MP4 muxing.
-  const trimStartS = opts.creatorTrimStartS ?? 0;
-  const trimEndS = opts.creatorTrimEndS ?? opts.creatorDurationS;
-  const outputDuration = trimEndS - trimStartS;
+  const outputDuration = trimResult.durationS;
   const tmpOut = path.join(
     os.tmpdir(),
     `compose-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`
@@ -453,10 +553,15 @@ export async function renderComposition(
 
   await upload.done();
 
-  // Clean up temp file
+  // Clean up temp files
   try {
     fs.unlinkSync(tmpOut);
   } catch {}
+  if (trimResult.path !== opts.creatorPath) {
+    try {
+      fs.unlinkSync(trimResult.path);
+    } catch {}
+  }
 
   const durationMs = Date.now() - startMs;
 

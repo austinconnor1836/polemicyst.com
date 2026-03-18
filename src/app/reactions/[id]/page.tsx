@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Plus, Loader2, Save } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, Save, Trash2 } from 'lucide-react';
 import { ModeSelector } from '../_components/ModeSelector';
 import { VideoUploader } from '../_components/VideoUploader';
 import { CreatorVideoPanel } from '../_components/CreatorVideoPanel';
@@ -69,6 +69,7 @@ export default function CompositionEditorPage() {
   const [saving, setSaving] = useState(false);
   const [addingTrack, setAddingTrack] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [deletingCreator, setDeletingCreator] = useState(false);
   const [trimTarget, setTrimTarget] = useState<{
     type: 'creator' | 'reference';
     trackId?: string;
@@ -325,19 +326,26 @@ export default function CompositionEditorPage() {
                       })
                   : undefined
               }
-            />
-            {composition.creatorS3Key && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="mt-1 text-xs text-muted-foreground"
-                onClick={() =>
-                  save({ creatorS3Key: null, creatorS3Url: null, creatorDurationS: null } as any)
+              deletingCreator={deletingCreator}
+              onDelete={async () => {
+                if (!confirm('Delete this creator video?')) return;
+                setDeletingCreator(true);
+                try {
+                  await save({
+                    creatorS3Key: null,
+                    creatorS3Url: null,
+                    creatorDurationS: null,
+                    creatorTrimStartS: 0,
+                    creatorTrimEndS: null,
+                  } as any);
+                  toast.success('Creator video removed');
+                } catch {
+                  toast.error('Failed to remove creator video');
+                } finally {
+                  setDeletingCreator(false);
                 }
-              >
-                Replace creator video
-              </Button>
-            )}
+              }}
+            />
           </div>
         ) : (
           <VideoUploader

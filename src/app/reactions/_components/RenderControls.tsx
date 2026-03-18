@@ -101,6 +101,30 @@ export function RenderControls({
     }
   }, [compositionStatus]);
 
+  const handleCancel = async () => {
+    if (!confirm('Cancel the current render?')) return;
+    try {
+      const res = await fetch(`/api/compositions/${compositionId}/render/cancel`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to cancel render');
+        return;
+      }
+      setRendering(false);
+      toast.success('Render cancelled');
+      // Refresh status
+      const statusRes = await fetch(`/api/compositions/${compositionId}/render/status`);
+      if (statusRes.ok) {
+        const data = await statusRes.json();
+        onStatusChangeRef.current(data.status, data.outputs);
+      }
+    } catch {
+      toast.error('Failed to cancel render');
+    }
+  };
+
   const handleRender = async () => {
     if (!hasCreator || !hasTracks) return;
 
@@ -176,14 +200,17 @@ export function RenderControls({
           ))}
         </div>
 
-        <Button
-          onClick={handleRender}
-          disabled={rendering || !hasCreator || !hasTracks}
-          className="ml-auto"
-        >
-          {rendering && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {rendering ? 'Rendering...' : outputs.some((o) => o.s3Url) ? 'Re-render' : 'Render'}
-        </Button>
+        <div className="ml-auto flex gap-2">
+          {rendering && (
+            <Button variant="outline" onClick={handleCancel}>
+              Cancel
+            </Button>
+          )}
+          <Button onClick={handleRender} disabled={rendering || !hasCreator || !hasTracks}>
+            {rendering && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {rendering ? 'Rendering...' : outputs.some((o) => o.s3Url) ? 'Re-render' : 'Render'}
+          </Button>
+        </div>
       </div>
 
       {/* Output cards */}
