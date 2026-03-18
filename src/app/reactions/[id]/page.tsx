@@ -13,6 +13,7 @@ import { ReferenceTrackPanel } from '../_components/ReferenceTrackPanel';
 import { TimelineEditor } from '../_components/TimelineEditor';
 import { AudioMixPanel } from '../_components/AudioMixPanel';
 import { RenderControls } from '../_components/RenderControls';
+import { TrimModal } from '../_components/TrimModal';
 import { LayoutPreview } from '../_components/LayoutPreview';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -52,6 +53,8 @@ interface Composition {
   creatorS3Key?: string | null;
   creatorS3Url?: string | null;
   creatorDurationS?: number | null;
+  creatorTrimStartS: number;
+  creatorTrimEndS?: number | null;
   tracks: Track[];
   outputs: Output[];
 }
@@ -66,6 +69,15 @@ export default function CompositionEditorPage() {
   const [saving, setSaving] = useState(false);
   const [addingTrack, setAddingTrack] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [trimTarget, setTrimTarget] = useState<{
+    type: 'creator' | 'reference';
+    trackId?: string;
+    src: string;
+    durationS: number;
+    trimStartS: number;
+    trimEndS: number | null;
+    title: string;
+  } | null>(null);
 
   const fetchComposition = useCallback(async () => {
     try {
@@ -230,6 +242,21 @@ export default function CompositionEditorPage() {
     });
   }, []);
 
+  const handleTrimSave = useCallback(
+    async (trimStartS: number, trimEndS: number) => {
+      if (!trimTarget) return;
+      if (trimTarget.type === 'creator') {
+        await save({ creatorTrimStartS: trimStartS, creatorTrimEndS: trimEndS } as any);
+        toast.success('Creator trim updated');
+      } else if (trimTarget.trackId) {
+        await handleUpdateTrack(trimTarget.trackId, { trimStartS, trimEndS });
+        toast.success('Track trim updated');
+      }
+      setTrimTarget(null);
+    },
+    [trimTarget, save, handleUpdateTrack]
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -280,26 +307,37 @@ export default function CompositionEditorPage() {
       <div>
         <Label className="mb-2 block">Creator Video (your commentary)</Label>
         {composition.creatorS3Url ? (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
-            <div>
-              <CreatorVideoPanel
-                s3Url={composition.creatorS3Url}
-                durationS={composition.creatorDurationS ?? undefined}
-                onTimeUpdate={setCurrentTime}
-              />
-              {composition.creatorS3Key && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-1 text-xs text-muted-foreground"
-                  onClick={() =>
-                    save({ creatorS3Key: null, creatorS3Url: null, creatorDurationS: null } as any)
-                  }
-                >
-                  Replace creator video
-                </Button>
-              )}
-            </div>
+          <div className="max-w-sm">
+            <CreatorVideoPanel
+              s3Url={composition.creatorS3Url}
+              durationS={composition.creatorDurationS ?? undefined}
+              onTimeUpdate={setCurrentTime}
+              onClick={
+                composition.creatorDurationS
+                  ? () =>
+                      setTrimTarget({
+                        type: 'creator',
+                        src: composition.creatorS3Url!,
+                        durationS: composition.creatorDurationS!,
+                        trimStartS: composition.creatorTrimStartS,
+                        trimEndS: composition.creatorTrimEndS ?? null,
+                        title: 'Trim Creator Video',
+                      })
+                  : undefined
+              }
+            />
+            {composition.creatorS3Key && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-1 text-xs text-muted-foreground"
+                onClick={() =>
+                  save({ creatorS3Key: null, creatorS3Url: null, creatorDurationS: null } as any)
+                }
+              >
+                Replace creator video
+              </Button>
+            )}
           </div>
         ) : (
           <VideoUploader
@@ -321,7 +359,7 @@ export default function CompositionEditorPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {composition.tracks.map((track, i) => (
             <ReferenceTrackPanel
               key={track.id}
@@ -331,6 +369,17 @@ export default function CompositionEditorPage() {
               onUpdate={handleUpdateTrack}
               onRemove={handleRemoveTrack}
               disabled={isRendering}
+              onClick={() =>
+                setTrimTarget({
+                  type: 'reference',
+                  trackId: track.id,
+                  src: track.s3Url,
+                  durationS: track.durationS,
+                  trimStartS: track.trimStartS,
+                  trimEndS: track.trimEndS,
+                  title: `Trim ${track.label || `Reference ${i + 1}`}`,
+                })
+              }
             />
           ))}
 
@@ -458,6 +507,22 @@ export default function CompositionEditorPage() {
           onStatusChange={handleStatusChange}
         />
       </div>
+
+      {/* Trim modal */}
+      {trimTarget && (
+        <TrimModal
+          open={!!trimTarget}
+          onOpenChange={(open) => {
+            if (!open) setTrimTarget(null);
+          }}
+          videoSrc={trimTarget.src}
+          durationS={trimTarget.durationS}
+          trimStartS={trimTarget.trimStartS}
+          trimEndS={trimTarget.trimEndS}
+          onSave={handleTrimSave}
+          title={trimTarget.title}
+        />
+      )}
     </div>
   );
 }

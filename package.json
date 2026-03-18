@@ -4,7 +4,7 @@
     "@shared": "dist/shared"
   },
   "scripts": {
-    "dev": "next dev --experimental-https",
+    "dev": "next dev --experimental-https --hostname 0.0.0.0",
     "dev:clip-worker": "tsx watch workers/clip-metadata-worker/index.ts",
     "dev:download-worker": "tsx watch workers/video-download-worker/index.ts",
     "build": "npx prisma generate && next build",
