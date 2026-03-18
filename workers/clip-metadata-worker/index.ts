@@ -541,7 +541,7 @@ new Worker<ReactionComposeJob>(
       }
 
       // 2. Download all inputs
-      const { downloadFeedVideoToTemp } = await import('@shared/util/download');
+      const { downloadFeedVideoToTemp } = await import('../../shared/util/download');
 
       console.log('⬇️ Downloading creator video...');
       const creatorPath = await costTracker.track(
@@ -608,7 +608,7 @@ new Worker<ReactionComposeJob>(
       }
 
       // 3. Render each layout
-      const { renderComposition } = await import('@shared/util/reactionCompose');
+      const { renderComposition } = await import('../../shared/util/reactionCompose');
 
       for (const layout of layouts) {
         const output = composition.outputs.find((o) => o.layout === layout);

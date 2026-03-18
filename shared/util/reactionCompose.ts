@@ -7,7 +7,7 @@ import * as path from 'path';
 import * as os from 'os';
 
 const CLIPS_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
-const CLIPS_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
+const CLIPS_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-2';
 const s3 = new S3Client({ region: CLIPS_REGION });
 
 export type Layout = 'mobile' | 'landscape';
