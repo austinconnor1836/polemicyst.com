@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2 } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Loader2, Download } from 'lucide-react';
 import { LayoutPreview } from './LayoutPreview';
 import toast from 'react-hot-toast';
 
@@ -185,34 +186,59 @@ export function RenderControls({
 
       {/* Output cards */}
       {outputs.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {outputs.map((output) => (
-            <div key={output.id} className="rounded-lg border border-border p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium capitalize">{output.layout}</span>
-                {statusBadge(output.status)}
+            <Card key={output.id} className="group overflow-hidden">
+              {/* Video / status area */}
+              <div className="relative aspect-video bg-black/5 dark:bg-black/20">
+                {output.status === 'completed' && output.s3Url ? (
+                  <video
+                    src={output.s3Url}
+                    controls
+                    preload="metadata"
+                    className="h-full w-full object-contain bg-black"
+                  />
+                ) : output.status === 'rendering' || output.status === 'pending' ? (
+                  <div className="flex h-full items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                    {output.renderError ? 'Render failed' : 'No output'}
+                  </div>
+                )}
               </div>
 
-              {output.status === 'completed' && output.s3Url && (
-                <video src={output.s3Url} controls className="w-full rounded-md" />
-              )}
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium capitalize">{output.layout}</span>
+                  {statusBadge(output.status)}
+                </div>
 
-              {output.status === 'completed' && output.s3Url && (
-                <a href={output.s3Url} download className="text-xs text-blue-500 hover:underline">
-                  Download
-                </a>
-              )}
+                {output.renderError && (
+                  <p className="mt-1 text-xs text-destructive line-clamp-2">{output.renderError}</p>
+                )}
 
-              {output.renderError && (
-                <p className="text-xs text-destructive">{output.renderError}</p>
-              )}
+                <div className="mt-2 flex items-center justify-between">
+                  {output.durationMs ? (
+                    <span className="text-xs text-muted-foreground">
+                      Rendered in {(output.durationMs / 1000).toFixed(1)}s
+                    </span>
+                  ) : (
+                    <span />
+                  )}
 
-              {output.durationMs && (
-                <p className="text-xs text-muted-foreground">
-                  Rendered in {(output.durationMs / 1000).toFixed(1)}s
-                </p>
-              )}
-            </div>
+                  {output.status === 'completed' && output.s3Url && (
+                    <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-xs">
+                      <a href={output.s3Url} download>
+                        <Download className="h-3 w-3" />
+                        Download
+                      </a>
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}
