@@ -20,7 +20,9 @@ import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
 import { TrainingCollector } from '@shared/lib/training-collector';
 import { logJob } from '@shared/lib/job-logger';
 import type { ReactionComposeJob } from '@shared/queues';
+import { renderComposition } from '@shared/util/reactionCompose';
 
+console.log('[clip-metadata-worker] Starting with static reactionCompose import...');
 const redisConnection = getRedisConnection();
 
 function formatTime(seconds: number): string {
@@ -608,7 +610,6 @@ new Worker<ReactionComposeJob>(
       }
 
       // 3. Render each layout
-      const { renderComposition } = await import('../../shared/util/reactionCompose');
 
       for (const layout of layouts) {
         const output = composition.outputs.find((o) => o.layout === layout);
@@ -631,6 +632,8 @@ new Worker<ReactionComposeJob>(
                   layout: layout as 'mobile' | 'landscape',
                   creatorPath,
                   creatorDurationS: composition.creatorDurationS || 60,
+                  creatorTrimStartS: composition.creatorTrimStartS,
+                  creatorTrimEndS: composition.creatorTrimEndS,
                   tracks: trackInfos,
                   audioMode: composition.audioMode as 'creator' | 'reference' | 'both',
                   creatorVolume: composition.creatorVolume,

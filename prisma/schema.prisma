@@ -643,8 +643,10 @@ model Composition {
   referenceVolume  Float    @default(1.0)
   creatorS3Key     String?
   creatorS3Url     String?
-  creatorDurationS Float?
-  createdAt        DateTime @default(now())
+  creatorDurationS    Float?
+  creatorTrimStartS   Float    @default(0)
+  creatorTrimEndS     Float?
+  createdAt           DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   tracks           CompositionTrack[]

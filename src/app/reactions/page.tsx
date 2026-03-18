@@ -50,7 +50,7 @@ export default function ReactionsPage() {
       const res = await fetch('/api/compositions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'Untitled Reaction' }),
+        body: JSON.stringify({}),
       });
       if (!res.ok) throw new Error('Failed to create');
       const composition = await res.json();

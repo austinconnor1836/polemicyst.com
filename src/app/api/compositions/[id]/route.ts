@@ -56,6 +56,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       'creatorS3Key',
       'creatorS3Url',
       'creatorDurationS',
+      'creatorTrimStartS',
+      'creatorTrimEndS',
     ] as const;
     const data: Record<string, any> = {};
     for (const key of allowed) {

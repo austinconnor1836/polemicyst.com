@@ -2,6 +2,98 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
 
+const ADJECTIVES = [
+  'Autumn',
+  'Silver',
+  'Crimson',
+  'Golden',
+  'Velvet',
+  'Amber',
+  'Cobalt',
+  'Ivory',
+  'Scarlet',
+  'Onyx',
+  'Jade',
+  'Coral',
+  'Ember',
+  'Sapphire',
+  'Lunar',
+  'Solar',
+  'Arctic',
+  'Neon',
+  'Rustic',
+  'Iron',
+  'Copper',
+  'Crystal',
+  'Midnight',
+  'Storm',
+  'Dusk',
+  'Dawn',
+  'Frosty',
+  'Wild',
+  'Silent',
+  'Bold',
+  'Vivid',
+  'Mossy',
+  'Prism',
+  'Slate',
+  'Thistle',
+  'Wren',
+  'Flint',
+  'Cedar',
+  'Birch',
+  'Ashen',
+];
+
+const NOUNS = [
+  'Rain',
+  'Echo',
+  'Drift',
+  'Spark',
+  'Wave',
+  'Bloom',
+  'Flare',
+  'Pulse',
+  'Tide',
+  'Ridge',
+  'Glow',
+  'Shade',
+  'Peak',
+  'Stone',
+  'Blaze',
+  'Frost',
+  'Reef',
+  'Mist',
+  'Vine',
+  'Dune',
+  'Brook',
+  'Trail',
+  'Crest',
+  'Haven',
+  'Cliff',
+  'Grove',
+  'Ember',
+  'Haze',
+  'Vale',
+  'Fern',
+  'Lark',
+  'Canyon',
+  'Plume',
+  'Orbit',
+  'Rune',
+  'Arc',
+  'Glen',
+  'Wisp',
+  'Forge',
+  'Spire',
+];
+
+function generateTitle(): string {
+  const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
+  return `${adj} ${noun}`;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const user = await getAuthenticatedUser(req);
@@ -44,14 +136,10 @@ export async function POST(req: NextRequest) {
       creatorDurationS,
     } = body;
 
-    if (!title) {
-      return NextResponse.json({ error: 'Title is required' }, { status: 400 });
-    }
-
     const composition = await prisma.composition.create({
       data: {
         userId: user.id,
-        title,
+        title: title || generateTitle(),
         mode: mode || 'pre-synced',
         audioMode: audioMode || 'creator',
         creatorVolume: creatorVolume ?? 1.0,

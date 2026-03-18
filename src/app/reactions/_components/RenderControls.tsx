@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2 } from 'lucide-react';
+import { VideoCard } from '@/components/ui/video-card';
+import { Loader2, Download } from 'lucide-react';
 import { LayoutPreview } from './LayoutPreview';
 import toast from 'react-hot-toast';
 
@@ -55,41 +56,43 @@ export function RenderControls({
     });
   };
 
-  const pollStatus = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/compositions/${compositionId}/render/status`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const isStillRendering =
-        data.status === 'rendering' ||
-        data.outputs?.some((o: Output) => o.status === 'rendering' || o.status === 'pending');
-      onStatusChange(data.status, data.outputs);
-      if (!isStillRendering) {
-        setRendering(false);
-        if (pollRef.current) clearInterval(pollRef.current);
-        const allDone = data.outputs?.every((o: Output) => o.status === 'completed');
-        if (allDone) {
-          toast.success('Render complete!');
-        } else {
-          const failed = data.outputs?.filter((o: Output) => o.status === 'failed');
-          if (failed?.length) {
-            toast.error(`Render failed for ${failed.map((f: Output) => f.layout).join(', ')}`);
-          }
-        }
-      }
-    } catch {
-      // Ignore poll errors
-    }
-  }, [compositionId, onStatusChange]);
+  const onStatusChangeRef = useRef(onStatusChange);
+  onStatusChangeRef.current = onStatusChange;
 
   useEffect(() => {
-    if (rendering) {
-      pollRef.current = setInterval(pollStatus, 3000);
-      return () => {
-        if (pollRef.current) clearInterval(pollRef.current);
-      };
-    }
-  }, [rendering, pollStatus]);
+    if (!rendering) return;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/compositions/${compositionId}/render/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const isStillRendering =
+          data.status === 'rendering' ||
+          data.outputs?.some((o: Output) => o.status === 'rendering' || o.status === 'pending');
+        onStatusChangeRef.current(data.status, data.outputs);
+        if (!isStillRendering) {
+          setRendering(false);
+          const allDone = data.outputs?.every((o: Output) => o.status === 'completed');
+          if (allDone) {
+            toast.success('Render complete!');
+          } else {
+            const failed = data.outputs?.filter((o: Output) => o.status === 'failed');
+            if (failed?.length) {
+              toast.error(`Render failed for ${failed.map((f: Output) => f.layout).join(', ')}`);
+            }
+          }
+        }
+      } catch {
+        // Ignore poll errors
+      }
+    };
+
+    pollRef.current = setInterval(poll, 5000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [rendering, compositionId]);
 
   // Start polling if we loaded a rendering composition
   useEffect(() => {
@@ -97,6 +100,30 @@ export function RenderControls({
       setRendering(true);
     }
   }, [compositionStatus]);
+
+  const handleCancel = async () => {
+    if (!confirm('Cancel the current render?')) return;
+    try {
+      const res = await fetch(`/api/compositions/${compositionId}/render/cancel`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to cancel render');
+        return;
+      }
+      setRendering(false);
+      toast.success('Render cancelled');
+      // Refresh status
+      const statusRes = await fetch(`/api/compositions/${compositionId}/render/status`);
+      if (statusRes.ok) {
+        const data = await statusRes.json();
+        onStatusChangeRef.current(data.status, data.outputs);
+      }
+    } catch {
+      toast.error('Failed to cancel render');
+    }
+  };
 
   const handleRender = async () => {
     if (!hasCreator || !hasTracks) return;
@@ -173,46 +200,67 @@ export function RenderControls({
           ))}
         </div>
 
-        <Button
-          onClick={handleRender}
-          disabled={rendering || !hasCreator || !hasTracks}
-          className="ml-auto"
-        >
-          {rendering && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {rendering ? 'Rendering...' : 'Render'}
-        </Button>
+        <div className="ml-auto flex gap-2">
+          {rendering && (
+            <Button variant="outline" onClick={handleCancel}>
+              Cancel
+            </Button>
+          )}
+          <Button onClick={handleRender} disabled={rendering || !hasCreator || !hasTracks}>
+            {rendering && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {rendering ? 'Rendering...' : outputs.some((o) => o.s3Url) ? 'Re-render' : 'Render'}
+          </Button>
+        </div>
       </div>
 
       {/* Output cards */}
       {outputs.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {outputs.map((output) => (
-            <div key={output.id} className="rounded-lg border border-border p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium capitalize">{output.layout}</span>
-                {statusBadge(output.status)}
-              </div>
-
-              {output.status === 'completed' && output.s3Url && (
-                <video src={output.s3Url} controls className="w-full rounded-md" />
-              )}
-
-              {output.status === 'completed' && output.s3Url && (
-                <a href={output.s3Url} download className="text-xs text-blue-500 hover:underline">
-                  Download
-                </a>
-              )}
-
-              {output.renderError && (
-                <p className="text-xs text-destructive">{output.renderError}</p>
-              )}
-
-              {output.durationMs && (
-                <p className="text-xs text-muted-foreground">
-                  Rendered in {(output.durationMs / 1000).toFixed(1)}s
-                </p>
-              )}
-            </div>
+            <VideoCard
+              key={output.id}
+              size="md"
+              src={output.status === 'completed' && output.s3Url ? output.s3Url : undefined}
+              controls={output.status === 'completed' && !!output.s3Url}
+              label={output.layout}
+              badge={statusBadge(output.status)}
+              sublabel={
+                <>
+                  {output.renderError && (
+                    <p className="text-xs text-destructive line-clamp-2">{output.renderError}</p>
+                  )}
+                  <div className="mt-1 flex items-center justify-between">
+                    {output.durationMs ? (
+                      <span className="text-xs text-muted-foreground">
+                        Rendered in {(output.durationMs / 1000).toFixed(1)}s
+                      </span>
+                    ) : (
+                      <span />
+                    )}
+                    {output.status === 'completed' && output.s3Url && (
+                      <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-xs">
+                        <a href={output.s3Url} download>
+                          <Download className="h-3 w-3" />
+                          Download
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                </>
+              }
+              className="max-w-none"
+            >
+              {/* Non-video states: loading or error */}
+              {output.status === 'rendering' || output.status === 'pending' ? (
+                <div className="flex h-full items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : output.status !== 'completed' ? (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  {output.renderError ? 'Render failed' : 'No output'}
+                </div>
+              ) : null}
+            </VideoCard>
           ))}
         </div>
       )}

@@ -37,7 +37,7 @@ export function OutputCard({ output }: OutputCardProps) {
 
       {output.status === 'completed' && output.s3Url && (
         <>
-          <video src={output.s3Url} controls className="w-full rounded-md" />
+          <video src={output.s3Url} controls className="max-h-48 rounded-md" />
           <a
             href={output.s3Url}
             download
