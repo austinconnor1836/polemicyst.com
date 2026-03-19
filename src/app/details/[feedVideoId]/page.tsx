@@ -262,6 +262,9 @@ export default function ClipGroupPage() {
         contentStyle: viralitySettings.contentStyle,
         llmProvider: viralitySettings.llmProvider,
         showTimestamp: viralitySettings.showTimestamp,
+        captionsEnabled: viralitySettings.captionsEnabled,
+        captionFont: viralitySettings.captionFont,
+        captionFontSize: viralitySettings.captionFontSize,
         ...strictnessConfig,
       }),
     });

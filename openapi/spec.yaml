@@ -110,6 +110,17 @@ components:
         showTimestamp:
           type: boolean
           description: Briefly display the source video timestamp in the upper-left corner of each clip
+        captionsEnabled:
+          type: boolean
+          description: Burn transcript captions into generated clips
+        captionFont:
+          type: string
+          enum: [Inter, Helvetica Neue, DejaVu Sans, Liberation Sans, Cascadia Code, JetBrains Mono, DejaVu Sans Mono]
+          description: Font family for burned-in captions
+        captionFontSize:
+          type: string
+          enum: [small, medium, large, xlarge]
+          description: Size preset for burned-in captions
 
     VideoFeed:
       type: object
@@ -346,6 +357,15 @@ components:
         showTimestamp:
           type: boolean
           description: Briefly display the source video timestamp in the upper-left corner of each clip
+        captionsEnabled:
+          type: boolean
+          description: Burn transcript captions into generated clips
+        captionFont:
+          type: string
+          enum: [Inter, Helvetica Neue, DejaVu Sans, Liberation Sans, Cascadia Code, JetBrains Mono, DejaVu Sans Mono]
+        captionFontSize:
+          type: string
+          enum: [small, medium, large, xlarge]
         minCandidates:
           type: integer
         maxCandidates:

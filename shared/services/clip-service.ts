@@ -19,6 +19,9 @@ interface TriggerClipInput {
   llmProvider?: string;
   clipLength?: string;
   showTimestamp?: boolean;
+  captionsEnabled?: boolean;
+  captionFont?: string;
+  captionFontSize?: string;
 }
 
 type TriggerClipResult =
@@ -73,6 +76,9 @@ export async function triggerClipGeneration(input: TriggerClipInput): Promise<Tr
       llmProvider: resolvedProvider,
       clipLength: input.clipLength,
       showTimestamp: input.showTimestamp,
+      captionsEnabled: input.captionsEnabled,
+      captionFont: input.captionFont,
+      captionFontSize: input.captionFontSize,
     },
     { jobId: input.feedVideoId, removeOnComplete: true, removeOnFail: true }
   );

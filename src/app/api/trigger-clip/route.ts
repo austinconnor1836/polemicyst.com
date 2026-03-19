@@ -26,6 +26,9 @@ export async function POST(req: NextRequest) {
       llmProvider,
       clipLength,
       showTimestamp,
+      captionsEnabled,
+      captionFont,
+      captionFontSize,
     } = await req.json();
 
     if (!feedVideoId) {
@@ -62,6 +65,9 @@ export async function POST(req: NextRequest) {
       llmProvider,
       clipLength,
       showTimestamp,
+      captionsEnabled,
+      captionFont,
+      captionFontSize,
     });
 
     if (result.status === 'already_running') {

@@ -1,8 +1,12 @@
 import { spawn } from 'child_process';
 import { PassThrough } from 'stream';
+import { writeFileSync, unlinkSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 const fetch = require('node-fetch');
 import { S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
+import { getCaptionFontSizePx, type CaptionFontSize } from '@shared/virality';
 
 const CLIPS_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const CLIPS_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
@@ -33,9 +37,74 @@ function normalizeAspectRatio(aspectRatio?: string): AspectRatio {
   return allowed.includes(aspectRatio as AspectRatio) ? (aspectRatio as AspectRatio) : '9:16';
 }
 
+export type TranscriptSegment = {
+  start: number;
+  end: number;
+  text: string;
+};
+
+export type CaptionOptions = {
+  enabled: boolean;
+  segments: TranscriptSegment[];
+  font?: string;
+  fontSize?: CaptionFontSize;
+};
+
 export type ClipGenerationOptions = {
   showTimestamp?: boolean;
+  captions?: CaptionOptions;
 };
+
+function formatSrtTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.round((seconds % 1) * 1000);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+}
+
+function generateAssSubtitles(
+  segments: TranscriptSegment[],
+  clipStartS: number,
+  clipEndS: number,
+  font: string = 'Inter',
+  fontSizePx: number = 36
+): string {
+  const filtered = segments.filter((seg) => seg.end > clipStartS && seg.start < clipEndS);
+
+  const assHeader = [
+    '[Script Info]',
+    'ScriptType: v4.00+',
+    'PlayResX: 720',
+    'PlayResY: 1280',
+    '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    `Style: Default,${font},${fontSizePx},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,20,20,80,1`,
+    '',
+    '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+  ];
+
+  const events = filtered.map((seg) => {
+    const relStart = Math.max(0, seg.start - clipStartS);
+    const relEnd = Math.min(clipEndS - clipStartS, seg.end - clipStartS);
+    const start = formatAssTime(relStart);
+    const end = formatAssTime(relEnd);
+    const text = seg.text.trim().replace(/\n/g, '\\N');
+    return `Dialogue: 0,${start},${end},Default,,0,0,0,,${text}`;
+  });
+
+  return [...assHeader, ...events, ''].join('\n');
+}
+
+function formatAssTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const cs = Math.round((seconds % 1) * 100);
+  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
+}
 
 function buildTimestampFilter(startTimeStr: string): string {
   const startSeconds = parseTimeToSeconds(startTimeStr);
@@ -59,9 +128,28 @@ export async function generateClipFromS3(
   const isUrl = inputPath.startsWith('http');
   const aspectRatioFilter = getAspectRatioFilter(normalizeAspectRatio(aspectRatio));
 
+  const startSeconds = parseTimeToSeconds(start);
+  const endSeconds = parseTimeToSeconds(end);
+
   let vf = aspectRatioFilter;
   if (options?.showTimestamp) {
     vf += ',' + buildTimestampFilter(start);
+  }
+
+  let assFilePath: string | null = null;
+  if (options?.captions?.enabled && options.captions.segments.length > 0) {
+    const fontSizePx = getCaptionFontSizePx(options.captions.fontSize);
+    const assContent = generateAssSubtitles(
+      options.captions.segments,
+      startSeconds,
+      endSeconds,
+      options.captions.font || 'Inter',
+      fontSizePx
+    );
+    assFilePath = join(tmpdir(), `captions-${Date.now()}-${Math.random().toString(36).slice(2)}.ass`);
+    writeFileSync(assFilePath, assContent, 'utf-8');
+    const escapedPath = assFilePath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
+    vf += `,ass='${escapedPath}'`;
   }
 
   const ffmpegArgs = [
@@ -102,6 +190,9 @@ export async function generateClipFromS3(
   const ffmpegDone = new Promise<void>((resolve, reject) => {
     ffmpeg.on('error', reject);
     ffmpeg.on('close', (code) => {
+      if (assFilePath) {
+        try { unlinkSync(assFilePath); } catch {}
+      }
       if (code === 0) {
         resolve();
       } else {
