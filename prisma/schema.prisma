@@ -646,6 +646,8 @@ model Composition {
   creatorDurationS    Float?
   creatorTrimStartS   Float    @default(0)
   creatorTrimEndS     Float?
+  creatorTranscript      String?  @db.Text
+  creatorTranscriptJson  Json?
   createdAt           DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -671,6 +673,8 @@ model CompositionTrack {
   trimEndS      Float?
   sortOrder     Int         @default(0)
   hasAudio      Boolean     @default(true)
+  transcript    String?     @db.Text
+  transcriptJson Json?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -688,6 +692,8 @@ model CompositionOutput {
   renderError   String?     @db.Text
   durationMs    Int?
   fileSizeBytes BigInt?
+  transcript    String?     @db.Text
+  transcriptJson Json?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 

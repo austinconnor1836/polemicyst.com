@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { VideoCard } from '@/components/ui/video-card';
-import { Loader2, Download, Share2 } from 'lucide-react';
+import { Loader2, Download, Share2, Sparkles } from 'lucide-react';
 import { LayoutPreview } from './LayoutPreview';
 import { PublishModal } from '@/components/PublishModal';
 import toast from 'react-hot-toast';
@@ -16,6 +16,7 @@ interface Output {
   s3Url?: string | null;
   renderError?: string | null;
   durationMs?: number | null;
+  transcript?: string | null;
 }
 
 interface RenderControlsProps {
@@ -27,6 +28,8 @@ interface RenderControlsProps {
   hasPortraitRef: boolean;
   hasLandscapeRef: boolean;
   onStatusChange: (status: string, outputs: Output[]) => void;
+  compositionTitle?: string;
+  trackLabels?: string[];
 }
 
 export function RenderControls({
@@ -38,6 +41,8 @@ export function RenderControls({
   hasPortraitRef,
   hasLandscapeRef,
   onStatusChange,
+  compositionTitle,
+  trackLabels,
 }: RenderControlsProps) {
   const [selectedLayouts, setSelectedLayouts] = useState<Set<string>>(
     new Set(['mobile', 'landscape'])
@@ -46,8 +51,13 @@ export function RenderControls({
   const [publishTarget, setPublishTarget] = useState<{
     s3Url: string;
     layout: string;
+    transcript?: string | null;
   } | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
+  // Pre-generated descriptions keyed by layout
+  const [preGenDescriptions, setPreGenDescriptions] = useState<Record<string, string>>({});
+  const [generatingDesc, setGeneratingDesc] = useState<Set<string>>(new Set());
+  const generatedForRef = useRef<Set<string>>(new Set());
 
   const toggleLayout = (layout: string) => {
     setSelectedLayouts((prev) => {
@@ -64,6 +74,39 @@ export function RenderControls({
   const onStatusChangeRef = useRef(onStatusChange);
   onStatusChangeRef.current = onStatusChange;
 
+  const generateDescription = useCallback(
+    async (layout: string, transcript?: string | null) => {
+      if (generatedForRef.current.has(layout)) return;
+      generatedForRef.current.add(layout);
+      setGeneratingDesc((prev) => new Set(prev).add(layout));
+      try {
+        const res = await fetch('/api/social-posts/generate-description', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: compositionTitle,
+            trackLabels,
+            layouts: [layout],
+            transcript: transcript || undefined,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setPreGenDescriptions((prev) => ({ ...prev, [layout]: data.description }));
+        }
+      } catch {
+        // Non-fatal — user can still generate via the modal
+      } finally {
+        setGeneratingDesc((prev) => {
+          const next = new Set(prev);
+          next.delete(layout);
+          return next;
+        });
+      }
+    },
+    [compositionTitle, trackLabels]
+  );
+
   useEffect(() => {
     if (!rendering) return;
 
@@ -76,6 +119,14 @@ export function RenderControls({
           data.status === 'rendering' ||
           data.outputs?.some((o: Output) => o.status === 'rendering' || o.status === 'pending');
         onStatusChangeRef.current(data.status, data.outputs);
+
+        // Auto-generate descriptions for newly completed outputs
+        for (const output of data.outputs ?? []) {
+          if (output.status === 'completed' && output.s3Url) {
+            generateDescription(output.layout, output.transcript);
+          }
+        }
+
         if (!isStillRendering) {
           setRendering(false);
           const allDone = data.outputs?.every((o: Output) => o.status === 'completed');
@@ -97,7 +148,7 @@ export function RenderControls({
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [rendering, compositionId]);
+  }, [rendering, compositionId, generateDescription]);
 
   // Start polling if we loaded a rendering composition
   useEffect(() => {
@@ -105,6 +156,16 @@ export function RenderControls({
       setRendering(true);
     }
   }, [compositionStatus]);
+
+  // Auto-generate descriptions for already-completed outputs on mount
+  useEffect(() => {
+    for (const output of outputs) {
+      if (output.status === 'completed' && output.s3Url) {
+        generateDescription(output.layout, output.transcript);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCancel = async () => {
     if (!confirm('Cancel the current render?')) return;
@@ -252,10 +313,17 @@ export function RenderControls({
                             setPublishTarget({
                               s3Url: output.s3Url!,
                               layout: output.layout,
+                              transcript: output.transcript,
                             })
                           }
                         >
-                          <Share2 className="h-3 w-3" />
+                          {generatingDesc.has(output.layout) ? (
+                            <Sparkles className="h-3 w-3 animate-pulse text-amber-500" />
+                          ) : preGenDescriptions[output.layout] ? (
+                            <Sparkles className="h-3 w-3 text-green-500" />
+                          ) : (
+                            <Share2 className="h-3 w-3" />
+                          )}
                           Share
                         </Button>
                         <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-xs">
@@ -293,6 +361,13 @@ export function RenderControls({
         }}
         mediaUrl={publishTarget?.s3Url}
         mediaLabel={publishTarget?.layout}
+        generationContext={{
+          title: compositionTitle,
+          trackLabels,
+          layouts: publishTarget ? [publishTarget.layout] : [],
+          transcript: publishTarget?.transcript || undefined,
+        }}
+        preGeneratedContent={publishTarget ? preGenDescriptions[publishTarget.layout] : undefined}
       />
     </div>
   );

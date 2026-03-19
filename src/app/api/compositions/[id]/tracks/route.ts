@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
+import { queueGenericTranscriptionJob } from '@shared/queues';
 
 const MAX_TRACKS = 10;
 
@@ -67,6 +68,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         hasAudio: hasAudio ?? true,
       },
     });
+
+    // Queue transcription for the new track (non-fatal)
+    try {
+      await queueGenericTranscriptionJob({
+        s3Url,
+        targetModel: 'CompositionTrack',
+        targetId: track.id,
+      });
+    } catch {
+      // Non-fatal — transcription is best-effort
+    }
 
     return NextResponse.json(track, { status: 201 });
   } catch (err) {

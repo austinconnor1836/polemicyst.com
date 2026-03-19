@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
+import { queueGenericTranscriptionJob } from '@shared/queues';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -74,6 +75,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         outputs: true,
       },
     });
+
+    // Queue transcription when creator video is set (non-fatal)
+    if (data.creatorS3Url) {
+      try {
+        await queueGenericTranscriptionJob({
+          s3Url: data.creatorS3Url,
+          targetModel: 'Composition',
+          targetId: id,
+        });
+      } catch {
+        // Non-fatal
+      }
+    }
 
     return NextResponse.json(composition);
   } catch (err) {

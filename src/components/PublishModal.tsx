@@ -12,7 +12,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, CheckCircle2, XCircle, ExternalLink, Link2 } from 'lucide-react';
+import { VideoCard } from '@/components/ui/video-card';
+import { Loader2, CheckCircle2, XCircle, ExternalLink, Link2, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface PlatformInfo {
@@ -29,12 +30,32 @@ interface PublishResult {
   publishError?: string | null;
 }
 
+interface MediaItem {
+  url: string;
+  label?: string;
+}
+
+export interface GenerationContext {
+  title?: string;
+  trackLabels?: string[];
+  layouts?: string[];
+  transcript?: string;
+}
+
 export interface PublishModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultContent?: string;
+  /** Single media URL (convenience shorthand) */
   mediaUrl?: string;
+  /** Single media label (convenience shorthand) */
   mediaLabel?: string;
+  /** Multiple media items — takes precedence over mediaUrl/mediaLabel when provided */
+  mediaItems?: MediaItem[];
+  /** Context for AI-generated descriptions via Ollama */
+  generationContext?: GenerationContext;
+  /** Pre-generated description — skips auto-generation when modal opens */
+  preGeneratedContent?: string;
 }
 
 const CHAR_LIMITS: Record<string, number> = {
@@ -50,7 +71,17 @@ export function PublishModal({
   defaultContent = '',
   mediaUrl,
   mediaLabel,
+  mediaItems,
+  generationContext,
+  preGeneratedContent,
 }: PublishModalProps) {
+  // Normalize to a single list of media items
+  const resolvedMedia: MediaItem[] =
+    mediaItems && mediaItems.length > 0
+      ? mediaItems
+      : mediaUrl
+        ? [{ url: mediaUrl, label: mediaLabel }]
+        : [];
   const [content, setContent] = useState('');
   const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
   const [defaults, setDefaults] = useState<string[]>([]);
@@ -58,16 +89,55 @@ export function PublishModal({
   const [phase, setPhase] = useState<Phase>('compose');
   const [results, setResults] = useState<PublishResult[]>([]);
   const [loadingPlatforms, setLoadingPlatforms] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
-  // Build initial content when modal opens
+  // Build initial content and auto-generate description when modal opens
   useEffect(() => {
-    if (open) {
-      const parts = [defaultContent, mediaUrl].filter(Boolean);
+    if (!open) return;
+    setPhase('compose');
+    setResults([]);
+
+    const urls = resolvedMedia.map((m) => m.url);
+
+    // Use pre-generated content if available
+    if (preGeneratedContent) {
+      const parts = [preGeneratedContent, ...urls].filter(Boolean);
       setContent(parts.join('\n\n'));
-      setPhase('compose');
-      setResults([]);
+      return;
     }
-  }, [open, defaultContent, mediaUrl]);
+
+    // If we have generation context, auto-generate a description
+    if (generationContext) {
+      setContent(''); // clear while generating
+      setGenerating(true);
+
+      fetch('/api/social-posts/generate-description', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: generationContext.title,
+          trackLabels: generationContext.trackLabels,
+          layouts: generationContext.layouts ?? resolvedMedia.map((m) => m.label).filter(Boolean),
+          transcript: generationContext.transcript,
+        }),
+      })
+        .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+        .then((data) => {
+          const parts = [data.description, ...urls].filter(Boolean);
+          setContent(parts.join('\n\n'));
+        })
+        .catch(() => {
+          // Fallback: just use URLs
+          const parts = [defaultContent, ...urls].filter(Boolean);
+          setContent(parts.join('\n\n'));
+        })
+        .finally(() => setGenerating(false));
+    } else {
+      const parts = [defaultContent, ...urls].filter(Boolean);
+      setContent(parts.join('\n\n'));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Fetch platforms when modal opens
   useEffect(() => {
@@ -111,6 +181,36 @@ export function PublishModal({
       return next;
     });
   }, []);
+
+  const handleGenerate = useCallback(async () => {
+    setGenerating(true);
+    try {
+      const res = await fetch('/api/social-posts/generate-description', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: generationContext?.title,
+          trackLabels: generationContext?.trackLabels,
+          layouts: generationContext?.layouts ?? resolvedMedia.map((m) => m.label).filter(Boolean),
+          transcript: generationContext?.transcript,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to generate description');
+        return;
+      }
+      const data = await res.json();
+      const urls = resolvedMedia.map((m) => m.url);
+      const parts = [data.description, ...urls].filter(Boolean);
+      setContent(parts.join('\n\n'));
+    } catch {
+      toast.error('Failed to connect to AI service');
+    } finally {
+      setGenerating(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generationContext, resolvedMedia]);
 
   const connectedSelected = platforms.filter(
     (p) => p.connected && selectedPlatforms.has(p.platform)
@@ -200,7 +300,7 @@ export function PublishModal({
 
   return (
     <Dialog open={open} onOpenChange={phase === 'publishing' ? undefined : onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg overflow-hidden">
         <DialogHeader>
           <DialogTitle>Publish</DialogTitle>
           <DialogDescription className="sr-only">
@@ -208,17 +308,40 @@ export function PublishModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/* Phase: Compose */}
           {phase === 'compose' && (
             <>
               <div className="space-y-2">
-                <Textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Write your post..."
-                  rows={4}
-                />
+                <div className="relative">
+                  <Textarea
+                    value={generating ? '' : content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder={generating ? 'Generating description...' : 'Write your post...'}
+                    rows={3}
+                    disabled={generating}
+                    className={generating ? 'opacity-50' : ''}
+                  />
+                  {generating && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Sparkles className="h-4 w-4 animate-pulse" />
+                        Generating description...
+                      </div>
+                    </div>
+                  )}
+                  {!generating && generationContext && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1.5 top-1.5 h-7 w-7 text-muted-foreground hover:text-foreground"
+                      onClick={handleGenerate}
+                      title="Regenerate description"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>
                     {content.length}
@@ -232,16 +355,31 @@ export function PublishModal({
                 </div>
               </div>
 
-              {/* Media link preview */}
-              {mediaUrl && (
+              {/* Media preview(s) */}
+              {resolvedMedia.length > 1 ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {resolvedMedia.map((item, i) => (
+                    <VideoCard
+                      key={i}
+                      size="sm"
+                      src={item.url}
+                      label={item.label || `Video ${i + 1}`}
+                      controls
+                      className="max-w-none"
+                    />
+                  ))}
+                </div>
+              ) : resolvedMedia.length === 1 ? (
                 <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
                   <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-foreground">{mediaUrl}</p>
-                    {mediaLabel && <p className="text-xs text-muted-foreground">{mediaLabel}</p>}
+                    <p className="truncate text-foreground">{resolvedMedia[0].url}</p>
+                    {resolvedMedia[0].label && (
+                      <p className="text-xs text-muted-foreground">{resolvedMedia[0].label}</p>
+                    )}
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {/* Platform toggles */}
               <div className="space-y-2">
