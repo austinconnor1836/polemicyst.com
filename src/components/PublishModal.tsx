@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { VideoCard } from '@/components/ui/video-card';
 import { Loader2, CheckCircle2, XCircle, ExternalLink, Link2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -251,25 +252,31 @@ export function PublishModal({
                 </div>
               </div>
 
-              {/* Media link preview(s) */}
-              {resolvedMedia.length > 0 && (
-                <div className="space-y-2">
+              {/* Media preview(s) */}
+              {resolvedMedia.length > 1 ? (
+                <div className="grid grid-cols-2 gap-3">
                   {resolvedMedia.map((item, i) => (
-                    <div
+                    <VideoCard
                       key={i}
-                      className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm"
-                    >
-                      <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-foreground">{item.url}</p>
-                        {item.label && (
-                          <p className="text-xs text-muted-foreground">{item.label}</p>
-                        )}
-                      </div>
-                    </div>
+                      size="sm"
+                      src={item.url}
+                      label={item.label || `Video ${i + 1}`}
+                      controls
+                      className="max-w-none"
+                    />
                   ))}
                 </div>
-              )}
+              ) : resolvedMedia.length === 1 ? (
+                <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
+                  <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-foreground">{resolvedMedia[0].url}</p>
+                    {resolvedMedia[0].label && (
+                      <p className="text-xs text-muted-foreground">{resolvedMedia[0].label}</p>
+                    )}
+                  </div>
+                </div>
+              ) : null}
 
               {/* Platform toggles */}
               <div className="space-y-2">
