@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Plus, Loader2, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, Save, Trash2, Share2 } from 'lucide-react';
 import { ModeSelector } from '../_components/ModeSelector';
 import { VideoUploader } from '../_components/VideoUploader';
 import { CreatorVideoPanel } from '../_components/CreatorVideoPanel';
@@ -15,6 +15,7 @@ import { AudioMixPanel } from '../_components/AudioMixPanel';
 import { RenderControls } from '../_components/RenderControls';
 import { TrimModal } from '../_components/TrimModal';
 import { LayoutPreview } from '../_components/LayoutPreview';
+import { PublishModal } from '@/components/PublishModal';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
@@ -70,6 +71,7 @@ export default function CompositionEditorPage() {
   const [addingTrack, setAddingTrack] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [deletingCreator, setDeletingCreator] = useState(false);
+  const [publishAllOpen, setPublishAllOpen] = useState(false);
   const [trimTarget, setTrimTarget] = useState<{
     type: 'creator' | 'reference';
     trackId?: string;
@@ -271,6 +273,7 @@ export default function CompositionEditorPage() {
   }
 
   const isRendering = composition.status === 'rendering';
+  const completedOutputs = composition.outputs.filter((o) => o.status === 'completed' && o.s3Url);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 space-y-6">
@@ -499,7 +502,20 @@ export default function CompositionEditorPage() {
 
       {/* Render controls */}
       <div>
-        <Label className="mb-2 block">Output</Label>
+        <div className="mb-2 flex items-center justify-between">
+          <Label>Output</Label>
+          {completedOutputs.length > 1 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 text-xs"
+              onClick={() => setPublishAllOpen(true)}
+            >
+              <Share2 className="h-3 w-3" />
+              Publish All
+            </Button>
+          )}
+        </div>
         <RenderControls
           compositionId={compositionId}
           compositionStatus={composition.status}
@@ -515,6 +531,16 @@ export default function CompositionEditorPage() {
           onStatusChange={handleStatusChange}
         />
       </div>
+
+      {/* Publish all modal */}
+      <PublishModal
+        open={publishAllOpen}
+        onOpenChange={setPublishAllOpen}
+        mediaItems={completedOutputs.map((o) => ({
+          url: o.s3Url!,
+          label: o.layout,
+        }))}
+      />
 
       {/* Trim modal */}
       {trimTarget && (

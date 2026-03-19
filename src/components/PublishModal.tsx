@@ -29,12 +29,21 @@ interface PublishResult {
   publishError?: string | null;
 }
 
+interface MediaItem {
+  url: string;
+  label?: string;
+}
+
 export interface PublishModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultContent?: string;
+  /** Single media URL (convenience shorthand) */
   mediaUrl?: string;
+  /** Single media label (convenience shorthand) */
   mediaLabel?: string;
+  /** Multiple media items — takes precedence over mediaUrl/mediaLabel when provided */
+  mediaItems?: MediaItem[];
 }
 
 const CHAR_LIMITS: Record<string, number> = {
@@ -50,7 +59,15 @@ export function PublishModal({
   defaultContent = '',
   mediaUrl,
   mediaLabel,
+  mediaItems,
 }: PublishModalProps) {
+  // Normalize to a single list of media items
+  const resolvedMedia: MediaItem[] =
+    mediaItems && mediaItems.length > 0
+      ? mediaItems
+      : mediaUrl
+        ? [{ url: mediaUrl, label: mediaLabel }]
+        : [];
   const [content, setContent] = useState('');
   const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
   const [defaults, setDefaults] = useState<string[]>([]);
@@ -62,12 +79,14 @@ export function PublishModal({
   // Build initial content when modal opens
   useEffect(() => {
     if (open) {
-      const parts = [defaultContent, mediaUrl].filter(Boolean);
+      const urls = resolvedMedia.map((m) => m.url);
+      const parts = [defaultContent, ...urls].filter(Boolean);
       setContent(parts.join('\n\n'));
       setPhase('compose');
       setResults([]);
     }
-  }, [open, defaultContent, mediaUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Fetch platforms when modal opens
   useEffect(() => {
@@ -232,14 +251,23 @@ export function PublishModal({
                 </div>
               </div>
 
-              {/* Media link preview */}
-              {mediaUrl && (
-                <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
-                  <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-foreground">{mediaUrl}</p>
-                    {mediaLabel && <p className="text-xs text-muted-foreground">{mediaLabel}</p>}
-                  </div>
+              {/* Media link preview(s) */}
+              {resolvedMedia.length > 0 && (
+                <div className="space-y-2">
+                  {resolvedMedia.map((item, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm"
+                    >
+                      <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-foreground">{item.url}</p>
+                        {item.label && (
+                          <p className="text-xs text-muted-foreground">{item.label}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
