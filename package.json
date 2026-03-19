@@ -60,7 +60,7 @@
     "lucide-react": "^0.561.0",
     "micro": "^10.0.1",
     "module-alias": "^2.2.3",
-    "next": "^15.2.2",
+    "next": "^15.5.13",
     "next-auth": "^4.24.11",
     "node-fetch": "^2.7.0",
     "nodemailer": "^7.0.13",
