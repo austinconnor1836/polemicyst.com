@@ -19,8 +19,10 @@ import { checkClipQuota } from '@shared/lib/plans';
 import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
 import { TrainingCollector } from '@shared/lib/training-collector';
 import { logJob } from '@shared/lib/job-logger';
-import type { ReactionComposeJob } from '@shared/queues';
+import type { ReactionComposeJob, GenericTranscriptionJob } from '@shared/queues';
+import { queueGenericTranscriptionJob } from '@shared/queues';
 import { renderComposition } from '@shared/util/reactionCompose';
+import { transcribeFromS3Url } from '@shared/lib/transcription';
 
 console.log('[clip-metadata-worker] Starting with static reactionCompose import...');
 const redisConnection = getRedisConnection();
@@ -670,6 +672,18 @@ new Worker<ReactionComposeJob>(
           });
 
           console.log(`✅ ${layout} render complete: ${result.s3Url}`);
+
+          // Queue transcription for the completed output
+          try {
+            await queueGenericTranscriptionJob({
+              s3Url: result.s3Url,
+              targetModel: 'CompositionOutput',
+              targetId: output.id,
+            });
+            console.log(`📝 Queued transcription for ${layout} output`);
+          } catch (queueErr) {
+            console.warn('⚠️ Failed to queue output transcription (non-fatal):', queueErr);
+          }
         } catch (renderErr) {
           const errMsg = renderErr instanceof Error ? renderErr.message : String(renderErr);
           console.error(`❌ ${layout} render failed:`, errMsg);
@@ -728,6 +742,64 @@ new Worker<ReactionComposeJob>(
       if (tempFiles.length > 0) {
         console.log(`🧹 Cleaned up ${tempFiles.length} temp files.`);
       }
+    }
+  },
+  { connection: redisConnection as any }
+);
+
+// --- Generic Transcription Worker ---
+// Transcribes any S3 video and saves the transcript to the target model.
+// Used for composition tracks, creator videos, and render outputs.
+
+new Worker<GenericTranscriptionJob>(
+  'generic-transcription',
+  async (job) => {
+    const { s3Url, targetModel, targetId } = job.data;
+
+    console.log(`📝 [generic-transcription] ${targetModel}:${targetId}`);
+
+    try {
+      const result = await transcribeFromS3Url(s3Url);
+
+      switch (targetModel) {
+        case 'CompositionTrack':
+          await prisma.compositionTrack.update({
+            where: { id: targetId },
+            data: {
+              transcript: result.transcript,
+              transcriptJson: result.segments as any,
+            },
+          });
+          break;
+        case 'CompositionOutput':
+          await prisma.compositionOutput.update({
+            where: { id: targetId },
+            data: {
+              transcript: result.transcript,
+              transcriptJson: result.segments as any,
+            },
+          });
+          break;
+        case 'Composition':
+          await prisma.composition.update({
+            where: { id: targetId },
+            data: {
+              creatorTranscript: result.transcript,
+              creatorTranscriptJson: result.segments as any,
+            },
+          });
+          break;
+      }
+
+      console.log(
+        `✅ [generic-transcription] Saved transcript for ${targetModel}:${targetId} (${result.transcript.length} chars)`
+      );
+    } catch (err) {
+      console.error(
+        `❌ [generic-transcription] Failed for ${targetModel}:${targetId}:`,
+        err instanceof Error ? err.message : err
+      );
+      // Non-fatal — don't rethrow so the job doesn't retry
     }
   },
   { connection: redisConnection as any }

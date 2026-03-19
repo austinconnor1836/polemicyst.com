@@ -5,11 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 import { randomUUID } from 'crypto';
-import {
-  fetchYouTubeCaptions,
-  isYouTubeUrl,
-  extractVideoId,
-} from './youtube-captions';
+import { fetchYouTubeCaptions, isYouTubeUrl, extractVideoId } from './youtube-captions';
 import { fetchCaptionsViaInnertubeAuth } from './innertube';
 import { getValidGoogleToken } from './google-token';
 
@@ -175,6 +171,66 @@ export async function transcribeFeedVideo(
     return parsed;
   } finally {
     if (shouldCleanup && tempFilePath && fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+    }
+  }
+}
+
+/**
+ * Generic Whisper transcription from an S3 URL. No DB access — pure function.
+ * Downloads the file, runs Whisper, returns { transcript, segments }.
+ */
+export async function transcribeFromS3Url(
+  s3Url: string
+): Promise<{ transcript: string; segments: any[] }> {
+  const tempDir = path.join(process.cwd(), 'tmp');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+
+  const tempFilePath = path.join(tempDir, `${randomUUID()}.mp4`);
+
+  try {
+    console.info(`⬇️ [generic-transcription] Downloading to ${tempFilePath}...`);
+    const videoRes = await fetch(s3Url);
+    if (!videoRes.ok || !videoRes.body) {
+      throw new Error('Failed to fetch video stream from S3');
+    }
+    await pipeline(videoRes.body, fs.createWriteStream(tempFilePath));
+    console.info('✅ [generic-transcription] Download complete.');
+
+    const pythonPath = process.env.PYTHON_PATH || 'python3';
+    const pythonProcess = spawn(pythonPath, ['scripts/transcribe.py', tempFilePath], {
+      cwd: process.cwd(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let output = '';
+    let error = '';
+
+    pythonProcess.stdout.on('data', (d: Buffer) => (output += d.toString()));
+    pythonProcess.stderr.on('data', (d: Buffer) => (error += d.toString()));
+
+    const exitCode: number = await new Promise((resolve, reject) => {
+      pythonProcess.on('error', reject);
+      pythonProcess.on('close', (code) => resolve(code ?? 1));
+    });
+
+    if (exitCode !== 0) {
+      const msg = error?.trim() || output?.trim() || 'Unknown transcription error';
+      throw new Error(`Transcription failed (exit ${exitCode}): ${msg}`);
+    }
+
+    let parsed: { transcript: string; segments: any[] };
+    try {
+      parsed = JSON.parse(output);
+    } catch {
+      throw new Error(`Failed to parse transcript output: ${output} (Error: ${error})`);
+    }
+
+    return parsed;
+  } finally {
+    if (fs.existsSync(tempFilePath)) {
       fs.unlinkSync(tempFilePath);
     }
   }

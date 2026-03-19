@@ -39,6 +39,7 @@ export interface GenerationContext {
   title?: string;
   trackLabels?: string[];
   layouts?: string[];
+  transcript?: string;
 }
 
 export interface PublishModalProps {
@@ -53,6 +54,8 @@ export interface PublishModalProps {
   mediaItems?: MediaItem[];
   /** Context for AI-generated descriptions via Ollama */
   generationContext?: GenerationContext;
+  /** Pre-generated description — skips auto-generation when modal opens */
+  preGeneratedContent?: string;
 }
 
 const CHAR_LIMITS: Record<string, number> = {
@@ -70,6 +73,7 @@ export function PublishModal({
   mediaLabel,
   mediaItems,
   generationContext,
+  preGeneratedContent,
 }: PublishModalProps) {
   // Normalize to a single list of media items
   const resolvedMedia: MediaItem[] =
@@ -93,11 +97,19 @@ export function PublishModal({
     setPhase('compose');
     setResults([]);
 
+    const urls = resolvedMedia.map((m) => m.url);
+
+    // Use pre-generated content if available
+    if (preGeneratedContent) {
+      const parts = [preGeneratedContent, ...urls].filter(Boolean);
+      setContent(parts.join('\n\n'));
+      return;
+    }
+
     // If we have generation context, auto-generate a description
     if (generationContext) {
       setContent(''); // clear while generating
       setGenerating(true);
-      const urls = resolvedMedia.map((m) => m.url);
 
       fetch('/api/social-posts/generate-description', {
         method: 'POST',
@@ -106,6 +118,7 @@ export function PublishModal({
           title: generationContext.title,
           trackLabels: generationContext.trackLabels,
           layouts: generationContext.layouts ?? resolvedMedia.map((m) => m.label).filter(Boolean),
+          transcript: generationContext.transcript,
         }),
       })
         .then((res) => (res.ok ? res.json() : Promise.reject(res)))
@@ -120,7 +133,6 @@ export function PublishModal({
         })
         .finally(() => setGenerating(false));
     } else {
-      const urls = resolvedMedia.map((m) => m.url);
       const parts = [defaultContent, ...urls].filter(Boolean);
       setContent(parts.join('\n\n'));
     }
@@ -180,6 +192,7 @@ export function PublishModal({
           title: generationContext?.title,
           trackLabels: generationContext?.trackLabels,
           layouts: generationContext?.layouts ?? resolvedMedia.map((m) => m.label).filter(Boolean),
+          transcript: generationContext?.transcript,
         }),
       });
       if (!res.ok) {
@@ -287,7 +300,7 @@ export function PublishModal({
 
   return (
     <Dialog open={open} onOpenChange={phase === 'publishing' ? undefined : onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg overflow-hidden">
         <DialogHeader>
           <DialogTitle>Publish</DialogTitle>
           <DialogDescription className="sr-only">
@@ -295,7 +308,7 @@ export function PublishModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/* Phase: Compose */}
           {phase === 'compose' && (
             <>
@@ -305,7 +318,7 @@ export function PublishModal({
                     value={generating ? '' : content}
                     onChange={(e) => setContent(e.target.value)}
                     placeholder={generating ? 'Generating description...' : 'Write your post...'}
-                    rows={4}
+                    rows={3}
                     disabled={generating}
                     className={generating ? 'opacity-50' : ''}
                   />

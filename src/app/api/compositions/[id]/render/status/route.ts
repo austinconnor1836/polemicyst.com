@@ -25,6 +25,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             renderError: true,
             durationMs: true,
             fileSizeBytes: true,
+            transcript: true,
           },
         },
       },

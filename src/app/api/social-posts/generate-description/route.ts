@@ -9,19 +9,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: { title?: string; trackLabels?: string[]; layouts?: string[] };
+  let body: { title?: string; trackLabels?: string[]; layouts?: string[]; transcript?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { title, trackLabels = [], layouts = [] } = body;
+  const { title, trackLabels = [], layouts = [], transcript } = body;
+
+  // Truncate transcript to avoid blowing up the prompt
+  const truncatedTranscript = transcript ? transcript.slice(0, 2000) : '';
 
   const contextLines = [
     title ? `Title: ${title}` : '',
     trackLabels.length > 0 ? `Reference clips: ${trackLabels.join(', ')}` : '',
     layouts.length > 0 ? `Output formats: ${layouts.join(', ')}` : '',
+    truncatedTranscript ? `\nTranscript of the video:\n${truncatedTranscript}` : '',
   ]
     .filter(Boolean)
     .join('\n');
@@ -34,6 +38,7 @@ export async function POST(req: NextRequest) {
     '',
     'Requirements:',
     '- 1-3 sentences, casual and engaging tone',
+    '- Reference specific topics or moments from the transcript if available',
     '- Include relevant hashtags (2-4)',
     '- Do NOT include any URLs or links',
     '- Do NOT use markdown formatting',

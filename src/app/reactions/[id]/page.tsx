@@ -41,6 +41,7 @@ interface Output {
   s3Url?: string | null;
   renderError?: string | null;
   durationMs?: number | null;
+  transcript?: string | null;
 }
 
 interface Composition {
@@ -546,6 +547,7 @@ export default function CompositionEditorPage() {
           title: composition.title,
           trackLabels: composition.tracks.map((t) => t.label || '').filter(Boolean),
           layouts: completedOutputs.map((o) => o.layout),
+          transcript: completedOutputs.find((o) => o.transcript)?.transcript || undefined,
         }}
       />
 
