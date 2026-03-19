@@ -50,8 +50,12 @@ resource "aws_ecs_service" "web" {
   cluster                           = aws_ecs_cluster.main.id
   task_definition                   = aws_ecs_task_definition.web[each.key].arn
   desired_count                     = each.value.web_desired_count
-  launch_type                       = "FARGATE"
   health_check_grace_period_seconds = 60
+
+  capacity_provider_strategy {
+    capacity_provider = "FARGATE_SPOT"
+    weight            = 100
+  }
 
   # Stop restarting after consecutive failures — prevents crash-loop cost spikes.
   deployment_circuit_breaker {
@@ -60,9 +64,9 @@ resource "aws_ecs_service" "web" {
   }
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    subnets          = aws_subnet.public[*].id
     security_groups  = [aws_security_group.ecs_tasks.id]
-    assign_public_ip = false
+    assign_public_ip = true
   }
 
   load_balancer {

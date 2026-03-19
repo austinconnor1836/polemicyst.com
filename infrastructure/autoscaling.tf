@@ -4,14 +4,14 @@
 
 # -----------------------------------------------------------------------------
 # Web Service — scales on CPU and ALB request count
-# Min 2 (HA across AZs), Max 10
+# Min 1 (sufficient for pre-launch traffic), Max 10
 # -----------------------------------------------------------------------------
 
 resource "aws_appautoscaling_target" "web" {
   for_each = local.environments
 
   max_capacity       = 10
-  min_capacity       = 2
+  min_capacity       = 1
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.web[each.key].name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"

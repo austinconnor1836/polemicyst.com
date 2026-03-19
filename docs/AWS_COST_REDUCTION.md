@@ -143,6 +143,55 @@ All infrastructure and operational fixes have been applied.
 
 All Docker builds are fixed and verified. Scale prod services back up when ready.
 
+### Terraform changes (applied 2026-03-19)
+
+1. **Removed NAT Gateway entirely** — `infrastructure/vpc.tf`
+   - Removed `aws_eip.nat` and `aws_nat_gateway.main`
+   - Removed NAT routes from private route tables
+   - ECS tasks moved to public subnets with `assign_public_ip = true`
+   - Saves ~$33/month (fixed cost) + eliminates all NAT data processing charges
+
+2. **Removed paid Interface VPC Endpoints** — `infrastructure/vpc.tf`
+   - Removed ECR Docker, ECR API, and CloudWatch Logs endpoints
+   - No longer needed: tasks in public subnets reach AWS services via Internet Gateway (free)
+   - S3 Gateway Endpoint retained (free, routes S3 traffic over AWS backbone)
+   - Saves ~$21/month
+
+3. **Switched web service to Fargate Spot** — `infrastructure/ecs_web.tf`
+   - Changed from `launch_type = "FARGATE"` to `capacity_provider_strategy` with `FARGATE_SPOT`
+   - Circuit breakers already in place for graceful handling of Spot interruptions
+   - Saves ~$20/month (~70% of web Fargate cost)
+
+4. **Reduced web autoscaling minimum from 2 to 1** — `infrastructure/autoscaling.tf`
+   - Pre-launch traffic doesn't require HA across availability zones
+   - Saves ~$17-32/month depending on task size
+   - Can be increased back to 2 when traffic warrants it
+
+5. **Removed HTTPS SG ingress rule** — `infrastructure/ecs.tf`
+   - Was only needed for Interface VPC Endpoint communication (now removed)
+
+### Updated cost estimate (post all fixes)
+
+| Service                            | Before  | After  | Savings   |
+| ---------------------------------- | ------- | ------ | --------- |
+| NAT Gateway (fixed + data)         | $33+    | $0     | ~$33/mo   |
+| VPC Interface Endpoints (3x)       | $21     | $0     | ~$21/mo   |
+| ECS Web (Fargate → Spot)           | $32     | ~$10   | ~$22/mo   |
+| ECS Web (2 min → 1 min)            | $32     | $16    | ~$16/mo   |
+| **Total infrastructure savings**   |         |        | **~$92/mo** |
+
+### Remaining cost (prod only, post-optimization)
+
+| Service                                 | Cost         |
+| --------------------------------------- | ------------ |
+| ECS Web (1x Spot, 512/1024)             | ~$10         |
+| ECS Clip Worker (1x Spot, 1024/2048)    | ~$19         |
+| ECS Redis (1x, 256/512)                 | ~$17         |
+| RDS (db.t3.small, single-AZ)            | ~$28         |
+| ALB                                     | ~$16         |
+| S3 + Route53 + misc                     | ~$5          |
+| **Total**                               | **~$95/mo**  |
+
 ---
 
 ## Phase 1: Hibernate (bring costs to ~$0.50/month)
@@ -189,19 +238,13 @@ Goal: Tear down all running resources while preserving data and IaC.
 
 When ready to go live again, apply these changes before redeploying.
 
-### ~~2a. Add VPC Endpoints~~ — DONE (2026-03-15)
+### ~~2a. Add VPC Endpoints~~ — SUPERSEDED (2026-03-19)
 
-Applied in `infrastructure/vpc.tf` and confirmed live:
+Interface VPC endpoints (ECR, CloudWatch) were added on 2026-03-15 then **removed** on 2026-03-19 when ECS tasks moved to public subnets. S3 Gateway Endpoint (free) is retained.
 
-- S3 Gateway Endpoint (FREE)
-- ECR Docker + ECR API Interface Endpoints (~$14/month)
-- CloudWatch Logs Interface Endpoint (~$7/month)
+### ~~2b. Remove NAT Gateway~~ — DONE (2026-03-19)
 
-### ~~2b. Reduce to 1 NAT Gateway~~ — DONE (2026-03-15)
-
-Reduced from `count = 2` to `count = 1` in `infrastructure/vpc.tf`. Both private subnets share one NAT Gateway. Leaked second EIP released (2026-03-16).
-
-Consider **removing the NAT Gateway entirely** — with VPC endpoints covering S3 + ECR + CloudWatch, the only remaining outbound traffic is Gemini API calls and YouTube downloads. Those could use a public subnet with `assign_public_ip = true` instead.
+NAT Gateway removed entirely. ECS tasks now run in public subnets with `assign_public_ip = true` and reach AWS services via the Internet Gateway (free). RDS remains in private subnets (doesn't need outbound access).
 
 ### 2c. Single RDS instance with two databases
 
@@ -215,11 +258,15 @@ Set `multi_az = false`. Not needed for a pre-launch app.
 
 Savings: ~$28/month.
 
-### ~~2e. Use Fargate Spot for clip worker~~ — DONE (2026-03-16)
+### ~~2e. Use Fargate Spot for all ECS services~~ — DONE (2026-03-16 / 2026-03-19)
 
-Both `prod-clip-worker` and `dev-clip-worker` ECS services recreated with `FARGATE_SPOT` capacity provider strategy. Terraform code updated in `infrastructure/ecs_services.tf`. ECR lifecycle policies also added to all 3 repos (expire untagged after 1 day, keep 10 tagged).
+- **Clip workers**: Switched to Fargate Spot on 2026-03-16 (~$44/month savings).
+- **Web services**: Switched to Fargate Spot on 2026-03-19 (~$22/month savings). Circuit breakers handle Spot interruptions.
+- ECR lifecycle policies added to all 3 repos (expire untagged after 1 day, keep 10 tagged).
 
-Savings: ~$44/month (70% of $63).
+### ~~2g. Reduce web autoscaling minimum~~ — DONE (2026-03-19)
+
+Lowered web autoscaling minimum from 2 to 1. Pre-launch traffic doesn't need HA across AZs. Saves ~$16-32/month.
 
 ### 2f. Eliminate the dev environment from AWS
 
@@ -231,39 +278,41 @@ Use local `docker compose` for dev instead of deploying a full dev environment t
 
 Savings: ~$90-105/month.
 
-### Redeployed cost estimate
+### Redeployed cost estimate (updated 2026-03-19)
 
 | Service                                  | Cost               |
 | ---------------------------------------- | ------------------ |
-| NAT Gateway (1x) or none                 | $0-33              |
+| NAT Gateway                              | $0 (removed)       |
+| VPC Endpoints                            | $0 (S3 Gateway only, free) |
 | RDS (1 instance, single-AZ, db.t3.micro) | $14                |
-| ECS Web (prod only)                      | $32                |
+| ECS Web (Fargate Spot, 1 task)           | ~$10               |
 | ECS Clip Worker (Fargate Spot)           | $19                |
 | ECS Redis (prod only)                    | $17                |
-| VPC Endpoints (S3 free, ECR+Logs ~$14)   | $14                |
 | ALB                                      | $16                |
 | S3 + Route53 + misc                      | $5                 |
-| **Total**                                | **~$80-120/month** |
+| **Total**                                | **~$80/month**     |
+
+With RDS consolidation (2c) and dev elimination (2f), this drops to **~$50-65/month**.
 
 ---
 
 ## Phase 3: Long-term architecture considerations
 
-### Move off ECS Fargate entirely
+### Option A: Move off ECS Fargate entirely (~$0-20/month)
 
-For even lower costs, consider:
+For the lowest possible costs:
 
 - **Web app**: Deploy to Vercel (free tier) or AWS Amplify — Next.js is natively supported
 - **Workers**: Use AWS Lambda for event-driven processing instead of always-on Fargate
-- **Redis**: Use Upstash (serverless Redis, free tier available) instead of self-hosted
+- **Redis**: Use Upstash (serverless Redis, free tier available) instead of self-hosted on Fargate
 - **Database**: Use Neon or Supabase (free tier Postgres) during pre-launch
 
-This could bring costs to **$0-20/month** total.
-
-### Keep Fargate but optimize
+### Option B: Keep Fargate, optimize further (~$30-50/month)
 
 If staying on ECS:
 
-- Use **ECS Service Auto Scaling** with scale-to-zero for the clip worker (only runs when jobs are queued)
-- Use **RDS Aurora Serverless v2** (scales to 0 ACU when idle, ~$0 when not in use)
-- Consider **ECS tasks in public subnets** with `assign_public_ip = true` to eliminate NAT Gateways entirely (security trade-off: tasks get public IPs, but security groups still control access)
+- **Replace self-hosted Redis with ElastiCache Serverless** — scales to zero when idle, eliminates the $17/mo Fargate Redis task. Cost: ~$0-5/mo for low traffic.
+- **Use RDS Aurora Serverless v2** — scales to 0 ACU when idle (~$0 when not in use). Replaces always-on db.t3.small (~$28/mo).
+- **Scale clip worker to zero when idle** — custom CloudWatch metric on BullMQ queue depth to drive auto-scaling. Currently min=1, which costs ~$19/mo even with no jobs.
+- **Consolidate RDS** (2c above) — single instance with multiple databases saves ~$28-55/mo.
+- **Eliminate dev environment from AWS** (2f above) — use docker-compose locally instead.
