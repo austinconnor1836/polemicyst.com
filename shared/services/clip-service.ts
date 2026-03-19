@@ -18,6 +18,7 @@ interface TriggerClipInput {
   maxGeminiCandidates?: number;
   llmProvider?: string;
   clipLength?: string;
+  showTimestamp?: boolean;
 }
 
 type TriggerClipResult =
@@ -71,6 +72,7 @@ export async function triggerClipGeneration(input: TriggerClipInput): Promise<Tr
       maxGeminiCandidates: input.maxGeminiCandidates,
       llmProvider: resolvedProvider,
       clipLength: input.clipLength,
+      showTimestamp: input.showTimestamp,
     },
     { jobId: input.feedVideoId, removeOnComplete: true, removeOnFail: true }
   );

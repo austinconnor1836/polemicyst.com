@@ -33,6 +33,7 @@ export type ViralitySettingsValue = {
   showAdvanced: boolean;
   llmProvider: LLMProvider;
   clipLength: ClipLengthPreference;
+  showTimestamp: boolean;
 };
 
 export const DEFAULT_VIRALITY_SETTINGS: ViralitySettingsValue = {
@@ -45,6 +46,7 @@ export const DEFAULT_VIRALITY_SETTINGS: ViralitySettingsValue = {
   showAdvanced: false,
   llmProvider: 'ollama',
   clipLength: 'auto',
+  showTimestamp: false,
 };
 
 export function getStrictnessConfig(preset: StrictnessPreset): StrictnessConfig {

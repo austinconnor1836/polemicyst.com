@@ -33,16 +33,36 @@ function normalizeAspectRatio(aspectRatio?: string): AspectRatio {
   return allowed.includes(aspectRatio as AspectRatio) ? (aspectRatio as AspectRatio) : '9:16';
 }
 
+export type ClipGenerationOptions = {
+  showTimestamp?: boolean;
+};
+
+function buildTimestampFilter(startTimeStr: string): string {
+  const startSeconds = parseTimeToSeconds(startTimeStr);
+  const hh = Math.floor(startSeconds / 3600);
+  const mm = Math.floor((startSeconds % 3600) / 60);
+  const ss = Math.floor(startSeconds % 60);
+  const formattedStart = `${String(hh).padStart(2, '0')}\\:${String(mm).padStart(2, '0')}\\:${String(ss).padStart(2, '0')}`;
+  // Display in upper-left, fade out after 3 seconds (alpha goes to 0 between t=3 and t=4)
+  return `drawtext=text='${formattedStart}':fontsize=28:fontcolor=white:borderw=2:bordercolor=black:x=20:y=20:alpha='if(lt(t\\,3)\\,1\\,if(lt(t\\,4)\\,1-(t-3)\\,0))'`;
+}
+
 export async function generateClipFromS3(
   inputPath: string,
   start: string,
   end: string,
   key: string,
-  aspectRatio?: string
+  aspectRatio?: string,
+  options?: ClipGenerationOptions
 ) {
   const duration = parseTimeToSeconds(end) - parseTimeToSeconds(start);
   const isUrl = inputPath.startsWith('http');
   const aspectRatioFilter = getAspectRatioFilter(normalizeAspectRatio(aspectRatio));
+
+  let vf = aspectRatioFilter;
+  if (options?.showTimestamp) {
+    vf += ',' + buildTimestampFilter(start);
+  }
 
   const ffmpegArgs = [
     '-ss',
@@ -52,7 +72,7 @@ export async function generateClipFromS3(
     '-t',
     duration.toString(),
     '-vf',
-    aspectRatioFilter,
+    vf,
     '-c:v',
     'libx264',
     '-c:a',

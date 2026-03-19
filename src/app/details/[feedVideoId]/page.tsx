@@ -261,6 +261,7 @@ export default function ClipGroupPage() {
         targetPlatform: viralitySettings.targetPlatform,
         contentStyle: viralitySettings.contentStyle,
         llmProvider: viralitySettings.llmProvider,
+        showTimestamp: viralitySettings.showTimestamp,
         ...strictnessConfig,
       }),
     });
