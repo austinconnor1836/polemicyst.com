@@ -529,6 +529,8 @@ export default function CompositionEditorPage() {
             (t) => t.width == null || t.height == null || t.width >= t.height
           )}
           onStatusChange={handleStatusChange}
+          compositionTitle={composition.title}
+          trackLabels={composition.tracks.map((t) => t.label || '').filter(Boolean)}
         />
       </div>
 
@@ -540,6 +542,11 @@ export default function CompositionEditorPage() {
           url: o.s3Url!,
           label: o.layout,
         }))}
+        generationContext={{
+          title: composition.title,
+          trackLabels: composition.tracks.map((t) => t.label || '').filter(Boolean),
+          layouts: completedOutputs.map((o) => o.layout),
+        }}
       />
 
       {/* Trim modal */}

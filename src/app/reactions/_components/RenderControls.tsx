@@ -27,6 +27,8 @@ interface RenderControlsProps {
   hasPortraitRef: boolean;
   hasLandscapeRef: boolean;
   onStatusChange: (status: string, outputs: Output[]) => void;
+  compositionTitle?: string;
+  trackLabels?: string[];
 }
 
 export function RenderControls({
@@ -38,6 +40,8 @@ export function RenderControls({
   hasPortraitRef,
   hasLandscapeRef,
   onStatusChange,
+  compositionTitle,
+  trackLabels,
 }: RenderControlsProps) {
   const [selectedLayouts, setSelectedLayouts] = useState<Set<string>>(
     new Set(['mobile', 'landscape'])
@@ -293,6 +297,11 @@ export function RenderControls({
         }}
         mediaUrl={publishTarget?.s3Url}
         mediaLabel={publishTarget?.layout}
+        generationContext={{
+          title: compositionTitle,
+          trackLabels,
+          layouts: publishTarget ? [publishTarget.layout] : [],
+        }}
       />
     </div>
   );
