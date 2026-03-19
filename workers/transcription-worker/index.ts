@@ -117,6 +117,7 @@ new Worker(
               targetPlatform: settings.targetPlatform || 'reels',
               contentStyle: settings.contentStyle || 'auto',
               llmProvider: settings.llmProvider,
+              showTimestamp: settings.showTimestamp ?? false,
               ...strictnessConfig,
             },
             { jobId: resolvedFeedVideoId, removeOnComplete: true, removeOnFail: true }

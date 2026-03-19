@@ -205,6 +205,19 @@ export default function ViralitySettings({
         />
       </div>
 
+      <div className="flex items-center justify-between gap-3">
+        <div className="space-y-0.5">
+          <Label>Show timestamp</Label>
+          <div className="text-xs text-gray-500">
+            Briefly displays the video timestamp in the upper-left corner of each clip
+          </div>
+        </div>
+        <Switch
+          checked={value.showTimestamp ?? false}
+          onCheckedChange={(checked) => onChange({ ...value, showTimestamp: !!checked })}
+        />
+      </div>
+
       <Button
         type="button"
         variant="link"

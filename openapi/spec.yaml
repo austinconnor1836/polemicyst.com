@@ -107,6 +107,9 @@ components:
         llmProvider:
           type: string
           enum: [gemini, ollama]
+        showTimestamp:
+          type: boolean
+          description: Briefly display the source video timestamp in the upper-left corner of each clip
 
     VideoFeed:
       type: object
@@ -340,6 +343,9 @@ components:
           enum: [gemini, ollama]
         clipLength:
           type: string
+        showTimestamp:
+          type: boolean
+          description: Briefly display the source video timestamp in the upper-left corner of each clip
         minCandidates:
           type: integer
         maxCandidates:

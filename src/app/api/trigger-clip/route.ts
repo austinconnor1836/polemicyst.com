@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
       maxGeminiCandidates,
       llmProvider,
       clipLength,
+      showTimestamp,
     } = await req.json();
 
     if (!feedVideoId) {
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
       maxGeminiCandidates,
       llmProvider,
       clipLength,
+      showTimestamp,
     });
 
     if (result.status === 'already_running') {

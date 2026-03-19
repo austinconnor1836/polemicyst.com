@@ -50,6 +50,7 @@ new Worker(
       maxGeminiCandidates,
       llmProvider,
       clipLength,
+      showTimestamp,
     } = job.data;
 
     const costTracker = new CostTracker(userId, feedVideoId);
@@ -257,7 +258,8 @@ new Worker(
               formatTime(c.tStartS),
               formatTime(c.tEndS),
               s3Key,
-              aspectRatio || '9:16'
+              aspectRatio || '9:16',
+              { showTimestamp: !!showTimestamp }
             ),
           (result) => {
             // Record S3 upload cost separately
@@ -472,6 +474,7 @@ new Worker(
                 targetPlatform: settings.targetPlatform || 'reels',
                 contentStyle: settings.contentStyle || 'auto',
                 llmProvider: settings.llmProvider,
+                showTimestamp: settings.showTimestamp ?? false,
                 ...strictnessConfig,
               },
               { jobId: feedVideoId, removeOnComplete: true, removeOnFail: true }
