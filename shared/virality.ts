@@ -24,24 +24,22 @@ export type LLMProvider = 'gemini' | 'ollama';
 export type ClipLengthPreference = 'auto' | 'lt30s' | '30s-60s' | '60s-90s' | 'lt3m';
 
 export type CaptionFont =
-  | 'Inter'
-  | 'Helvetica Neue'
   | 'DejaVu Sans'
   | 'Liberation Sans'
-  | 'Cascadia Code'
-  | 'JetBrains Mono'
-  | 'DejaVu Sans Mono';
+  | 'Noto Sans'
+  | 'DejaVu Sans Mono'
+  | 'Liberation Mono'
+  | 'Noto Mono';
 
 export type CaptionFontSize = 'small' | 'medium' | 'large' | 'xlarge';
 
 export const CAPTION_FONTS: { value: CaptionFont; label: string }[] = [
-  { value: 'Inter', label: 'Inter' },
-  { value: 'Helvetica Neue', label: 'Helvetica Neue' },
   { value: 'DejaVu Sans', label: 'DejaVu Sans' },
-  { value: 'Liberation Sans', label: 'Liberation Sans' },
-  { value: 'Cascadia Code', label: 'Cascadia Code (Mono)' },
-  { value: 'JetBrains Mono', label: 'JetBrains Mono' },
+  { value: 'Liberation Sans', label: 'Liberation Sans (Arial)' },
+  { value: 'Noto Sans', label: 'Noto Sans' },
   { value: 'DejaVu Sans Mono', label: 'DejaVu Sans Mono' },
+  { value: 'Liberation Mono', label: 'Liberation Mono (Courier)' },
+  { value: 'Noto Mono', label: 'Noto Mono' },
 ];
 
 export const CAPTION_FONT_SIZES: { value: CaptionFontSize; label: string; px: number }[] = [
@@ -83,7 +81,7 @@ export const DEFAULT_VIRALITY_SETTINGS: ViralitySettingsValue = {
   clipLength: 'auto',
   showTimestamp: false,
   captionsEnabled: false,
-  captionFont: 'Inter',
+  captionFont: 'DejaVu Sans',
   captionFontSize: 'medium',
 };
 

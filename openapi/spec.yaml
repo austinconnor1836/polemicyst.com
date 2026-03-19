@@ -115,7 +115,7 @@ components:
           description: Burn transcript captions into generated clips
         captionFont:
           type: string
-          enum: [Inter, Helvetica Neue, DejaVu Sans, Liberation Sans, Cascadia Code, JetBrains Mono, DejaVu Sans Mono]
+          enum: [DejaVu Sans, Liberation Sans, Noto Sans, DejaVu Sans Mono, Liberation Mono, Noto Mono]
           description: Font family for burned-in captions
         captionFontSize:
           type: string
@@ -362,7 +362,7 @@ components:
           description: Burn transcript captions into generated clips
         captionFont:
           type: string
-          enum: [Inter, Helvetica Neue, DejaVu Sans, Liberation Sans, Cascadia Code, JetBrains Mono, DejaVu Sans Mono]
+          enum: [DejaVu Sans, Liberation Sans, Noto Sans, DejaVu Sans Mono, Liberation Mono, Noto Mono]
         captionFontSize:
           type: string
           enum: [small, medium, large, xlarge]
