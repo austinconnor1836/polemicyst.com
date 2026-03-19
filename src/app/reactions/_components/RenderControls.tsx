@@ -4,8 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { VideoCard } from '@/components/ui/video-card';
-import { Loader2, Download } from 'lucide-react';
+import { Loader2, Download, Share2 } from 'lucide-react';
 import { LayoutPreview } from './LayoutPreview';
+import { PublishModal } from '@/components/PublishModal';
 import toast from 'react-hot-toast';
 
 interface Output {
@@ -42,6 +43,10 @@ export function RenderControls({
     new Set(['mobile', 'landscape'])
   );
   const [rendering, setRendering] = useState(compositionStatus === 'rendering');
+  const [publishTarget, setPublishTarget] = useState<{
+    s3Url: string;
+    layout: string;
+  } | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const toggleLayout = (layout: string) => {
@@ -238,12 +243,28 @@ export function RenderControls({
                       <span />
                     )}
                     {output.status === 'completed' && output.s3Url && (
-                      <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-xs">
-                        <a href={output.s3Url} download>
-                          <Download className="h-3 w-3" />
-                          Download
-                        </a>
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 gap-1 text-xs"
+                          onClick={() =>
+                            setPublishTarget({
+                              s3Url: output.s3Url!,
+                              layout: output.layout,
+                            })
+                          }
+                        >
+                          <Share2 className="h-3 w-3" />
+                          Share
+                        </Button>
+                        <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-xs">
+                          <a href={output.s3Url} download>
+                            <Download className="h-3 w-3" />
+                            Download
+                          </a>
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </>
@@ -264,6 +285,15 @@ export function RenderControls({
           ))}
         </div>
       )}
+
+      <PublishModal
+        open={!!publishTarget}
+        onOpenChange={(open) => {
+          if (!open) setPublishTarget(null);
+        }}
+        mediaUrl={publishTarget?.s3Url}
+        mediaLabel={publishTarget?.layout}
+      />
     </div>
   );
 }
