@@ -23,6 +23,8 @@ const PUBLIC_PATHS = [
   '/support',
 ];
 
+const PUBLIC_PATH_PREFIXES = ['/posts'];
+
 export async function middleware(req: NextRequest) {
   // Redirect authenticated users from home to dashboard
   if (req.nextUrl.pathname === '/') {
@@ -33,7 +35,10 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  if (PUBLIC_PATHS.includes(req.nextUrl.pathname)) {
+  if (
+    PUBLIC_PATHS.includes(req.nextUrl.pathname) ||
+    PUBLIC_PATH_PREFIXES.some((prefix) => req.nextUrl.pathname.startsWith(prefix))
+  ) {
     return NextResponse.next();
   }
 
