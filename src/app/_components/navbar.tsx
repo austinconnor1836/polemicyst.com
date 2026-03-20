@@ -133,12 +133,8 @@ const Navbar: React.FC = () => {
                   </Button>
                 </>
               ) : (
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start rounded-none px-4"
-                  onClick={() => signIn('google')}
-                >
-                  Login
+                <Button variant="ghost" className="w-full justify-start rounded-none px-4" asChild>
+                  <a href="/auth/signin">Sign In</a>
                 </Button>
               )}
 
