@@ -4,7 +4,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       python3 python3-pip python3-venv ffmpeg curl ca-certificates \
       libass9 fontconfig \
-      fonts-dejavu-core fonts-dejavu-mono fonts-liberation fonts-noto-core fonts-noto-mono && \
+      fonts-dejavu-core fonts-dejavu-extra fonts-liberation fonts-noto-core fonts-noto-mono && \
     fc-cache -f && \
     rm -rf /var/lib/apt/lists/* && \
     python3 -m venv /venv && \

@@ -55,20 +55,22 @@ export type ClipGenerationOptions = {
   captions?: CaptionOptions;
 };
 
-function generateAssSubtitles(
+export function generateAssSubtitles(
   segments: TranscriptSegment[],
   clipStartS: number,
   clipEndS: number,
   font: string = 'DejaVu Sans',
-  fontSizePx: number = 36
+  fontSizePx: number = 36,
+  playResX: number = 720,
+  playResY: number = 1280
 ): string {
   const filtered = segments.filter((seg) => seg.end > clipStartS && seg.start < clipEndS);
 
   const assHeader = [
     '[Script Info]',
     'ScriptType: v4.00+',
-    'PlayResX: 720',
-    'PlayResY: 1280',
+    `PlayResX: ${playResX}`,
+    `PlayResY: ${playResY}`,
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
@@ -90,7 +92,7 @@ function generateAssSubtitles(
   return [...assHeader, ...events, ''].join('\n');
 }
 
-function formatAssTime(seconds: number): string {
+export function formatAssTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
@@ -138,7 +140,10 @@ export async function generateClipFromS3(
       options.captions.font || 'DejaVu Sans',
       fontSizePx
     );
-    assFilePath = join(tmpdir(), `captions-${Date.now()}-${Math.random().toString(36).slice(2)}.ass`);
+    assFilePath = join(
+      tmpdir(),
+      `captions-${Date.now()}-${Math.random().toString(36).slice(2)}.ass`
+    );
     writeFileSync(assFilePath, assContent, 'utf-8');
     const escapedPath = assFilePath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
     vf += `,ass='${escapedPath}'`;
@@ -183,7 +188,9 @@ export async function generateClipFromS3(
     ffmpeg.on('error', reject);
     ffmpeg.on('close', (code) => {
       if (assFilePath) {
-        try { unlinkSync(assFilePath); } catch {}
+        try {
+          unlinkSync(assFilePath);
+        } catch {}
       }
       if (code === 0) {
         resolve();
