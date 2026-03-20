@@ -153,7 +153,7 @@ export function getGenericTranscriptionQueue() {
 
 export function queueGenericTranscriptionJob(data: GenericTranscriptionJob) {
   return getGenericTranscriptionQueue().add('generic-transcription', data, {
-    jobId: `${data.targetModel}:${data.targetId}`,
+    jobId: `${data.targetModel}-${data.targetId}`,
     removeOnComplete: true,
     removeOnFail: true,
   });

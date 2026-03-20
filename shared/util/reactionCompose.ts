@@ -4,6 +4,8 @@ import { Upload } from '@aws-sdk/lib-storage';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { generateAssSubtitles, type TranscriptSegment } from './ffmpegUtils';
+import { getCaptionFontSizePx, type CaptionFontSize } from '@shared/virality';
 
 console.log('[reactionCompose] Module loaded — v2 with eof_action+gte');
 
@@ -38,6 +40,20 @@ export interface TrackInfo {
   sortOrder: number;
 }
 
+export interface ComposeCaptionOptions {
+  font?: string;
+  fontSize?: CaptionFontSize;
+  /** Creator transcript segments (times relative to UNTRIMMED creator video) */
+  creatorSegments?: TranscriptSegment[];
+  /** Per-track transcript segments (times relative to each track's original video) */
+  trackSegments?: Array<{
+    segments: TranscriptSegment[];
+    startAtS: number;
+    trimStartS: number;
+    trimEndS: number | null;
+  }>;
+}
+
 export interface ComposeOptions {
   layout: Layout;
   creatorPath: string;
@@ -48,6 +64,7 @@ export interface ComposeOptions {
   audioMode: AudioMode;
   creatorVolume: number;
   referenceVolume: number;
+  captions?: ComposeCaptionOptions;
 }
 
 /**
@@ -456,7 +473,87 @@ export async function renderComposition(
     creatorTrimEndS: undefined,
   };
 
-  const { filterComplex, outputMap } = buildFilterComplex(trimmedOpts);
+  let { filterComplex, outputMap } = buildFilterComplex(trimmedOpts);
+
+  // --- Burn-in captions (ASS subtitles) ---
+  let assFilePath: string | null = null;
+  if (opts.captions) {
+    const isMobile = opts.layout === 'mobile';
+    const canvasW = isMobile ? 720 : 1280;
+    const canvasH = isMobile ? 1280 : 720;
+    const outputDurationS = trimResult.durationS;
+    const creatorTrimOffset = trimStartS; // original creator trim start
+
+    // Collect and time-adjust segments to the output timeline
+    const outputSegments: TranscriptSegment[] = [];
+
+    if (opts.audioMode === 'creator' || opts.audioMode === 'both') {
+      // Creator segments: times are relative to the untrimmed creator.
+      // After pre-trim, output t=0 corresponds to original t=creatorTrimOffset.
+      for (const seg of opts.captions.creatorSegments ?? []) {
+        const start = seg.start - creatorTrimOffset;
+        const end = seg.end - creatorTrimOffset;
+        if (end > 0 && start < outputDurationS) {
+          outputSegments.push({
+            start: Math.max(0, start),
+            end: Math.min(outputDurationS, end),
+            text: seg.text,
+          });
+        }
+      }
+    }
+
+    if (opts.audioMode === 'reference' || opts.audioMode === 'both') {
+      // Track segments: each segment time is relative to the track's original video.
+      // After trim + placement: outputTime = seg.time - trimStartS + startAtS
+      for (const ts of opts.captions.trackSegments ?? []) {
+        for (const seg of ts.segments) {
+          const start = seg.start - ts.trimStartS + ts.startAtS;
+          const end = seg.end - ts.trimStartS + ts.startAtS;
+          if (end > 0 && start < outputDurationS) {
+            outputSegments.push({
+              start: Math.max(0, start),
+              end: Math.min(outputDurationS, end),
+              text: seg.text,
+            });
+          }
+        }
+      }
+    }
+
+    if (outputSegments.length > 0) {
+      // Sort by start time (merged creator + reference segments may interleave)
+      outputSegments.sort((a, b) => a.start - b.start);
+
+      const fontSizePx = getCaptionFontSizePx(opts.captions.fontSize);
+      const assContent = generateAssSubtitles(
+        outputSegments,
+        0,
+        outputDurationS,
+        opts.captions.font || 'DejaVu Sans',
+        fontSizePx,
+        canvasW,
+        canvasH
+      );
+
+      assFilePath = path.join(
+        os.tmpdir(),
+        `comp-captions-${Date.now()}-${Math.random().toString(36).slice(2)}.ass`
+      );
+      fs.writeFileSync(assFilePath, assContent, 'utf-8');
+
+      // Append ASS filter: take current video output, apply subtitles
+      const videoLabel = outputMap[0]; // e.g. '[canvas5]'
+      const labelName = videoLabel.replace(/[\[\]]/g, ''); // e.g. 'canvas5'
+      const escapedPath = assFilePath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
+      filterComplex += `;\n[${labelName}]ass='${escapedPath}'[captioned]`;
+      outputMap[0] = '[captioned]';
+
+      console.log(
+        `[renderComposition] Captions: ${outputSegments.length} segments, ASS file: ${assFilePath}`
+      );
+    }
+  }
 
   console.log(`[renderComposition] layout=${opts.layout} filter_complex:\n${filterComplex}`);
   console.log(`[renderComposition] outputMap: ${JSON.stringify(outputMap)}`);
@@ -529,6 +626,12 @@ export async function renderComposition(
   await new Promise<void>((resolve, reject) => {
     ffmpeg.on('error', reject);
     ffmpeg.on('close', (code) => {
+      // Clean up ASS temp file
+      if (assFilePath) {
+        try {
+          fs.unlinkSync(assFilePath);
+        } catch {}
+      }
       if (code === 0) {
         resolve();
       } else {
