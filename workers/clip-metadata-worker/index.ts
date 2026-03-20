@@ -53,6 +53,9 @@ new Worker(
       llmProvider,
       clipLength,
       showTimestamp,
+      captionsEnabled,
+      captionFont,
+      captionFontSize,
     } = job.data;
 
     const costTracker = new CostTracker(userId, feedVideoId);
@@ -261,7 +264,19 @@ new Worker(
               formatTime(c.tEndS),
               s3Key,
               aspectRatio || '9:16',
-              { showTimestamp: !!showTimestamp }
+              {
+                showTimestamp: !!showTimestamp,
+                captions: captionsEnabled
+                  ? {
+                      enabled: true,
+                      segments: transcriptSegments.filter(
+                        (seg: any) => seg.end > c.tStartS && seg.start < c.tEndS
+                      ),
+                      font: captionFont,
+                      fontSize: captionFontSize,
+                    }
+                  : undefined,
+              }
             ),
           (result) => {
             // Record S3 upload cost separately
@@ -477,6 +492,9 @@ new Worker(
                 contentStyle: settings.contentStyle || 'auto',
                 llmProvider: settings.llmProvider,
                 showTimestamp: settings.showTimestamp ?? false,
+                captionsEnabled: settings.captionsEnabled ?? false,
+                captionFont: settings.captionFont,
+                captionFontSize: settings.captionFontSize,
                 ...strictnessConfig,
               },
               { jobId: feedVideoId, removeOnComplete: true, removeOnFail: true }

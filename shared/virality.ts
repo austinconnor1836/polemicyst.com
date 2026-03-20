@@ -23,6 +23,36 @@ export type LLMProvider = 'gemini' | 'ollama';
 
 export type ClipLengthPreference = 'auto' | 'lt30s' | '30s-60s' | '60s-90s' | 'lt3m';
 
+export type CaptionFont =
+  | 'DejaVu Sans'
+  | 'Liberation Sans'
+  | 'Noto Sans'
+  | 'DejaVu Sans Mono'
+  | 'Liberation Mono'
+  | 'Noto Mono';
+
+export type CaptionFontSize = 'small' | 'medium' | 'large' | 'xlarge';
+
+export const CAPTION_FONTS: { value: CaptionFont; label: string }[] = [
+  { value: 'DejaVu Sans', label: 'DejaVu Sans' },
+  { value: 'Liberation Sans', label: 'Liberation Sans (Arial)' },
+  { value: 'Noto Sans', label: 'Noto Sans' },
+  { value: 'DejaVu Sans Mono', label: 'DejaVu Sans Mono' },
+  { value: 'Liberation Mono', label: 'Liberation Mono (Courier)' },
+  { value: 'Noto Mono', label: 'Noto Mono' },
+];
+
+export const CAPTION_FONT_SIZES: { value: CaptionFontSize; label: string; px: number }[] = [
+  { value: 'small', label: 'Small', px: 24 },
+  { value: 'medium', label: 'Medium', px: 36 },
+  { value: 'large', label: 'Large', px: 48 },
+  { value: 'xlarge', label: 'Extra Large', px: 64 },
+];
+
+export function getCaptionFontSizePx(size?: CaptionFontSize): number {
+  return CAPTION_FONT_SIZES.find((s) => s.value === size)?.px ?? 36;
+}
+
 export type ViralitySettingsValue = {
   scoringMode: ScoringMode;
   strictnessPreset: StrictnessPreset;
@@ -34,6 +64,9 @@ export type ViralitySettingsValue = {
   llmProvider: LLMProvider;
   clipLength: ClipLengthPreference;
   showTimestamp: boolean;
+  captionsEnabled: boolean;
+  captionFont: CaptionFont;
+  captionFontSize: CaptionFontSize;
 };
 
 export const DEFAULT_VIRALITY_SETTINGS: ViralitySettingsValue = {
@@ -47,6 +80,9 @@ export const DEFAULT_VIRALITY_SETTINGS: ViralitySettingsValue = {
   llmProvider: 'ollama',
   clipLength: 'auto',
   showTimestamp: false,
+  captionsEnabled: false,
+  captionFont: 'DejaVu Sans',
+  captionFontSize: 'medium',
 };
 
 export function getStrictnessConfig(preset: StrictnessPreset): StrictnessConfig {

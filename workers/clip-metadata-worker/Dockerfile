@@ -2,7 +2,10 @@ FROM node:20-slim
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      python3 python3-pip python3-venv ffmpeg curl ca-certificates && \
+      python3 python3-pip python3-venv ffmpeg curl ca-certificates \
+      libass9 fontconfig \
+      fonts-dejavu-core fonts-dejavu-mono fonts-liberation fonts-noto-core fonts-noto-mono && \
+    fc-cache -f && \
     rm -rf /var/lib/apt/lists/* && \
     python3 -m venv /venv && \
     curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
