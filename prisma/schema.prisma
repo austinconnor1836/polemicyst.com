@@ -644,6 +644,8 @@ model Composition {
   creatorS3Key     String?
   creatorS3Url     String?
   creatorDurationS    Float?
+  creatorWidth        Int?
+  creatorHeight       Int?
   creatorTrimStartS   Float    @default(0)
   creatorTrimEndS     Float?
   creatorTranscript      String?  @db.Text
