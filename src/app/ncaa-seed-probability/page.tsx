@@ -47,6 +47,33 @@ interface SeedComparison {
   championships: number;
 }
 
+interface UpsetMatchup {
+  matchup: string;
+  favoredSeed: number;
+  underdogSeed: number;
+  totalUpsets: number;
+  totalGames: number;
+  upsetPct: number;
+  avgPerYear: number;
+}
+
+interface UpsetByRound {
+  round: string;
+  totalUpsets: number;
+  avgPerYear: number;
+  gamesPerYear: number;
+  upsetRate: number;
+}
+
+interface UpsetAverages {
+  totalTournaments: number;
+  dataRange: string;
+  firstRoundByMatchup: UpsetMatchup[];
+  byRound: UpsetByRound[];
+  totalAllRounds: number;
+  avgAllRoundsPerYear: number;
+}
+
 interface SeedFocus {
   seed: number;
   total_tournaments: number;
@@ -63,6 +90,7 @@ interface SeedFocus {
 interface NcaaDataset {
   seeds: Record<string, SeedFocus>;
   allSeedsComparison: SeedComparison[];
+  upsetAverages: UpsetAverages;
   sources: SourceData[];
 }
 
@@ -162,7 +190,7 @@ export default function NcaaSeedProbabilityPage() {
   const [selectedSeed, setSelectedSeed] = useState<string>('1');
 
   const seedFocus = useMemo(() => dataset.seeds[selectedSeed], [selectedSeed]);
-  const { allSeedsComparison, sources } = dataset;
+  const { allSeedsComparison, upsetAverages, sources } = dataset;
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4">
@@ -277,6 +305,108 @@ export default function NcaaSeedProbabilityPage() {
           </div>
         </div>
       )}
+
+      {/* Upset Averages Per Tournament */}
+      <div className="mb-10 p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
+        <h3 className="text-lg font-semibold mb-2 dark:text-zinc-200 text-zinc-800">
+          Average Upsets Per Tournament
+        </h3>
+        <p className="text-sm dark:text-zinc-400 text-zinc-600 mb-6">
+          An upset = lower-seeded team defeating the higher-seeded team. Round of 64 uses fixed
+          bracket matchups. Later rounds count wins by seeds 9–16.
+        </p>
+
+        {/* Summary Stats */}
+        <div className="grid grid-cols-3 gap-4 mb-8">
+          <div className="p-4 rounded-lg dark:bg-zinc-700/50 bg-zinc-100 text-center">
+            <div className="text-2xl font-bold dark:text-orange-400 text-orange-600">
+              {upsetAverages.byRound[0].avgPerYear}
+            </div>
+            <div className="text-xs dark:text-zinc-400 text-zinc-600 mt-1">Avg R64 upsets/year</div>
+          </div>
+          <div className="p-4 rounded-lg dark:bg-zinc-700/50 bg-zinc-100 text-center">
+            <div className="text-2xl font-bold dark:text-blue-400 text-blue-600">
+              {upsetAverages.avgAllRoundsPerYear}
+            </div>
+            <div className="text-xs dark:text-zinc-400 text-zinc-600 mt-1">
+              Avg total upsets/year
+            </div>
+          </div>
+          <div className="p-4 rounded-lg dark:bg-zinc-700/50 bg-zinc-100 text-center">
+            <div className="text-2xl font-bold dark:text-emerald-400 text-emerald-600">
+              {upsetAverages.totalAllRounds}
+            </div>
+            <div className="text-xs dark:text-zinc-400 text-zinc-600 mt-1">
+              Total upsets ({upsetAverages.dataRange})
+            </div>
+          </div>
+        </div>
+
+        {/* Upsets by Round */}
+        <div className="mb-8">
+          <h4 className="text-sm font-semibold mb-3 dark:text-zinc-300 text-zinc-700">
+            Upsets by Round
+          </h4>
+          <div className="space-y-3">
+            {upsetAverages.byRound.map((round) => {
+              const maxAvg = upsetAverages.byRound[0].avgPerYear;
+              const barWidth = maxAvg > 0 ? (round.avgPerYear / maxAvg) * 100 : 0;
+              return (
+                <div key={round.round} className="flex items-center gap-3">
+                  <span className="w-28 text-sm text-right dark:text-zinc-400 text-zinc-600 shrink-0">
+                    {round.round}
+                  </span>
+                  <div className="flex-1 h-8 bg-zinc-200 dark:bg-zinc-700 rounded overflow-hidden relative">
+                    <div
+                      className="h-full rounded transition-all duration-700 ease-out"
+                      style={{
+                        width: `${Math.max(barWidth, 2)}%`,
+                        backgroundColor: '#ef4444',
+                      }}
+                    />
+                    <span className="absolute inset-0 flex items-center justify-center text-sm font-medium dark:text-zinc-100 text-zinc-800">
+                      {round.avgPerYear}/yr ({round.totalUpsets} total &middot; {round.upsetRate}%
+                      upset rate)
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* First Round Breakdown by Matchup */}
+        <div>
+          <h4 className="text-sm font-semibold mb-3 dark:text-zinc-300 text-zinc-700">
+            Round of 64 — Upset Rate by Matchup
+          </h4>
+          <div className="space-y-2">
+            {upsetAverages.firstRoundByMatchup.map((m) => (
+              <div key={m.matchup} className="flex items-center gap-3">
+                <span className="w-28 text-sm text-right dark:text-zinc-400 text-zinc-600 shrink-0">
+                  {m.matchup}
+                </span>
+                <div className="flex-1 h-7 bg-zinc-200 dark:bg-zinc-700 rounded overflow-hidden relative">
+                  <div
+                    className="h-full rounded transition-all duration-700 ease-out"
+                    style={{
+                      width: `${Math.max(m.upsetPct, 1)}%`,
+                      backgroundColor: m.upsetPct >= 30 ? '#f97316' : '#ef4444',
+                    }}
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center text-xs font-medium dark:text-zinc-100 text-zinc-800">
+                    {m.upsetPct}% &middot; {m.totalUpsets} upsets &middot; {m.avgPerYear}/yr
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs dark:text-zinc-500 text-zinc-400 mt-3">
+            Each matchup has {upsetAverages.firstRoundByMatchup[0]?.totalGames} total games across{' '}
+            {upsetAverages.totalTournaments} tournaments. 8 vs 9 games are near-coinflip matchups.
+          </p>
+        </div>
+      </div>
 
       {/* All Seeds Comparison */}
       <div className="mb-10 p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
