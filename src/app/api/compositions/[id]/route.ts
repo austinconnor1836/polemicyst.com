@@ -57,6 +57,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       'creatorS3Key',
       'creatorS3Url',
       'creatorDurationS',
+      'creatorWidth',
+      'creatorHeight',
       'creatorTrimStartS',
       'creatorTrimEndS',
     ] as const;
