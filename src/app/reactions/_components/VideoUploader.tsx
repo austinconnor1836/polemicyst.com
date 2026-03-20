@@ -16,6 +16,7 @@ interface VideoUploaderProps {
 }
 
 const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+const UPLOAD_CONCURRENCY = 4;
 
 export function VideoUploader({
   label,
@@ -28,6 +29,7 @@ export function VideoUploader({
 }: VideoUploaderProps) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -35,6 +37,7 @@ export function VideoUploader({
     async (file: File) => {
       setUploading(true);
       setProgress(0);
+      setError(null);
 
       try {
         // 1. Initiate multipart upload
@@ -47,53 +50,106 @@ export function VideoUploader({
             ...(keyPrefix ? { keyPrefix } : {}),
           }),
         });
-        if (!initRes.ok) throw new Error('Failed to initiate upload');
+        if (!initRes.ok) {
+          let detail = '';
+          try {
+            const body = await initRes.json();
+            detail = body.detail || body.error || '';
+          } catch {
+            /* ignore parse errors */
+          }
+          throw new Error(`Failed to initiate upload${detail ? `: ${detail}` : ''}`);
+        }
         const { uploadId, key } = await initRes.json();
 
-        // 2. Upload parts
+        // 2. Upload parts with concurrency
         const totalParts = Math.ceil(file.size / CHUNK_SIZE);
-        const etags: { PartNumber: number; ETag: string }[] = [];
+        let completedParts = 0;
 
-        for (let i = 0; i < totalParts; i++) {
-          const start = i * CHUNK_SIZE;
+        const uploadPart = async (partNumber: number) => {
+          const start = (partNumber - 1) * CHUNK_SIZE;
           const end = Math.min(start + CHUNK_SIZE, file.size);
           const chunk = file.slice(start, end);
-          const partNumber = i + 1;
 
-          // Get presigned URL for this part
           const urlRes = await fetch('/api/uploads/multipart/part-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ key, uploadId, partNumber }),
           });
-          if (!urlRes.ok) throw new Error(`Failed to get part URL for part ${partNumber}`);
+          if (!urlRes.ok) throw new Error(`Failed to get presigned URL for part ${partNumber}`);
           const { url } = await urlRes.json();
 
-          // Upload the chunk
-          const uploadRes = await fetch(url, {
-            method: 'PUT',
-            body: chunk,
-          });
+          const uploadRes = await fetch(url, { method: 'PUT', body: chunk });
           if (!uploadRes.ok) throw new Error(`Failed to upload part ${partNumber}`);
-          const etag = uploadRes.headers.get('ETag');
-          etags.push({ PartNumber: partNumber, ETag: etag || '' });
 
-          setProgress(Math.round(((i + 1) / totalParts) * 100));
+          completedParts++;
+          setProgress(Math.round((completedParts / totalParts) * 100));
+        };
+
+        const queue = Array.from({ length: totalParts }, (_, i) => i + 1);
+        const activeWorkers = new Set<Promise<void>>();
+
+        while (queue.length > 0 || activeWorkers.size > 0) {
+          while (queue.length > 0 && activeWorkers.size < UPLOAD_CONCURRENCY) {
+            const partNum = queue.shift()!;
+            const promise = uploadPart(partNum)
+              .then(() => {
+                activeWorkers.delete(promise);
+              })
+              .catch((err) => {
+                activeWorkers.delete(promise);
+                throw err;
+              });
+            activeWorkers.add(promise);
+          }
+          if (activeWorkers.size > 0) {
+            await Promise.race(activeWorkers);
+          }
         }
 
-        // 3. Complete multipart upload
+        // 3. Get authoritative ETags from server (avoids CORS ETag exposure issues)
+        const listRes = await fetch('/api/uploads/multipart/list-parts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uploadId, key }),
+        });
+        if (!listRes.ok) throw new Error('Failed to verify uploaded parts');
+        const { parts: verifiedParts }: { parts: { PartNumber: number; ETag: string }[] } =
+          await listRes.json();
+
+        if (verifiedParts.length !== totalParts) {
+          throw new Error(
+            `Upload incomplete: expected ${totalParts} parts, server confirmed ${verifiedParts.length}`
+          );
+        }
+
+        // 4. Complete multipart upload with server-verified ETags
         const completeRes = await fetch('/api/uploads/multipart/complete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key, uploadId, parts: etags }),
+          body: JSON.stringify({
+            key,
+            uploadId,
+            parts: verifiedParts.map((p) => ({ PartNumber: p.PartNumber, ETag: p.ETag })),
+          }),
         });
-        if (!completeRes.ok) throw new Error('Failed to complete upload');
+        if (!completeRes.ok) {
+          let detail = '';
+          try {
+            const body = await completeRes.json();
+            detail = body.detail || body.error || '';
+          } catch {
+            /* ignore parse errors */
+          }
+          throw new Error(`Failed to finalize upload${detail ? `: ${detail}` : ''}`);
+        }
         const { s3Url: uploadedUrl } = await completeRes.json();
 
         onUploaded({ s3Key: key, s3Url: uploadedUrl, filename: file.name });
       } catch (err) {
         console.error('Upload failed:', err);
-        alert('Upload failed. Please try again.');
+        const msg = err instanceof Error ? err.message : 'Upload failed';
+        setError(msg);
       } finally {
         setUploading(false);
         setProgress(0);
@@ -199,6 +255,18 @@ export function VideoUploader({
               browse
             </button>
           </p>
+          {error && (
+            <div className="mt-2 flex flex-col items-center gap-1">
+              <p className="text-xs text-destructive">{error}</p>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                className="text-xs text-muted-foreground underline hover:text-foreground"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>
