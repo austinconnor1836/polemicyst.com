@@ -98,6 +98,54 @@ const ROUND_KEYS = [
   'Final Four',
   'Championship',
 ] as const;
+
+const PATH_ROUNDS = ['Round of 64', 'Round of 32', 'Sweet 16', 'Elite 8'] as const;
+
+const BRACKET_PATHS: Record<number, number[][]> = {
+  1: [[16], [8, 9], [4, 5, 12, 13], [2, 3, 6, 7, 10, 11, 14, 15]],
+  2: [[15], [7, 10], [3, 6, 11, 14], [1, 4, 5, 8, 9, 12, 13, 16]],
+  3: [[14], [6, 11], [2, 7, 10, 15], [1, 4, 5, 8, 9, 12, 13, 16]],
+  4: [[13], [5, 12], [1, 8, 9, 16], [2, 3, 6, 7, 10, 11, 14, 15]],
+  5: [[12], [4, 13], [1, 8, 9, 16], [2, 3, 6, 7, 10, 11, 14, 15]],
+  6: [[11], [3, 14], [2, 7, 10, 15], [1, 4, 5, 8, 9, 12, 13, 16]],
+  7: [[10], [2, 15], [3, 6, 11, 14], [1, 4, 5, 8, 9, 12, 13, 16]],
+  8: [[9], [1, 16], [4, 5, 12, 13], [2, 3, 6, 7, 10, 11, 14, 15]],
+  9: [[8], [1, 16], [4, 5, 12, 13], [2, 3, 6, 7, 10, 11, 14, 15]],
+  10: [[7], [2, 15], [3, 6, 11, 14], [1, 4, 5, 8, 9, 12, 13, 16]],
+  11: [[6], [3, 14], [2, 7, 10, 15], [1, 4, 5, 8, 9, 12, 13, 16]],
+  12: [[5], [4, 13], [1, 8, 9, 16], [2, 3, 6, 7, 10, 11, 14, 15]],
+  13: [[4], [5, 12], [1, 8, 9, 16], [2, 3, 6, 7, 10, 11, 14, 15]],
+  14: [[3], [6, 11], [2, 7, 10, 15], [1, 4, 5, 8, 9, 12, 13, 16]],
+  15: [[2], [7, 10], [3, 6, 11, 14], [1, 4, 5, 8, 9, 12, 13, 16]],
+  16: [[1], [8, 9], [4, 5, 12, 13], [2, 3, 6, 7, 10, 11, 14, 15]],
+};
+
+function getMatchupRecord(
+  seedMatchups: SeedMatchups,
+  selectedSeed: number,
+  opponent: number,
+  roundKey: string
+): { wins: number; losses: number; total: number } | null {
+  const roundData = seedMatchups[roundKey as keyof SeedMatchups];
+  if (!roundData || !Array.isArray(roundData)) return null;
+
+  const higher = Math.min(selectedSeed, opponent);
+  const lower = Math.max(selectedSeed, opponent);
+  const matchup = (roundData as MatchupRecord[]).find(
+    (m) => m.higher === higher && m.lower === lower
+  );
+  if (!matchup || (matchup.hWins == null && matchup.total == null)) return null;
+
+  const hW = matchup.hWins ?? 0;
+  const lW = matchup.lWins ?? 0;
+  const isHigher = selectedSeed <= opponent;
+  return {
+    wins: isHigher ? hW : lW,
+    losses: isHigher ? lW : hW,
+    total: hW + lW,
+  };
+}
+
 function BarChart({
   data,
   valueKey,
@@ -247,6 +295,31 @@ export default function NcaaSeedProbabilityPage() {
     return result;
   }, [seedMatchups]);
 
+  const bracketPath = useMemo(() => {
+    const seed = Number(selectedSeed);
+    const path = BRACKET_PATHS[seed];
+    if (!path) return [];
+
+    return PATH_ROUNDS.map((roundName, i) => ({
+      round: roundName,
+      opponents: path[i]
+        .map((opponent) => {
+          const record = getMatchupRecord(seedMatchups, seed, opponent, roundName);
+          return {
+            seed: opponent,
+            wins: record?.wins ?? null,
+            losses: record?.losses ?? null,
+            total: record?.total ?? 0,
+            winPct:
+              record && record.total > 0
+                ? Number(((record.wins / record.total) * 100).toFixed(1))
+                : null,
+          };
+        })
+        .sort((a, b) => (b.total || 0) - (a.total || 0)),
+    }));
+  }, [selectedSeed, seedMatchups]);
+
   return (
     <div className="max-w-4xl mx-auto py-8 px-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-2">
@@ -360,6 +433,72 @@ export default function NcaaSeedProbabilityPage() {
           </div>
         </div>
       )}
+
+      {/* Bracket Path to the Final Four */}
+      <div className="mb-10">
+        <h2 className="text-2xl font-bold dark:text-zinc-100 text-zinc-900 mb-2">
+          Bracket Path to the Final Four
+        </h2>
+        <p className="text-sm dark:text-zinc-400 text-zinc-600 mb-6">
+          Every possible opponent for the #{selectedSeed} seed in each round, with historical
+          matchup records ({seedMatchups.dataRange}).
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {bracketPath.map((round) => (
+            <div
+              key={round.round}
+              className="p-4 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200"
+            >
+              <h4 className="text-sm font-semibold dark:text-zinc-300 text-zinc-700 mb-3">
+                {round.round}
+              </h4>
+              <div className="space-y-2">
+                {round.opponents.map((opp) => {
+                  const hasData = opp.total > 0;
+                  const winPct = opp.winPct ?? 0;
+                  const barColor =
+                    winPct >= 70
+                      ? '#22c55e'
+                      : winPct >= 50
+                        ? '#f97316'
+                        : winPct > 0
+                          ? '#ef4444'
+                          : '#a1a1aa';
+                  return (
+                    <div key={opp.seed}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium dark:text-zinc-200 text-zinc-800">
+                          vs #{opp.seed}
+                        </span>
+                        {hasData ? (
+                          <span className="text-xs dark:text-zinc-400 text-zinc-500">
+                            {opp.wins}-{opp.losses} ({opp.winPct}%)
+                          </span>
+                        ) : (
+                          <span className="text-xs dark:text-zinc-500 text-zinc-400">
+                            No matchups
+                          </span>
+                        )}
+                      </div>
+                      {hasData && (
+                        <div className="h-2 bg-zinc-200 dark:bg-zinc-700 rounded overflow-hidden">
+                          <div
+                            className="h-full rounded transition-all duration-700 ease-out"
+                            style={{
+                              width: `${winPct}%`,
+                              backgroundColor: barColor,
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Upset Averages by Round */}
       <div className="mb-10">
