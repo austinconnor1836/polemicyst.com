@@ -1,4 +1,3 @@
-import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getAllPosts, getPostBySlug } from '@/lib/api';
 import markdownToHtml from '@/lib/markdownToHtml';
@@ -7,9 +6,9 @@ import Header from '@/app/_components/header';
 import { PostBody } from '@/app/_components/post-body';
 import { PostHeader } from '@/app/_components/post-header';
 
-// 🚨 REMOVE ALL EXPLICIT TYPES TEMPORARILY
-export default async function Post({ params }: any) {
-  const post = await getPostBySlug(params.slug);
+export default async function Post({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const post = getPostBySlug(slug);
 
   if (!post) {
     return notFound();
@@ -35,8 +34,9 @@ export default async function Post({ params }: any) {
   );
 }
 
-export async function generateMetadata({ params }: any) {
-  const post = await getPostBySlug(params.slug);
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const post = getPostBySlug(slug);
 
   if (!post) {
     return undefined;
@@ -52,9 +52,9 @@ export async function generateMetadata({ params }: any) {
 }
 
 export async function generateStaticParams() {
-  const posts = await getAllPosts();
+  const posts = getAllPosts();
 
   return posts.map((post) => ({
-    params: { slug: post.slug },
+    slug: post.slug,
   }));
 }
