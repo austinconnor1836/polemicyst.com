@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Plus, Loader2, Save, Trash2, Share2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Share2 } from 'lucide-react';
 import { ModeSelector } from '../_components/ModeSelector';
 import { VideoUploader } from '../_components/VideoUploader';
 import { CreatorVideoPanel } from '../_components/CreatorVideoPanel';
@@ -14,7 +14,6 @@ import { TimelineEditor } from '../_components/TimelineEditor';
 import { AudioMixPanel } from '../_components/AudioMixPanel';
 import { RenderControls } from '../_components/RenderControls';
 import { TrimModal } from '../_components/TrimModal';
-import { LayoutPreview } from '../_components/LayoutPreview';
 import { PublishModal } from '@/components/PublishModal';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -55,10 +54,52 @@ interface Composition {
   creatorS3Key?: string | null;
   creatorS3Url?: string | null;
   creatorDurationS?: number | null;
+  creatorWidth?: number | null;
+  creatorHeight?: number | null;
   creatorTrimStartS: number;
   creatorTrimEndS?: number | null;
   tracks: Track[];
   outputs: Output[];
+}
+
+/**
+ * Auto-detect which output layouts to produce based on the aspect ratios
+ * of reference tracks and the creator video.
+ *
+ * Rules:
+ *  - Only portrait references → mobile (9:16)
+ *  - Only landscape references → landscape (16:9)
+ *  - Both portrait and landscape references → both outputs
+ *  - No references → based on creator aspect ratio
+ */
+function detectOutputLayouts(
+  tracks: Track[],
+  creatorWidth?: number | null,
+  creatorHeight?: number | null
+): ('mobile' | 'landscape')[] {
+  const hasPortraitRef = tracks.some(
+    (t) => t.width != null && t.height != null && t.height > t.width
+  );
+  const hasLandscapeRef = tracks.some(
+    (t) => t.width != null && t.height != null && t.width >= t.height
+  );
+  const hasUnknownRef = tracks.some((t) => t.width == null || t.height == null);
+
+  if (tracks.length === 0) {
+    const creatorIsPortrait =
+      creatorWidth != null && creatorHeight != null && creatorHeight > creatorWidth;
+    return creatorIsPortrait ? ['mobile'] : ['landscape'];
+  }
+
+  const effectiveLandscape = hasLandscapeRef || hasUnknownRef;
+
+  if (hasPortraitRef && effectiveLandscape) {
+    return ['mobile', 'landscape'];
+  }
+  if (hasPortraitRef) {
+    return ['mobile'];
+  }
+  return ['landscape'];
 }
 
 export default function CompositionEditorPage() {
@@ -153,6 +194,8 @@ export default function CompositionEditorPage() {
         creatorS3Key: data.s3Key,
         creatorS3Url: data.s3Url,
         creatorDurationS: probe?.durationS ?? null,
+        creatorWidth: probe?.width ?? null,
+        creatorHeight: probe?.height ?? null,
       } as any);
     },
     [save, probeVideo]
@@ -339,6 +382,8 @@ export default function CompositionEditorPage() {
                     creatorS3Key: null,
                     creatorS3Url: null,
                     creatorDurationS: null,
+                    creatorWidth: null,
+                    creatorHeight: null,
                     creatorTrimStartS: 0,
                     creatorTrimEndS: null,
                   } as any);
@@ -428,79 +473,6 @@ export default function CompositionEditorPage() {
         onReferenceVolumeChange={(referenceVolume) => save({ referenceVolume })}
       />
 
-      {/* DEBUG: All LayoutPreview states */}
-      <div className="rounded-lg border border-dashed border-yellow-500 p-4 space-y-4 bg-yellow-50/50 dark:bg-yellow-900/10">
-        <Label className="text-yellow-700 dark:text-yellow-400 font-bold">
-          DEBUG: All LayoutPreview States
-        </Label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-muted-foreground">Mobile — No Reference</span>
-            <LayoutPreview
-              layout="mobile"
-              hasReference={false}
-              hasPortraitRef={false}
-              hasLandscapeRef={false}
-            />
-          </div>
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-muted-foreground">
-              Mobile — With Reference
-            </span>
-            <LayoutPreview
-              layout="mobile"
-              hasReference={true}
-              hasPortraitRef={true}
-              hasLandscapeRef={false}
-            />
-          </div>
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-muted-foreground">
-              Landscape — No Reference
-            </span>
-            <LayoutPreview
-              layout="landscape"
-              hasReference={false}
-              hasPortraitRef={false}
-              hasLandscapeRef={false}
-            />
-          </div>
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-muted-foreground">
-              Landscape — Landscape Ref Only
-            </span>
-            <LayoutPreview
-              layout="landscape"
-              hasReference={true}
-              hasPortraitRef={false}
-              hasLandscapeRef={true}
-            />
-          </div>
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-muted-foreground">
-              Landscape — Portrait Ref Only
-            </span>
-            <LayoutPreview
-              layout="landscape"
-              hasReference={true}
-              hasPortraitRef={true}
-              hasLandscapeRef={false}
-            />
-          </div>
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-muted-foreground">
-              Landscape — Both Ref Types
-            </span>
-            <LayoutPreview
-              layout="landscape"
-              hasReference={true}
-              hasPortraitRef={true}
-              hasLandscapeRef={true}
-            />
-          </div>
-        </div>
-      </div>
-
       {/* Render controls */}
       <div>
         <div className="mb-2 flex items-center justify-between">
@@ -528,6 +500,11 @@ export default function CompositionEditorPage() {
           )}
           hasLandscapeRef={composition.tracks.some(
             (t) => t.width == null || t.height == null || t.width >= t.height
+          )}
+          autoLayouts={detectOutputLayouts(
+            composition.tracks,
+            composition.creatorWidth,
+            composition.creatorHeight
           )}
           onStatusChange={handleStatusChange}
           compositionTitle={composition.title}

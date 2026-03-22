@@ -13,12 +13,16 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
+  type CaptionFont,
+  type CaptionFontSize,
   type ContentStyle,
   type LLMProvider,
   type ScoringMode,
   type StrictnessPreset,
   type TargetPlatform,
   type ViralitySettingsValue,
+  CAPTION_FONTS,
+  CAPTION_FONT_SIZES,
   getStrictnessConfig,
 } from '@shared/virality';
 
@@ -217,6 +221,59 @@ export default function ViralitySettings({
           onCheckedChange={(checked) => onChange({ ...value, showTimestamp: !!checked })}
         />
       </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="space-y-0.5">
+          <Label>Captions</Label>
+          <div className="text-xs text-gray-500">Burn transcript captions into generated clips</div>
+        </div>
+        <Switch
+          checked={value.captionsEnabled ?? false}
+          onCheckedChange={(checked) => onChange({ ...value, captionsEnabled: !!checked })}
+        />
+      </div>
+
+      {(value.captionsEnabled ?? false) && (
+        <div className="space-y-3 rounded border border-gray-200 bg-gray-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/40">
+          <div className="space-y-2">
+            <Label>Caption font</Label>
+            <Select
+              value={value.captionFont || 'Inter'}
+              onValueChange={(v) => onChange({ ...value, captionFont: v as CaptionFont })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a font" />
+              </SelectTrigger>
+              <SelectContent>
+                {CAPTION_FONTS.map((f) => (
+                  <SelectItem key={f.value} value={f.value}>
+                    {f.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Caption size</Label>
+            <Select
+              value={value.captionFontSize || 'medium'}
+              onValueChange={(v) => onChange({ ...value, captionFontSize: v as CaptionFontSize })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a size" />
+              </SelectTrigger>
+              <SelectContent>
+                {CAPTION_FONT_SIZES.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>
+                    {s.label} ({s.px}px)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
 
       <Button
         type="button"

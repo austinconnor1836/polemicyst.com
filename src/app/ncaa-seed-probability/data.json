@@ -2838,30 +2838,6 @@
       "championships": 0
     }
   ],
-  "upsetAverages": {
-    "totalTournaments": 39,
-    "dataRange": "1985-2024",
-    "firstRoundByMatchup": [
-      { "matchup": "#16 over #1", "favoredSeed": 1, "underdogSeed": 16, "totalUpsets": 2, "totalGames": 156, "upsetPct": 1.3, "avgPerYear": 0.1 },
-      { "matchup": "#15 over #2", "favoredSeed": 2, "underdogSeed": 15, "totalUpsets": 8, "totalGames": 156, "upsetPct": 5.1, "avgPerYear": 0.2 },
-      { "matchup": "#14 over #3", "favoredSeed": 3, "underdogSeed": 14, "totalUpsets": 19, "totalGames": 156, "upsetPct": 12.2, "avgPerYear": 0.5 },
-      { "matchup": "#13 over #4", "favoredSeed": 4, "underdogSeed": 13, "totalUpsets": 25, "totalGames": 156, "upsetPct": 16.0, "avgPerYear": 0.6 },
-      { "matchup": "#12 over #5", "favoredSeed": 5, "underdogSeed": 12, "totalUpsets": 52, "totalGames": 156, "upsetPct": 33.3, "avgPerYear": 1.3 },
-      { "matchup": "#11 over #6", "favoredSeed": 6, "underdogSeed": 11, "totalUpsets": 56, "totalGames": 156, "upsetPct": 35.9, "avgPerYear": 1.4 },
-      { "matchup": "#10 over #7", "favoredSeed": 7, "underdogSeed": 10, "totalUpsets": 59, "totalGames": 156, "upsetPct": 37.8, "avgPerYear": 1.5 },
-      { "matchup": "#9 over #8", "favoredSeed": 8, "underdogSeed": 9, "totalUpsets": 75, "totalGames": 156, "upsetPct": 48.1, "avgPerYear": 1.9 }
-    ],
-    "byRound": [
-      { "round": "Round of 64", "totalUpsets": 296, "avgPerYear": 7.6, "gamesPerYear": 32, "upsetRate": 23.7 },
-      { "round": "Round of 32", "totalUpsets": 91, "avgPerYear": 2.3, "gamesPerYear": 16, "upsetRate": 14.6 },
-      { "round": "Sweet 16", "totalUpsets": 33, "avgPerYear": 0.8, "gamesPerYear": 8, "upsetRate": 10.6 },
-      { "round": "Elite 8", "totalUpsets": 11, "avgPerYear": 0.3, "gamesPerYear": 4, "upsetRate": 7.1 },
-      { "round": "Final Four", "totalUpsets": 6, "avgPerYear": 0.2, "gamesPerYear": 2, "upsetRate": 7.7 },
-      { "round": "Championship", "totalUpsets": 1, "avgPerYear": 0.0, "gamesPerYear": 1, "upsetRate": 2.6 }
-    ],
-    "totalAllRounds": 438,
-    "avgAllRoundsPerYear": 11.2
-  },
   "sources": [
     {
       "name": "NCAA.com",

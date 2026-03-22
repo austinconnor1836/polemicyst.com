@@ -47,33 +47,6 @@ interface SeedComparison {
   championships: number;
 }
 
-interface UpsetMatchup {
-  matchup: string;
-  favoredSeed: number;
-  underdogSeed: number;
-  totalUpsets: number;
-  totalGames: number;
-  upsetPct: number;
-  avgPerYear: number;
-}
-
-interface UpsetByRound {
-  round: string;
-  totalUpsets: number;
-  avgPerYear: number;
-  gamesPerYear: number;
-  upsetRate: number;
-}
-
-interface UpsetAverages {
-  totalTournaments: number;
-  dataRange: string;
-  firstRoundByMatchup: UpsetMatchup[];
-  byRound: UpsetByRound[];
-  totalAllRounds: number;
-  avgAllRoundsPerYear: number;
-}
-
 interface SeedFocus {
   seed: number;
   total_tournaments: number;
@@ -90,7 +63,6 @@ interface SeedFocus {
 interface NcaaDataset {
   seeds: Record<string, SeedFocus>;
   allSeedsComparison: SeedComparison[];
-  upsetAverages: UpsetAverages;
   sources: SourceData[];
 }
 
@@ -188,9 +160,141 @@ function getOrdinalSuffix(n: number): string {
 
 export default function NcaaSeedProbabilityPage() {
   const [selectedSeed, setSelectedSeed] = useState<string>('1');
+  const [selectedUpsetRound, setSelectedUpsetRound] = useState<'r64' | 'r32' | 'later'>('r64');
 
   const seedFocus = useMemo(() => dataset.seeds[selectedSeed], [selectedSeed]);
-  const { allSeedsComparison, upsetAverages, sources } = dataset;
+  const { allSeedsComparison, sources } = dataset;
+
+  const upsetData = useMemo(() => {
+    const seeds = dataset.seeds;
+    const TOURNAMENTS = 39;
+
+    const r64Pairs: [number, number][] = [
+      [1, 16],
+      [2, 15],
+      [3, 14],
+      [4, 13],
+      [5, 12],
+      [6, 11],
+      [7, 10],
+      [8, 9],
+    ];
+
+    const r64Matchups = r64Pairs.map(([higher, lower]) => {
+      const r64Round = seeds[String(higher)].rounds.find(
+        (r: RoundData) => r.round === 'Round of 64'
+      )!;
+      const upsets = r64Round.losses;
+      return {
+        higherSeed: higher,
+        lowerSeed: lower,
+        totalGames: r64Round.total_games,
+        upsets,
+        upsetPct: Number(((upsets / r64Round.total_games) * 100).toFixed(1)),
+        avgPerTournament: Number((upsets / TOURNAMENTS).toFixed(2)),
+      };
+    });
+
+    const r64TotalUpsets = r64Matchups.reduce((sum, m) => sum + m.upsets, 0);
+
+    const r32Sections = [
+      {
+        topSeed: 1,
+        bottomSeed: 16,
+        opSeeds: '8/9',
+        label: '1/16 vs 8/9',
+        involvedSeeds: [1, 16, 8, 9],
+        possibleMatchups: ['1 vs 8', '1 vs 9', '16 vs 8', '16 vs 9'],
+      },
+      {
+        topSeed: 2,
+        bottomSeed: 15,
+        opSeeds: '7/10',
+        label: '2/15 vs 7/10',
+        involvedSeeds: [2, 15, 7, 10],
+        possibleMatchups: ['2 vs 7', '2 vs 10', '15 vs 7', '15 vs 10'],
+      },
+      {
+        topSeed: 3,
+        bottomSeed: 14,
+        opSeeds: '6/11',
+        label: '3/14 vs 6/11',
+        involvedSeeds: [3, 14, 6, 11],
+        possibleMatchups: ['3 vs 6', '3 vs 11', '14 vs 6', '14 vs 11'],
+      },
+      {
+        topSeed: 4,
+        bottomSeed: 13,
+        opSeeds: '5/12',
+        label: '4/13 vs 5/12',
+        involvedSeeds: [4, 13, 5, 12],
+        possibleMatchups: ['4 vs 5', '4 vs 12', '13 vs 5', '13 vs 12'],
+      },
+    ].map((section) => {
+      const topR32 = seeds[String(section.topSeed)].rounds.find(
+        (r: RoundData) => r.round === 'Round of 32'
+      )!;
+      const bottomR32 = seeds[String(section.bottomSeed)].rounds.find(
+        (r: RoundData) => r.round === 'Round of 32'
+      )!;
+      const upsets = topR32.losses + bottomR32.wins;
+      const totalGames = 4 * TOURNAMENTS;
+      return {
+        ...section,
+        totalGames,
+        upsets,
+        upsetPct: Number(((upsets / totalGames) * 100).toFixed(1)),
+        avgPerTournament: Number((upsets / TOURNAMENTS).toFixed(2)),
+      };
+    });
+
+    const r32TotalUpsets = r32Sections.reduce((sum, s) => sum + s.upsets, 0);
+
+    const laterRounds = ['Sweet 16', 'Elite 8', 'Final Four', 'Championship'].flatMap(
+      (roundName) => {
+        return [1, 2]
+          .map((seed) => {
+            const roundData = seeds[String(seed)].rounds.find(
+              (r: RoundData) => r.round === roundName
+            );
+            if (!roundData || roundData.total_games === 0) return null;
+            return {
+              round: roundName,
+              seed,
+              wins: roundData.wins,
+              losses: roundData.losses,
+              totalGames: roundData.total_games,
+              lossRate: Number(((roundData.losses / roundData.total_games) * 100).toFixed(1)),
+              avgLossesPerTournament: Number((roundData.losses / TOURNAMENTS).toFixed(2)),
+            };
+          })
+          .filter(Boolean) as {
+          round: string;
+          seed: number;
+          wins: number;
+          losses: number;
+          totalGames: number;
+          lossRate: number;
+          avgLossesPerTournament: number;
+        }[];
+      }
+    );
+
+    return {
+      tournaments: TOURNAMENTS,
+      r64: {
+        matchups: r64Matchups,
+        totalUpsets: r64TotalUpsets,
+        avgPerTournament: Number((r64TotalUpsets / TOURNAMENTS).toFixed(1)),
+      },
+      r32: {
+        sections: r32Sections,
+        totalUpsets: r32TotalUpsets,
+        avgPerTournament: Number((r32TotalUpsets / TOURNAMENTS).toFixed(1)),
+      },
+      later: laterRounds,
+    };
+  }, []);
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4">
@@ -306,106 +410,239 @@ export default function NcaaSeedProbabilityPage() {
         </div>
       )}
 
-      {/* Upset Averages Per Tournament */}
-      <div className="mb-10 p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
-        <h3 className="text-lg font-semibold mb-2 dark:text-zinc-200 text-zinc-800">
-          Average Upsets Per Tournament
-        </h3>
+      {/* Upset Averages by Round */}
+      <div className="mb-10">
+        <h2 className="text-2xl font-bold dark:text-zinc-100 text-zinc-900 mb-2">
+          Upset Averages by Round
+        </h2>
         <p className="text-sm dark:text-zinc-400 text-zinc-600 mb-6">
-          An upset = lower-seeded team defeating the higher-seeded team. Round of 64 uses fixed
-          bracket matchups. Later rounds count wins by seeds 9–16.
+          How often the lower seed wins each matchup across {upsetData.tournaments} tournaments
+          (1985–2024). An &ldquo;upset&rdquo; = the higher-numbered seed wins.
         </p>
 
-        {/* Summary Stats */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
-          <div className="p-4 rounded-lg dark:bg-zinc-700/50 bg-zinc-100 text-center">
-            <div className="text-2xl font-bold dark:text-orange-400 text-orange-600">
-              {upsetAverages.byRound[0].avgPerYear}
-            </div>
-            <div className="text-xs dark:text-zinc-400 text-zinc-600 mt-1">Avg R64 upsets/year</div>
-          </div>
-          <div className="p-4 rounded-lg dark:bg-zinc-700/50 bg-zinc-100 text-center">
-            <div className="text-2xl font-bold dark:text-blue-400 text-blue-600">
-              {upsetAverages.avgAllRoundsPerYear}
+        {/* Summary cards */}
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="p-4 rounded-lg dark:bg-zinc-800 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
+            <div className="text-2xl font-bold dark:text-red-400 text-red-600">
+              {upsetData.r64.avgPerTournament}
             </div>
             <div className="text-xs dark:text-zinc-400 text-zinc-600 mt-1">
-              Avg total upsets/year
+              R64 upsets / tournament
+            </div>
+            <div className="text-xs dark:text-zinc-500 text-zinc-400 mt-0.5">
+              {upsetData.r64.totalUpsets} total
             </div>
           </div>
-          <div className="p-4 rounded-lg dark:bg-zinc-700/50 bg-zinc-100 text-center">
-            <div className="text-2xl font-bold dark:text-emerald-400 text-emerald-600">
-              {upsetAverages.totalAllRounds}
+          <div className="p-4 rounded-lg dark:bg-zinc-800 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
+            <div className="text-2xl font-bold dark:text-red-400 text-red-600">
+              {upsetData.r32.avgPerTournament}
             </div>
             <div className="text-xs dark:text-zinc-400 text-zinc-600 mt-1">
-              Total upsets ({upsetAverages.dataRange})
+              R32 upsets / tournament
+            </div>
+            <div className="text-xs dark:text-zinc-500 text-zinc-400 mt-0.5">
+              {upsetData.r32.totalUpsets} total
+            </div>
+          </div>
+          <div className="p-4 rounded-lg dark:bg-zinc-800 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
+            <div className="text-2xl font-bold dark:text-red-400 text-red-600">
+              {(upsetData.r64.avgPerTournament + upsetData.r32.avgPerTournament).toFixed(1)}
+            </div>
+            <div className="text-xs dark:text-zinc-400 text-zinc-600 mt-1">First weekend total</div>
+            <div className="text-xs dark:text-zinc-500 text-zinc-400 mt-0.5">
+              {upsetData.r64.totalUpsets + upsetData.r32.totalUpsets} total
             </div>
           </div>
         </div>
 
-        {/* Upsets by Round */}
-        <div className="mb-8">
-          <h4 className="text-sm font-semibold mb-3 dark:text-zinc-300 text-zinc-700">
-            Upsets by Round
-          </h4>
-          <div className="space-y-3">
-            {upsetAverages.byRound.map((round) => {
-              const maxAvg = upsetAverages.byRound[0].avgPerYear;
-              const barWidth = maxAvg > 0 ? (round.avgPerYear / maxAvg) * 100 : 0;
-              return (
-                <div key={round.round} className="flex items-center gap-3">
-                  <span className="w-28 text-sm text-right dark:text-zinc-400 text-zinc-600 shrink-0">
-                    {round.round}
-                  </span>
-                  <div className="flex-1 h-8 bg-zinc-200 dark:bg-zinc-700 rounded overflow-hidden relative">
-                    <div
-                      className="h-full rounded transition-all duration-700 ease-out"
-                      style={{
-                        width: `${Math.max(barWidth, 2)}%`,
-                        backgroundColor: '#ef4444',
-                      }}
-                    />
-                    <span className="absolute inset-0 flex items-center justify-center text-sm font-medium dark:text-zinc-100 text-zinc-800">
-                      {round.avgPerYear}/yr ({round.totalUpsets} total &middot; {round.upsetRate}%
-                      upset rate)
+        {/* Tabs */}
+        <div className="flex gap-2 mb-6">
+          {(
+            [
+              ['r64', 'Round of 64'],
+              ['r32', 'Round of 32'],
+              ['later', 'Sweet 16+'],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setSelectedUpsetRound(key)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                selectedUpsetRound === key
+                  ? 'bg-orange-500 text-white'
+                  : 'dark:bg-zinc-700 bg-zinc-200 dark:text-zinc-300 text-zinc-700 hover:dark:bg-zinc-600 hover:bg-zinc-300'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Round of 64 */}
+        {selectedUpsetRound === 'r64' && (
+          <div className="p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
+            <h3 className="text-lg font-semibold mb-1 dark:text-zinc-200 text-zinc-800">
+              Round of 64 — Matchup Upset Rates
+            </h3>
+            <p className="text-xs dark:text-zinc-500 text-zinc-400 mb-4">
+              Each matchup occurs 4× per tournament (once per region).{' '}
+              {upsetData.r64.matchups[0].totalGames} total games each.
+            </p>
+            <div className="space-y-3">
+              {upsetData.r64.matchups.map((m) => {
+                const isSelected =
+                  Number(selectedSeed) === m.higherSeed || Number(selectedSeed) === m.lowerSeed;
+                return (
+                  <div
+                    key={`${m.higherSeed}-${m.lowerSeed}`}
+                    className={`flex items-center gap-3 ${isSelected ? 'bg-orange-50 dark:bg-orange-900/20 rounded-lg p-2 -mx-2' : ''}`}
+                  >
+                    <span className="w-20 text-sm text-right dark:text-zinc-300 text-zinc-700 shrink-0 font-medium">
+                      #{m.higherSeed} vs #{m.lowerSeed}
+                    </span>
+                    <div className="flex-1 h-8 bg-zinc-200 dark:bg-zinc-700 rounded overflow-hidden relative">
+                      <div
+                        className="h-full rounded transition-all duration-700 ease-out"
+                        style={{
+                          width: `${m.upsetPct}%`,
+                          backgroundColor: '#ef4444',
+                        }}
+                      />
+                      <span className="absolute inset-0 flex items-center justify-center text-sm font-medium dark:text-zinc-100 text-zinc-800">
+                        {m.upsetPct}% ({m.upsets}/{m.totalGames})
+                      </span>
+                    </div>
+                    <span className="w-28 text-sm text-right dark:text-zinc-400 text-zinc-500 shrink-0">
+                      {m.avgPerTournament}/tourn
                     </span>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+            <div className="mt-4 pt-4 border-t dark:border-zinc-700 border-zinc-200 text-sm dark:text-zinc-400 text-zinc-600">
+              Total: {upsetData.r64.totalUpsets} upsets in{' '}
+              {upsetData.r64.matchups.reduce((s, m) => s + m.totalGames, 0).toLocaleString()} R64
+              games (
+              {(
+                (upsetData.r64.totalUpsets /
+                  upsetData.r64.matchups.reduce((s, m) => s + m.totalGames, 0)) *
+                100
+              ).toFixed(1)}
+              %)
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* First Round Breakdown by Matchup */}
-        <div>
-          <h4 className="text-sm font-semibold mb-3 dark:text-zinc-300 text-zinc-700">
-            Round of 64 — Upset Rate by Matchup
-          </h4>
-          <div className="space-y-2">
-            {upsetAverages.firstRoundByMatchup.map((m) => (
-              <div key={m.matchup} className="flex items-center gap-3">
-                <span className="w-28 text-sm text-right dark:text-zinc-400 text-zinc-600 shrink-0">
-                  {m.matchup}
-                </span>
-                <div className="flex-1 h-7 bg-zinc-200 dark:bg-zinc-700 rounded overflow-hidden relative">
+        {/* Round of 32 */}
+        {selectedUpsetRound === 'r32' && (
+          <div>
+            <div className="space-y-4">
+              {upsetData.r32.sections.map((section) => {
+                const isSelected = section.involvedSeeds.includes(Number(selectedSeed));
+                return (
                   <div
-                    className="h-full rounded transition-all duration-700 ease-out"
-                    style={{
-                      width: `${Math.max(m.upsetPct, 1)}%`,
-                      backgroundColor: m.upsetPct >= 30 ? '#f97316' : '#ef4444',
-                    }}
-                  />
-                  <span className="absolute inset-0 flex items-center justify-center text-xs font-medium dark:text-zinc-100 text-zinc-800">
-                    {m.upsetPct}% &middot; {m.totalUpsets} upsets &middot; {m.avgPerYear}/yr
-                  </span>
-                </div>
-              </div>
-            ))}
+                    key={section.label}
+                    className={`p-5 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200 ${
+                      isSelected ? 'ring-2 ring-orange-500/50' : ''
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <h4 className="font-semibold dark:text-zinc-200 text-zinc-800">
+                        {section.label}
+                      </h4>
+                      <span className="text-sm font-medium dark:text-red-400 text-red-600">
+                        {section.avgPerTournament} upsets/tourn
+                      </span>
+                    </div>
+                    <p className="text-xs dark:text-zinc-500 text-zinc-400 mb-3">
+                      Possible matchups: {section.possibleMatchups.join(', ')}
+                    </p>
+                    <div className="h-7 bg-zinc-200 dark:bg-zinc-700 rounded overflow-hidden relative">
+                      <div
+                        className="h-full rounded transition-all duration-700 ease-out"
+                        style={{
+                          width: `${section.upsetPct}%`,
+                          backgroundColor: '#ef4444',
+                        }}
+                      />
+                      <span className="absolute inset-0 flex items-center justify-center text-xs font-medium dark:text-zinc-100 text-zinc-800">
+                        {section.upsetPct}% upset rate ({section.upsets}/{section.totalGames})
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-4 text-sm dark:text-zinc-400 text-zinc-600">
+              Total: {upsetData.r32.totalUpsets} upsets in{' '}
+              {upsetData.r32.sections.reduce((s, sec) => s + sec.totalGames, 0)} R32 games (
+              {(
+                (upsetData.r32.totalUpsets /
+                  upsetData.r32.sections.reduce((s, sec) => s + sec.totalGames, 0)) *
+                100
+              ).toFixed(1)}
+              %). Upsets counted as top-seed losses + bottom-seed wins per bracket section.
+            </div>
           </div>
-          <p className="text-xs dark:text-zinc-500 text-zinc-400 mt-3">
-            Each matchup has {upsetAverages.firstRoundByMatchup[0]?.totalGames} total games across{' '}
-            {upsetAverages.totalTournaments} tournaments. 8 vs 9 games are near-coinflip matchups.
-          </p>
-        </div>
+        )}
+
+        {/* Sweet 16+ */}
+        {selectedUpsetRound === 'later' && (
+          <div className="p-6 rounded-lg dark:bg-zinc-800/50 bg-white shadow-sm border dark:border-zinc-700 border-zinc-200">
+            <h3 className="text-lg font-semibold mb-1 dark:text-zinc-200 text-zinc-800">
+              Sweet 16 & Beyond — Top Seed Performance
+            </h3>
+            <p className="text-xs dark:text-zinc-500 text-zinc-400 mb-4">
+              In later rounds, matchups vary based on earlier results. This shows how often #1 and
+              #2 seeds are eliminated in each round — their loss rate approximates the upset rate.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b dark:border-zinc-700 border-zinc-300">
+                    <th className="py-2 px-3 text-left dark:text-zinc-300 text-zinc-700">Round</th>
+                    <th className="py-2 px-3 text-center dark:text-zinc-300 text-zinc-700">Seed</th>
+                    <th className="py-2 px-3 text-right dark:text-zinc-300 text-zinc-700">
+                      Record
+                    </th>
+                    <th className="py-2 px-3 text-right dark:text-zinc-300 text-zinc-700">
+                      Loss Rate
+                    </th>
+                    <th className="py-2 px-3 text-right dark:text-zinc-300 text-zinc-700">
+                      Avg Losses / Tourn
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {upsetData.later.map((row, i) => (
+                    <tr
+                      key={i}
+                      className={`border-b dark:border-zinc-800 border-zinc-200 ${
+                        row.seed === Number(selectedSeed)
+                          ? 'bg-orange-100 dark:bg-orange-900/30'
+                          : ''
+                      }`}
+                    >
+                      <td className="py-2 px-3 dark:text-zinc-300 text-zinc-700">{row.round}</td>
+                      <td className="py-2 px-3 text-center dark:text-zinc-300 text-zinc-700">
+                        #{row.seed}
+                      </td>
+                      <td className="py-2 px-3 text-right dark:text-zinc-300 text-zinc-700">
+                        {row.wins}-{row.losses}
+                      </td>
+                      <td className="py-2 px-3 text-right dark:text-red-400 text-red-600 font-medium">
+                        {row.lossRate}%
+                      </td>
+                      <td className="py-2 px-3 text-right dark:text-zinc-300 text-zinc-700">
+                        {row.avgLossesPerTournament}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* All Seeds Comparison */}

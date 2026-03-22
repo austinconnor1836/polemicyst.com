@@ -27,10 +27,16 @@ interface RenderControlsProps {
   hasTracks: boolean;
   hasPortraitRef: boolean;
   hasLandscapeRef: boolean;
+  autoLayouts: ('mobile' | 'landscape')[];
   onStatusChange: (status: string, outputs: Output[]) => void;
   compositionTitle?: string;
   trackLabels?: string[];
 }
+
+const LAYOUT_LABELS: Record<string, string> = {
+  mobile: '9:16 Portrait',
+  landscape: '16:9 Landscape',
+};
 
 export function RenderControls({
   compositionId,
@@ -40,13 +46,11 @@ export function RenderControls({
   hasTracks,
   hasPortraitRef,
   hasLandscapeRef,
+  autoLayouts,
   onStatusChange,
   compositionTitle,
   trackLabels,
 }: RenderControlsProps) {
-  const [selectedLayouts, setSelectedLayouts] = useState<Set<string>>(
-    new Set(['mobile', 'landscape'])
-  );
   const [rendering, setRendering] = useState(compositionStatus === 'rendering');
   const [publishTarget, setPublishTarget] = useState<{
     s3Url: string;
@@ -54,22 +58,9 @@ export function RenderControls({
     transcript?: string | null;
   } | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
-  // Pre-generated descriptions keyed by layout
   const [preGenDescriptions, setPreGenDescriptions] = useState<Record<string, string>>({});
   const [generatingDesc, setGeneratingDesc] = useState<Set<string>>(new Set());
   const generatedForRef = useRef<Set<string>>(new Set());
-
-  const toggleLayout = (layout: string) => {
-    setSelectedLayouts((prev) => {
-      const next = new Set(prev);
-      if (next.has(layout)) {
-        if (next.size > 1) next.delete(layout);
-      } else {
-        next.add(layout);
-      }
-      return next;
-    });
-  };
 
   const onStatusChangeRef = useRef(onStatusChange);
   onStatusChangeRef.current = onStatusChange;
@@ -95,7 +86,7 @@ export function RenderControls({
           setPreGenDescriptions((prev) => ({ ...prev, [layout]: data.description }));
         }
       } catch {
-        // Non-fatal — user can still generate via the modal
+        // Non-fatal
       } finally {
         setGeneratingDesc((prev) => {
           const next = new Set(prev);
@@ -120,7 +111,6 @@ export function RenderControls({
           data.outputs?.some((o: Output) => o.status === 'rendering' || o.status === 'pending');
         onStatusChangeRef.current(data.status, data.outputs);
 
-        // Auto-generate descriptions for newly completed outputs
         for (const output of data.outputs ?? []) {
           if (output.status === 'completed' && output.s3Url) {
             generateDescription(output.layout, output.transcript);
@@ -150,14 +140,12 @@ export function RenderControls({
     };
   }, [rendering, compositionId, generateDescription]);
 
-  // Start polling if we loaded a rendering composition
   useEffect(() => {
     if (compositionStatus === 'rendering') {
       setRendering(true);
     }
   }, [compositionStatus]);
 
-  // Auto-generate descriptions for already-completed outputs on mount
   useEffect(() => {
     for (const output of outputs) {
       if (output.status === 'completed' && output.s3Url) {
@@ -180,7 +168,6 @@ export function RenderControls({
       }
       setRendering(false);
       toast.success('Render cancelled');
-      // Refresh status
       const statusRes = await fetch(`/api/compositions/${compositionId}/render/status`);
       if (statusRes.ok) {
         const data = await statusRes.json();
@@ -199,7 +186,7 @@ export function RenderControls({
       const res = await fetch(`/api/compositions/${compositionId}/render`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ layouts: Array.from(selectedLayouts) }),
+        body: JSON.stringify({ layouts: autoLayouts }),
       });
 
       if (!res.ok) {
@@ -241,20 +228,23 @@ export function RenderControls({
     }
   };
 
+  const detectionSummary = (() => {
+    if (!hasTracks) return 'Upload reference clips to auto-detect output format';
+    if (hasPortraitRef && hasLandscapeRef)
+      return 'Mixed aspect ratios detected — rendering both formats';
+    if (hasPortraitRef) return 'Portrait references detected — rendering 9:16';
+    return 'Landscape references detected — rendering 16:9';
+  })();
+
   return (
     <div className="space-y-4">
+      {/* Auto-detected layout previews */}
       <div className="flex items-center gap-4">
         <div className="flex gap-3">
-          {(['mobile', 'landscape'] as const).map((layout) => (
-            <button
+          {autoLayouts.map((layout) => (
+            <div
               key={layout}
-              type="button"
-              onClick={() => toggleLayout(layout)}
-              className={`rounded-lg border p-2 transition-colors ${
-                selectedLayouts.has(layout)
-                  ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950'
-                  : 'border-border opacity-50'
-              }`}
+              className="rounded-lg border border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950 p-2"
             >
               <LayoutPreview
                 layout={layout}
@@ -262,11 +252,15 @@ export function RenderControls({
                 hasPortraitRef={hasPortraitRef}
                 hasLandscapeRef={hasLandscapeRef}
               />
-            </button>
+            </div>
           ))}
         </div>
 
-        <div className="ml-auto flex gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-muted-foreground">{detectionSummary}</p>
+        </div>
+
+        <div className="ml-auto flex gap-2 shrink-0">
           {rendering && (
             <Button variant="outline" onClick={handleCancel}>
               Cancel
@@ -288,7 +282,7 @@ export function RenderControls({
               size="md"
               src={output.status === 'completed' && output.s3Url ? output.s3Url : undefined}
               controls={output.status === 'completed' && !!output.s3Url}
-              label={output.layout}
+              label={LAYOUT_LABELS[output.layout] || output.layout}
               badge={statusBadge(output.status)}
               sublabel={
                 <>
@@ -339,7 +333,6 @@ export function RenderControls({
               }
               className="max-w-none"
             >
-              {/* Non-video states: loading or error */}
               {output.status === 'rendering' || output.status === 'pending' ? (
                 <div className="flex h-full items-center justify-center">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

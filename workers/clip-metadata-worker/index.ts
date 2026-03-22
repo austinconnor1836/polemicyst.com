@@ -53,6 +53,9 @@ new Worker(
       llmProvider,
       clipLength,
       showTimestamp,
+      captionsEnabled,
+      captionFont,
+      captionFontSize,
     } = job.data;
 
     const costTracker = new CostTracker(userId, feedVideoId);
@@ -261,7 +264,19 @@ new Worker(
               formatTime(c.tEndS),
               s3Key,
               aspectRatio || '9:16',
-              { showTimestamp: !!showTimestamp }
+              {
+                showTimestamp: !!showTimestamp,
+                captions: captionsEnabled
+                  ? {
+                      enabled: true,
+                      segments: transcriptSegments.filter(
+                        (seg: any) => seg.end > c.tStartS && seg.start < c.tEndS
+                      ),
+                      font: captionFont,
+                      fontSize: captionFontSize,
+                    }
+                  : undefined,
+              }
             ),
           (result) => {
             // Record S3 upload cost separately
@@ -477,6 +492,9 @@ new Worker(
                 contentStyle: settings.contentStyle || 'auto',
                 llmProvider: settings.llmProvider,
                 showTimestamp: settings.showTimestamp ?? false,
+                captionsEnabled: settings.captionsEnabled ?? false,
+                captionFont: settings.captionFont,
+                captionFontSize: settings.captionFontSize,
                 ...strictnessConfig,
               },
               { jobId: feedVideoId, removeOnComplete: true, removeOnFail: true }
@@ -614,7 +632,79 @@ new Worker<ReactionComposeJob>(
         });
       }
 
-      // 3. Render each layout
+      // 3. Look up user's caption settings and wait for transcripts if needed
+      const automationRule = await prisma.automationRule.findUnique({
+        where: { userId },
+        select: { captionsEnabled: true, viralitySettings: true },
+      });
+
+      let captionOpts: import('@shared/util/reactionCompose').ComposeCaptionOptions | undefined;
+      if (automationRule?.captionsEnabled) {
+        // Wait for transcripts to be populated before rendering with captions.
+        // Transcription jobs are auto-queued when creator/tracks are added — we just
+        // need to poll until they finish (or timeout).
+        const POLL_INTERVAL_MS = 3000;
+        const POLL_TIMEOUT_MS = 180_000; // 3 minutes
+        const pollStart = Date.now();
+        let transcriptsReady = false;
+
+        while (Date.now() - pollStart < POLL_TIMEOUT_MS) {
+          const fresh = await prisma.composition.findUnique({
+            where: { id: compositionId },
+            select: {
+              creatorTranscriptJson: true,
+              tracks: {
+                select: { id: true, transcriptJson: true },
+                orderBy: { sortOrder: 'asc' },
+              },
+            },
+          });
+
+          const hasCreator = !!fresh?.creatorTranscriptJson;
+          const hasAllTracks = fresh?.tracks.every((t) => !!t.transcriptJson) ?? false;
+
+          if (hasCreator && hasAllTracks) {
+            transcriptsReady = true;
+            // Update composition reference with fresh transcript data
+            composition.creatorTranscriptJson = fresh!.creatorTranscriptJson;
+            for (const freshTrack of fresh!.tracks) {
+              const track = composition.tracks.find((t) => t.id === freshTrack.id);
+              if (track) track.transcriptJson = freshTrack.transcriptJson;
+            }
+            break;
+          }
+
+          const elapsed = ((Date.now() - pollStart) / 1000).toFixed(0);
+          console.log(
+            `⏳ Waiting for transcripts (${elapsed}s) — creator=${hasCreator}, tracks=${fresh?.tracks.map((t) => !!t.transcriptJson).join(',')}`
+          );
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        }
+
+        if (!transcriptsReady) {
+          console.warn('⚠️ Transcript timeout — rendering without captions');
+        } else {
+          const vs = (automationRule.viralitySettings as Record<string, any>) || {};
+          captionOpts = {
+            font: vs.captionFont || 'DejaVu Sans',
+            fontSize: vs.captionFontSize || 'medium',
+            creatorSegments: (composition.creatorTranscriptJson as any[]) || [],
+            trackSegments: composition.tracks.map((t) => ({
+              segments: (t.transcriptJson as any[]) || [],
+              startAtS: t.startAtS,
+              trimStartS: t.trimStartS,
+              trimEndS: t.trimEndS,
+            })),
+          };
+          console.log(
+            `📝 Captions enabled — font=${captionOpts.font}, size=${captionOpts.fontSize}, ` +
+              `creatorSegs=${captionOpts.creatorSegments?.length || 0}, ` +
+              `trackSegs=${captionOpts.trackSegments?.reduce((n, t) => n + t.segments.length, 0) || 0}`
+          );
+        }
+      }
+
+      // 4. Render each layout
 
       for (const layout of layouts) {
         const output = composition.outputs.find((o) => o.layout === layout);
@@ -643,6 +733,7 @@ new Worker<ReactionComposeJob>(
                   audioMode: composition.audioMode as 'creator' | 'reference' | 'both',
                   creatorVolume: composition.creatorVolume,
                   referenceVolume: composition.referenceVolume,
+                  captions: captionOpts,
                 },
                 s3Key
               ),
