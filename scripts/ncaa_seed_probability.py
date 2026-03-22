@@ -430,6 +430,89 @@ def compute_all_seeds_comparison() -> list:
     return comparison
 
 
+def compute_upset_averages() -> dict:
+    """Compute upset averages by round and matchup."""
+    r64_pairs = [(1, 16), (2, 15), (3, 14), (4, 13), (5, 12), (6, 11), (7, 10), (8, 9)]
+
+    r64_matchups = []
+    for higher, lower in r64_pairs:
+        wins, total = SEED_ROUND_RESULTS[higher]["Round of 64"]
+        upsets = total - wins
+        r64_matchups.append({
+            "higherSeed": higher,
+            "lowerSeed": lower,
+            "totalGames": total,
+            "upsets": upsets,
+            "upsetPct": round(upsets / total * 100, 1) if total > 0 else 0,
+            "avgPerTournament": round(upsets / TOTAL_TOURNAMENTS, 2),
+        })
+
+    r64_total_upsets = sum(m["upsets"] for m in r64_matchups)
+
+    r32_sections_def = [
+        {"topSeed": 1, "bottomSeed": 16, "label": "1/16 vs 8/9",
+         "involvedSeeds": [1, 16, 8, 9],
+         "possibleMatchups": ["1 vs 8", "1 vs 9", "16 vs 8", "16 vs 9"]},
+        {"topSeed": 2, "bottomSeed": 15, "label": "2/15 vs 7/10",
+         "involvedSeeds": [2, 15, 7, 10],
+         "possibleMatchups": ["2 vs 7", "2 vs 10", "15 vs 7", "15 vs 10"]},
+        {"topSeed": 3, "bottomSeed": 14, "label": "3/14 vs 6/11",
+         "involvedSeeds": [3, 14, 6, 11],
+         "possibleMatchups": ["3 vs 6", "3 vs 11", "14 vs 6", "14 vs 11"]},
+        {"topSeed": 4, "bottomSeed": 13, "label": "4/13 vs 5/12",
+         "involvedSeeds": [4, 13, 5, 12],
+         "possibleMatchups": ["4 vs 5", "4 vs 12", "13 vs 5", "13 vs 12"]},
+    ]
+
+    r32_sections = []
+    for sec in r32_sections_def:
+        top_wins, top_total = SEED_ROUND_RESULTS[sec["topSeed"]]["Round of 32"]
+        bottom_wins, bottom_total = SEED_ROUND_RESULTS[sec["bottomSeed"]]["Round of 32"]
+        upsets = (top_total - top_wins) + bottom_wins
+        total_games = 4 * TOTAL_TOURNAMENTS
+        r32_sections.append({
+            **sec,
+            "totalGames": total_games,
+            "upsets": upsets,
+            "upsetPct": round(upsets / total_games * 100, 1) if total_games > 0 else 0,
+            "avgPerTournament": round(upsets / TOTAL_TOURNAMENTS, 2),
+        })
+
+    r32_total_upsets = sum(s["upsets"] for s in r32_sections)
+
+    later_rounds = []
+    for round_name in ["Sweet 16", "Elite 8", "Final Four", "Championship"]:
+        for seed in [1, 2]:
+            wins, total = SEED_ROUND_RESULTS[seed][round_name]
+            if total == 0:
+                continue
+            losses = total - wins
+            later_rounds.append({
+                "round": round_name,
+                "seed": seed,
+                "wins": wins,
+                "losses": losses,
+                "totalGames": total,
+                "lossRate": round(losses / total * 100, 1),
+                "avgLossesPerTournament": round(losses / TOTAL_TOURNAMENTS, 2),
+            })
+
+    return {
+        "tournaments": TOTAL_TOURNAMENTS,
+        "r64": {
+            "matchups": r64_matchups,
+            "totalUpsets": r64_total_upsets,
+            "avgPerTournament": round(r64_total_upsets / TOTAL_TOURNAMENTS, 1),
+        },
+        "r32": {
+            "sections": r32_sections,
+            "totalUpsets": r32_total_upsets,
+            "avgPerTournament": round(r32_total_upsets / TOTAL_TOURNAMENTS, 1),
+        },
+        "later": later_rounds,
+    }
+
+
 def main():
     """Main entry point - outputs JSON data to stdout."""
     parser = argparse.ArgumentParser()
