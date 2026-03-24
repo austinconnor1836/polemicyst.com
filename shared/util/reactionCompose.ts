@@ -216,19 +216,21 @@ export function buildFilterComplex(opts: ComposeOptions): {
         );
         prevLabel = labelB;
       } else {
-        // Landscape ref: place reference at top, creator flush at bottom.
-        // Reference is full-width, proportional height — center it in the
-        // space above the creator overlay.
-        // First, overlay a black cover to hide the creator_full base layer.
-        const coverLabel = `cover${i}`;
+        // Landscape ref in mobile: blurred reference background, sharp reference
+        // centered in the space above the creator, creator flush at bottom.
+
+        // Create blurred background: scale ref to cover full canvas, blur heavily
+        const blurLabel = `refblur${i}`;
         filters.push(
-          `color=c=black:s=${canvasW}x${canvasH}:d=${effectiveCreatorDuration}:r=30[${coverLabel}]`
+          `[${inputIdx}:v]${trimFilter},scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1,boxblur=20:20[${blurLabel}]`
         );
-        const labelCover = `canvas${canvasIdx++}`;
+
+        // Overlay blurred background over current canvas (hides creator_full base)
+        const labelBlur = `canvas${canvasIdx++}`;
         filters.push(
-          `[${prevLabel}][${coverLabel}]overlay=x=0:y=0:enable='${enableExpr}'[${labelCover}]`
+          `[${prevLabel}][${blurLabel}]overlay=x=0:y=0:eof_action=repeat:enable='${enableExpr}'[${labelBlur}]`
         );
-        prevLabel = labelCover;
+        prevLabel = labelBlur;
 
         const refH =
           track.width && track.height
