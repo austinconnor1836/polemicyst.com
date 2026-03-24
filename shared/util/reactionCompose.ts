@@ -219,6 +219,17 @@ export function buildFilterComplex(opts: ComposeOptions): {
         // Landscape ref: place reference at top, creator flush at bottom.
         // Reference is full-width, proportional height — center it in the
         // space above the creator overlay.
+        // First, overlay a black cover to hide the creator_full base layer.
+        const coverLabel = `cover${i}`;
+        filters.push(
+          `color=c=black:s=${canvasW}x${canvasH}:d=${effectiveCreatorDuration}:r=30[${coverLabel}]`
+        );
+        const labelCover = `canvas${canvasIdx++}`;
+        filters.push(
+          `[${prevLabel}][${coverLabel}]overlay=x=0:y=0:enable='${enableExpr}'[${labelCover}]`
+        );
+        prevLabel = labelCover;
+
         const refH =
           track.width && track.height
             ? Math.round((canvasW * track.height) / track.width)
