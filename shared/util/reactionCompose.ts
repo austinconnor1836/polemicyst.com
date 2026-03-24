@@ -75,10 +75,10 @@ function effectiveDuration(track: TrackInfo): number {
   return Math.max(0, end - track.trimStartS);
 }
 
-// Creator picture-in-picture size for landscape mode (bottom-right overlay)
-const PIP_W = 320;
-const PIP_H = 180;
-const PIP_MARGIN = 16;
+// Creator picture-in-picture size for landscape mode (bottom-right overlay, flush)
+const PIP_W = 480;
+const PIP_H = 270;
+const PIP_MARGIN = 0;
 
 // Creator overlay for mobile mode: full-width, flush with bottom
 // Height is proportional (16:9 creator at 720w = 405h)
@@ -187,25 +187,71 @@ export function buildFilterComplex(opts: ComposeOptions): {
     const trimFilter = `trim=start=${track.trimStartS.toFixed(3)}:end=${(track.trimEndS ?? track.durationS).toFixed(3)},setpts=PTS-STARTPTS`;
 
     if (isMobile) {
-      // Mobile: reference fills entire frame, creator overlaid at bottom-center
-      filters.push(
-        `[${inputIdx}:v]${trimFilter},scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1[ref${i}]`
-      );
+      // Mobile: reference scaled to full width (720), aspect ratio preserved.
+      // For portrait refs this fills the frame; for landscape refs the height
+      // is proportional (e.g. 720x405 for 16:9) and centered above the creator.
+      const refIsPortrait = isPortrait(track);
+      if (refIsPortrait) {
+        // Portrait reference — fill entire frame, creator overlaid at bottom
+        filters.push(
+          `[${inputIdx}:v]${trimFilter},scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1[ref${i}]`
+        );
+      } else {
+        // Landscape reference — scale to full width, keep aspect ratio
+        filters.push(`[${inputIdx}:v]${trimFilter},scale=${canvasW}:-2,setsar=1[ref${i}]`);
+      }
 
-      // Step 1: overlay full-frame reference (eof_action=repeat freezes last frame)
-      const labelA = `canvas${canvasIdx++}`;
-      filters.push(
-        `[${prevLabel}][ref${i}]overlay=x=0:y=0:eof_action=repeat:enable='${enableExpr}'[${labelA}]`
-      );
-      prevLabel = labelA;
+      if (refIsPortrait) {
+        // Portrait: overlay full-frame reference, creator at bottom
+        const labelA = `canvas${canvasIdx++}`;
+        filters.push(
+          `[${prevLabel}][ref${i}]overlay=x=0:y=0:eof_action=repeat:enable='${enableExpr}'[${labelA}]`
+        );
+        prevLabel = labelA;
 
-      // Step 2: overlay creator full-width at bottom, flush
-      const creatorY = canvasH - MOBILE_CREATOR_H;
-      const labelB = `canvas${canvasIdx++}`;
-      filters.push(
-        `[${prevLabel}][creator_mobile]overlay=x=0:y=${creatorY}:enable='${enableExpr}'[${labelB}]`
-      );
-      prevLabel = labelB;
+        const creatorY = canvasH - MOBILE_CREATOR_H;
+        const labelB = `canvas${canvasIdx++}`;
+        filters.push(
+          `[${prevLabel}][creator_mobile]overlay=x=0:y=${creatorY}:enable='${enableExpr}'[${labelB}]`
+        );
+        prevLabel = labelB;
+      } else {
+        // Landscape ref in mobile: blurred reference background, sharp reference
+        // centered in the space above the creator, creator flush at bottom.
+
+        // Create blurred background: scale ref to cover full canvas, blur heavily
+        const blurLabel = `refblur${i}`;
+        filters.push(
+          `[${inputIdx}:v]${trimFilter},scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1,boxblur=20:20[${blurLabel}]`
+        );
+
+        // Overlay blurred background over current canvas (hides creator_full base)
+        const labelBlur = `canvas${canvasIdx++}`;
+        filters.push(
+          `[${prevLabel}][${blurLabel}]overlay=x=0:y=0:eof_action=repeat:enable='${enableExpr}'[${labelBlur}]`
+        );
+        prevLabel = labelBlur;
+
+        const refH =
+          track.width && track.height
+            ? Math.round((canvasW * track.height) / track.width)
+            : Math.round((canvasW * 9) / 16); // fallback 16:9
+        const availableH = canvasH - MOBILE_CREATOR_H;
+        const refY = Math.round((availableH - refH) / 2);
+
+        const labelA = `canvas${canvasIdx++}`;
+        filters.push(
+          `[${prevLabel}][ref${i}]overlay=x=0:y=${Math.max(0, refY)}:eof_action=repeat:enable='${enableExpr}'[${labelA}]`
+        );
+        prevLabel = labelA;
+
+        const creatorY = canvasH - MOBILE_CREATOR_H;
+        const labelB = `canvas${canvasIdx++}`;
+        filters.push(
+          `[${prevLabel}][creator_mobile]overlay=x=0:y=${creatorY}:enable='${enableExpr}'[${labelB}]`
+        );
+        prevLabel = labelB;
+      }
     } else if (isPortrait(track)) {
       // Landscape + portrait reference:
       // Reference scaled to full height, flush-right

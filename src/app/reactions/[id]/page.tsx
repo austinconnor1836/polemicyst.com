@@ -63,43 +63,10 @@ interface Composition {
 }
 
 /**
- * Auto-detect which output layouts to produce based on the aspect ratios
- * of reference tracks and the creator video.
- *
- * Rules:
- *  - Only portrait references → mobile (9:16)
- *  - Only landscape references → landscape (16:9)
- *  - Both portrait and landscape references → both outputs
- *  - No references → based on creator aspect ratio
+ * Always render both mobile (9:16) and landscape (16:9) outputs.
  */
-function detectOutputLayouts(
-  tracks: Track[],
-  creatorWidth?: number | null,
-  creatorHeight?: number | null
-): ('mobile' | 'landscape')[] {
-  const hasPortraitRef = tracks.some(
-    (t) => t.width != null && t.height != null && t.height > t.width
-  );
-  const hasLandscapeRef = tracks.some(
-    (t) => t.width != null && t.height != null && t.width >= t.height
-  );
-  const hasUnknownRef = tracks.some((t) => t.width == null || t.height == null);
-
-  if (tracks.length === 0) {
-    const creatorIsPortrait =
-      creatorWidth != null && creatorHeight != null && creatorHeight > creatorWidth;
-    return creatorIsPortrait ? ['mobile'] : ['landscape'];
-  }
-
-  const effectiveLandscape = hasLandscapeRef || hasUnknownRef;
-
-  if (hasPortraitRef && effectiveLandscape) {
-    return ['mobile', 'landscape'];
-  }
-  if (hasPortraitRef) {
-    return ['mobile'];
-  }
-  return ['landscape'];
+function detectOutputLayouts(): ('mobile' | 'landscape')[] {
+  return ['mobile', 'landscape'];
 }
 
 export default function CompositionEditorPage() {
@@ -501,11 +468,7 @@ export default function CompositionEditorPage() {
           hasLandscapeRef={composition.tracks.some(
             (t) => t.width == null || t.height == null || t.width >= t.height
           )}
-          autoLayouts={detectOutputLayouts(
-            composition.tracks,
-            composition.creatorWidth,
-            composition.creatorHeight
-          )}
+          autoLayouts={detectOutputLayouts()}
           onStatusChange={handleStatusChange}
           compositionTitle={composition.title}
           trackLabels={composition.tracks.map((t) => t.label || '').filter(Boolean)}

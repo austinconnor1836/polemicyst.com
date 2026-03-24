@@ -39,31 +39,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     let layouts: string[] = body.layouts;
 
     if (!layouts || layouts.length === 0) {
-      const hasPortraitRef = composition.tracks.some(
-        (t: any) => t.width != null && t.height != null && t.height > t.width
-      );
-      const hasLandscapeRef = composition.tracks.some(
-        (t: any) => t.width != null && t.height != null && t.width >= t.height
-      );
-      const hasUnknownRef = composition.tracks.some(
-        (t: any) => t.width == null || t.height == null
-      );
-      const effectiveLandscape = hasLandscapeRef || hasUnknownRef;
-
-      if (composition.tracks.length === 0) {
-        const comp = composition as any;
-        const creatorIsPortrait =
-          comp.creatorWidth != null &&
-          comp.creatorHeight != null &&
-          comp.creatorHeight > comp.creatorWidth;
-        layouts = creatorIsPortrait ? ['mobile'] : ['landscape'];
-      } else if (hasPortraitRef && effectiveLandscape) {
-        layouts = ['mobile', 'landscape'];
-      } else if (hasPortraitRef) {
-        layouts = ['mobile'];
-      } else {
-        layouts = ['landscape'];
-      }
+      // Always render both mobile and landscape outputs
+      layouts = ['mobile', 'landscape'];
     }
 
     const validLayouts = layouts.filter((l: string) => l === 'mobile' || l === 'landscape');
