@@ -75,10 +75,10 @@ function effectiveDuration(track: TrackInfo): number {
   return Math.max(0, end - track.trimStartS);
 }
 
-// Creator picture-in-picture size for landscape mode (bottom-right overlay)
-const PIP_W = 320;
-const PIP_H = 180;
-const PIP_MARGIN = 16;
+// Creator picture-in-picture size for landscape mode (bottom-right overlay, flush)
+const PIP_W = 480;
+const PIP_H = 270;
+const PIP_MARGIN = 0;
 
 // Creator overlay for mobile mode: full-width, flush with bottom
 // Height is proportional (16:9 creator at 720w = 405h)
