@@ -228,13 +228,9 @@ export function RenderControls({
     }
   };
 
-  const detectionSummary = (() => {
-    if (!hasTracks) return 'Upload reference clips to auto-detect output format';
-    if (hasPortraitRef && hasLandscapeRef)
-      return 'Mixed aspect ratios detected — rendering both formats';
-    if (hasPortraitRef) return 'Portrait references detected — rendering 9:16';
-    return 'Landscape references detected — rendering 16:9';
-  })();
+  const detectionSummary = !hasTracks
+    ? 'Upload reference clips to render'
+    : 'Rendering both 9:16 and 16:9 formats';
 
   return (
     <div className="space-y-4">
