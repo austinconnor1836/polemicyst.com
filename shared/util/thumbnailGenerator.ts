@@ -286,6 +286,7 @@ interface VisionScoreResult {
   score: number;
   facePresence: number;
   emotionalExpression: number;
+  eyeContact: number;
   visualInterest: number;
 }
 
@@ -307,7 +308,7 @@ async function scoreFrameWithVision(framePath: string): Promise<VisionScoreResul
       body: JSON.stringify({
         model: visionModel,
         prompt:
-          'Describe this image in detail. Focus on: Are there any people visible? What are their facial expressions and emotions? Are they surprised, excited, angry, laughing, shocked, or showing strong reactions? How visually interesting or dramatic is the scene?',
+          'Describe this image in detail. Focus on: Are there any people visible? Are they looking directly at the camera (eye contact) or looking away? What are their facial expressions and emotions? Are they surprised, excited, angry, laughing, shocked, or showing strong reactions? How visually interesting or dramatic is the scene?',
         images: [base64],
         stream: false,
         options: { temperature: 0.2, num_predict: 150 },
@@ -350,6 +351,21 @@ async function scoreFrameWithVision(framePath: string): Promise<VisionScoreResul
       'passionate',
       'animated',
     ]);
+    const eyeContact = scoreKeywords(text, [
+      'looking at the camera',
+      'looking directly',
+      'looking at the viewer',
+      'looking at us',
+      'looking straight',
+      'eye contact',
+      'staring at',
+      'facing the camera',
+      'gazing at the camera',
+      'directly at',
+      'into the camera',
+      'toward the camera',
+      'toward the viewer',
+    ]);
     const visualInterest = scoreKeywords(text, [
       'dramatic',
       'dynamic',
@@ -368,12 +384,14 @@ async function scoreFrameWithVision(framePath: string): Promise<VisionScoreResul
       'striking',
     ]);
 
-    const score = emotionalExpression * 0.7 + visualInterest * 0.3;
+    // Weight: 50% emotion, 30% eye contact, 20% visual interest
+    const score = emotionalExpression * 0.5 + eyeContact * 0.3 + visualInterest * 0.2;
 
     return {
       score: clamp(score, 0, 10),
       facePresence: 10, // Already confirmed by OpenCV
       emotionalExpression: clamp(emotionalExpression, 0, 10),
+      eyeContact: clamp(eyeContact, 0, 10),
       visualInterest: clamp(visualInterest, 0, 10),
     };
   } catch (err) {
@@ -1032,11 +1050,14 @@ export async function generateThumbnailAssets(
         if (visionResult) {
           consecutiveFailures = 0;
           withFaces[i].emotionScore = visionResult.emotionalExpression;
-          // Combined: 40% face area (base presence) + 60% emotion (expressiveness)
+          // Combined: 30% face area + 40% emotion + 30% eye contact
+          const faceScore = clamp(withFaces[i].faceArea * 2, 0, 10);
           withFaces[i].combinedScore =
-            clamp(withFaces[i].faceArea * 2, 0, 10) * 0.4 + visionResult.emotionalExpression * 0.6;
+            faceScore * 0.3 +
+            visionResult.emotionalExpression * 0.4 +
+            visionResult.eyeContact * 0.3;
           console.log(
-            `[thumbnailAssets] Creator emotion at ${withFaces[i].frame.ts.toFixed(1)}s: emotion=${visionResult.emotionalExpression.toFixed(1)}, combined=${withFaces[i].combinedScore.toFixed(1)}`
+            `[thumbnailAssets] Creator at ${withFaces[i].frame.ts.toFixed(1)}s: emotion=${visionResult.emotionalExpression.toFixed(1)}, eye=${visionResult.eyeContact.toFixed(1)}, combined=${withFaces[i].combinedScore.toFixed(1)}`
           );
         } else {
           consecutiveFailures++;
