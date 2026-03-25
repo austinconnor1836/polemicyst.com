@@ -387,22 +387,34 @@ async function scoreAndSelectFrames(
   }
 
   // Score all candidates (sequentially to avoid overloading Ollama)
+  // Early-bail: if the first call fails/times out, skip the rest and use fallback
   const scored: Array<{ framePath: string; timestampS: number; visionScore: number }> = [];
+  let consecutiveFailures = 0;
 
   for (const c of candidates) {
+    if (consecutiveFailures >= 2) {
+      console.log(
+        '[thumbnailGenerator] Vision scoring too slow/unavailable — skipping remaining frames'
+      );
+      break;
+    }
     const result = await scoreFrameWithVision(c.framePath);
-    const score = result ? result.score : -1;
     if (result) {
+      consecutiveFailures = 0;
       console.log(
         `[thumbnailGenerator] Scored frame at ${c.timestampS.toFixed(1)}s: score=${result.score.toFixed(1)}, face=${result.facePresence}, emotion=${result.emotionalExpression}`
       );
+      scored.push({ ...c, visionScore: result.score });
+    } else {
+      consecutiveFailures++;
+      scored.push({ ...c, visionScore: -1 });
     }
-    scored.push({ ...c, visionScore: score });
   }
 
   // If all scores failed, fall back to evenly-spaced
   const validScored = scored.filter((s) => s.visionScore >= 0);
   if (validScored.length === 0) {
+    console.log('[thumbnailGenerator] All vision scores failed — using evenly-spaced fallback');
     if (candidates.length <= topN) return candidates;
     const step = candidates.length / topN;
     return Array.from({ length: topN }, (_, i) => candidates[Math.floor(step * i)]);
@@ -458,13 +470,21 @@ async function selectBestCreatorFrame(
     return creatorFrames[Math.floor(creatorFrames.length / 3)]?.path || fallbackPath;
   }
 
-  // Score each creator frame
+  // Score each creator frame (early-bail on consecutive failures)
   let bestFrame = creatorFrames[0];
   let bestScore = -1;
+  let consecutiveFailures = 0;
 
   for (const frame of creatorFrames) {
+    if (consecutiveFailures >= 2) {
+      console.log(
+        '[thumbnailGenerator] Creator vision scoring too slow — using first available frame'
+      );
+      break;
+    }
     const result = await scoreFrameWithVision(frame.path);
     if (result) {
+      consecutiveFailures = 0;
       // Weight face presence heavily for creator frames
       const weighted =
         result.facePresence * 0.5 + result.emotionalExpression * 0.3 + result.score * 0.2;
@@ -475,6 +495,8 @@ async function selectBestCreatorFrame(
       console.log(
         `[thumbnailGenerator] Creator frame at ${frame.ts.toFixed(1)}s: face=${result.facePresence}, emotion=${result.emotionalExpression}, weighted=${weighted.toFixed(1)}`
       );
+    } else {
+      consecutiveFailures++;
     }
   }
 
