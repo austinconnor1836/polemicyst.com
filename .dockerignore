@@ -19,6 +19,7 @@ infrastructure/
 models/
 scripts/
 !scripts/fetch-yt-captions.py
+!scripts/remove_background.py
 clip-worker/
 
 # Terraform state

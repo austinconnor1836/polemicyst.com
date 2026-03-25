@@ -17,6 +17,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       include: {
         tracks: { orderBy: { sortOrder: 'asc' } },
         outputs: true,
+        thumbnails: { orderBy: { frameTimestampS: 'asc' } },
       },
     });
 
@@ -75,6 +76,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       include: {
         tracks: { orderBy: { sortOrder: 'asc' } },
         outputs: true,
+        thumbnails: { orderBy: { frameTimestampS: 'asc' } },
       },
     });
 

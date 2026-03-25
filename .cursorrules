@@ -15,6 +15,12 @@
 - Branch names: `feature/<name>`, `fix/<name>`, `chore/<name>`.
 - **Never push directly to `main`.** All changes reach `main` via release PRs from `develop`.
 
+## Pull request conventions
+
+- When creating a PR, **enable auto-merge by default** (`gh pr merge <PR_NUMBER> --auto --squash`).
+- Only skip auto-merge if the user explicitly says `--no-auto-merge` or asks not to auto-merge.
+- PRs target `develop` unless otherwise specified.
+
 ## Quality gates
 
 Every commit **must** pass lint (`npm run lint`) and build (`npx next build`) before being created. Do not commit code that fails either step.

@@ -19,7 +19,11 @@ import { checkClipQuota } from '@shared/lib/plans';
 import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
 import { TrainingCollector } from '@shared/lib/training-collector';
 import { logJob } from '@shared/lib/job-logger';
-import type { ReactionComposeJob, GenericTranscriptionJob } from '@shared/queues';
+import type {
+  ReactionComposeJob,
+  GenericTranscriptionJob,
+  ThumbnailGenerationJob,
+} from '@shared/queues';
 import { queueGenericTranscriptionJob } from '@shared/queues';
 import { renderComposition } from '@shared/util/reactionCompose';
 import { transcribeFromS3Url } from '@shared/lib/transcription';
@@ -803,6 +807,131 @@ new Worker<ReactionComposeJob>(
       console.log(
         `🏁 Reaction compose job complete for ${compositionId} (${Date.now() - startMs}ms)`
       );
+
+      // 5. Auto-generate thumbnail assets (non-fatal)
+      if (allCompleted) {
+        try {
+          const referenceTrack = composition.tracks[0];
+          if (referenceTrack?.s3Url && composition.creatorS3Url) {
+            console.log('🖼️ Auto-generating thumbnail assets...');
+            const { generateThumbnailAssets, compositeThumbnailSharp } =
+              await import('../../shared/util/thumbnailGenerator');
+
+            const { referenceFrames, cutouts } = await generateThumbnailAssets({
+              compositionId,
+              referenceS3Url: referenceTrack.s3Url,
+              creatorS3Url: composition.creatorS3Url,
+              creatorTrimStartS: composition.creatorTrimStartS,
+              creatorDurationS: composition.creatorDurationS || undefined,
+            });
+
+            if (referenceFrames.length > 0 || cutouts.length > 0) {
+              // Delete existing assets for re-renders
+              await prisma.thumbnailAsset.deleteMany({
+                where: { compositionId },
+              });
+
+              // Store raw assets
+              const allAssets = [...referenceFrames, ...cutouts];
+              await prisma.thumbnailAsset.createMany({
+                data: allAssets.map((a) => ({
+                  compositionId,
+                  type: a.type,
+                  s3Key: a.s3Key,
+                  s3Url: a.s3Url,
+                  frameTimestampS: a.frameTimestampS,
+                  visionScore: a.visionScore ?? null,
+                })),
+              });
+
+              console.log(
+                `✅ Stored ${referenceFrames.length} reference frames + ${cutouts.length} cutouts`
+              );
+
+              // Auto-composite best ref + best cutout as the default thumbnail
+              if (referenceFrames.length > 0 && cutouts.length > 0) {
+                try {
+                  const bestRef = referenceFrames.reduce((a, b) =>
+                    (b.visionScore ?? 0) > (a.visionScore ?? 0) ? b : a
+                  );
+                  const bestCutout = cutouts.reduce((a, b) =>
+                    (b.visionScore ?? 0) > (a.visionScore ?? 0) ? b : a
+                  );
+
+                  const nodeFetch = require('node-fetch');
+                  const [refRes, cutoutRes] = await Promise.all([
+                    nodeFetch(bestRef.s3Url),
+                    nodeFetch(bestCutout.s3Url),
+                  ]);
+                  const [refBuf, cutoutBuf] = await Promise.all([
+                    refRes.buffer(),
+                    cutoutRes.buffer(),
+                  ]);
+
+                  const composited = await compositeThumbnailSharp(
+                    refBuf,
+                    cutoutBuf,
+                    'right',
+                    'large'
+                  );
+
+                  // Upload composited thumbnail
+                  const { S3Client } = await import('@aws-sdk/client-s3');
+                  const { Upload } = await import('@aws-sdk/lib-storage');
+                  const region = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-2';
+                  const bucket = process.env.S3_BUCKET || 'clips-genie-uploads';
+                  const s3 = new S3Client({ region });
+                  const { randomUUID } = await import('crypto');
+
+                  const thumbS3Key = `compositions/${compositionId}/thumbnails/${randomUUID()}.png`;
+                  const upload = new Upload({
+                    client: s3,
+                    params: {
+                      Bucket: bucket,
+                      Key: thumbS3Key,
+                      Body: composited,
+                      ContentType: 'image/png',
+                    },
+                  });
+                  await upload.done();
+
+                  const thumbS3Url = `https://${bucket}.s3.${region}.amazonaws.com/${thumbS3Key}`;
+
+                  // Delete old thumbnails and create the auto-composited one as selected
+                  await prisma.compositionThumbnail.deleteMany({
+                    where: { compositionId },
+                  });
+                  await prisma.compositionThumbnail.create({
+                    data: {
+                      compositionId,
+                      s3Key: thumbS3Key,
+                      s3Url: thumbS3Url,
+                      hookText: '',
+                      frameTimestampS: bestRef.frameTimestampS,
+                      visionScore: bestRef.visionScore ?? null,
+                      selected: true,
+                    },
+                  });
+
+                  console.log('✅ Auto-composited default thumbnail');
+                } catch (compErr) {
+                  console.warn(
+                    '⚠️ Auto-composite failed (non-fatal):',
+                    compErr instanceof Error ? compErr.message : compErr
+                  );
+                }
+              }
+            } else {
+              console.warn('⚠️ Thumbnail asset generation produced no results');
+            }
+          }
+        } catch (thumbErr) {
+          console.error(
+            '⚠️ Thumbnail generation failed (non-fatal):',
+            thumbErr instanceof Error ? thumbErr.message : thumbErr
+          );
+        }
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error('❌ Reaction compose failed:', errorMessage);
@@ -891,6 +1020,75 @@ new Worker<GenericTranscriptionJob>(
         err instanceof Error ? err.message : err
       );
       // Non-fatal — don't rethrow so the job doesn't retry
+    }
+  },
+  { connection: redisConnection as any }
+);
+
+// --- Thumbnail Generation Worker ---
+// Manual regeneration of composition thumbnail assets via queue.
+
+new Worker<ThumbnailGenerationJob>(
+  'thumbnail-generation',
+  async (job) => {
+    const { compositionId } = job.data;
+    console.log(`🖼️ [thumbnail-generation] Processing ${compositionId}`);
+
+    try {
+      const composition = await prisma.composition.findUnique({
+        where: { id: compositionId },
+        include: { outputs: true, tracks: { orderBy: { sortOrder: 'asc' } } },
+      });
+
+      if (!composition) {
+        console.error(`❌ [thumbnail-generation] Composition ${compositionId} not found`);
+        return;
+      }
+
+      const referenceTrack = composition.tracks[0];
+
+      if (!referenceTrack?.s3Url || !composition.creatorS3Url) {
+        console.warn(`⚠️ [thumbnail-generation] Missing reference track or creator video`);
+        return;
+      }
+
+      const { generateThumbnailAssets } = await import('../../shared/util/thumbnailGenerator');
+
+      const { referenceFrames, cutouts } = await generateThumbnailAssets({
+        compositionId,
+        referenceS3Url: referenceTrack.s3Url,
+        creatorS3Url: composition.creatorS3Url,
+        creatorTrimStartS: composition.creatorTrimStartS,
+        creatorDurationS: composition.creatorDurationS || undefined,
+      });
+
+      if (referenceFrames.length > 0 || cutouts.length > 0) {
+        // Delete existing assets
+        await prisma.thumbnailAsset.deleteMany({
+          where: { compositionId },
+        });
+
+        const allAssets = [...referenceFrames, ...cutouts];
+        await prisma.thumbnailAsset.createMany({
+          data: allAssets.map((a) => ({
+            compositionId,
+            type: a.type,
+            s3Key: a.s3Key,
+            s3Url: a.s3Url,
+            frameTimestampS: a.frameTimestampS,
+            visionScore: a.visionScore ?? null,
+          })),
+        });
+
+        console.log(
+          `✅ [thumbnail-generation] Generated ${referenceFrames.length} refs + ${cutouts.length} cutouts`
+        );
+      } else {
+        console.warn(`⚠️ [thumbnail-generation] No assets generated`);
+      }
+    } catch (err) {
+      console.error(`❌ [thumbnail-generation] Failed:`, err instanceof Error ? err.message : err);
+      // Non-fatal — don't rethrow
     }
   },
   { connection: redisConnection as any }

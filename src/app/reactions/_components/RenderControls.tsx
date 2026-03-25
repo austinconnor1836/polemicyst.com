@@ -182,6 +182,17 @@ export function RenderControls({
     if (!hasCreator || !hasTracks) return;
 
     setRendering(true);
+
+    // Optimistically reset outputs to pending so spinners show immediately
+    const resetOutputs = outputs.map((o) => ({
+      ...o,
+      status: 'pending',
+      s3Url: null,
+      renderError: null,
+      durationMs: null,
+    }));
+    onStatusChange('rendering', resetOutputs);
+
     try {
       const res = await fetch(`/api/compositions/${compositionId}/render`, {
         method: 'POST',
@@ -193,6 +204,8 @@ export function RenderControls({
         const data = await res.json();
         toast.error(data.error || 'Failed to start render');
         setRendering(false);
+        // Restore original outputs on failure
+        onStatusChange(compositionStatus, outputs);
         return;
       }
 
@@ -200,6 +213,7 @@ export function RenderControls({
     } catch (err) {
       toast.error('Failed to start render');
       setRendering(false);
+      onStatusChange(compositionStatus, outputs);
     }
   };
 

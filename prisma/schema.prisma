@@ -650,11 +650,15 @@ model Composition {
   creatorTrimEndS     Float?
   creatorTranscript      String?  @db.Text
   creatorTranscriptJson  Json?
+  thumbnailCutoutPosition String  @default("right") // left | right
+  thumbnailCutoutSize     String  @default("large")  // small | medium | large
   createdAt           DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   tracks           CompositionTrack[]
   outputs          CompositionOutput[]
+  thumbnails       CompositionThumbnail[]
+  thumbnailAssets  ThumbnailAsset[]
 
   @@index([userId])
   @@index([status])
@@ -700,4 +704,34 @@ model CompositionOutput {
   updatedAt     DateTime    @updatedAt
 
   @@index([compositionId])
+}
+
+model CompositionThumbnail {
+  id              String      @id @default(cuid())
+  compositionId   String
+  composition     Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
+  s3Key           String
+  s3Url           String
+  hookText        String
+  frameTimestampS Float
+  visionScore     Float?
+  selected        Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([compositionId])
+}
+
+model ThumbnailAsset {
+  id              String      @id @default(cuid())
+  compositionId   String
+  composition     Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
+  type            String      // "reference" | "cutout"
+  s3Key           String
+  s3Url           String
+  frameTimestampS Float
+  visionScore     Float?
+  createdAt       DateTime    @default(now())
+
+  @@index([compositionId, type])
 }

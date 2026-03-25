@@ -13,6 +13,7 @@
 - **Always create a new branch from `develop`** before starting work on a new task. Run `git checkout develop && git pull origin develop && git checkout -b <branch-name>` first.
 - PRs should target `develop`, not `main`.
 - Use descriptive branch names: `feature/<name>`, `fix/<name>`, `chore/<name>`.
+- When creating a PR, **enable auto-merge by default** (`gh pr merge <PR_NUMBER> --auto --squash`). Only skip if the user explicitly says `--no-auto-merge`.
 
 ## Release process
 

@@ -12,9 +12,11 @@ until curl -s http://localhost:11434 > /dev/null; do
   sleep 1
 done
 
-# Pull model (e.g., llama3)
+# Pull models
 echo "⬇️  Pulling model: llama3"
 ollama pull llama3
+echo "⬇️  Pulling model: moondream (vision — 1.7GB, fits in memory)"
+ollama pull moondream
 
 # Keep container alive
 wait

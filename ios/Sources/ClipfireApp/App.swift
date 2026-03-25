@@ -74,6 +74,12 @@ struct ClipfireApp: App {
                                 }
                                 .tag(3)
 
+                            CompositionsListView(viewModel: CompositionsViewModel(api: apiClient), api: apiClient)
+                                .tabItem {
+                                    Label("Reactions", systemImage: "rectangle.on.rectangle.angled")
+                                }
+                                .tag(5)
+
                             SettingsTabView(apiClient: apiClient, authService: authService)
                                 .tabItem {
                                     Label("Settings", systemImage: "gearshape.fill")
@@ -106,6 +112,10 @@ struct ClipfireApp: App {
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                     showSocialPostComposer = true
                                 }
+                            },
+                            onReaction: {
+                                showContentPicker = false
+                                tabSelection = 5
                             }
                         )
                     }

@@ -27,7 +27,8 @@
     "../../shared/lib/youtube-captions.ts",
     "../../shared/lib/scoring/**/*.ts",
     "../../shared/queues/**/*.ts",
-    "../../shared/util/ffmpegUtils.ts"
+    "../../shared/util/ffmpegUtils.ts",
+    "../../shared/util/thumbnailGenerator.ts"
   ],
   "exclude": ["node_modules", "scripts"]
 }
