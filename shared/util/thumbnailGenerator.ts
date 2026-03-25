@@ -230,8 +230,49 @@ async function extractSceneFrames(
 }
 
 // ---------------------------------------------------------------------------
-// LLaVA vision scoring
+// Face detection (OpenCV — fast, ~10ms per frame) + Vision scoring (moondream — slow, emotional detail)
 // ---------------------------------------------------------------------------
+
+// Path to the face detection script
+const FACE_DETECT_SCRIPT =
+  process.env.FACE_DETECT_SCRIPT_PATH ||
+  (fs.existsSync('/app/scripts/detect_faces.py')
+    ? '/app/scripts/detect_faces.py'
+    : path.join(process.cwd(), '..', '..', 'scripts', 'detect_faces.py'));
+
+interface FaceDetectResult {
+  face_count: number;
+  face_area_pct: number;
+  largest_face_pct: number;
+}
+
+/**
+ * Fast face detection using OpenCV Haar cascade (~10ms per frame).
+ * Returns null on failure (non-fatal).
+ */
+async function detectFaces(framePath: string): Promise<FaceDetectResult | null> {
+  const python = getRembgPython();
+  return new Promise((resolve) => {
+    const proc = spawn(python, [FACE_DETECT_SCRIPT, framePath], { timeout: 10_000 });
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', (d: Buffer) => (stdout += d.toString()));
+    proc.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        console.warn(`[thumbnailGenerator] Face detection failed: ${stderr.trim()}`);
+        resolve(null);
+        return;
+      }
+      try {
+        resolve(JSON.parse(stdout.trim()));
+      } catch {
+        resolve(null);
+      }
+    });
+    proc.on('error', () => resolve(null));
+  });
+}
 
 interface VisionScoreResult {
   score: number;
@@ -241,9 +282,8 @@ interface VisionScoreResult {
 }
 
 /**
- * Score a single frame with a vision model for thumbnail quality.
- * Uses natural language description (works with moondream) and extracts
- * emotion/face signals from the text.
+ * Score a single frame with moondream vision model for emotional detail.
+ * Only called for frames that already passed face detection.
  * Returns null on failure (non-fatal).
  */
 async function scoreFrameWithVision(framePath: string): Promise<VisionScoreResult | null> {
@@ -264,7 +304,7 @@ async function scoreFrameWithVision(framePath: string): Promise<VisionScoreResul
         stream: false,
         options: { temperature: 0.2, num_predict: 150 },
       }),
-      timeout: 60_000, // 60s — first call loads the model into memory
+      timeout: 120_000, // 120s — generous for CPU inference
     });
 
     if (!res.ok) return null;
@@ -273,23 +313,6 @@ async function scoreFrameWithVision(framePath: string): Promise<VisionScoreResul
     const text = (data.response || '').trim().toLowerCase();
     console.log(`[thumbnailGenerator] Vision description: ${text.slice(0, 120)}...`);
 
-    // Score based on keyword presence in the natural language description
-    const facePresence = scoreKeywords(text, [
-      'person',
-      'people',
-      'man',
-      'woman',
-      'face',
-      'faces',
-      'someone',
-      'he ',
-      'she ',
-      'his ',
-      'her ',
-      'looking',
-      'eyes',
-      'mouth',
-    ]);
     const emotionalExpression = scoreKeywords(text, [
       'surprised',
       'shock',
@@ -337,11 +360,11 @@ async function scoreFrameWithVision(framePath: string): Promise<VisionScoreResul
       'striking',
     ]);
 
-    const score = facePresence * 0.4 + emotionalExpression * 0.4 + visualInterest * 0.2;
+    const score = emotionalExpression * 0.7 + visualInterest * 0.3;
 
     return {
       score: clamp(score, 0, 10),
-      facePresence: clamp(facePresence, 0, 10),
+      facePresence: 10, // Already confirmed by OpenCV
       emotionalExpression: clamp(emotionalExpression, 0, 10),
       visualInterest: clamp(visualInterest, 0, 10),
     };
@@ -370,63 +393,105 @@ function clamp(val: number, min: number, max: number): number {
 }
 
 /**
- * Score all candidate frames with vision model and select the top N.
- * Falls back to evenly-spaced selection if vision is unavailable.
+ * Two-pass frame selection:
+ * 1. Fast pass — OpenCV face detection on ALL candidates (~10ms each)
+ * 2. Slow pass — moondream emotion scoring on top 3 face-containing frames
+ * Falls back to face-detection-only ranking if moondream is unavailable.
  */
 async function scoreAndSelectFrames(
   candidates: Array<{ framePath: string; timestampS: number }>,
   topN: number
 ): Promise<Array<{ framePath: string; timestampS: number; visionScore?: number }>> {
-  const visionAvailable = await isOllamaVisionAvailable();
-
-  if (!visionAvailable) {
-    // Fallback: evenly-spaced selection
-    if (candidates.length <= topN) return candidates;
-    const step = candidates.length / topN;
-    return Array.from({ length: topN }, (_, i) => candidates[Math.floor(step * i)]);
-  }
-
-  // Score all candidates (sequentially to avoid overloading Ollama)
-  // Early-bail: if the first call fails/times out, skip the rest and use fallback
-  const scored: Array<{ framePath: string; timestampS: number; visionScore: number }> = [];
-  let consecutiveFailures = 0;
+  // --- Pass 1: Fast face detection on ALL candidates ---
+  console.log(`[thumbnailGenerator] Running face detection on ${candidates.length} candidates...`);
+  const faceScored: Array<{
+    framePath: string;
+    timestampS: number;
+    faceCount: number;
+    faceAreaPct: number;
+  }> = [];
 
   for (const c of candidates) {
-    if (consecutiveFailures >= 2) {
+    const result = await detectFaces(c.framePath);
+    const faceCount = result?.face_count ?? 0;
+    const faceAreaPct = result?.face_area_pct ?? 0;
+    if (faceCount > 0) {
       console.log(
-        '[thumbnailGenerator] Vision scoring too slow/unavailable — skipping remaining frames'
+        `[thumbnailGenerator] Face detected at ${c.timestampS.toFixed(1)}s: ${faceCount} face(s), ${faceAreaPct.toFixed(1)}% area`
       );
-      break;
     }
-    const result = await scoreFrameWithVision(c.framePath);
-    if (result) {
-      consecutiveFailures = 0;
-      console.log(
-        `[thumbnailGenerator] Scored frame at ${c.timestampS.toFixed(1)}s: score=${result.score.toFixed(1)}, face=${result.facePresence}, emotion=${result.emotionalExpression}`
-      );
-      scored.push({ ...c, visionScore: result.score });
-    } else {
-      consecutiveFailures++;
-      scored.push({ ...c, visionScore: -1 });
-    }
+    faceScored.push({ ...c, faceCount, faceAreaPct });
   }
 
-  // If all scores failed, fall back to evenly-spaced
-  const validScored = scored.filter((s) => s.visionScore >= 0);
-  if (validScored.length === 0) {
-    console.log('[thumbnailGenerator] All vision scores failed — using evenly-spaced fallback');
+  // Sort by face area descending (bigger faces = better thumbnails)
+  const withFaces = faceScored.filter((f) => f.faceCount > 0);
+  withFaces.sort((a, b) => b.faceAreaPct - a.faceAreaPct);
+
+  console.log(
+    `[thumbnailGenerator] Face detection: ${withFaces.length}/${candidates.length} frames have faces`
+  );
+
+  // If no faces found at all, fall back to evenly-spaced
+  if (withFaces.length === 0) {
+    console.log('[thumbnailGenerator] No faces detected — using evenly-spaced fallback');
     if (candidates.length <= topN) return candidates;
     const step = candidates.length / topN;
     return Array.from({ length: topN }, (_, i) => candidates[Math.floor(step * i)]);
   }
 
-  // Sort by score descending, take top N
-  validScored.sort((a, b) => b.visionScore - a.visionScore);
-  return validScored.slice(0, topN);
+  // --- Pass 2: Moondream emotion scoring on top face-containing frames ---
+  const MOONDREAM_BUDGET = 3; // Only send top 3 to moondream (limits slow calls)
+  const moondreamCandidates = withFaces.slice(0, MOONDREAM_BUDGET);
+  const visionAvailable = await isOllamaVisionAvailable();
+
+  if (visionAvailable) {
+    console.log(
+      `[thumbnailGenerator] Scoring top ${moondreamCandidates.length} face frames with moondream...`
+    );
+    let consecutiveFailures = 0;
+
+    for (const c of moondreamCandidates) {
+      if (consecutiveFailures >= 2) {
+        console.log('[thumbnailGenerator] Moondream too slow — using face detection scores only');
+        break;
+      }
+      const result = await scoreFrameWithVision(c.framePath);
+      if (result) {
+        consecutiveFailures = 0;
+        // Boost face area score with emotion score from moondream
+        (c as any).emotionScore = result.emotionalExpression;
+        console.log(
+          `[thumbnailGenerator] Emotion scored at ${c.timestampS.toFixed(1)}s: emotion=${result.emotionalExpression}, visual=${result.visualInterest}`
+        );
+      } else {
+        consecutiveFailures++;
+      }
+    }
+  }
+
+  // Build final scored list: face frames first (with optional emotion boost), then non-face frames
+  const finalScored: Array<{ framePath: string; timestampS: number; visionScore: number }> = [];
+
+  for (const f of withFaces) {
+    // Base score from face detection (0-10 scale based on face area percentage)
+    const faceScore = clamp(f.faceAreaPct * 2, 0, 10);
+    const emotionBonus = (f as any).emotionScore ? (f as any).emotionScore * 0.3 : 0;
+    finalScored.push({
+      framePath: f.framePath,
+      timestampS: f.timestampS,
+      visionScore: clamp(faceScore + emotionBonus, 0, 10),
+    });
+  }
+
+  // Sort by combined score descending
+  finalScored.sort((a, b) => b.visionScore - a.visionScore);
+  return finalScored.slice(0, topN);
 }
 
 /**
- * Select the best creator frame for the thumbnail using vision scoring.
+ * Select the best creator frame using two-pass scoring:
+ * 1. Fast pass — OpenCV face detection on all candidate frames
+ * 2. Slow pass — moondream on the single best face frame for emotion detail
  * Falls back to a frame at 1/3 of the video duration.
  */
 async function selectBestCreatorFrame(
@@ -459,49 +524,64 @@ async function selectBestCreatorFrame(
   }
 
   if (creatorFrames.length === 0) {
-    // Last resort fallback
     await extractFrame(creatorPath, fallbackTs, fallbackPath);
     return fallbackPath;
   }
 
-  const visionAvailable = await isOllamaVisionAvailable();
-  if (!visionAvailable) {
-    // Return the frame at ~1/3 of the video
+  // --- Pass 1: Fast face detection on all creator frames ---
+  console.log(
+    `[thumbnailGenerator] Running face detection on ${creatorFrames.length} creator frames...`
+  );
+  const faceResults: Array<{ frame: (typeof creatorFrames)[0]; faceArea: number }> = [];
+
+  for (const frame of creatorFrames) {
+    const result = await detectFaces(frame.path);
+    const faceArea = result?.face_area_pct ?? 0;
+    if (faceArea > 0) {
+      console.log(
+        `[thumbnailGenerator] Creator face at ${frame.ts.toFixed(1)}s: ${result!.face_count} face(s), ${faceArea.toFixed(1)}% area`
+      );
+    }
+    faceResults.push({ frame, faceArea });
+  }
+
+  // Sort by face area, pick the best
+  faceResults.sort((a, b) => b.faceArea - a.faceArea);
+  let bestFrame = faceResults[0].frame;
+
+  if (faceResults[0].faceArea === 0) {
+    console.log('[thumbnailGenerator] No faces in creator frames — using 1/3 duration frame');
     return creatorFrames[Math.floor(creatorFrames.length / 3)]?.path || fallbackPath;
   }
 
-  // Score each creator frame (early-bail on consecutive failures)
-  let bestFrame = creatorFrames[0];
-  let bestScore = -1;
-  let consecutiveFailures = 0;
+  // --- Pass 2: Moondream on top 2 face frames for emotion scoring ---
+  const visionAvailable = await isOllamaVisionAvailable();
+  if (visionAvailable) {
+    const top2 = faceResults.filter((f) => f.faceArea > 0).slice(0, 2);
+    let bestMoondreamScore = -1;
 
-  for (const frame of creatorFrames) {
-    if (consecutiveFailures >= 2) {
-      console.log(
-        '[thumbnailGenerator] Creator vision scoring too slow — using first available frame'
-      );
-      break;
-    }
-    const result = await scoreFrameWithVision(frame.path);
-    if (result) {
-      consecutiveFailures = 0;
-      // Weight face presence heavily for creator frames
-      const weighted =
-        result.facePresence * 0.5 + result.emotionalExpression * 0.3 + result.score * 0.2;
-      if (weighted > bestScore) {
-        bestScore = weighted;
-        bestFrame = frame;
+    for (const { frame } of top2) {
+      const result = await scoreFrameWithVision(frame.path);
+      if (result) {
+        const weighted = result.emotionalExpression * 0.7 + result.visualInterest * 0.3;
+        console.log(
+          `[thumbnailGenerator] Creator emotion at ${frame.ts.toFixed(1)}s: emotion=${result.emotionalExpression}, weighted=${weighted.toFixed(1)}`
+        );
+        if (weighted > bestMoondreamScore) {
+          bestMoondreamScore = weighted;
+          bestFrame = frame;
+        }
+      } else {
+        console.log(
+          '[thumbnailGenerator] Moondream failed for creator — using face detection result'
+        );
+        break;
       }
-      console.log(
-        `[thumbnailGenerator] Creator frame at ${frame.ts.toFixed(1)}s: face=${result.facePresence}, emotion=${result.emotionalExpression}, weighted=${weighted.toFixed(1)}`
-      );
-    } else {
-      consecutiveFailures++;
     }
   }
 
   console.log(
-    `[thumbnailGenerator] Best creator frame: ${bestFrame.ts.toFixed(1)}s (score=${bestScore.toFixed(1)})`
+    `[thumbnailGenerator] Best creator frame: ${bestFrame.ts.toFixed(1)}s (faceArea=${faceResults[0]?.faceArea?.toFixed(1) ?? 0}%)`
   );
   return bestFrame.path;
 }

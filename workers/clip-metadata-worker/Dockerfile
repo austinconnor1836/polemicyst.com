@@ -15,7 +15,7 @@ ENV PATH="/venv/bin:$PATH"
 ENV PIP_NO_CACHE_DIR=1
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir faster-whisper rembg Pillow onnxruntime
+    pip install --no-cache-dir faster-whisper rembg Pillow onnxruntime opencv-python-headless
 
 # Pre-download u2net model to avoid cold-start latency
 RUN python3 -c "from rembg import new_session; new_session('u2net')"
@@ -32,6 +32,7 @@ RUN npm install
 
 COPY ./workers/clip-metadata-worker .
 COPY ./scripts/remove_background.py /app/scripts/remove_background.py
+COPY ./scripts/detect_faces.py /app/scripts/detect_faces.py
 COPY ./prisma ./prisma
 COPY ./workers/clip-metadata-worker/tsconfig.docker.json tsconfig.json
 
