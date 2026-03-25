@@ -41,6 +41,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       trimStartS,
       trimEndS,
       hasAudio,
+      embeddedPortrait,
+      cropX,
+      cropY,
+      cropW,
+      cropH,
     } = body;
 
     if (!s3Key || !s3Url || durationS == null) {
@@ -66,6 +71,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         trimEndS: trimEndS ?? null,
         sortOrder: nextOrder,
         hasAudio: hasAudio ?? true,
+        embeddedPortrait: embeddedPortrait ?? false,
+        cropX: cropX ?? null,
+        cropY: cropY ?? null,
+        cropW: cropW ?? null,
+        cropH: cropH ?? null,
       },
     });
 

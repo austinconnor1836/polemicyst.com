@@ -601,6 +601,11 @@ new Worker<ReactionComposeJob>(
         height: number | null;
         hasAudio: boolean;
         sortOrder: number;
+        embeddedPortrait?: boolean;
+        cropX?: number | null;
+        cropY?: number | null;
+        cropW?: number | null;
+        cropH?: number | null;
       }> = [];
 
       for (const track of composition.tracks) {
@@ -633,6 +638,11 @@ new Worker<ReactionComposeJob>(
           height: track.height,
           hasAudio: track.hasAudio,
           sortOrder: track.sortOrder,
+          embeddedPortrait: track.embeddedPortrait,
+          cropX: track.cropX,
+          cropY: track.cropY,
+          cropW: track.cropW,
+          cropH: track.cropH,
         });
       }
 

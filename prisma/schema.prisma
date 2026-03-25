@@ -679,6 +679,11 @@ model CompositionTrack {
   trimEndS      Float?
   sortOrder     Int         @default(0)
   hasAudio      Boolean     @default(true)
+  embeddedPortrait Boolean  @default(false)
+  cropX         Int?
+  cropY         Int?
+  cropW         Int?
+  cropH         Int?
   transcript    String?     @db.Text
   transcriptJson Json?
   createdAt     DateTime    @default(now())

@@ -38,6 +38,13 @@ export interface TrackInfo {
   height: number | null;
   hasAudio: boolean;
   sortOrder: number;
+  /** True if the file is landscape but contains an embedded portrait video with black sidebars */
+  embeddedPortrait?: boolean;
+  /** Crop coordinates for extracting the embedded portrait content */
+  cropX?: number | null;
+  cropY?: number | null;
+  cropW?: number | null;
+  cropH?: number | null;
 }
 
 export interface ComposeCaptionOptions {
@@ -87,12 +94,32 @@ const MOBILE_CREATOR_H = 405;
 
 /**
  * Returns true if the reference track has portrait aspect ratio (taller than wide).
+ * Also returns true for embedded portrait videos (landscape files with black sidebars
+ * around portrait content) — the stored width/height already reflect the cropped
+ * content dimensions when embeddedPortrait is true.
  */
 function isPortrait(track: TrackInfo): boolean {
   if (track.width && track.height) {
     return track.height > track.width;
   }
-  return false; // Default to landscape if dimensions unknown
+  return false;
+}
+
+/**
+ * Returns a crop filter string if the track is an embedded portrait video
+ * that needs its content extracted from the full frame. Otherwise returns null.
+ */
+function getEmbeddedPortraitCropFilter(track: TrackInfo): string | null {
+  if (
+    !track.embeddedPortrait ||
+    track.cropW == null ||
+    track.cropH == null ||
+    track.cropX == null ||
+    track.cropY == null
+  ) {
+    return null;
+  }
+  return `crop=${track.cropW}:${track.cropH}:${track.cropX}:${track.cropY}`;
 }
 
 /**
@@ -184,7 +211,8 @@ export function buildFilterComplex(opts: ComposeOptions): {
 
     const refStart = track.startAtS;
     const enableExpr = `gte(t,${refStart.toFixed(3)})`;
-    const trimFilter = `trim=start=${track.trimStartS.toFixed(3)}:end=${(track.trimEndS ?? track.durationS).toFixed(3)},setpts=PTS-STARTPTS`;
+    const epCrop = getEmbeddedPortraitCropFilter(track);
+    const trimFilter = `trim=start=${track.trimStartS.toFixed(3)}:end=${(track.trimEndS ?? track.durationS).toFixed(3)},setpts=PTS-STARTPTS` + (epCrop ? `,${epCrop}` : '');
 
     if (isMobile) {
       // Mobile: reference scaled to full width (720), aspect ratio preserved.
