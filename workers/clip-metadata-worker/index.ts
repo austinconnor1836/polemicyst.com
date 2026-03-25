@@ -808,15 +808,16 @@ new Worker<ReactionComposeJob>(
         `🏁 Reaction compose job complete for ${compositionId} (${Date.now() - startMs}ms)`
       );
 
-      // 5. Auto-generate thumbnails (non-fatal)
+      // 5. Auto-generate thumbnail assets (non-fatal)
       if (allCompleted) {
         try {
           const referenceTrack = composition.tracks[0];
           if (referenceTrack?.s3Url && composition.creatorS3Url) {
-            console.log('🖼️ Auto-generating thumbnails...');
-            const { generateThumbnails } = await import('../../shared/util/thumbnailGenerator');
+            console.log('🖼️ Auto-generating thumbnail assets...');
+            const { generateThumbnailAssets, compositeThumbnailSharp } =
+              await import('../../shared/util/thumbnailGenerator');
 
-            const thumbnailResults = await generateThumbnails({
+            const { referenceFrames, cutouts } = await generateThumbnailAssets({
               compositionId,
               referenceS3Url: referenceTrack.s3Url,
               creatorS3Url: composition.creatorS3Url,
@@ -824,26 +825,104 @@ new Worker<ReactionComposeJob>(
               creatorDurationS: composition.creatorDurationS || undefined,
             });
 
-            if (thumbnailResults.length > 0) {
-              // Delete existing thumbnails for re-renders
-              await prisma.compositionThumbnail.deleteMany({
+            if (referenceFrames.length > 0 || cutouts.length > 0) {
+              // Delete existing assets for re-renders
+              await prisma.thumbnailAsset.deleteMany({
                 where: { compositionId },
               });
 
-              await prisma.compositionThumbnail.createMany({
-                data: thumbnailResults.map((t) => ({
+              // Store raw assets
+              const allAssets = [...referenceFrames, ...cutouts];
+              await prisma.thumbnailAsset.createMany({
+                data: allAssets.map((a) => ({
                   compositionId,
-                  s3Key: t.s3Key,
-                  s3Url: t.s3Url,
-                  hookText: '',
-                  frameTimestampS: t.frameTimestampS,
-                  visionScore: t.visionScore ?? null,
+                  type: a.type,
+                  s3Key: a.s3Key,
+                  s3Url: a.s3Url,
+                  frameTimestampS: a.frameTimestampS,
+                  visionScore: a.visionScore ?? null,
                 })),
               });
 
-              console.log(`✅ Generated ${thumbnailResults.length} thumbnails`);
+              console.log(
+                `✅ Stored ${referenceFrames.length} reference frames + ${cutouts.length} cutouts`
+              );
+
+              // Auto-composite best ref + best cutout as the default thumbnail
+              if (referenceFrames.length > 0 && cutouts.length > 0) {
+                try {
+                  const bestRef = referenceFrames.reduce((a, b) =>
+                    (b.visionScore ?? 0) > (a.visionScore ?? 0) ? b : a
+                  );
+                  const bestCutout = cutouts.reduce((a, b) =>
+                    (b.visionScore ?? 0) > (a.visionScore ?? 0) ? b : a
+                  );
+
+                  const nodeFetch = require('node-fetch');
+                  const [refRes, cutoutRes] = await Promise.all([
+                    nodeFetch(bestRef.s3Url),
+                    nodeFetch(bestCutout.s3Url),
+                  ]);
+                  const [refBuf, cutoutBuf] = await Promise.all([
+                    refRes.buffer(),
+                    cutoutRes.buffer(),
+                  ]);
+
+                  const composited = await compositeThumbnailSharp(
+                    refBuf,
+                    cutoutBuf,
+                    'right',
+                    'large'
+                  );
+
+                  // Upload composited thumbnail
+                  const { S3Client } = await import('@aws-sdk/client-s3');
+                  const { Upload } = await import('@aws-sdk/lib-storage');
+                  const region = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-2';
+                  const bucket = process.env.S3_BUCKET || 'clips-genie-uploads';
+                  const s3 = new S3Client({ region });
+                  const { randomUUID } = await import('crypto');
+
+                  const thumbS3Key = `compositions/${compositionId}/thumbnails/${randomUUID()}.png`;
+                  const upload = new Upload({
+                    client: s3,
+                    params: {
+                      Bucket: bucket,
+                      Key: thumbS3Key,
+                      Body: composited,
+                      ContentType: 'image/png',
+                    },
+                  });
+                  await upload.done();
+
+                  const thumbS3Url = `https://${bucket}.s3.${region}.amazonaws.com/${thumbS3Key}`;
+
+                  // Delete old thumbnails and create the auto-composited one as selected
+                  await prisma.compositionThumbnail.deleteMany({
+                    where: { compositionId },
+                  });
+                  await prisma.compositionThumbnail.create({
+                    data: {
+                      compositionId,
+                      s3Key: thumbS3Key,
+                      s3Url: thumbS3Url,
+                      hookText: '',
+                      frameTimestampS: bestRef.frameTimestampS,
+                      visionScore: bestRef.visionScore ?? null,
+                      selected: true,
+                    },
+                  });
+
+                  console.log('✅ Auto-composited default thumbnail');
+                } catch (compErr) {
+                  console.warn(
+                    '⚠️ Auto-composite failed (non-fatal):',
+                    compErr instanceof Error ? compErr.message : compErr
+                  );
+                }
+              }
             } else {
-              console.warn('⚠️ Thumbnail generation produced no results');
+              console.warn('⚠️ Thumbnail asset generation produced no results');
             }
           }
         } catch (thumbErr) {
@@ -947,7 +1026,7 @@ new Worker<GenericTranscriptionJob>(
 );
 
 // --- Thumbnail Generation Worker ---
-// Manual regeneration of composition thumbnails via queue.
+// Manual regeneration of composition thumbnail assets via queue.
 
 new Worker<ThumbnailGenerationJob>(
   'thumbnail-generation',
@@ -973,9 +1052,9 @@ new Worker<ThumbnailGenerationJob>(
         return;
       }
 
-      const { generateThumbnails } = await import('../../shared/util/thumbnailGenerator');
+      const { generateThumbnailAssets } = await import('../../shared/util/thumbnailGenerator');
 
-      const thumbnailResults = await generateThumbnails({
+      const { referenceFrames, cutouts } = await generateThumbnailAssets({
         compositionId,
         referenceS3Url: referenceTrack.s3Url,
         creatorS3Url: composition.creatorS3Url,
@@ -983,26 +1062,29 @@ new Worker<ThumbnailGenerationJob>(
         creatorDurationS: composition.creatorDurationS || undefined,
       });
 
-      if (thumbnailResults.length > 0) {
-        // Delete existing thumbnails
-        await prisma.compositionThumbnail.deleteMany({
+      if (referenceFrames.length > 0 || cutouts.length > 0) {
+        // Delete existing assets
+        await prisma.thumbnailAsset.deleteMany({
           where: { compositionId },
         });
 
-        await prisma.compositionThumbnail.createMany({
-          data: thumbnailResults.map((t) => ({
+        const allAssets = [...referenceFrames, ...cutouts];
+        await prisma.thumbnailAsset.createMany({
+          data: allAssets.map((a) => ({
             compositionId,
-            s3Key: t.s3Key,
-            s3Url: t.s3Url,
-            hookText: '',
-            frameTimestampS: t.frameTimestampS,
-            visionScore: t.visionScore ?? null,
+            type: a.type,
+            s3Key: a.s3Key,
+            s3Url: a.s3Url,
+            frameTimestampS: a.frameTimestampS,
+            visionScore: a.visionScore ?? null,
           })),
         });
 
-        console.log(`✅ [thumbnail-generation] Generated ${thumbnailResults.length} thumbnails`);
+        console.log(
+          `✅ [thumbnail-generation] Generated ${referenceFrames.length} refs + ${cutouts.length} cutouts`
+        );
       } else {
-        console.warn(`⚠️ [thumbnail-generation] No thumbnails generated`);
+        console.warn(`⚠️ [thumbnail-generation] No assets generated`);
       }
     } catch (err) {
       console.error(`❌ [thumbnail-generation] Failed:`, err instanceof Error ? err.message : err);

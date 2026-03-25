@@ -542,16 +542,16 @@ export default function CompositionEditorPage() {
         </CardContent>
       </Card>
 
-      {/* Thumbnails */}
+      {/* Thumbnail Builder */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="space-y-1">
-              <CardTitle>Thumbnails</CardTitle>
+              <CardTitle>Thumbnail Builder</CardTitle>
               <CardDescription>
                 {isRendering
                   ? 'Thumbnails will be generated after render completes.'
-                  : 'Select a thumbnail for your reaction video.'}
+                  : 'Choose a background, cutout, position, and size.'}
               </CardDescription>
             </div>
             <Button

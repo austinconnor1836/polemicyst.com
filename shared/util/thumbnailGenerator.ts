@@ -54,6 +54,14 @@ export interface ThumbnailResult {
   visionScore?: number;
 }
 
+export interface ThumbnailAssetResult {
+  s3Key: string;
+  s3Url: string;
+  frameTimestampS: number;
+  visionScore?: number;
+  type: 'reference' | 'cutout';
+}
+
 export interface GenerateThumbnailsOptions {
   compositionId: string;
   /** S3 URL of the reference (original content) video — used as background frames */
@@ -890,4 +898,205 @@ async function uploadToS3(localPath: string, s3Key: string, contentType: string)
     },
   });
   await upload.done();
+}
+
+// ---------------------------------------------------------------------------
+// Thumbnail Builder — asset generation (worker) + sharp compositing (API)
+// ---------------------------------------------------------------------------
+
+const NUM_CUTOUT_FRAMES = 6;
+
+/**
+ * Generate raw thumbnail assets (reference frames + cutouts) without compositing.
+ * Called by the worker. Returns assets to store as ThumbnailAsset records.
+ */
+export async function generateThumbnailAssets(
+  opts: GenerateThumbnailsOptions
+): Promise<{ referenceFrames: ThumbnailAssetResult[]; cutouts: ThumbnailAssetResult[] }> {
+  const tmpDir = path.join(os.tmpdir(), `thumb-assets-${randomUUID()}`);
+  fs.mkdirSync(tmpDir, { recursive: true });
+
+  const referenceFrames: ThumbnailAssetResult[] = [];
+  const cutouts: ThumbnailAssetResult[] = [];
+
+  try {
+    // 1. Download both videos
+    const referencePath = path.join(tmpDir, 'reference.mp4');
+    const creatorPath = path.join(tmpDir, 'creator.mp4');
+
+    await Promise.all([
+      downloadFile(opts.referenceS3Url, referencePath),
+      downloadFile(opts.creatorS3Url, creatorPath),
+    ]);
+
+    // 2. Get durations
+    const [referenceDuration, creatorDuration] = await Promise.all([
+      getVideoDuration(referencePath),
+      opts.creatorDurationS ?? getVideoDuration(creatorPath),
+    ]);
+
+    if (referenceDuration <= 0) {
+      console.warn('[thumbnailAssets] Could not determine reference video duration');
+      return { referenceFrames, cutouts };
+    }
+
+    // 3. Extract + score reference frames (same as generateThumbnails)
+    const candidateFrames = await extractCandidateFrames(
+      referencePath,
+      referenceDuration,
+      MAX_CANDIDATES,
+      tmpDir
+    );
+    if (candidateFrames.length === 0) {
+      console.warn('[thumbnailAssets] No frames extracted from reference video');
+      return { referenceFrames, cutouts };
+    }
+
+    const selectedRefFrames = await scoreAndSelectFrames(candidateFrames, NUM_FRAMES);
+    console.log(
+      `[thumbnailAssets] Selected ${selectedRefFrames.length} reference frames from ${candidateFrames.length} candidates`
+    );
+
+    // 4. Upload raw reference frames to S3
+    for (const frame of selectedRefFrames) {
+      try {
+        const s3Key = `compositions/${opts.compositionId}/assets/ref_${randomUUID()}.png`;
+        await uploadToS3(frame.framePath, s3Key, 'image/png');
+        referenceFrames.push({
+          s3Key,
+          s3Url: `https://${getBucket()}.s3.${getRegion()}.amazonaws.com/${s3Key}`,
+          frameTimestampS: frame.timestampS,
+          visionScore: (frame as any).visionScore ?? undefined,
+          type: 'reference',
+        });
+      } catch (err) {
+        console.warn(
+          `[thumbnailAssets] Failed to upload ref frame at ${frame.timestampS}s:`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+
+    // 5. Extract creator candidate frames and score by face area
+    const effectiveStart = opts.creatorTrimStartS || 0;
+    const effectiveDuration = creatorDuration - effectiveStart;
+    const numCreatorFrames = 10;
+    const step = effectiveDuration / (numCreatorFrames + 1);
+
+    const creatorFrames: Array<{ path: string; ts: number }> = [];
+    for (let i = 1; i <= numCreatorFrames; i++) {
+      const ts = effectiveStart + step * i;
+      const framePath = path.join(tmpDir, `creator_cand_${i}.png`);
+      try {
+        await extractFrame(creatorPath, ts, framePath);
+        if (fs.existsSync(framePath)) {
+          creatorFrames.push({ path: framePath, ts });
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
+
+    // Face-detect all creator frames, pick top 6 by face area
+    const creatorFaceScored: Array<{ frame: (typeof creatorFrames)[0]; faceArea: number }> = [];
+    for (const frame of creatorFrames) {
+      const result = await detectFaces(frame.path);
+      creatorFaceScored.push({ frame, faceArea: result?.face_area_pct ?? 0 });
+    }
+    creatorFaceScored.sort((a, b) => b.faceArea - a.faceArea);
+    const topCreatorFrames = creatorFaceScored.slice(0, NUM_CUTOUT_FRAMES);
+
+    console.log(
+      `[thumbnailAssets] Top ${topCreatorFrames.length} creator frames by face area: ${topCreatorFrames.map((f) => `${f.faceArea.toFixed(1)}%`).join(', ')}`
+    );
+
+    // 6. Run rembg on each top creator frame and upload cutouts
+    for (let i = 0; i < topCreatorFrames.length; i++) {
+      const { frame, faceArea } = topCreatorFrames[i];
+      try {
+        const cutoutPath = path.join(tmpDir, `cutout_${i}.png`);
+        const result = await removeBackground(frame.path, cutoutPath);
+        if (!result) continue;
+
+        const s3Key = `compositions/${opts.compositionId}/assets/cutout_${randomUUID()}.png`;
+        await uploadToS3(cutoutPath, s3Key, 'image/png');
+        cutouts.push({
+          s3Key,
+          s3Url: `https://${getBucket()}.s3.${getRegion()}.amazonaws.com/${s3Key}`,
+          frameTimestampS: frame.ts,
+          visionScore: clamp(faceArea * 2, 0, 10),
+          type: 'cutout',
+        });
+      } catch (err) {
+        console.warn(
+          `[thumbnailAssets] Failed to create cutout ${i}:`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+
+    console.log(
+      `[thumbnailAssets] Generated ${referenceFrames.length} reference frames + ${cutouts.length} cutouts`
+    );
+    return { referenceFrames, cutouts };
+  } finally {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {}
+  }
+}
+
+/**
+ * Composite a thumbnail using sharp (fast, ~50ms).
+ * Used by the Next.js API route for instant compositing.
+ *
+ * @param backgroundBuffer - PNG buffer of the reference frame
+ * @param cutoutBuffer - PNG buffer of the cutout (transparent background)
+ * @param position - 'left' | 'right'
+ * @param size - 'small' | 'medium' | 'large'
+ * @returns PNG buffer of the composited thumbnail
+ */
+export async function compositeThumbnailSharp(
+  backgroundBuffer: Buffer,
+  cutoutBuffer: Buffer,
+  position: 'left' | 'right' = 'right',
+  size: 'small' | 'medium' | 'large' = 'large'
+): Promise<Buffer> {
+  const sharp = require('sharp');
+
+  const canvasW = THUMBNAIL_WIDTH;
+  const canvasH = THUMBNAIL_HEIGHT;
+
+  // Size → height percentage of canvas
+  const sizeMap: Record<string, number> = {
+    small: 0.5,
+    medium: 0.7,
+    large: 0.85,
+  };
+  const targetH = Math.round(canvasH * (sizeMap[size] || 0.85));
+
+  // Resize background to fill canvas
+  const bg = sharp(backgroundBuffer).resize(canvasW, canvasH, { fit: 'cover' });
+
+  // Resize cutout to target height, preserving aspect ratio
+  const cutoutMeta = await sharp(cutoutBuffer).metadata();
+  const cutoutAR = (cutoutMeta.width || 1) / (cutoutMeta.height || 1);
+  const cutoutW = Math.round(targetH * cutoutAR);
+
+  const resizedCutout = await sharp(cutoutBuffer)
+    .resize(cutoutW, targetH, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer();
+
+  // Position: left = W/4 - w/2, right = 3W/4 - w/2, bottom-anchored
+  const xCenter = position === 'left' ? Math.round(canvasW / 4) : Math.round((3 * canvasW) / 4);
+  const left = Math.max(0, Math.min(canvasW - cutoutW, xCenter - Math.round(cutoutW / 2)));
+  const top = canvasH - targetH;
+
+  const result = await bg
+    .composite([{ input: resizedCutout, left, top }])
+    .png()
+    .toBuffer();
+
+  return result;
 }

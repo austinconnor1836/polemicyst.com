@@ -7,14 +7,20 @@ import { cn } from '@/lib/utils';
 import { Check, Download, Loader2, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-interface Thumbnail {
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface ThumbnailAsset {
   id: string;
   s3Url: string;
-  hookText: string;
   frameTimestampS: number;
   visionScore: number | null;
-  selected: boolean;
+  type: 'reference' | 'cutout';
 }
+
+type Position = 'left' | 'right';
+type Size = 'small' | 'medium' | 'large';
 
 interface ThumbnailPanelProps {
   compositionId: string;
@@ -27,17 +33,29 @@ interface ThumbnailPanelProps {
   regenerateRef?: React.MutableRefObject<(() => void) | null>;
 }
 
-function ThumbnailSkeletonGrid() {
+// ---------------------------------------------------------------------------
+// Size map for CSS preview positioning
+// ---------------------------------------------------------------------------
+
+const SIZE_PCT: Record<Size, number> = { small: 50, medium: 70, large: 85 };
+
+// ---------------------------------------------------------------------------
+// Skeleton grid while loading
+// ---------------------------------------------------------------------------
+
+function AssetSkeletonGrid({ count = 6 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="overflow-hidden rounded-lg border-2 border-border">
-          <Skeleton className="aspect-video w-full" />
-        </div>
+    <div className="flex gap-2 overflow-x-auto pb-1">
+      {Array.from({ length: count }).map((_, i) => (
+        <Skeleton key={i} className="h-16 w-24 flex-shrink-0 rounded-md" />
       ))}
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
 export function ThumbnailPanel({
   compositionId,
@@ -46,13 +64,23 @@ export function ThumbnailPanel({
   onGeneratingChange,
   regenerateRef,
 }: ThumbnailPanelProps) {
-  const [thumbnails, setThumbnails] = useState<Thumbnail[]>([]);
+  // Asset state
+  const [referenceFrames, setReferenceFrames] = useState<ThumbnailAsset[]>([]);
+  const [cutouts, setCutouts] = useState<ThumbnailAsset[]>([]);
+  const [selectedRefId, setSelectedRefId] = useState<string | null>(null);
+  const [selectedCutoutId, setSelectedCutoutId] = useState<string | null>(null);
+  const [position, setPosition] = useState<Position>('right');
+  const [size, setSize] = useState<Size>('large');
+  const [compositeUrl, setCompositeUrl] = useState<string | null>(null);
+
+  // Loading / saving state
   const [initialLoad, setInitialLoad] = useState(true);
-  const [selecting, setSelecting] = useState<string | null>(null);
   const [generating, setGeneratingRaw] = useState(false);
+  const [saving, setSaving] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const pollCountRef = useRef(0);
   const prevStatusRef = useRef(compositionStatus);
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const setGenerating = useCallback(
     (value: boolean) => {
@@ -69,39 +97,69 @@ export function ThumbnailPanel({
     }
   }, []);
 
-  const fetchThumbnails = useCallback(async () => {
+  // ---------------------------------------------------------------------------
+  // Fetch assets
+  // ---------------------------------------------------------------------------
+
+  const fetchAssets = useCallback(async () => {
     try {
-      const res = await fetch(`/api/compositions/${compositionId}/thumbnails`);
+      const res = await fetch(`/api/compositions/${compositionId}/thumbnail-assets`);
       if (!res.ok) return null;
-      const data: Thumbnail[] = await res.json();
-      setThumbnails(data);
-      return data;
+      const data = await res.json();
+      const refs: ThumbnailAsset[] = data.referenceFrames || [];
+      const cuts: ThumbnailAsset[] = data.cutouts || [];
+      setReferenceFrames(refs);
+      setCutouts(cuts);
+
+      // Restore settings
+      if (data.settings) {
+        setPosition(data.settings.position || 'right');
+        setSize(data.settings.size || 'large');
+      }
+      if (data.compositeUrl) {
+        setCompositeUrl(data.compositeUrl);
+      }
+
+      // Auto-select first if nothing selected
+      if (refs.length > 0 && !selectedRefId) {
+        // Pick highest vision score as default
+        const best = refs.reduce((a, b) => ((b.visionScore ?? 0) > (a.visionScore ?? 0) ? b : a));
+        setSelectedRefId(best.id);
+      }
+      if (cuts.length > 0 && !selectedCutoutId) {
+        const best = cuts.reduce((a, b) => ((b.visionScore ?? 0) > (a.visionScore ?? 0) ? b : a));
+        setSelectedCutoutId(best.id);
+      }
+
+      return { refs, cuts };
     } catch {
       return null;
     } finally {
       setInitialLoad(false);
     }
-  }, [compositionId]);
+  }, [compositionId, selectedRefId, selectedCutoutId]);
 
   // Initial fetch
   useEffect(() => {
-    fetchThumbnails();
-  }, [fetchThumbnails]);
+    fetchAssets();
+  }, [fetchAssets]);
 
-  // Clear thumbnails when render starts; auto-start generating when render completes
+  // Clear when render starts; poll when render completes
   useEffect(() => {
     if (compositionStatus === 'rendering' && prevStatusRef.current !== 'rendering') {
-      // Render just started — clear stale thumbnails and show skeleton
-      setThumbnails([]);
+      setReferenceFrames([]);
+      setCutouts([]);
+      setCompositeUrl(null);
+      setSelectedRefId(null);
+      setSelectedCutoutId(null);
       setGenerating(true);
     } else if (prevStatusRef.current === 'rendering' && compositionStatus === 'completed') {
-      // Render finished — start polling for new thumbnails
       setGenerating(true);
     }
     prevStatusRef.current = compositionStatus;
   }, [compositionStatus, setGenerating]);
 
-  // Poll while generating — stops when thumbnails arrive or timeout
+  // Poll while generating
   useEffect(() => {
     if (!generating) return;
 
@@ -113,8 +171,8 @@ export function ThumbnailPanel({
         setGenerating(false);
         return;
       }
-      const data = await fetchThumbnails();
-      if (data && data.length > 0) {
+      const data = await fetchAssets();
+      if (data && (data.refs.length > 0 || data.cuts.length > 0)) {
         stopPolling();
         setGenerating(false);
       }
@@ -122,29 +180,68 @@ export function ThumbnailPanel({
 
     pollRef.current = setInterval(poll, 5000);
     return stopPolling;
-  }, [generating, fetchThumbnails, stopPolling, setGenerating]);
+  }, [generating, fetchAssets, stopPolling, setGenerating]);
 
-  const handleSelect = async (thumbnailId: string) => {
-    setSelecting(thumbnailId);
+  // ---------------------------------------------------------------------------
+  // Debounced save — fires 800ms after any selection/setting change
+  // ---------------------------------------------------------------------------
+
+  const doComposite = useCallback(async () => {
+    if (!selectedRefId || !selectedCutoutId) return;
+    setSaving(true);
     try {
-      const res = await fetch(`/api/compositions/${compositionId}/thumbnails`, {
-        method: 'PATCH',
+      const res = await fetch(`/api/compositions/${compositionId}/thumbnails/composite`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ thumbnailId }),
+        body: JSON.stringify({
+          referenceAssetId: selectedRefId,
+          cutoutAssetId: selectedCutoutId,
+          position,
+          size,
+        }),
       });
-      if (!res.ok) throw new Error('Failed to select');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Composite failed');
+      }
       const data = await res.json();
-      setThumbnails(data);
-    } catch {
-      toast.error('Failed to select thumbnail');
+      setCompositeUrl(data.s3Url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save thumbnail');
     } finally {
-      setSelecting(null);
+      setSaving(false);
     }
-  };
+  }, [compositionId, selectedRefId, selectedCutoutId, position, size]);
+
+  // Trigger debounced save when selections change
+  const isInitialMount = useRef(true);
+  useEffect(() => {
+    // Skip on initial mount to avoid unnecessary save
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    if (!selectedRefId || !selectedCutoutId) return;
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(doComposite, 800);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [selectedRefId, selectedCutoutId, position, size, doComposite]);
+
+  // ---------------------------------------------------------------------------
+  // Regenerate handler
+  // ---------------------------------------------------------------------------
 
   const handleRegenerate = useCallback(async () => {
     setGenerating(true);
-    setThumbnails([]);
+    setReferenceFrames([]);
+    setCutouts([]);
+    setCompositeUrl(null);
+    setSelectedRefId(null);
+    setSelectedCutoutId(null);
     try {
       const res = await fetch(`/api/compositions/${compositionId}/thumbnails/regenerate`, {
         method: 'POST',
@@ -162,10 +259,6 @@ export function ThumbnailPanel({
     }
   }, [compositionId, setGenerating]);
 
-  const selectedThumb = thumbnails.find((t) => t.selected);
-
-  const isRendering = compositionStatus === 'rendering';
-
   // Expose regenerate handler to parent
   useEffect(() => {
     if (regenerateRef) {
@@ -176,11 +269,24 @@ export function ThumbnailPanel({
     };
   }, [regenerateRef, handleRegenerate]);
 
+  // ---------------------------------------------------------------------------
+  // Derived state
+  // ---------------------------------------------------------------------------
+
+  const isRendering = compositionStatus === 'rendering';
+  const hasAssets = referenceFrames.length > 0 || cutouts.length > 0;
+  const selectedRef = referenceFrames.find((r) => r.id === selectedRefId);
+  const selectedCutout = cutouts.find((c) => c.id === selectedCutoutId);
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {!hideHeader && (
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">Thumbnails</span>
+          <span className="text-sm font-medium">Thumbnail Builder</span>
           <Button
             variant="outline"
             size="sm"
@@ -199,69 +305,194 @@ export function ThumbnailPanel({
       )}
 
       {initialLoad || generating ? (
-        <ThumbnailSkeletonGrid />
-      ) : thumbnails.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4 text-center">
+        <div className="space-y-4">
+          <Skeleton className="aspect-video w-full rounded-lg" />
+          <AssetSkeletonGrid />
+          <AssetSkeletonGrid />
+        </div>
+      ) : !hasAssets ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">
           {isRendering
             ? 'Thumbnails will be generated after render completes.'
-            : 'No thumbnails generated yet.'}
+            : 'No thumbnail assets generated yet.'}
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {thumbnails.map((thumb) => (
-              <button
-                key={thumb.id}
-                onClick={() => handleSelect(thumb.id)}
-                disabled={selecting !== null}
-                className={cn(
-                  'group relative overflow-hidden rounded-lg border-2 transition-all',
-                  thumb.selected
-                    ? 'border-blue-500 ring-2 ring-blue-500/30'
-                    : 'border-border hover:border-blue-300 dark:hover:border-blue-600'
-                )}
-              >
-                <img
-                  src={thumb.s3Url}
-                  alt={thumb.hookText || `Thumbnail at ${thumb.frameTimestampS.toFixed(1)}s`}
-                  className="aspect-video w-full object-cover"
-                  loading="lazy"
-                />
-
-                {/* Selection indicator */}
-                {thumb.selected && (
-                  <div className="absolute top-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-white">
-                    <Check className="h-3 w-3" />
-                  </div>
-                )}
-
-                {/* Selecting spinner */}
-                {selecting === thumb.id && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-background/60">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  </div>
-                )}
-
-                {/* Timestamp label */}
-                <div className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
-                  {thumb.frameTimestampS.toFixed(1)}s
-                </div>
-
-                {/* Vision score badge */}
-                {thumb.visionScore != null && (
-                  <div className="absolute bottom-1 right-1 rounded bg-purple-600/80 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                    {thumb.visionScore.toFixed(1)}
-                  </div>
-                )}
-              </button>
-            ))}
+          {/* Live Preview */}
+          <div
+            className="relative mx-auto aspect-video w-full overflow-hidden rounded-lg border bg-muted"
+            style={{ maxWidth: 640 }}
+          >
+            {selectedRef && (
+              <img
+                src={selectedRef.s3Url}
+                alt="Reference frame background"
+                className="absolute inset-0 h-full w-full object-cover"
+                draggable={false}
+              />
+            )}
+            {selectedCutout && (
+              <img
+                src={selectedCutout.s3Url}
+                alt="Creator cutout"
+                className="absolute bottom-0"
+                draggable={false}
+                style={{
+                  height: `${SIZE_PCT[size]}%`,
+                  ...(position === 'right'
+                    ? { right: '12.5%', transform: 'translateX(50%)' }
+                    : { left: '12.5%', transform: 'translateX(-50%)' }),
+                }}
+              />
+            )}
+            {!selectedRef && !selectedCutout && (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Select a reference frame and cutout below
+              </div>
+            )}
           </div>
 
-          {/* Download selected */}
-          {selectedThumb && (
+          {/* Controls row */}
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Position toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">Position</span>
+              <div className="flex rounded-md border">
+                <button
+                  className={cn(
+                    'px-2.5 py-1 text-xs transition-colors',
+                    position === 'left' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  )}
+                  onClick={() => setPosition('left')}
+                >
+                  Left
+                </button>
+                <button
+                  className={cn(
+                    'px-2.5 py-1 text-xs transition-colors',
+                    position === 'right' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  )}
+                  onClick={() => setPosition('right')}
+                >
+                  Right
+                </button>
+              </div>
+            </div>
+
+            {/* Size toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">Size</span>
+              <div className="flex rounded-md border">
+                {(['small', 'medium', 'large'] as const).map((s) => (
+                  <button
+                    key={s}
+                    className={cn(
+                      'px-2.5 py-1 text-xs transition-colors',
+                      size === s ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                    )}
+                    onClick={() => setSize(s)}
+                  >
+                    {s === 'small' ? 'S' : s === 'medium' ? 'M' : 'L'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Saving indicator */}
+            <div className="ml-auto flex items-center gap-1.5">
+              {saving && (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Saving...</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Reference Frames grid */}
+          {referenceFrames.length > 0 && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">Reference Frames</span>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {referenceFrames.map((asset) => (
+                  <button
+                    key={asset.id}
+                    onClick={() => setSelectedRefId(asset.id)}
+                    className={cn(
+                      'group relative flex-shrink-0 overflow-hidden rounded-md border-2 transition-all',
+                      selectedRefId === asset.id
+                        ? 'border-blue-500 ring-2 ring-blue-500/30'
+                        : 'border-border hover:border-blue-300 dark:hover:border-blue-600'
+                    )}
+                  >
+                    <img
+                      src={asset.s3Url}
+                      alt={`Reference frame at ${asset.frameTimestampS.toFixed(1)}s`}
+                      className="h-16 w-24 object-cover"
+                      loading="lazy"
+                    />
+                    {selectedRefId === asset.id && (
+                      <div className="absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-white">
+                        <Check className="h-2.5 w-2.5" />
+                      </div>
+                    )}
+                    {asset.visionScore != null && (
+                      <div className="absolute bottom-0.5 right-0.5 rounded bg-purple-600/80 px-1 py-px text-[9px] font-medium text-white">
+                        {asset.visionScore.toFixed(1)}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Cutouts grid */}
+          {cutouts.length > 0 && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">Cutouts</span>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {cutouts.map((asset) => (
+                  <button
+                    key={asset.id}
+                    onClick={() => setSelectedCutoutId(asset.id)}
+                    className={cn(
+                      'group relative flex-shrink-0 overflow-hidden rounded-md border-2 transition-all',
+                      // Checkerboard background for transparency
+                      'bg-[length:16px_16px] bg-[linear-gradient(45deg,#ccc_25%,transparent_25%,transparent_75%,#ccc_75%),linear-gradient(45deg,#ccc_25%,transparent_25%,transparent_75%,#ccc_75%)] bg-[position:0_0,8px_8px]',
+                      'dark:bg-[linear-gradient(45deg,#333_25%,transparent_25%,transparent_75%,#333_75%),linear-gradient(45deg,#333_25%,transparent_25%,transparent_75%,#333_75%)]',
+                      selectedCutoutId === asset.id
+                        ? 'border-blue-500 ring-2 ring-blue-500/30'
+                        : 'border-border hover:border-blue-300 dark:hover:border-blue-600'
+                    )}
+                  >
+                    <img
+                      src={asset.s3Url}
+                      alt={`Creator cutout at ${asset.frameTimestampS.toFixed(1)}s`}
+                      className="h-16 w-16 object-contain"
+                      loading="lazy"
+                    />
+                    {selectedCutoutId === asset.id && (
+                      <div className="absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-white">
+                        <Check className="h-2.5 w-2.5" />
+                      </div>
+                    )}
+                    {asset.visionScore != null && (
+                      <div className="absolute bottom-0.5 right-0.5 rounded bg-purple-600/80 px-1 py-px text-[9px] font-medium text-white">
+                        {asset.visionScore.toFixed(1)}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Download */}
+          {compositeUrl && (
             <div className="flex justify-end">
               <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-xs">
-                <a href={selectedThumb.s3Url} download>
+                <a href={compositeUrl} download>
                   <Download className="h-3 w-3" />
                   Download Thumbnail
                 </a>
