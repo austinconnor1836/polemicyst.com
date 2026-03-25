@@ -107,6 +107,7 @@ export default function CompositionEditorPage() {
   const [addingTrack, setAddingTrack] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [deletingCreator, setDeletingCreator] = useState(false);
+  const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null);
   const [publishAllOpen, setPublishAllOpen] = useState(false);
   const [thumbnailGenerating, setThumbnailGenerating] = useState(false);
   const thumbnailRegenerateRef = useRef<(() => void) | null>(null);
@@ -254,6 +255,7 @@ export default function CompositionEditorPage() {
   const handleRemoveTrack = useCallback(
     async (trackId: string) => {
       if (!confirm('Remove this reference track?')) return;
+      setDeletingTrackId(trackId);
       try {
         const res = await fetch(`/api/compositions/${compositionId}/tracks/${trackId}`, {
           method: 'DELETE',
@@ -266,6 +268,8 @@ export default function CompositionEditorPage() {
         toast.success('Track removed');
       } catch (err) {
         toast.error('Failed to remove track');
+      } finally {
+        setDeletingTrackId(null);
       }
     },
     [compositionId]
@@ -440,6 +444,7 @@ export default function CompositionEditorPage() {
                 mode={composition.mode as 'pre-synced' | 'timeline'}
                 onUpdate={handleUpdateTrack}
                 onRemove={handleRemoveTrack}
+                deleting={deletingTrackId === track.id}
                 disabled={isRendering}
                 onClick={() =>
                   setTrimTarget({

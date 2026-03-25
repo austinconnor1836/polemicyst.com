@@ -286,6 +286,7 @@ interface VisionScoreResult {
   score: number;
   facePresence: number;
   emotionalExpression: number;
+  eyeContact: number;
   visualInterest: number;
 }
 
@@ -307,7 +308,7 @@ async function scoreFrameWithVision(framePath: string): Promise<VisionScoreResul
       body: JSON.stringify({
         model: visionModel,
         prompt:
-          'Describe this image in detail. Focus on: Are there any people visible? What are their facial expressions and emotions? Are they surprised, excited, angry, laughing, shocked, or showing strong reactions? How visually interesting or dramatic is the scene?',
+          'Describe this image in detail. Focus on: Are there any people visible? Are they looking directly at the camera (eye contact) or looking away? What are their facial expressions and emotions? Are they surprised, excited, angry, laughing, shocked, or showing strong reactions? How visually interesting or dramatic is the scene?',
         images: [base64],
         stream: false,
         options: { temperature: 0.2, num_predict: 150 },
@@ -350,6 +351,21 @@ async function scoreFrameWithVision(framePath: string): Promise<VisionScoreResul
       'passionate',
       'animated',
     ]);
+    const eyeContact = scoreKeywords(text, [
+      'looking at the camera',
+      'looking directly',
+      'looking at the viewer',
+      'looking at us',
+      'looking straight',
+      'eye contact',
+      'staring at',
+      'facing the camera',
+      'gazing at the camera',
+      'directly at',
+      'into the camera',
+      'toward the camera',
+      'toward the viewer',
+    ]);
     const visualInterest = scoreKeywords(text, [
       'dramatic',
       'dynamic',
@@ -368,12 +384,14 @@ async function scoreFrameWithVision(framePath: string): Promise<VisionScoreResul
       'striking',
     ]);
 
-    const score = emotionalExpression * 0.7 + visualInterest * 0.3;
+    // Weight: 50% emotion, 30% eye contact, 20% visual interest
+    const score = emotionalExpression * 0.5 + eyeContact * 0.3 + visualInterest * 0.2;
 
     return {
       score: clamp(score, 0, 10),
       facePresence: 10, // Already confirmed by OpenCV
       emotionalExpression: clamp(emotionalExpression, 0, 10),
+      eyeContact: clamp(eyeContact, 0, 10),
       visualInterest: clamp(visualInterest, 0, 10),
     };
   } catch (err) {
@@ -1032,11 +1050,14 @@ export async function generateThumbnailAssets(
         if (visionResult) {
           consecutiveFailures = 0;
           withFaces[i].emotionScore = visionResult.emotionalExpression;
-          // Combined: 40% face area (base presence) + 60% emotion (expressiveness)
+          // Combined: 30% face area + 40% emotion + 30% eye contact
+          const faceScore = clamp(withFaces[i].faceArea * 2, 0, 10);
           withFaces[i].combinedScore =
-            clamp(withFaces[i].faceArea * 2, 0, 10) * 0.4 + visionResult.emotionalExpression * 0.6;
+            faceScore * 0.3 +
+            visionResult.emotionalExpression * 0.4 +
+            visionResult.eyeContact * 0.3;
           console.log(
-            `[thumbnailAssets] Creator emotion at ${withFaces[i].frame.ts.toFixed(1)}s: emotion=${visionResult.emotionalExpression.toFixed(1)}, combined=${withFaces[i].combinedScore.toFixed(1)}`
+            `[thumbnailAssets] Creator at ${withFaces[i].frame.ts.toFixed(1)}s: emotion=${visionResult.emotionalExpression.toFixed(1)}, eye=${visionResult.eyeContact.toFixed(1)}, combined=${withFaces[i].combinedScore.toFixed(1)}`
           );
         } else {
           consecutiveFailures++;
@@ -1048,9 +1069,21 @@ export async function generateThumbnailAssets(
 
     // Re-sort by combined score (emotion-weighted) and pick top N
     creatorFaceScored.sort((a, b) => b.combinedScore - a.combinedScore);
-    const topCreatorFrames = creatorFaceScored
-      .filter((f) => f.faceArea > 0)
-      .slice(0, NUM_CUTOUT_FRAMES);
+    const facesOnly = creatorFaceScored.filter((f) => f.faceArea > 0);
+    // Fallback: if face detection failed (e.g. cv2 missing), use evenly-spaced creator frames
+    let topCreatorFrames: typeof creatorFaceScored;
+    if (facesOnly.length > 0) {
+      topCreatorFrames = facesOnly.slice(0, NUM_CUTOUT_FRAMES);
+    } else {
+      console.log(
+        '[thumbnailAssets] No faces detected in creator frames — using evenly-spaced fallback for cutouts'
+      );
+      const step = Math.max(1, Math.floor(creatorFaceScored.length / NUM_CUTOUT_FRAMES));
+      topCreatorFrames = Array.from(
+        { length: Math.min(NUM_CUTOUT_FRAMES, creatorFaceScored.length) },
+        (_, i) => creatorFaceScored[Math.min(i * step, creatorFaceScored.length - 1)]
+      );
+    }
 
     console.log(
       `[thumbnailAssets] Top ${topCreatorFrames.length} creator frames (emotion-weighted): ${topCreatorFrames.map((f) => `${f.frame.ts.toFixed(1)}s=${f.combinedScore.toFixed(1)}`).join(', ')}`

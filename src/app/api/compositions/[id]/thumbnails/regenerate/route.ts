@@ -27,6 +27,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     }
 
+    // Delete old assets so the UI poll starts clean (won't stop on stale data)
+    await prisma.thumbnailAsset.deleteMany({ where: { compositionId: id } });
+
     await queueThumbnailGenerationJob({
       compositionId: id,
       userId: user.id,
