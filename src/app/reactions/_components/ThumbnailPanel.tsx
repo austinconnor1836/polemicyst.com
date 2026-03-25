@@ -120,15 +120,20 @@ export function ThumbnailPanel({
         setCompositeUrl(data.compositeUrl);
       }
 
-      // Auto-select first if nothing selected
-      if (refs.length > 0 && !selectedRefId) {
-        // Pick highest vision score as default
-        const best = refs.reduce((a, b) => ((b.visionScore ?? 0) > (a.visionScore ?? 0) ? b : a));
-        setSelectedRefId(best.id);
+      // Auto-select best if nothing selected yet (use functional updater to avoid stale closure)
+      if (refs.length > 0) {
+        setSelectedRefId((prev) => {
+          if (prev) return prev;
+          const best = refs.reduce((a, b) => ((b.visionScore ?? 0) > (a.visionScore ?? 0) ? b : a));
+          return best.id;
+        });
       }
-      if (cuts.length > 0 && !selectedCutoutId) {
-        const best = cuts.reduce((a, b) => ((b.visionScore ?? 0) > (a.visionScore ?? 0) ? b : a));
-        setSelectedCutoutId(best.id);
+      if (cuts.length > 0) {
+        setSelectedCutoutId((prev) => {
+          if (prev) return prev;
+          const best = cuts.reduce((a, b) => ((b.visionScore ?? 0) > (a.visionScore ?? 0) ? b : a));
+          return best.id;
+        });
       }
 
       return { refs, cuts };
@@ -137,7 +142,7 @@ export function ThumbnailPanel({
     } finally {
       setInitialLoad(false);
     }
-  }, [compositionId, selectedRefId, selectedCutoutId]);
+  }, [compositionId]);
 
   // Initial fetch
   useEffect(() => {

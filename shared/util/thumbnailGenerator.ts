@@ -1069,9 +1069,21 @@ export async function generateThumbnailAssets(
 
     // Re-sort by combined score (emotion-weighted) and pick top N
     creatorFaceScored.sort((a, b) => b.combinedScore - a.combinedScore);
-    const topCreatorFrames = creatorFaceScored
-      .filter((f) => f.faceArea > 0)
-      .slice(0, NUM_CUTOUT_FRAMES);
+    const facesOnly = creatorFaceScored.filter((f) => f.faceArea > 0);
+    // Fallback: if face detection failed (e.g. cv2 missing), use evenly-spaced creator frames
+    let topCreatorFrames: typeof creatorFaceScored;
+    if (facesOnly.length > 0) {
+      topCreatorFrames = facesOnly.slice(0, NUM_CUTOUT_FRAMES);
+    } else {
+      console.log(
+        '[thumbnailAssets] No faces detected in creator frames — using evenly-spaced fallback for cutouts'
+      );
+      const step = Math.max(1, Math.floor(creatorFaceScored.length / NUM_CUTOUT_FRAMES));
+      topCreatorFrames = Array.from(
+        { length: Math.min(NUM_CUTOUT_FRAMES, creatorFaceScored.length) },
+        (_, i) => creatorFaceScored[Math.min(i * step, creatorFaceScored.length - 1)]
+      );
+    }
 
     console.log(
       `[thumbnailAssets] Top ${topCreatorFrames.length} creator frames (emotion-weighted): ${topCreatorFrames.map((f) => `${f.frame.ts.toFixed(1)}s=${f.combinedScore.toFixed(1)}`).join(', ')}`
