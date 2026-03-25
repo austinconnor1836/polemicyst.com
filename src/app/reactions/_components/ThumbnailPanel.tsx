@@ -88,9 +88,14 @@ export function ThumbnailPanel({
     fetchThumbnails();
   }, [fetchThumbnails]);
 
-  // Auto-start generating state when composition transitions rendering → completed
+  // Clear thumbnails when render starts; auto-start generating when render completes
   useEffect(() => {
-    if (prevStatusRef.current === 'rendering' && compositionStatus === 'completed') {
+    if (compositionStatus === 'rendering' && prevStatusRef.current !== 'rendering') {
+      // Render just started — clear stale thumbnails and show skeleton
+      setThumbnails([]);
+      setGenerating(true);
+    } else if (prevStatusRef.current === 'rendering' && compositionStatus === 'completed') {
+      // Render finished — start polling for new thumbnails
       setGenerating(true);
     }
     prevStatusRef.current = compositionStatus;
