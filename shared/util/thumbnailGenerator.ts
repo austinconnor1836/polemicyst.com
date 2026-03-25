@@ -25,7 +25,7 @@ function getRegion() {
 const THUMBNAIL_WIDTH = 1280;
 const THUMBNAIL_HEIGHT = 720;
 const NUM_FRAMES = 6;
-const MAX_CANDIDATES = 15;
+const MAX_CANDIDATES = 20;
 
 // Path to the rembg script — in Docker it's at /app/scripts/, locally relative to repo root
 const REMBG_SCRIPT =
@@ -75,7 +75,7 @@ function getOllamaConfig() {
   const dockerServiceDefault = 'http://ollama:11434';
   const baseUrl = configuredBaseUrl || dockerServiceDefault;
   const textModel = process.env.OLLAMA_MODEL || 'llama3';
-  const visionModel = process.env.OLLAMA_VISION_MODEL || 'llava';
+  const visionModel = process.env.OLLAMA_VISION_MODEL || 'moondream';
   return { baseUrl, textModel, visionModel };
 }
 
@@ -241,7 +241,9 @@ interface VisionScoreResult {
 }
 
 /**
- * Score a single frame with LLaVA for thumbnail quality.
+ * Score a single frame with a vision model for thumbnail quality.
+ * Uses natural language description (works with moondream) and extracts
+ * emotion/face signals from the text.
  * Returns null on failure (non-fatal).
  */
 async function scoreFrameWithVision(framePath: string): Promise<VisionScoreResult | null> {
@@ -257,38 +259,110 @@ async function scoreFrameWithVision(framePath: string): Promise<VisionScoreResul
       body: JSON.stringify({
         model: visionModel,
         prompt:
-          'Score this video frame for YouTube thumbnail quality. Return ONLY JSON: {"score": 0-10, "facePresence": 0-10, "emotionalExpression": 0-10, "visualInterest": 0-10}. Score higher for: visible human faces, strong emotions (surprise, outrage, excitement), dynamic scenes.',
+          'Describe this image in detail. Focus on: Are there any people visible? What are their facial expressions and emotions? Are they surprised, excited, angry, laughing, shocked, or showing strong reactions? How visually interesting or dramatic is the scene?',
         images: [base64],
         stream: false,
-        format: 'json',
-        options: { temperature: 0.2, num_predict: 100 },
+        options: { temperature: 0.2, num_predict: 150 },
       }),
-      timeout: 20_000,
+      timeout: 60_000, // 60s — first call loads the model into memory
     });
 
     if (!res.ok) return null;
 
     const data = await res.json();
-    const text = (data.response || '').trim();
+    const text = (data.response || '').trim().toLowerCase();
+    console.log(`[thumbnailGenerator] Vision description: ${text.slice(0, 120)}...`);
 
-    // Try to parse JSON from the response
-    const jsonMatch = text.match(/\{[\s\S]*?\}/);
-    if (!jsonMatch) return null;
+    // Score based on keyword presence in the natural language description
+    const facePresence = scoreKeywords(text, [
+      'person',
+      'people',
+      'man',
+      'woman',
+      'face',
+      'faces',
+      'someone',
+      'he ',
+      'she ',
+      'his ',
+      'her ',
+      'looking',
+      'eyes',
+      'mouth',
+    ]);
+    const emotionalExpression = scoreKeywords(text, [
+      'surprised',
+      'shock',
+      'excited',
+      'angry',
+      'laughing',
+      'laugh',
+      'scream',
+      'yelling',
+      'crying',
+      'smile',
+      'smiling',
+      'grin',
+      'emotion',
+      'expressive',
+      'intense',
+      'dramatic',
+      'reaction',
+      'open mouth',
+      'wide eyes',
+      'amazed',
+      'furious',
+      'outrage',
+      'joy',
+      'fear',
+      'disbelief',
+      'passionate',
+      'animated',
+    ]);
+    const visualInterest = scoreKeywords(text, [
+      'dramatic',
+      'dynamic',
+      'interesting',
+      'colorful',
+      'vivid',
+      'action',
+      'movement',
+      'gesture',
+      'pointing',
+      'hands',
+      'close-up',
+      'closeup',
+      'bright',
+      'contrast',
+      'striking',
+    ]);
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    const score = facePresence * 0.4 + emotionalExpression * 0.4 + visualInterest * 0.2;
+
     return {
-      score: clamp(parsed.score ?? 5, 0, 10),
-      facePresence: clamp(parsed.facePresence ?? 5, 0, 10),
-      emotionalExpression: clamp(parsed.emotionalExpression ?? 5, 0, 10),
-      visualInterest: clamp(parsed.visualInterest ?? 5, 0, 10),
+      score: clamp(score, 0, 10),
+      facePresence: clamp(facePresence, 0, 10),
+      emotionalExpression: clamp(emotionalExpression, 0, 10),
+      visualInterest: clamp(visualInterest, 0, 10),
     };
   } catch (err) {
     console.warn(
-      '[thumbnailGenerator] LLaVA score failed (non-fatal):',
+      '[thumbnailGenerator] Vision score failed (non-fatal):',
       err instanceof Error ? err.message : err
     );
     return null;
   }
+}
+
+/**
+ * Score text by counting keyword matches. Each match adds 2 points, capped at 10.
+ */
+function scoreKeywords(text: string, keywords: string[]): number {
+  let hits = 0;
+  for (const kw of keywords) {
+    if (text.includes(kw)) hits++;
+  }
+  return clamp(hits * 2, 0, 10);
 }
 
 function clamp(val: number, min: number, max: number): number {
@@ -296,8 +370,8 @@ function clamp(val: number, min: number, max: number): number {
 }
 
 /**
- * Score all candidate frames with LLaVA and select the top N.
- * Falls back to evenly-spaced selection if LLaVA is unavailable.
+ * Score all candidate frames with vision model and select the top N.
+ * Falls back to evenly-spaced selection if vision is unavailable.
  */
 async function scoreAndSelectFrames(
   candidates: Array<{ framePath: string; timestampS: number }>,
@@ -305,37 +379,31 @@ async function scoreAndSelectFrames(
 ): Promise<Array<{ framePath: string; timestampS: number; visionScore?: number }>> {
   const visionAvailable = await isOllamaVisionAvailable();
 
-  if (!visionAvailable || candidates.length <= topN) {
+  if (!visionAvailable) {
     // Fallback: evenly-spaced selection
     if (candidates.length <= topN) return candidates;
     const step = candidates.length / topN;
     return Array.from({ length: topN }, (_, i) => candidates[Math.floor(step * i)]);
   }
 
-  // Score in batches of 3 for parallelism
+  // Score all candidates (sequentially to avoid overloading Ollama)
   const scored: Array<{ framePath: string; timestampS: number; visionScore: number }> = [];
-  const BATCH_SIZE = 3;
 
-  for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
-    const batch = candidates.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.all(
-      batch.map(async (c) => {
-        const result = await scoreFrameWithVision(c.framePath);
-        const score = result ? result.score : -1;
-        if (result) {
-          console.log(
-            `[thumbnailGenerator] LLaVA scored frame at ${c.timestampS.toFixed(1)}s: score=${result.score}, face=${result.facePresence}, emotion=${result.emotionalExpression}`
-          );
-        }
-        return { ...c, visionScore: score };
-      })
-    );
-    scored.push(...batchResults);
+  for (const c of candidates) {
+    const result = await scoreFrameWithVision(c.framePath);
+    const score = result ? result.score : -1;
+    if (result) {
+      console.log(
+        `[thumbnailGenerator] Scored frame at ${c.timestampS.toFixed(1)}s: score=${result.score.toFixed(1)}, face=${result.facePresence}, emotion=${result.emotionalExpression}`
+      );
+    }
+    scored.push({ ...c, visionScore: score });
   }
 
   // If all scores failed, fall back to evenly-spaced
   const validScored = scored.filter((s) => s.visionScore >= 0);
   if (validScored.length === 0) {
+    if (candidates.length <= topN) return candidates;
     const step = candidates.length / topN;
     return Array.from({ length: topN }, (_, i) => candidates[Math.floor(step * i)]);
   }
@@ -346,7 +414,7 @@ async function scoreAndSelectFrames(
 }
 
 /**
- * Select the best creator frame for the thumbnail using LLaVA.
+ * Select the best creator frame for the thumbnail using vision scoring.
  * Falls back to a frame at 1/3 of the video duration.
  */
 async function selectBestCreatorFrame(
@@ -360,8 +428,8 @@ async function selectBestCreatorFrame(
   const fallbackTs = effectiveStart + effectiveDuration / 3;
   const fallbackPath = path.join(outDir, 'creator_frame.png');
 
-  // Extract 5 candidate frames from the creator video
-  const numCreatorFrames = 5;
+  // Extract 10 candidate frames from the creator video
+  const numCreatorFrames = 10;
   const step = effectiveDuration / (numCreatorFrames + 1);
   const creatorFrames: Array<{ path: string; ts: number }> = [];
 
