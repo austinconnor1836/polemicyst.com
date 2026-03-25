@@ -9,6 +9,7 @@ let speakerTranscriptionQueue: Queue | null = null;
 let clipGenerationQueue: Queue | null = null;
 let reactionComposeQueue: Queue | null = null;
 let genericTranscriptionQueue: Queue | null = null;
+let thumbnailGenerationQueue: Queue | null = null;
 
 export function getRedisConnection() {
   if (redis) return redis;
@@ -154,6 +155,29 @@ export function getGenericTranscriptionQueue() {
 export function queueGenericTranscriptionJob(data: GenericTranscriptionJob) {
   return getGenericTranscriptionQueue().add('generic-transcription', data, {
     jobId: `${data.targetModel}-${data.targetId}`,
+    removeOnComplete: true,
+    removeOnFail: true,
+  });
+}
+
+// --- Thumbnail generation queue ---
+
+export interface ThumbnailGenerationJob {
+  compositionId: string;
+  userId: string;
+}
+
+export function getThumbnailGenerationQueue() {
+  if (thumbnailGenerationQueue) return thumbnailGenerationQueue;
+  thumbnailGenerationQueue = new Queue('thumbnail-generation', {
+    connection: getRedisConnection() as any,
+  });
+  return thumbnailGenerationQueue;
+}
+
+export function queueThumbnailGenerationJob(data: ThumbnailGenerationJob) {
+  return getThumbnailGenerationQueue().add('thumbnail-generation', data, {
+    jobId: `thumb-${data.compositionId}`,
     removeOnComplete: true,
     removeOnFail: true,
   });

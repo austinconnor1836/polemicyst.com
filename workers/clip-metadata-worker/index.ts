@@ -19,7 +19,11 @@ import { checkClipQuota } from '@shared/lib/plans';
 import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
 import { TrainingCollector } from '@shared/lib/training-collector';
 import { logJob } from '@shared/lib/job-logger';
-import type { ReactionComposeJob, GenericTranscriptionJob } from '@shared/queues';
+import type {
+  ReactionComposeJob,
+  GenericTranscriptionJob,
+  ThumbnailGenerationJob,
+} from '@shared/queues';
 import { queueGenericTranscriptionJob } from '@shared/queues';
 import { renderComposition } from '@shared/util/reactionCompose';
 import { transcribeFromS3Url } from '@shared/lib/transcription';
@@ -803,6 +807,53 @@ new Worker<ReactionComposeJob>(
       console.log(
         `🏁 Reaction compose job complete for ${compositionId} (${Date.now() - startMs}ms)`
       );
+
+      // 5. Auto-generate thumbnails (non-fatal)
+      if (allCompleted) {
+        try {
+          const landscapeOutput = updatedOutputs.find(
+            (o) => o.layout === 'landscape' && o.status === 'completed' && o.s3Url
+          );
+          if (landscapeOutput?.s3Url && composition.creatorS3Url) {
+            console.log('🖼️ Auto-generating thumbnails...');
+            const { generateThumbnails } = await import('../../shared/util/thumbnailGenerator');
+
+            const thumbnailResults = await generateThumbnails({
+              compositionId,
+              landscapeS3Url: landscapeOutput.s3Url,
+              creatorS3Url: composition.creatorS3Url,
+              creatorTrimStartS: composition.creatorTrimStartS,
+              transcript: composition.creatorTranscript || undefined,
+            });
+
+            if (thumbnailResults.length > 0) {
+              // Delete existing thumbnails for re-renders
+              await prisma.compositionThumbnail.deleteMany({
+                where: { compositionId },
+              });
+
+              await prisma.compositionThumbnail.createMany({
+                data: thumbnailResults.map((t) => ({
+                  compositionId,
+                  s3Key: t.s3Key,
+                  s3Url: t.s3Url,
+                  hookText: t.hookText,
+                  frameTimestampS: t.frameTimestampS,
+                })),
+              });
+
+              console.log(`✅ Generated ${thumbnailResults.length} thumbnails`);
+            } else {
+              console.warn('⚠️ Thumbnail generation produced no results');
+            }
+          }
+        } catch (thumbErr) {
+          console.error(
+            '⚠️ Thumbnail generation failed (non-fatal):',
+            thumbErr instanceof Error ? thumbErr.message : thumbErr
+          );
+        }
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error('❌ Reaction compose failed:', errorMessage);
@@ -891,6 +942,73 @@ new Worker<GenericTranscriptionJob>(
         err instanceof Error ? err.message : err
       );
       // Non-fatal — don't rethrow so the job doesn't retry
+    }
+  },
+  { connection: redisConnection as any }
+);
+
+// --- Thumbnail Generation Worker ---
+// Manual regeneration of composition thumbnails via queue.
+
+new Worker<ThumbnailGenerationJob>(
+  'thumbnail-generation',
+  async (job) => {
+    const { compositionId } = job.data;
+    console.log(`🖼️ [thumbnail-generation] Processing ${compositionId}`);
+
+    try {
+      const composition = await prisma.composition.findUnique({
+        where: { id: compositionId },
+        include: { outputs: true },
+      });
+
+      if (!composition) {
+        console.error(`❌ [thumbnail-generation] Composition ${compositionId} not found`);
+        return;
+      }
+
+      const landscapeOutput = composition.outputs.find(
+        (o) => o.layout === 'landscape' && o.status === 'completed' && o.s3Url
+      );
+
+      if (!landscapeOutput?.s3Url || !composition.creatorS3Url) {
+        console.warn(`⚠️ [thumbnail-generation] Missing landscape output or creator video`);
+        return;
+      }
+
+      const { generateThumbnails } = await import('../../shared/util/thumbnailGenerator');
+
+      const thumbnailResults = await generateThumbnails({
+        compositionId,
+        landscapeS3Url: landscapeOutput.s3Url,
+        creatorS3Url: composition.creatorS3Url,
+        creatorTrimStartS: composition.creatorTrimStartS,
+        transcript: composition.creatorTranscript || undefined,
+      });
+
+      if (thumbnailResults.length > 0) {
+        // Delete existing thumbnails
+        await prisma.compositionThumbnail.deleteMany({
+          where: { compositionId },
+        });
+
+        await prisma.compositionThumbnail.createMany({
+          data: thumbnailResults.map((t) => ({
+            compositionId,
+            s3Key: t.s3Key,
+            s3Url: t.s3Url,
+            hookText: t.hookText,
+            frameTimestampS: t.frameTimestampS,
+          })),
+        });
+
+        console.log(`✅ [thumbnail-generation] Generated ${thumbnailResults.length} thumbnails`);
+      } else {
+        console.warn(`⚠️ [thumbnail-generation] No thumbnails generated`);
+      }
+    } catch (err) {
+      console.error(`❌ [thumbnail-generation] Failed:`, err instanceof Error ? err.message : err);
+      // Non-fatal — don't rethrow
     }
   },
   { connection: redisConnection as any }

@@ -655,6 +655,7 @@ model Composition {
 
   tracks           CompositionTrack[]
   outputs          CompositionOutput[]
+  thumbnails       CompositionThumbnail[]
 
   @@index([userId])
   @@index([status])
@@ -698,6 +699,21 @@ model CompositionOutput {
   transcriptJson Json?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+
+  @@index([compositionId])
+}
+
+model CompositionThumbnail {
+  id              String      @id @default(cuid())
+  compositionId   String
+  composition     Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
+  s3Key           String
+  s3Url           String
+  hookText        String
+  frameTimestampS Float
+  selected        Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   @@index([compositionId])
 }

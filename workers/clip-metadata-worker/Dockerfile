@@ -15,7 +15,10 @@ ENV PATH="/venv/bin:$PATH"
 ENV PIP_NO_CACHE_DIR=1
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir faster-whisper
+    pip install --no-cache-dir faster-whisper rembg Pillow onnxruntime
+
+# Pre-download u2net model to avoid cold-start latency
+RUN python3 -c "from rembg import new_session; new_session('u2net')"
 
 WORKDIR /app
 
@@ -28,6 +31,7 @@ WORKDIR /app/workers/clip-metadata-worker
 RUN npm install
 
 COPY ./workers/clip-metadata-worker .
+COPY ./scripts/remove_background.py /app/scripts/remove_background.py
 COPY ./prisma ./prisma
 COPY ./workers/clip-metadata-worker/tsconfig.docker.json tsconfig.json
 

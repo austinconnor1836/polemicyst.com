@@ -13,6 +13,7 @@ import { ReferenceTrackPanel } from '../_components/ReferenceTrackPanel';
 import { TimelineEditor } from '../_components/TimelineEditor';
 import { AudioMixPanel } from '../_components/AudioMixPanel';
 import { RenderControls } from '../_components/RenderControls';
+import { ThumbnailPanel } from '../_components/ThumbnailPanel';
 import { TrimModal } from '../_components/TrimModal';
 import { PublishModal } from '@/components/PublishModal';
 import toast from 'react-hot-toast';
@@ -474,6 +475,9 @@ export default function CompositionEditorPage() {
           trackLabels={composition.tracks.map((t) => t.label || '').filter(Boolean)}
         />
       </div>
+
+      {/* Thumbnails */}
+      <ThumbnailPanel compositionId={compositionId} compositionStatus={composition.status} />
 
       {/* Publish all modal */}
       <PublishModal
