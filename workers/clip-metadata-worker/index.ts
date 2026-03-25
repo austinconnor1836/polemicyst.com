@@ -811,19 +811,17 @@ new Worker<ReactionComposeJob>(
       // 5. Auto-generate thumbnails (non-fatal)
       if (allCompleted) {
         try {
-          const landscapeOutput = updatedOutputs.find(
-            (o) => o.layout === 'landscape' && o.status === 'completed' && o.s3Url
-          );
-          if (landscapeOutput?.s3Url && composition.creatorS3Url) {
+          const referenceTrack = composition.tracks[0];
+          if (referenceTrack?.s3Url && composition.creatorS3Url) {
             console.log('🖼️ Auto-generating thumbnails...');
             const { generateThumbnails } = await import('../../shared/util/thumbnailGenerator');
 
             const thumbnailResults = await generateThumbnails({
               compositionId,
-              landscapeS3Url: landscapeOutput.s3Url,
+              referenceS3Url: referenceTrack.s3Url,
               creatorS3Url: composition.creatorS3Url,
               creatorTrimStartS: composition.creatorTrimStartS,
-              transcript: composition.creatorTranscript || undefined,
+              creatorDurationS: composition.creatorDurationS || undefined,
             });
 
             if (thumbnailResults.length > 0) {
@@ -837,8 +835,9 @@ new Worker<ReactionComposeJob>(
                   compositionId,
                   s3Key: t.s3Key,
                   s3Url: t.s3Url,
-                  hookText: t.hookText,
+                  hookText: '',
                   frameTimestampS: t.frameTimestampS,
+                  visionScore: t.visionScore ?? null,
                 })),
               });
 
@@ -959,7 +958,7 @@ new Worker<ThumbnailGenerationJob>(
     try {
       const composition = await prisma.composition.findUnique({
         where: { id: compositionId },
-        include: { outputs: true },
+        include: { outputs: true, tracks: { orderBy: { sortOrder: 'asc' } } },
       });
 
       if (!composition) {
@@ -967,12 +966,10 @@ new Worker<ThumbnailGenerationJob>(
         return;
       }
 
-      const landscapeOutput = composition.outputs.find(
-        (o) => o.layout === 'landscape' && o.status === 'completed' && o.s3Url
-      );
+      const referenceTrack = composition.tracks[0];
 
-      if (!landscapeOutput?.s3Url || !composition.creatorS3Url) {
-        console.warn(`⚠️ [thumbnail-generation] Missing landscape output or creator video`);
+      if (!referenceTrack?.s3Url || !composition.creatorS3Url) {
+        console.warn(`⚠️ [thumbnail-generation] Missing reference track or creator video`);
         return;
       }
 
@@ -980,10 +977,10 @@ new Worker<ThumbnailGenerationJob>(
 
       const thumbnailResults = await generateThumbnails({
         compositionId,
-        landscapeS3Url: landscapeOutput.s3Url,
+        referenceS3Url: referenceTrack.s3Url,
         creatorS3Url: composition.creatorS3Url,
         creatorTrimStartS: composition.creatorTrimStartS,
-        transcript: composition.creatorTranscript || undefined,
+        creatorDurationS: composition.creatorDurationS || undefined,
       });
 
       if (thumbnailResults.length > 0) {
@@ -997,8 +994,9 @@ new Worker<ThumbnailGenerationJob>(
             compositionId,
             s3Key: t.s3Key,
             s3Url: t.s3Url,
-            hookText: t.hookText,
+            hookText: '',
             frameTimestampS: t.frameTimestampS,
+            visionScore: t.visionScore ?? null,
           })),
         });
 

@@ -50,23 +50,20 @@ function getRembgPython(): string {
 export interface ThumbnailResult {
   s3Key: string;
   s3Url: string;
-  hookText: string;
   frameTimestampS: number;
   visionScore?: number;
 }
 
 export interface GenerateThumbnailsOptions {
   compositionId: string;
-  /** S3 URL of the landscape rendered output */
-  landscapeS3Url: string;
-  /** S3 URL of the creator's original video */
+  /** S3 URL of the reference (original content) video — used as background frames */
+  referenceS3Url: string;
+  /** S3 URL of the creator's original video — cutout overlaid on top */
   creatorS3Url: string;
   /** Creator trim start (to extract a representative frame) */
   creatorTrimStartS?: number;
   /** Total creator video duration (for best-frame extraction) */
   creatorDurationS?: number;
-  /** Full transcript text for hook text generation */
-  transcript?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -436,45 +433,45 @@ export async function generateThumbnails(
   const results: ThumbnailResult[] = [];
 
   try {
-    // 1. Download landscape render and creator video locally
-    const landscapePath = path.join(tmpDir, 'landscape.mp4');
+    // 1. Download reference video and creator video locally
+    const referencePath = path.join(tmpDir, 'reference.mp4');
     const creatorPath = path.join(tmpDir, 'creator.mp4');
 
     await Promise.all([
-      downloadFile(opts.landscapeS3Url, landscapePath),
+      downloadFile(opts.referenceS3Url, referencePath),
       downloadFile(opts.creatorS3Url, creatorPath),
     ]);
 
     // 2. Get video durations
-    const [landscapeDuration, creatorDuration] = await Promise.all([
-      getVideoDuration(landscapePath),
+    const [referenceDuration, creatorDuration] = await Promise.all([
+      getVideoDuration(referencePath),
       opts.creatorDurationS ?? getVideoDuration(creatorPath),
     ]);
 
-    if (landscapeDuration <= 0) {
-      console.warn('[thumbnailGenerator] Could not determine video duration');
+    if (referenceDuration <= 0) {
+      console.warn('[thumbnailGenerator] Could not determine reference video duration');
       return [];
     }
 
-    // 3. Extract candidate frames (scene detection + evenly-spaced fill)
+    // 3. Extract candidate frames from reference video (scene detection + evenly-spaced fill)
     const candidateFrames = await extractCandidateFrames(
-      landscapePath,
-      landscapeDuration,
+      referencePath,
+      referenceDuration,
       MAX_CANDIDATES,
       tmpDir
     );
     if (candidateFrames.length === 0) {
-      console.warn('[thumbnailGenerator] No frames extracted');
+      console.warn('[thumbnailGenerator] No frames extracted from reference video');
       return [];
     }
 
-    // 4. Score and select top frames with LLaVA
+    // 4. Score and select top 6 most emotional/expressive frames with LLaVA
     const selectedFrames = await scoreAndSelectFrames(candidateFrames, NUM_FRAMES);
     console.log(
       `[thumbnailGenerator] Selected ${selectedFrames.length} frames from ${candidateFrames.length} candidates`
     );
 
-    // 5. Select best creator frame and remove background
+    // 5. Select best creator frame (most emotional) and remove background
     const bestCreatorFramePath = await selectBestCreatorFrame(
       creatorPath,
       creatorDuration,
@@ -490,14 +487,11 @@ export async function generateThumbnails(
       );
     }
 
-    // 6. Generate hook text from transcript via Ollama (non-fatal)
-    const hookText = opts.transcript ? await generateHookText(opts.transcript) : null;
-
-    // 7. Composite each frame into a thumbnail and upload
+    // 6. Composite each reference frame + creator cutout into a thumbnail and upload
     for (const frame of selectedFrames) {
       try {
         const outPath = path.join(tmpDir, `thumb_${frame.timestampS.toFixed(1)}.png`);
-        await compositeThumbnail(frame.framePath, creatorCutoutPath, hookText, outPath);
+        await compositeThumbnail(frame.framePath, creatorCutoutPath, outPath);
 
         if (!fs.existsSync(outPath)) continue;
 
@@ -508,7 +502,6 @@ export async function generateThumbnails(
         results.push({
           s3Key,
           s3Url: `https://${getBucket()}.s3.${getRegion()}.amazonaws.com/${s3Key}`,
-          hookText: hookText || '',
           frameTimestampS: frame.timestampS,
           visionScore: (frame as any).visionScore ?? undefined,
         });
@@ -662,64 +655,12 @@ export async function removeBackground(
 }
 
 /**
- * Generate a short hook phrase from a transcript using Ollama.
- * Returns null if Ollama is unavailable or fails (non-fatal).
- */
-export async function generateHookText(transcript: string): Promise<string | null> {
-  const { baseUrl, textModel } = getOllamaConfig();
-
-  const prompt = `You are a YouTube thumbnail copywriter. Given the following video transcript, generate ONE short, punchy hook phrase (3-6 words, ALL CAPS) that would grab attention as thumbnail text. Return ONLY the phrase, nothing else.
-
-Transcript (first 500 chars):
-${transcript.slice(0, 500)}`;
-
-  try {
-    const nodeFetch = require('node-fetch');
-    const res = await nodeFetch(`${baseUrl}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: textModel,
-        prompt,
-        stream: false,
-        options: { temperature: 0.8, num_predict: 30 },
-      }),
-      timeout: 15_000,
-    });
-
-    if (!res.ok) {
-      console.warn(`[thumbnailGenerator] Ollama returned ${res.status}`);
-      return null;
-    }
-
-    const data = await res.json();
-    const response = (data.response || '').trim();
-    // Clean up: remove quotes, take first line, limit length
-    const cleaned = response
-      .replace(/^["']|["']$/g, '')
-      .split('\n')[0]
-      .trim()
-      .toUpperCase()
-      .slice(0, 40);
-
-    return cleaned || null;
-  } catch (err) {
-    console.warn(
-      '[thumbnailGenerator] Ollama hook text failed (non-fatal):',
-      err instanceof Error ? err.message : err
-    );
-    return null;
-  }
-}
-
-/**
- * Composite a thumbnail: background frame + creator cutout (center-right, 85% height) + hook text (top-left).
- * Uses FFmpeg for all compositing.
+ * Composite a thumbnail: reference frame (background) + creator cutout (center-right, 85% height).
+ * Uses FFmpeg for all compositing. No text overlay.
  */
 export async function compositeThumbnail(
   bgPath: string,
   creatorCutoutPath: string | null,
-  hookText: string | null,
   outPath: string
 ): Promise<void> {
   const args: string[] = ['-y'];
@@ -746,20 +687,6 @@ export async function compositeThumbnail(
       `[${lastLabel}][creator]overlay=W*3/4-w/2:H-h[composited]`
     );
     lastLabel = 'composited';
-  }
-
-  if (hookText) {
-    // Escape special characters for FFmpeg drawtext
-    const escapedText = hookText
-      .replace(/\\/g, '\\\\\\\\')
-      .replace(/'/g, "\\'")
-      .replace(/:/g, '\\:')
-      .replace(/%/g, '%%');
-
-    filterParts.push(
-      `[${lastLabel}]drawtext=text='${escapedText}':fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:fontsize=56:fontcolor=white:borderw=4:bordercolor=black:x=40:y=40[textout]`
-    );
-    lastLabel = 'textout';
   }
 
   // Final output mapping
