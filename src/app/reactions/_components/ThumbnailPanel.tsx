@@ -171,9 +171,12 @@ export function ThumbnailPanel({
     pollCountRef.current = 0;
     const poll = async () => {
       pollCountRef.current++;
-      if (pollCountRef.current > 24) {
+      // 120 polls * 5s = 10 minutes (moondream + rembg can take 5+ minutes)
+      if (pollCountRef.current > 120) {
         stopPolling();
         setGenerating(false);
+        // Final fetch in case assets appeared right at timeout
+        fetchAssets();
         return;
       }
       const data = await fetchAssets();
