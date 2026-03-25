@@ -904,7 +904,7 @@ async function uploadToS3(localPath: string, s3Key: string, contentType: string)
 // Thumbnail Builder — asset generation (worker) + sharp compositing (API)
 // ---------------------------------------------------------------------------
 
-const NUM_CUTOUT_FRAMES = 6;
+const NUM_CUTOUT_FRAMES = 12;
 
 /**
  * Generate raw thumbnail assets (reference frames + cutouts) without compositing.
@@ -978,9 +978,10 @@ export async function generateThumbnailAssets(
     }
 
     // 5. Extract creator candidate frames and score by face area
+    //    Extract 20 candidates to pick the top 12 most expressive
     const effectiveStart = opts.creatorTrimStartS || 0;
     const effectiveDuration = creatorDuration - effectiveStart;
-    const numCreatorFrames = 10;
+    const numCreatorFrames = 20;
     const step = effectiveDuration / (numCreatorFrames + 1);
 
     const creatorFrames: Array<{ path: string; ts: number }> = [];
@@ -997,22 +998,67 @@ export async function generateThumbnailAssets(
       }
     }
 
-    // Face-detect all creator frames, pick top 6 by face area
-    const creatorFaceScored: Array<{ frame: (typeof creatorFrames)[0]; faceArea: number }> = [];
+    // Face-detect all creator frames, then score top candidates with moondream for emotion
+    const creatorFaceScored: Array<{
+      frame: (typeof creatorFrames)[0];
+      faceArea: number;
+      emotionScore: number;
+      combinedScore: number;
+    }> = [];
     for (const frame of creatorFrames) {
       const result = await detectFaces(frame.path);
-      creatorFaceScored.push({ frame, faceArea: result?.face_area_pct ?? 0 });
+      const faceArea = result?.face_area_pct ?? 0;
+      creatorFaceScored.push({ frame, faceArea, emotionScore: 0, combinedScore: faceArea });
     }
+
+    // Sort by face area, take top candidates with faces for emotion scoring
     creatorFaceScored.sort((a, b) => b.faceArea - a.faceArea);
-    const topCreatorFrames = creatorFaceScored.slice(0, NUM_CUTOUT_FRAMES);
+    const withFaces = creatorFaceScored.filter((f) => f.faceArea > 0);
+
+    // Run moondream emotion scoring on top face-containing frames
+    const EMOTION_BUDGET = Math.min(withFaces.length, 8);
+    const visionAvailable = await isOllamaVisionAvailable();
+    if (visionAvailable && EMOTION_BUDGET > 0) {
+      console.log(
+        `[thumbnailAssets] Scoring top ${EMOTION_BUDGET} creator frames with moondream for emotion...`
+      );
+      let consecutiveFailures = 0;
+      for (let i = 0; i < EMOTION_BUDGET; i++) {
+        if (consecutiveFailures >= 2) {
+          console.log('[thumbnailAssets] Moondream too slow — using face detection scores only');
+          break;
+        }
+        const visionResult = await scoreFrameWithVision(withFaces[i].frame.path);
+        if (visionResult) {
+          consecutiveFailures = 0;
+          withFaces[i].emotionScore = visionResult.emotionalExpression;
+          // Combined: 40% face area (base presence) + 60% emotion (expressiveness)
+          withFaces[i].combinedScore =
+            clamp(withFaces[i].faceArea * 2, 0, 10) * 0.4 + visionResult.emotionalExpression * 0.6;
+          console.log(
+            `[thumbnailAssets] Creator emotion at ${withFaces[i].frame.ts.toFixed(1)}s: emotion=${visionResult.emotionalExpression.toFixed(1)}, combined=${withFaces[i].combinedScore.toFixed(1)}`
+          );
+        } else {
+          consecutiveFailures++;
+          // Fall back to face area only
+          withFaces[i].combinedScore = clamp(withFaces[i].faceArea * 2, 0, 10);
+        }
+      }
+    }
+
+    // Re-sort by combined score (emotion-weighted) and pick top N
+    creatorFaceScored.sort((a, b) => b.combinedScore - a.combinedScore);
+    const topCreatorFrames = creatorFaceScored
+      .filter((f) => f.faceArea > 0)
+      .slice(0, NUM_CUTOUT_FRAMES);
 
     console.log(
-      `[thumbnailAssets] Top ${topCreatorFrames.length} creator frames by face area: ${topCreatorFrames.map((f) => `${f.faceArea.toFixed(1)}%`).join(', ')}`
+      `[thumbnailAssets] Top ${topCreatorFrames.length} creator frames (emotion-weighted): ${topCreatorFrames.map((f) => `${f.frame.ts.toFixed(1)}s=${f.combinedScore.toFixed(1)}`).join(', ')}`
     );
 
     // 6. Run rembg on each top creator frame and upload cutouts
     for (let i = 0; i < topCreatorFrames.length; i++) {
-      const { frame, faceArea } = topCreatorFrames[i];
+      const { frame, combinedScore } = topCreatorFrames[i];
       try {
         const cutoutPath = path.join(tmpDir, `cutout_${i}.png`);
         const result = await removeBackground(frame.path, cutoutPath);
@@ -1024,7 +1070,7 @@ export async function generateThumbnailAssets(
           s3Key,
           s3Url: `https://${getBucket()}.s3.${getRegion()}.amazonaws.com/${s3Key}`,
           frameTimestampS: frame.ts,
-          visionScore: clamp(faceArea * 2, 0, 10),
+          visionScore: clamp(combinedScore, 0, 10),
           type: 'cutout',
         });
       } catch (err) {

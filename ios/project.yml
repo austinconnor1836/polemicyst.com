@@ -65,7 +65,7 @@ targets:
         API_BASE_URL: 'https://polemicyst.com'
       configs:
         Debug:
-          API_BASE_URL: 'https://100.124.11.69:3000'
+          API_BASE_URL: 'https://192.168.0.16:3000'
           CODE_SIGN_STYLE: Automatic
           DEVELOPMENT_TEAM: L6AS5GG2MB
         Release:

@@ -112,3 +112,4 @@ ios/fastlane/report.xml
 ios/fastlane/screenshots/
 ios/vendor/
 nul
+.venv

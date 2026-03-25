@@ -2838,6 +2838,76 @@
       "championships": 0
     }
   ],
+  "seedMatchups": {
+    "dataRange": "1985-2025",
+    "totalTournaments": 40,
+    "source": "BracketOdds, University of Illinois",
+    "sourceUrl": "http://bracketodds.cs.illinois.edu/seed_records.html",
+    "Round of 64": [
+      { "higher": 1, "lower": 16, "hWins": 158, "lWins": 2 },
+      { "higher": 2, "lower": 15, "hWins": 149, "lWins": 11 },
+      { "higher": 3, "lower": 14, "hWins": 137, "lWins": 23 },
+      { "higher": 4, "lower": 13, "hWins": 127, "lWins": 33 },
+      { "higher": 5, "lower": 12, "hWins": 103, "lWins": 57 },
+      { "higher": 6, "lower": 11, "hWins": 98, "lWins": 62 },
+      { "higher": 7, "lower": 10, "hWins": 98, "lWins": 62 },
+      { "higher": 8, "lower": 9, "hWins": 77, "lWins": 83 }
+    ],
+    "Round of 32": [
+      { "higher": 1, "lower": 8, "hWins": 61, "lWins": 16 },
+      { "higher": 1, "lower": 9, "hWins": 75, "lWins": 6 },
+      { "higher": 2, "lower": 7, "hWins": 65, "lWins": 27 },
+      { "higher": 2, "lower": 10, "hWins": 38, "lWins": 19 },
+      { "higher": 3, "lower": 6, "hWins": 49, "lWins": 33 },
+      { "higher": 3, "lower": 11, "hWins": 35, "lWins": 20 },
+      { "higher": 4, "lower": 5, "hWins": 45, "lWins": 37 },
+      { "higher": 4, "lower": 12, "hWins": 32, "lWins": 13 },
+      { "higher": 5, "lower": 13, "hWins": 18, "lWins": 3 },
+      { "higher": 6, "lower": 14, "hWins": 14, "lWins": 2 },
+      { "higher": 7, "lower": 15, "hWins": 2, "lWins": 4 },
+      { "higher": 10, "lower": 15, "hWins": 5, "lWins": 0 },
+      { "higher": 11, "lower": 14, "hWins": 7, "lWins": 0 },
+      { "higher": 12, "lower": 13, "hWins": 9, "lWins": 3 }
+    ],
+    "Sweet 16": [
+      { "higher": 1, "lower": 4, "hWins": 44, "lWins": 18 },
+      { "higher": 1, "lower": 5, "hWins": 39, "lWins": 11 },
+      { "higher": 1, "lower": 12, "hWins": 20, "lWins": 0 },
+      { "higher": 1, "lower": 13, "hWins": 4, "lWins": 0 },
+      { "higher": 2, "lower": 3, "hWins": 32, "lWins": 19 },
+      { "higher": 2, "lower": 6, "hWins": 25, "lWins": 7 },
+      { "higher": 2, "lower": 11, "hWins": 15, "lWins": 4 },
+      { "higher": 3, "lower": 7, "hWins": 10, "lWins": 6 },
+      { "higher": 3, "lower": 10, "hWins": 10, "lWins": 4 },
+      { "higher": 4, "lower": 8, "hWins": 5, "lWins": 6 },
+      { "higher": 6, "lower": 7, "hWins": 5, "lWins": 3 }
+    ],
+    "Elite 8": [
+      { "higher": 1, "lower": 2, "hWins": 27, "lWins": 24 },
+      { "higher": 1, "lower": 3, "hWins": 18, "lWins": 10 },
+      { "higher": 1, "lower": 6, "hWins": 8, "lWins": 2 },
+      { "higher": 1, "lower": 7, "hWins": 4, "lWins": 0 },
+      { "higher": 1, "lower": 10, "hWins": 5, "lWins": 1 },
+      { "higher": 1, "lower": 11, "hWins": 4, "lWins": 4 },
+      { "higher": 2, "lower": 4, "hWins": 3, "lWins": 4 },
+      { "higher": 2, "lower": 8, "hWins": 2, "lWins": 3 },
+      { "higher": 3, "lower": 4, "hWins": 2, "lWins": 4 },
+      { "higher": 4, "lower": 7, "hWins": 2, "lWins": 3 }
+    ],
+    "Final Four": [
+      { "higher": 1, "lower": 1, "total": 15 },
+      { "higher": 1, "lower": 2, "hWins": 8, "lWins": 4 },
+      { "higher": 1, "lower": 3, "hWins": 3, "lWins": 4 },
+      { "higher": 1, "lower": 4, "hWins": 6, "lWins": 1 },
+      { "higher": 2, "lower": 2, "total": 3 },
+      { "higher": 2, "lower": 3, "hWins": 3, "lWins": 3 }
+    ],
+    "Championship": [
+      { "higher": 1, "lower": 1, "total": 10 },
+      { "higher": 1, "lower": 2, "hWins": 6, "lWins": 2 },
+      { "higher": 2, "lower": 3, "hWins": 3, "lWins": 2 }
+    ]
+  },
   "sources": [
     {
       "name": "NCAA.com",
@@ -2853,6 +2923,11 @@
       "name": "BracketResearch.com",
       "url": "https://bracketresearch.com/the-dna-of-a-national-championship-team/seeds-of-ncaa-tournament-champions/",
       "description": "Championship winners by seed analysis"
+    },
+    {
+      "name": "BracketOdds, University of Illinois",
+      "url": "http://bracketodds.cs.illinois.edu/seed_records.html",
+      "description": "Seed matchup records by round (1985-2025)"
     }
   ]
 }
