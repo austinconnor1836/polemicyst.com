@@ -1,7 +1,6 @@
 'use client';
 
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 type AudioMode = 'creator' | 'reference' | 'both';
@@ -31,8 +30,6 @@ export function AudioMixPanel({
 }: AudioMixPanelProps) {
   return (
     <div className="space-y-4">
-      <Label>Audio Mixing</Label>
-
       <div className="flex gap-2">
         {modes.map((m) => (
           <button

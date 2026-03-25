@@ -12,12 +12,19 @@ interface Thumbnail {
   s3Url: string;
   hookText: string;
   frameTimestampS: number;
+  visionScore: number | null;
   selected: boolean;
 }
 
 interface ThumbnailPanelProps {
   compositionId: string;
   compositionStatus: string;
+  /** When true, the internal header row is hidden (parent Card provides it). */
+  hideHeader?: boolean;
+  /** Called when the generating state changes — lets parent mirror the state for header buttons. */
+  onGeneratingChange?: (generating: boolean) => void;
+  /** Ref that the parent can call to trigger regeneration from an external button. */
+  regenerateRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 function ThumbnailSkeletonGrid() {
@@ -32,14 +39,28 @@ function ThumbnailSkeletonGrid() {
   );
 }
 
-export function ThumbnailPanel({ compositionId, compositionStatus }: ThumbnailPanelProps) {
+export function ThumbnailPanel({
+  compositionId,
+  compositionStatus,
+  hideHeader,
+  onGeneratingChange,
+  regenerateRef,
+}: ThumbnailPanelProps) {
   const [thumbnails, setThumbnails] = useState<Thumbnail[]>([]);
   const [initialLoad, setInitialLoad] = useState(true);
   const [selecting, setSelecting] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
+  const [generating, setGeneratingRaw] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const pollCountRef = useRef(0);
   const prevStatusRef = useRef(compositionStatus);
+
+  const setGenerating = useCallback(
+    (value: boolean) => {
+      setGeneratingRaw(value);
+      onGeneratingChange?.(value);
+    },
+    [onGeneratingChange]
+  );
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -73,7 +94,7 @@ export function ThumbnailPanel({ compositionId, compositionStatus }: ThumbnailPa
       setGenerating(true);
     }
     prevStatusRef.current = compositionStatus;
-  }, [compositionStatus]);
+  }, [compositionStatus, setGenerating]);
 
   // Poll while generating — stops when thumbnails arrive or timeout
   useEffect(() => {
@@ -96,7 +117,7 @@ export function ThumbnailPanel({ compositionId, compositionStatus }: ThumbnailPa
 
     pollRef.current = setInterval(poll, 5000);
     return stopPolling;
-  }, [generating, fetchThumbnails, stopPolling]);
+  }, [generating, fetchThumbnails, stopPolling, setGenerating]);
 
   const handleSelect = async (thumbnailId: string) => {
     setSelecting(thumbnailId);
@@ -116,7 +137,7 @@ export function ThumbnailPanel({ compositionId, compositionStatus }: ThumbnailPa
     }
   };
 
-  const handleRegenerate = async () => {
+  const handleRegenerate = useCallback(async () => {
     setGenerating(true);
     setThumbnails([]);
     try {
@@ -134,38 +155,51 @@ export function ThumbnailPanel({ compositionId, compositionStatus }: ThumbnailPa
       toast.error('Failed to regenerate thumbnails');
       setGenerating(false);
     }
-  };
+  }, [compositionId, setGenerating]);
 
   const selectedThumb = thumbnails.find((t) => t.selected);
 
-  // Don't show panel until composition is completed
-  if (compositionStatus !== 'completed') return null;
+  const isRendering = compositionStatus === 'rendering';
+
+  // Expose regenerate handler to parent
+  useEffect(() => {
+    if (regenerateRef) {
+      regenerateRef.current = handleRegenerate;
+    }
+    return () => {
+      if (regenerateRef) regenerateRef.current = null;
+    };
+  }, [regenerateRef, handleRegenerate]);
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">Thumbnails</span>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 gap-1 text-xs"
-          onClick={handleRegenerate}
-          disabled={generating}
-        >
-          {generating ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3 w-3" />
-          )}
-          Regenerate
-        </Button>
-      </div>
+      {!hideHeader && (
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Thumbnails</span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 text-xs"
+            onClick={handleRegenerate}
+            disabled={generating || isRendering}
+          >
+            {generating ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3 w-3" />
+            )}
+            Regenerate
+          </Button>
+        </div>
+      )}
 
       {initialLoad || generating ? (
         <ThumbnailSkeletonGrid />
       ) : thumbnails.length === 0 ? (
         <p className="text-sm text-muted-foreground py-4 text-center">
-          No thumbnails generated yet.
+          {isRendering
+            ? 'Thumbnails will be generated after render completes.'
+            : 'No thumbnails generated yet.'}
         </p>
       ) : (
         <>
@@ -207,6 +241,13 @@ export function ThumbnailPanel({ compositionId, compositionStatus }: ThumbnailPa
                 <div className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
                   {thumb.frameTimestampS.toFixed(1)}s
                 </div>
+
+                {/* Vision score badge */}
+                {thumb.visionScore != null && (
+                  <div className="absolute bottom-1 right-1 rounded bg-purple-600/80 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                    {thumb.visionScore.toFixed(1)}
+                  </div>
+                )}
               </button>
             ))}
           </div>
