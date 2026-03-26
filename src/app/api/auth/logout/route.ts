@@ -1,11 +1,10 @@
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../auth';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
 
-export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session) {
+export async function POST(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
     return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
   }
 
@@ -15,17 +14,15 @@ export async function POST(req: Request) {
   }
 
   try {
-    // ✅ Remove only the selected provider (and Instagram if Facebook is removed)
     await prisma.account.deleteMany({
       where: {
-        userId: session.user.id,
+        userId: user.id,
         provider: provider === 'facebook' ? { in: ['facebook', 'instagram'] } : provider,
       },
     });
 
-    // ✅ Fetch remaining providers to ensure session stays updated
     const remainingProviders = await prisma.account.findMany({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
       select: { provider: true },
     });
 

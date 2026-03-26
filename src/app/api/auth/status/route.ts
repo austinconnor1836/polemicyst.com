@@ -1,17 +1,16 @@
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../auth';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
 
-export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+export async function GET(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
     return NextResponse.json({ isAuthenticated: {} }, { status: 401 });
   }
 
   try {
     const accounts = await prisma.account.findMany({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
       select: { provider: true },
     });
 

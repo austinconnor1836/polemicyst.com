@@ -2,21 +2,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../auth';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { deleteFromS3 } from '@shared/lib/s3';
 import { checkLlmProviderAccess, checkAutoGenerateAccess } from '@/lib/plans';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+  const user = await getAuthenticatedUser(req);
   if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const feed = await prisma.videoFeed.findUnique({ where: { id } });
@@ -75,8 +69,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
