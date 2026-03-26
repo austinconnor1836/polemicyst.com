@@ -2,21 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3_BUCKET, S3_REGION } from '@shared/lib/storage/storage-provider';
 
-const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
-const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
-
-const s3 = new S3Client({
-  region: S3_REGION,
-  ...(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
-    ? {
-        credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        },
-      }
-    : {}),
-});
+const s3 = new S3Client({ region: S3_REGION });
 
 export async function GET(
   req: NextRequest,
