@@ -332,18 +332,18 @@ export async function GET(req) {
 
 ## Summary of Recommendations
 
-| Priority | Action | Effort | Impact |
-|----------|--------|--------|--------|
-| **P0** | Extract repositories from route handlers | Low | High — testability, DRY |
-| **P0** | Standardize auth to `getAuthenticatedUser()` everywhere | Low | High — mobile parity |
-| **P1** | Shared API error response helper | Low | Medium — consistency |
-| **P1** | LLM Provider port/adapter | Medium | High — enables model distillation goal |
-| **P1** | Consolidate S3 to SDK v3 + storage port | Medium | Medium — reduces bundle, single pattern |
-| **P2** | Remove Express sidecar | Low | Low — reduces surface area |
-| **P2** | Remove unused Redux | Low | Low — reduces confusion |
-| **P2** | Deduplicate type definitions | Low | Medium — prevents drift |
-| **P3** | MUI → Radix consolidation | Medium | Low — cosmetic consistency |
-| **P3** | Full OpenAPI spec coverage | High | Medium — contract safety |
+| Priority | Action | Effort | Impact | Status |
+|----------|--------|--------|--------|--------|
+| **P0** | Extract repositories from route handlers | Low | High — testability, DRY | Pending |
+| ~~**P0**~~ | ~~Standardize auth to `getAuthenticatedUser()` everywhere~~ | ~~Low~~ | ~~High — mobile parity~~ | **Done** |
+| ~~**P1**~~ | ~~Shared API error response helper~~ | ~~Low~~ | ~~Medium — consistency~~ | **Done** |
+| ~~**P1**~~ | ~~LLM Provider port/adapter~~ | ~~Medium~~ | ~~High — enables model distillation goal~~ | **Done** |
+| ~~**P1**~~ | ~~Consolidate S3 to SDK v3 + storage port~~ | ~~Medium~~ | ~~Medium — reduces bundle, single pattern~~ | **Done** |
+| ~~**P2**~~ | ~~Remove Express sidecar~~ | ~~Low~~ | ~~Low — reduces surface area~~ | **Done** |
+| **P2** | Remove unused Redux | Low | Low — reduces confusion | Pending |
+| ~~**P2**~~ | ~~Deduplicate type definitions~~ | ~~Low~~ | ~~Medium — prevents drift~~ | **Done** |
+| **P3** | MUI → Radix consolidation | Medium | Low — cosmetic consistency | Pending |
+| **P3** | Full OpenAPI spec coverage | High | Medium — contract safety | Pending |
 
 The app does not need to adopt clean architecture wholesale. The Modular Monolith with Vertical Slices approach preserves the pragmatic speed the team clearly values while introducing boundaries exactly where the codebase needs them — around external providers, domain-critical scoring logic, and the 99 route handlers that currently carry too much responsibility.
 
