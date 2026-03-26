@@ -19,6 +19,16 @@ interface Output {
   transcript?: string | null;
 }
 
+/** A rendered output that lives client-side as a blob */
+export interface LocalOutput {
+  outputId: string;
+  layout: string;
+  blobUrl: string;
+  blob: Blob;
+  transcript?: string | null;
+  durationMs?: number | null;
+}
+
 interface RenderControlsProps {
   compositionId: string;
   compositionStatus: string;
@@ -31,10 +41,11 @@ interface RenderControlsProps {
   onStatusChange: (status: string, outputs: Output[]) => void;
   compositionTitle?: string;
   trackLabels?: string[];
-  /** If provided, called before render starts. Must upload pending files and return true to proceed. */
-  onBeforeRender?: (onProgress: (pct: number) => void) => Promise<boolean>;
-  /** Number of files pending local upload (controls UI messaging) */
-  pendingUploadCount?: number;
+  /** Called before render to silently upload pending local files. Returns true to proceed. */
+  onBeforeRender?: () => Promise<boolean>;
+  /** Local blob outputs downloaded after render */
+  localOutputs: Map<string, LocalOutput>;
+  onLocalOutputsChange: (outputs: Map<string, LocalOutput>) => void;
 }
 
 const LAYOUT_LABELS: Record<string, string> = {
@@ -55,13 +66,15 @@ export function RenderControls({
   compositionTitle,
   trackLabels,
   onBeforeRender,
-  pendingUploadCount = 0,
+  localOutputs,
+  onLocalOutputsChange,
 }: RenderControlsProps) {
   const [rendering, setRendering] = useState(compositionStatus === 'rendering');
-  const [uploadingFiles, setUploadingFiles] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [preparing, setPreparing] = useState(false);
   const [publishTarget, setPublishTarget] = useState<{
-    s3Url: string;
+    blobUrl?: string;
+    blob?: Blob;
+    s3Url?: string;
     layout: string;
     transcript?: string | null;
   } | null>(null);
@@ -106,6 +119,29 @@ export function RenderControls({
     [compositionTitle, trackLabels]
   );
 
+  /** Download a rendered output from the server as a client-side blob */
+  const downloadOutputAsBlob = useCallback(
+    async (output: Output): Promise<LocalOutput | null> => {
+      try {
+        const res = await fetch(`/api/compositions/${compositionId}/outputs/${output.id}/download`);
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        return {
+          outputId: output.id,
+          layout: output.layout,
+          blobUrl,
+          blob,
+          transcript: output.transcript,
+          durationMs: output.durationMs,
+        };
+      } catch {
+        return null;
+      }
+    },
+    [compositionId]
+  );
+
   useEffect(() => {
     if (!rendering) return;
 
@@ -119,17 +155,27 @@ export function RenderControls({
           data.outputs?.some((o: Output) => o.status === 'rendering' || o.status === 'pending');
         onStatusChangeRef.current(data.status, data.outputs);
 
-        for (const output of data.outputs ?? []) {
-          if (output.status === 'completed' && output.s3Url) {
-            generateDescription(output.layout, output.transcript);
-          }
-        }
-
         if (!isStillRendering) {
           setRendering(false);
+
+          const completedOutputs = (data.outputs ?? []).filter(
+            (o: Output) => o.status === 'completed' && o.s3Url
+          );
           const allDone = data.outputs?.every((o: Output) => o.status === 'completed');
-          if (allDone) {
-            toast.success('Render complete!');
+
+          if (allDone && completedOutputs.length > 0) {
+            toast.success('Render complete! Downloading outputs...');
+
+            // Download all completed outputs as blobs
+            const newLocalOutputs = new Map(localOutputs);
+            for (const output of completedOutputs) {
+              const localOutput = await downloadOutputAsBlob(output);
+              if (localOutput) {
+                newLocalOutputs.set(output.layout, localOutput);
+              }
+              generateDescription(output.layout, output.transcript);
+            }
+            onLocalOutputsChange(newLocalOutputs);
           } else {
             const failed = data.outputs?.filter((o: Output) => o.status === 'failed');
             if (failed?.length) {
@@ -146,7 +192,14 @@ export function RenderControls({
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [rendering, compositionId, generateDescription]);
+  }, [
+    rendering,
+    compositionId,
+    generateDescription,
+    downloadOutputAsBlob,
+    localOutputs,
+    onLocalOutputsChange,
+  ]);
 
   useEffect(() => {
     if (compositionStatus === 'rendering') {
@@ -154,12 +207,32 @@ export function RenderControls({
     }
   }, [compositionStatus]);
 
+  // On mount, if outputs are already completed on the server, download them as blobs
   useEffect(() => {
-    for (const output of outputs) {
-      if (output.status === 'completed' && output.s3Url) {
+    const completedOutputs = outputs.filter((o) => o.status === 'completed' && o.s3Url);
+    if (completedOutputs.length === 0) return;
+
+    // Only download if we don't already have local blobs
+    const missingOutputs = completedOutputs.filter((o) => !localOutputs.has(o.layout));
+    if (missingOutputs.length === 0) {
+      // Already have local blobs — just generate descriptions
+      for (const o of completedOutputs) {
+        generateDescription(o.layout, o.transcript);
+      }
+      return;
+    }
+
+    (async () => {
+      const newLocalOutputs = new Map(localOutputs);
+      for (const output of missingOutputs) {
+        const localOutput = await downloadOutputAsBlob(output);
+        if (localOutput) {
+          newLocalOutputs.set(output.layout, localOutput);
+        }
         generateDescription(output.layout, output.transcript);
       }
-    }
+      onLocalOutputsChange(newLocalOutputs);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -189,27 +262,30 @@ export function RenderControls({
   const handleRender = async () => {
     if (!hasCreator || !hasTracks) return;
 
-    // Upload pending files before rendering
-    if (onBeforeRender && pendingUploadCount > 0) {
-      setUploadingFiles(true);
-      setUploadProgress(0);
+    // Silently upload pending local files before rendering
+    if (onBeforeRender) {
+      setPreparing(true);
       try {
-        const ok = await onBeforeRender((pct) => setUploadProgress(pct));
+        const ok = await onBeforeRender();
         if (!ok) {
-          setUploadingFiles(false);
+          setPreparing(false);
           return;
         }
-      } catch (err) {
-        toast.error('Failed to upload videos');
-        setUploadingFiles(false);
+      } catch {
+        toast.error('Failed to prepare videos for render');
+        setPreparing(false);
         return;
       }
-      setUploadingFiles(false);
+      setPreparing(false);
     }
 
     setRendering(true);
 
-    // Optimistically reset outputs to pending so spinners show immediately
+    // Clear old local outputs
+    localOutputs.forEach((lo) => URL.revokeObjectURL(lo.blobUrl));
+    onLocalOutputsChange(new Map());
+
+    // Optimistically reset outputs to pending
     const resetOutputs = outputs.map((o) => ({
       ...o,
       status: 'pending',
@@ -235,11 +311,22 @@ export function RenderControls({
       }
 
       toast.success('Render started!');
-    } catch (err) {
+    } catch {
       toast.error('Failed to start render');
       setRendering(false);
       onStatusChange(compositionStatus, outputs);
     }
+  };
+
+  const handleDownloadBlob = (layout: string) => {
+    const lo = localOutputs.get(layout);
+    if (!lo) return;
+    const a = document.createElement('a');
+    a.href = lo.blobUrl;
+    a.download = `${layout}-output.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const statusBadge = (status: string) => {
@@ -271,6 +358,8 @@ export function RenderControls({
     ? 'Upload reference clips to render'
     : 'Rendering both 9:16 and 16:9 formats';
 
+  const isWorking = rendering || preparing;
+
   return (
     <div className="space-y-4">
       {/* Auto-detected layout previews */}
@@ -301,95 +390,101 @@ export function RenderControls({
               Cancel
             </Button>
           )}
-          <Button
-            onClick={handleRender}
-            disabled={rendering || uploadingFiles || !hasCreator || !hasTracks}
-          >
-            {(rendering || uploadingFiles) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {uploadingFiles
-              ? `Uploading ${uploadProgress}%`
+          <Button onClick={handleRender} disabled={isWorking || !hasCreator || !hasTracks}>
+            {isWorking && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {preparing
+              ? 'Preparing...'
               : rendering
                 ? 'Rendering...'
-                : pendingUploadCount > 0
-                  ? `Upload & Render (${pendingUploadCount} local)`
-                  : outputs.some((o) => o.s3Url)
-                    ? 'Re-render'
-                    : 'Render'}
+                : localOutputs.size > 0
+                  ? 'Re-render'
+                  : 'Render'}
           </Button>
         </div>
       </div>
 
-      {/* Output cards */}
-      {outputs.length > 0 && (
+      {/* Output cards — prefer local blobs over s3Urls */}
+      {(outputs.length > 0 || localOutputs.size > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {outputs.map((output) => (
-            <VideoCard
-              key={output.id}
-              size="md"
-              src={output.status === 'completed' && output.s3Url ? output.s3Url : undefined}
-              controls={output.status === 'completed' && !!output.s3Url}
-              label={LAYOUT_LABELS[output.layout] || output.layout}
-              badge={statusBadge(output.status)}
-              sublabel={
-                <>
-                  {output.renderError && (
-                    <p className="text-xs text-destructive line-clamp-2">{output.renderError}</p>
-                  )}
-                  <div className="mt-1 flex items-center justify-between">
-                    {output.durationMs ? (
-                      <span className="text-xs text-muted-foreground">
-                        Rendered in {(output.durationMs / 1000).toFixed(1)}s
-                      </span>
-                    ) : (
-                      <span />
+          {outputs.map((output) => {
+            const lo = localOutputs.get(output.layout);
+            const previewUrl = lo?.blobUrl || (output.status === 'completed' ? output.s3Url : null);
+            const isCompleted = output.status === 'completed' && !!previewUrl;
+
+            return (
+              <VideoCard
+                key={output.id}
+                size="md"
+                src={isCompleted ? previewUrl! : undefined}
+                controls={isCompleted}
+                label={LAYOUT_LABELS[output.layout] || output.layout}
+                badge={statusBadge(output.status)}
+                sublabel={
+                  <>
+                    {output.renderError && (
+                      <p className="text-xs text-destructive line-clamp-2">{output.renderError}</p>
                     )}
-                    {output.status === 'completed' && output.s3Url && (
-                      <div className="flex gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 gap-1 text-xs"
-                          onClick={() =>
-                            setPublishTarget({
-                              s3Url: output.s3Url!,
-                              layout: output.layout,
-                              transcript: output.transcript,
-                            })
-                          }
-                        >
-                          {generatingDesc.has(output.layout) ? (
-                            <Sparkles className="h-3 w-3 animate-pulse text-amber-500" />
-                          ) : preGenDescriptions[output.layout] ? (
-                            <Sparkles className="h-3 w-3 text-green-500" />
-                          ) : (
-                            <Share2 className="h-3 w-3" />
-                          )}
-                          Share
-                        </Button>
-                        <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-xs">
-                          <a href={output.s3Url} download>
+                    <div className="mt-1 flex items-center justify-between">
+                      {output.durationMs ? (
+                        <span className="text-xs text-muted-foreground">
+                          Rendered in {(output.durationMs / 1000).toFixed(1)}s
+                        </span>
+                      ) : (
+                        <span />
+                      )}
+                      {isCompleted && (
+                        <div className="flex gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 text-xs"
+                            onClick={() =>
+                              setPublishTarget({
+                                blobUrl: lo?.blobUrl,
+                                blob: lo?.blob,
+                                s3Url: output.s3Url || undefined,
+                                layout: output.layout,
+                                transcript: output.transcript,
+                              })
+                            }
+                          >
+                            {generatingDesc.has(output.layout) ? (
+                              <Sparkles className="h-3 w-3 animate-pulse text-amber-500" />
+                            ) : preGenDescriptions[output.layout] ? (
+                              <Sparkles className="h-3 w-3 text-green-500" />
+                            ) : (
+                              <Share2 className="h-3 w-3" />
+                            )}
+                            Share
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 text-xs"
+                            onClick={() => handleDownloadBlob(output.layout)}
+                          >
                             <Download className="h-3 w-3" />
                             Download
-                          </a>
-                        </Button>
-                      </div>
-                    )}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                }
+                className="max-w-none"
+              >
+                {output.status === 'rendering' || output.status === 'pending' ? (
+                  <div className="flex h-full items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
-                </>
-              }
-              className="max-w-none"
-            >
-              {output.status === 'rendering' || output.status === 'pending' ? (
-                <div className="flex h-full items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : output.status !== 'completed' ? (
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                  {output.renderError ? 'Render failed' : 'No output'}
-                </div>
-              ) : null}
-            </VideoCard>
-          ))}
+                ) : output.status !== 'completed' ? (
+                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                    {output.renderError ? 'Render failed' : 'No output'}
+                  </div>
+                ) : null}
+              </VideoCard>
+            );
+          })}
         </div>
       )}
 
@@ -398,7 +493,7 @@ export function RenderControls({
         onOpenChange={(open) => {
           if (!open) setPublishTarget(null);
         }}
-        mediaUrl={publishTarget?.s3Url}
+        mediaUrl={publishTarget?.s3Url || publishTarget?.blobUrl}
         mediaLabel={publishTarget?.layout}
         generationContext={{
           title: compositionTitle,

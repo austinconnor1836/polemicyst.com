@@ -13,7 +13,7 @@ import { CreatorVideoPanel } from '../_components/CreatorVideoPanel';
 import { ReferenceTrackPanel } from '../_components/ReferenceTrackPanel';
 import { TimelineEditor } from '../_components/TimelineEditor';
 import { AudioMixPanel } from '../_components/AudioMixPanel';
-import { RenderControls } from '../_components/RenderControls';
+import { RenderControls, type LocalOutput } from '../_components/RenderControls';
 import { ThumbnailPanel } from '../_components/ThumbnailPanel';
 import { TrimModal } from '../_components/TrimModal';
 import { PublishModal } from '@/components/PublishModal';
@@ -140,6 +140,9 @@ export default function CompositionEditorPage() {
   const [pendingCreator, setPendingCreator] = useState<PendingFile | null>(null);
   const [pendingTracks, setPendingTracks] = useState<Map<string, PendingFile>>(new Map());
 
+  // Rendered output blobs (downloaded from server after render)
+  const [localOutputs, setLocalOutputs] = useState<Map<string, LocalOutput>>(new Map());
+
   const fetchComposition = useCallback(async () => {
     try {
       const res = await fetch(`/api/compositions/${compositionId}`);
@@ -168,6 +171,7 @@ export default function CompositionEditorPage() {
     return () => {
       if (pendingCreator) URL.revokeObjectURL(pendingCreator.blobUrl);
       pendingTracks.forEach((p) => URL.revokeObjectURL(p.blobUrl));
+      localOutputs.forEach((lo) => URL.revokeObjectURL(lo.blobUrl));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -433,102 +437,86 @@ export default function CompositionEditorPage() {
     [trimTarget, save, handleUpdateTrack, pendingCreator]
   );
 
-  // --- Upload pending files before render ---
-  const handleBeforeRender = useCallback(
-    async (onProgress: (pct: number) => void): Promise<boolean> => {
-      const keyPrefix = `compositions/${compositionId}/raw`;
+  // --- Silently upload pending files before render ---
+  const handleBeforeRender = useCallback(async (): Promise<boolean> => {
+    const keyPrefix = `compositions/${compositionId}/raw`;
+    const hasPending = !!pendingCreator || pendingTracks.size > 0;
+    if (!hasPending) return true;
 
-      // Count total files to upload
-      const totalFiles = (pendingCreator ? 1 : 0) + pendingTracks.size;
-      if (totalFiles === 0) return true;
+    // 1. Upload creator if pending
+    if (pendingCreator) {
+      try {
+        const result = await uploadFileToS3(pendingCreator.file, keyPrefix);
+        const probe = await probeVideo(result.s3Key);
 
-      let filesCompleted = 0;
+        await save({
+          creatorS3Key: result.s3Key,
+          creatorS3Url: result.s3Url,
+          creatorDurationS: probe?.durationS ?? composition?.creatorDurationS ?? null,
+          creatorWidth: probe?.width ?? composition?.creatorWidth ?? null,
+          creatorHeight: probe?.height ?? composition?.creatorHeight ?? null,
+        } as any);
 
-      // 1. Upload creator if pending
-      if (pendingCreator) {
-        try {
-          const result = await uploadFileToS3(pendingCreator.file, keyPrefix, (pct) => {
-            const fileFrac = filesCompleted / totalFiles;
-            const partFrac = pct / 100 / totalFiles;
-            onProgress(Math.round((fileFrac + partFrac) * 100));
-          });
-
-          // Server-side probe for accurate metadata
-          const probe = await probeVideo(result.s3Key);
-
-          await save({
-            creatorS3Key: result.s3Key,
-            creatorS3Url: result.s3Url,
-            creatorDurationS: probe?.durationS ?? composition?.creatorDurationS ?? null,
-            creatorWidth: probe?.width ?? composition?.creatorWidth ?? null,
-            creatorHeight: probe?.height ?? composition?.creatorHeight ?? null,
-          } as any);
-
-          URL.revokeObjectURL(pendingCreator.blobUrl);
-          setPendingCreator(null);
-          filesCompleted++;
-          onProgress(Math.round((filesCompleted / totalFiles) * 100));
-        } catch (err) {
-          console.error('Creator upload failed:', err);
-          toast.error('Failed to upload creator video');
-          return false;
-        }
+        URL.revokeObjectURL(pendingCreator.blobUrl);
+        setPendingCreator(null);
+      } catch (err) {
+        console.error('Creator upload failed:', err);
+        toast.error('Failed to upload creator video');
+        return false;
       }
+    }
 
-      // 2. Upload pending tracks
-      const trackEntries = Array.from(pendingTracks.entries());
-      for (const [localId, pending] of trackEntries) {
-        try {
-          const localTrack = composition?.tracks.find((t) => t.id === localId);
+    // 2. Upload pending tracks
+    const trackEntries = Array.from(pendingTracks.entries());
+    for (const [localId, pending] of trackEntries) {
+      try {
+        const localTrack = composition?.tracks.find((t) => t.id === localId);
+        const result = await uploadFileToS3(pending.file, keyPrefix);
+        const probe = await probeVideo(result.s3Key);
 
-          const result = await uploadFileToS3(pending.file, keyPrefix, (pct) => {
-            const fileFrac = filesCompleted / totalFiles;
-            const partFrac = pct / 100 / totalFiles;
-            onProgress(Math.round((fileFrac + partFrac) * 100));
-          });
+        const res = await fetch(`/api/compositions/${compositionId}/tracks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            s3Key: result.s3Key,
+            s3Url: result.s3Url,
+            label: localTrack?.label || pending.file.name,
+            durationS: probe?.durationS ?? localTrack?.durationS ?? 10,
+            width: probe?.width ?? localTrack?.width ?? null,
+            height: probe?.height ?? localTrack?.height ?? null,
+            hasAudio: probe?.hasAudio ?? localTrack?.hasAudio ?? true,
+            startAtS: localTrack?.startAtS ?? 0,
+            trimStartS: localTrack?.trimStartS ?? 0,
+            trimEndS: localTrack?.trimEndS ?? null,
+          }),
+        });
+        if (!res.ok) throw new Error('Failed to create track');
 
-          const probe = await probeVideo(result.s3Key);
-
-          const res = await fetch(`/api/compositions/${compositionId}/tracks`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              s3Key: result.s3Key,
-              s3Url: result.s3Url,
-              label: localTrack?.label || pending.file.name,
-              durationS: probe?.durationS ?? localTrack?.durationS ?? 10,
-              width: probe?.width ?? localTrack?.width ?? null,
-              height: probe?.height ?? localTrack?.height ?? null,
-              hasAudio: probe?.hasAudio ?? localTrack?.hasAudio ?? true,
-              startAtS: localTrack?.startAtS ?? 0,
-              trimStartS: localTrack?.trimStartS ?? 0,
-              trimEndS: localTrack?.trimEndS ?? null,
-            }),
-          });
-          if (!res.ok) throw new Error('Failed to create track');
-
-          URL.revokeObjectURL(pending.blobUrl);
-          setPendingTracks((prev) => {
-            const next = new Map(prev);
-            next.delete(localId);
-            return next;
-          });
-
-          filesCompleted++;
-          onProgress(Math.round((filesCompleted / totalFiles) * 100));
-        } catch (err) {
-          console.error(`Track upload failed for ${localId}:`, err);
-          toast.error('Failed to upload reference track');
-          return false;
-        }
+        URL.revokeObjectURL(pending.blobUrl);
+        setPendingTracks((prev) => {
+          const next = new Map(prev);
+          next.delete(localId);
+          return next;
+        });
+      } catch (err) {
+        console.error(`Track upload failed for ${localId}:`, err);
+        toast.error('Failed to upload reference track');
+        return false;
       }
+    }
 
-      // Re-fetch composition from server to get authoritative state
-      await fetchComposition();
-      return true;
-    },
-    [compositionId, pendingCreator, pendingTracks, composition, save, probeVideo, fetchComposition]
-  );
+    // Re-fetch composition from server to get authoritative state
+    await fetchComposition();
+    return true;
+  }, [
+    compositionId,
+    pendingCreator,
+    pendingTracks,
+    composition,
+    save,
+    probeVideo,
+    fetchComposition,
+  ]);
 
   if (loading) {
     return (
@@ -547,10 +535,11 @@ export default function CompositionEditorPage() {
   }
 
   const isRendering = composition.status === 'rendering';
-  const completedOutputs = composition.outputs.filter((o) => o.status === 'completed' && o.s3Url);
+  const completedOutputs = composition.outputs.filter(
+    (o) => o.status === 'completed' && (o.s3Url || localOutputs.has(o.layout))
+  );
   const hasCreatorVideo = !!pendingCreator || !!composition.creatorS3Key;
   const totalTracks = composition.tracks.length;
-  const pendingUploadCount = (pendingCreator ? 1 : 0) + pendingTracks.size;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 space-y-4">
@@ -793,7 +782,8 @@ export default function CompositionEditorPage() {
             compositionTitle={composition.title}
             trackLabels={composition.tracks.map((t) => t.label || '').filter(Boolean)}
             onBeforeRender={handleBeforeRender}
-            pendingUploadCount={pendingUploadCount}
+            localOutputs={localOutputs}
+            onLocalOutputsChange={setLocalOutputs}
           />
         </CardContent>
       </Card>
@@ -841,10 +831,13 @@ export default function CompositionEditorPage() {
       <PublishModal
         open={publishAllOpen}
         onOpenChange={setPublishAllOpen}
-        mediaItems={completedOutputs.map((o) => ({
-          url: o.s3Url!,
-          label: o.layout,
-        }))}
+        mediaItems={completedOutputs.map((o) => {
+          const lo = localOutputs.get(o.layout);
+          return {
+            url: lo?.blobUrl || o.s3Url!,
+            label: o.layout,
+          };
+        })}
         generationContext={{
           title: composition.title,
           trackLabels: composition.tracks.map((t) => t.label || '').filter(Boolean),
