@@ -1,40 +1,181 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { Upload, Loader2, X } from 'lucide-react';
+import { Upload, Loader2, X, Check, RotateCcw, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { probeVideo } from '@/lib/probe-video';
+
+export type UploadStatus = 'idle' | 'uploading' | 'complete' | 'error';
+
+interface FileSelectedData {
+  blobUrl: string;
+  filename: string;
+  fileSize: number;
+  durationS: number;
+  width: number;
+  height: number;
+}
+
+interface UploadCompleteData {
+  s3Key: string;
+  s3Url: string;
+}
 
 interface VideoUploaderProps {
   label: string;
   s3Key?: string | null;
   s3Url?: string | null;
-  onUploaded: (data: { s3Key: string; s3Url: string; filename: string }) => void;
+  blobUrl?: string | null;
+  uploadProgress?: number | null;
+  uploadSpeed?: number | null;
+  uploadStatus?: UploadStatus;
+  onFileSelected: (data: FileSelectedData) => void;
+  onUploadComplete: (data: UploadCompleteData) => void;
+  onUploadError?: (error: string) => void;
+  onUploadProgress?: (progress: number, speed: number) => void;
   onRemove?: () => void;
   className?: string;
   keyPrefix?: string;
 }
 
-const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+const CHUNK_SIZE = 64 * 1024 * 1024; // 64MB chunks
+const CONCURRENCY = 5; // Keep moderate to allow parallel uploads to share browser connections
+const MAX_RETRIES = 3;
+const RETRY_BASE_MS = 1000;
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function formatEta(seconds: number): string {
+  if (seconds < 60) return `${Math.ceil(seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.ceil(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+/** localStorage key for persisting upload state */
+function storageKey(key: string): string {
+  return `upload:${key}`;
+}
+
+interface PersistedUpload {
+  uploadId: string;
+  key: string;
+  filename: string;
+  fileSize: number;
+  totalParts: number;
+  completedParts: number[];
+}
+
+function persistUploadState(state: PersistedUpload) {
+  try {
+    localStorage.setItem(storageKey(state.key), JSON.stringify(state));
+  } catch {
+    // Non-fatal
+  }
+}
+
+function clearUploadState(key: string) {
+  try {
+    localStorage.removeItem(storageKey(key));
+  } catch {
+    // Non-fatal
+  }
+}
+
+function loadUploadState(key: string): PersistedUpload | null {
+  try {
+    const raw = localStorage.getItem(storageKey(key));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Upload a blob via XHR with byte-level progress and retry */
+function xhrPut(url: string, body: Blob, onProgress: (loaded: number) => void): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(e.loaded);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.getResponseHeader('ETag') || '');
+      } else {
+        reject(new Error(`Upload failed with status ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Upload network error'));
+    xhr.send(body);
+  });
+}
+
+async function xhrPutWithRetry(
+  url: string,
+  body: Blob,
+  onProgress: (loaded: number) => void
+): Promise<string> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await xhrPut(url, body, onProgress);
+    } catch (err) {
+      lastError = err as Error;
+      if (attempt < MAX_RETRIES) {
+        const delay = RETRY_BASE_MS * Math.pow(2, attempt);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastError;
+}
 
 export function VideoUploader({
   label,
   s3Key,
   s3Url,
-  onUploaded,
+  blobUrl,
+  uploadProgress,
+  uploadSpeed,
+  uploadStatus = 'idle',
+  onFileSelected,
+  onUploadComplete,
+  onUploadError,
+  onUploadProgress,
   onRemove,
   className,
   keyPrefix,
 }: VideoUploaderProps) {
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);
+  const [internalProgress, setInternalProgress] = useState(0);
+  const [internalSpeed, setInternalSpeed] = useState(0);
+  const [internalEta, setInternalEta] = useState(0);
+  const [internalStatus, setInternalStatus] = useState<UploadStatus>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<File | null>(null);
+  const abortRef = useRef(false);
 
-  const uploadFile = useCallback(
+  // Use external state if provided, otherwise internal
+  const progress = uploadProgress ?? internalProgress;
+  const speed = uploadSpeed ?? internalSpeed;
+  const status = uploadStatus !== 'idle' ? uploadStatus : internalStatus;
+
+  const startUpload = useCallback(
     async (file: File) => {
-      setUploading(true);
-      setProgress(0);
+      abortRef.current = false;
+      setInternalStatus('uploading');
+      setInternalProgress(0);
+      setInternalSpeed(0);
+      setInternalEta(0);
+      setErrorMessage(null);
 
       try {
         // 1. Initiate multipart upload
@@ -50,57 +191,213 @@ export function VideoUploader({
         if (!initRes.ok) throw new Error('Failed to initiate upload');
         const { uploadId, key } = await initRes.json();
 
-        // 2. Upload parts
+        // 2. Fetch all presigned URLs in one batch
         const totalParts = Math.ceil(file.size / CHUNK_SIZE);
-        const etags: { PartNumber: number; ETag: string }[] = [];
+        const partNumbers = Array.from({ length: totalParts }, (_, i) => i + 1);
 
-        for (let i = 0; i < totalParts; i++) {
-          const start = i * CHUNK_SIZE;
-          const end = Math.min(start + CHUNK_SIZE, file.size);
-          const chunk = file.slice(start, end);
-          const partNumber = i + 1;
+        // Check for resumable state
+        const persisted = loadUploadState(key);
+        const completedSet = new Set<number>(persisted?.completedParts ?? []);
 
-          // Get presigned URL for this part
-          const urlRes = await fetch('/api/uploads/multipart/part-url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key, uploadId, partNumber }),
-          });
-          if (!urlRes.ok) throw new Error(`Failed to get part URL for part ${partNumber}`);
-          const { url } = await urlRes.json();
+        // Persist initial state
+        persistUploadState({
+          uploadId,
+          key,
+          filename: file.name,
+          fileSize: file.size,
+          totalParts,
+          completedParts: [...completedSet],
+        });
 
-          // Upload the chunk
-          const uploadRes = await fetch(url, {
-            method: 'PUT',
-            body: chunk,
-          });
-          if (!uploadRes.ok) throw new Error(`Failed to upload part ${partNumber}`);
-          const etag = uploadRes.headers.get('ETag');
-          etags.push({ PartNumber: partNumber, ETag: etag || '' });
-
-          setProgress(Math.round(((i + 1) / totalParts) * 100));
+        // If we have completed parts, verify with S3
+        if (completedSet.size > 0) {
+          try {
+            const listRes = await fetch(
+              `/api/uploads/multipart/list-parts?uploadId=${encodeURIComponent(uploadId)}&key=${encodeURIComponent(key)}`
+            );
+            if (listRes.ok) {
+              const { parts } = await listRes.json();
+              const verifiedParts = new Set(parts.map((p: { PartNumber: number }) => p.PartNumber));
+              // Only keep parts that S3 confirms
+              for (const p of completedSet) {
+                if (!verifiedParts.has(p)) completedSet.delete(p);
+              }
+            }
+          } catch {
+            // If verification fails, upload all parts
+            completedSet.clear();
+          }
         }
 
-        // 3. Complete multipart upload
+        const remainingParts = partNumbers.filter((p) => !completedSet.has(p));
+
+        const batchRes = await fetch('/api/uploads/multipart/batch-part-urls', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uploadId, key, partNumbers: remainingParts }),
+        });
+        if (!batchRes.ok) throw new Error('Failed to get batch part URLs');
+        const { urls: batchUrls } = await batchRes.json();
+        const urlMap = new Map<number, string>(
+          batchUrls.map((u: { partNumber: number; url: string }) => [u.partNumber, u.url])
+        );
+
+        // 3. Upload parts concurrently with byte-level progress
+        const etags: { PartNumber: number; ETag: string }[] = [];
+        const queue = [...remainingParts];
+        const activeWorkers = new Set<Promise<void>>();
+
+        // Track per-chunk loaded bytes for smooth progress
+        const chunkLoaded = new Map<number, number>();
+        // Pre-fill completed parts
+        for (const p of completedSet) {
+          const start = (p - 1) * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, file.size);
+          chunkLoaded.set(p, end - start);
+        }
+        const startTime = Date.now();
+
+        const updateProgress = () => {
+          let totalLoaded = 0;
+          for (const loaded of chunkLoaded.values()) {
+            totalLoaded += loaded;
+          }
+          const pct = Math.min(100, Math.round((totalLoaded / file.size) * 100));
+          setInternalProgress(pct);
+
+          const elapsed = (Date.now() - startTime) / 1000;
+          if (elapsed > 0.5) {
+            const bytesPerSec = totalLoaded / elapsed;
+            setInternalSpeed(bytesPerSec);
+            setInternalEta(bytesPerSec > 0 ? (file.size - totalLoaded) / bytesPerSec : 0);
+          }
+          // Always report progress to parent so external state stays in sync
+          const bytesPerSec = elapsed > 0.5 ? totalLoaded / elapsed : 0;
+          onUploadProgress?.(pct, bytesPerSec);
+        };
+
+        // Show initial progress for resumed uploads
+        updateProgress();
+
+        const uploadPart = async (partNumber: number) => {
+          if (abortRef.current) return;
+          const start = (partNumber - 1) * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, file.size);
+          const chunk = file.slice(start, end);
+          const url = urlMap.get(partNumber);
+          if (!url) throw new Error(`No URL for part ${partNumber}`);
+
+          chunkLoaded.set(partNumber, 0);
+
+          const etag = await xhrPutWithRetry(url, chunk, (loaded) => {
+            chunkLoaded.set(partNumber, loaded);
+            updateProgress();
+          });
+
+          chunkLoaded.set(partNumber, end - start);
+          updateProgress();
+
+          etags.push({ PartNumber: partNumber, ETag: etag });
+          completedSet.add(partNumber);
+          persistUploadState({
+            uploadId,
+            key,
+            filename: file.name,
+            fileSize: file.size,
+            totalParts,
+            completedParts: [...completedSet],
+          });
+        };
+
+        while (queue.length > 0 || activeWorkers.size > 0) {
+          if (abortRef.current) throw new Error('Upload cancelled');
+          while (queue.length > 0 && activeWorkers.size < CONCURRENCY) {
+            const partNum = queue.shift()!;
+            const promise = uploadPart(partNum).then(
+              () => {
+                activeWorkers.delete(promise);
+              },
+              (err) => {
+                activeWorkers.delete(promise);
+                throw err;
+              }
+            );
+            activeWorkers.add(promise);
+          }
+          if (activeWorkers.size > 0) {
+            await Promise.race(activeWorkers);
+          }
+        }
+
+        // 4. Complete multipart upload
+        // Merge etags from resumed parts (we don't have their ETags, so re-list)
+        let allEtags = etags;
+        if (completedSet.size > remainingParts.length) {
+          const listRes = await fetch(
+            `/api/uploads/multipart/list-parts?uploadId=${encodeURIComponent(uploadId)}&key=${encodeURIComponent(key)}`
+          );
+          if (listRes.ok) {
+            const { parts } = await listRes.json();
+            allEtags = parts.map((p: { PartNumber: number; ETag: string }) => ({
+              PartNumber: p.PartNumber,
+              ETag: p.ETag,
+            }));
+          }
+        }
+
         const completeRes = await fetch('/api/uploads/multipart/complete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key, uploadId, parts: etags }),
+          body: JSON.stringify({ key, uploadId, parts: allEtags }),
         });
         if (!completeRes.ok) throw new Error('Failed to complete upload');
         const { s3Url: uploadedUrl } = await completeRes.json();
 
-        onUploaded({ s3Key: key, s3Url: uploadedUrl, filename: file.name });
+        clearUploadState(key);
+        setInternalStatus('complete');
+        setInternalProgress(100);
+        onUploadComplete({ s3Key: key, s3Url: uploadedUrl });
       } catch (err) {
+        if (abortRef.current) return;
         console.error('Upload failed:', err);
-        alert('Upload failed. Please try again.');
-      } finally {
-        setUploading(false);
-        setProgress(0);
+        const msg = err instanceof Error ? err.message : 'Upload failed';
+        setErrorMessage(msg);
+        setInternalStatus('error');
+        onUploadError?.(msg);
       }
     },
-    [onUploaded, keyPrefix]
+    [keyPrefix, onUploadComplete, onUploadError, onUploadProgress]
   );
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      fileRef.current = file;
+      const blobUrl = URL.createObjectURL(file);
+
+      // Client-side probe for instant metadata
+      const meta = await probeVideo(blobUrl);
+
+      // Fire immediately so parent can show preview + enable editing
+      onFileSelected({
+        blobUrl,
+        filename: file.name,
+        fileSize: file.size,
+        durationS: meta.durationS,
+        width: meta.width,
+        height: meta.height,
+      });
+
+      // Start upload in background
+      startUpload(file);
+    },
+    [onFileSelected, startUpload]
+  );
+
+  const handleRetry = useCallback(() => {
+    if (fileRef.current) {
+      startUpload(fileRef.current);
+    }
+  }, [startUpload]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -108,47 +405,118 @@ export function VideoUploader({
       setDragOver(false);
       const file = e.dataTransfer.files[0];
       if (file && file.type.startsWith('video/')) {
-        uploadFile(file);
+        handleFile(file);
       }
     },
-    [uploadFile]
+    [handleFile]
   );
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-        uploadFile(file);
+        handleFile(file);
       }
-      // Reset input
       e.target.value = '';
     },
-    [uploadFile]
+    [handleFile]
   );
 
-  if (s3Key && s3Url) {
+  // Cleanup blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      abortRef.current = true;
+    };
+  }, []);
+
+  const hasVideo = !!(s3Key && s3Url) || !!blobUrl;
+  const videoSrc = s3Url || blobUrl;
+
+  // State: has a video (uploading, complete, or error) — show preview with overlay
+  if (hasVideo && videoSrc) {
     return (
-      <div className={cn('relative rounded-lg border border-border bg-muted/30 p-4', className)}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-green-100 dark:bg-green-900/30">
-              <Upload className="h-5 w-5 text-green-600 dark:text-green-400" />
+      <div className={cn('relative rounded-lg overflow-hidden group', className)}>
+        {/* Video preview */}
+        <video
+          src={videoSrc}
+          className="w-full aspect-video rounded-lg object-cover bg-black"
+          muted
+          playsInline
+          preload="metadata"
+        />
+
+        {/* Upload progress overlay */}
+        {status === 'uploading' && (
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-8">
+            <div className="flex items-center justify-between text-xs text-white/90 mb-1.5">
+              <span>Uploading... {progress}%</span>
+              {speed > 0 && (
+                <span>
+                  {formatBytes(speed)}/s
+                  {internalEta > 0 ? ` • ${formatEta(internalEta)}` : ''}
+                </span>
+              )}
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium truncate">{label}</p>
-              <p className="text-xs text-muted-foreground truncate">{s3Key}</p>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/20">
+              <div
+                className="h-full rounded-full bg-blue-400 transition-[width] duration-300"
+                style={{ width: `${progress}%` }}
+              />
             </div>
           </div>
-          {onRemove && (
-            <Button variant="ghost" size="sm" onClick={onRemove} className="shrink-0">
-              <X className="h-4 w-4" />
+        )}
+
+        {/* Complete checkmark */}
+        {status === 'complete' && (
+          <div className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white shadow-sm">
+            <Check className="h-3.5 w-3.5" />
+          </div>
+        )}
+
+        {/* Already uploaded (s3Key present) */}
+        {s3Key && s3Url && status !== 'uploading' && status !== 'error' && (
+          <div className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white shadow-sm">
+            <Check className="h-3.5 w-3.5" />
+          </div>
+        )}
+
+        {/* Error overlay with retry */}
+        {status === 'error' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
+            <AlertCircle className="h-8 w-8 text-red-400 mb-2" />
+            <p className="text-sm text-white/90 mb-1">Upload failed</p>
+            {errorMessage && (
+              <p className="text-xs text-white/60 mb-3 max-w-[200px] text-center truncate">
+                {errorMessage}
+              </p>
+            )}
+            <Button variant="secondary" size="sm" onClick={handleRetry} className="gap-1.5">
+              <RotateCcw className="h-3.5 w-3.5" />
+              Retry
             </Button>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Remove button (hover-revealed) */}
+        {onRemove && status !== 'uploading' && (
+          <Button
+            variant="secondary"
+            size="icon"
+            className="absolute right-1.5 top-1.5 h-7 w-7 rounded-full bg-white/85 text-gray-900 opacity-0 backdrop-blur transition-opacity hover:bg-white group-hover:opacity-100 dark:bg-zinc-900/80 dark:text-zinc-100 dark:hover:bg-zinc-900"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            title="Remove video"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
     );
   }
 
+  // State: empty drop zone
   return (
     <div
       className={cn(
@@ -156,7 +524,6 @@ export function VideoUploader({
         dragOver
           ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
           : 'border-border hover:border-muted-foreground/50',
-        uploading && 'pointer-events-none opacity-70',
         className
       )}
       onDragOver={(e) => {
@@ -174,33 +541,18 @@ export function VideoUploader({
         className="hidden"
       />
 
-      {uploading ? (
-        <>
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <p className="mt-2 text-sm text-muted-foreground">Uploading... {progress}%</p>
-          <div className="mt-2 h-1.5 w-48 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-blue-500 transition-all"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </>
-      ) : (
-        <>
-          <Upload className="h-8 w-8 text-muted-foreground" />
-          <p className="mt-2 text-sm font-medium">{label}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Drag & drop or{' '}
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              className="text-blue-500 underline hover:text-blue-600"
-            >
-              browse
-            </button>
-          </p>
-        </>
-      )}
+      <Upload className="h-8 w-8 text-muted-foreground" />
+      <p className="mt-2 text-sm font-medium">{label}</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Drag & drop or{' '}
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="text-blue-500 underline hover:text-blue-600"
+        >
+          browse
+        </button>
+      </p>
     </div>
   );
 }

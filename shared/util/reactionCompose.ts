@@ -40,6 +40,89 @@ export interface TrackInfo {
   sortOrder: number;
 }
 
+export interface CutInfo {
+  startS: number;
+  endS: number;
+}
+
+/**
+ * Subtracts cut ranges from [start, end], returns the remaining segments.
+ * Cuts must be sorted by startS and non-overlapping.
+ */
+export function computeKeptSegments(
+  start: number,
+  end: number,
+  cuts: CutInfo[]
+): Array<{ start: number; end: number }> {
+  const sorted = [...cuts].sort((a, b) => a.startS - b.startS);
+  const segments: Array<{ start: number; end: number }> = [];
+  let cursor = start;
+
+  for (const cut of sorted) {
+    // Clamp cut to [start, end]
+    const cutStart = Math.max(cut.startS, start);
+    const cutEnd = Math.min(cut.endS, end);
+    if (cutStart >= cutEnd) continue;
+    if (cutStart < cursor) continue; // overlap with previous segment handled
+
+    if (cursor < cutStart) {
+      segments.push({ start: cursor, end: cutStart });
+    }
+    cursor = Math.max(cursor, cutEnd);
+  }
+
+  if (cursor < end) {
+    segments.push({ start: cursor, end });
+  }
+
+  return segments;
+}
+
+/**
+ * Adjust caption timestamps for cuts.
+ * Drops segments inside cut regions and shifts segments after cuts earlier
+ * by the cumulative cut duration.
+ */
+export function adjustTimestampsForCuts(
+  segments: TranscriptSegment[],
+  cuts: CutInfo[]
+): TranscriptSegment[] {
+  if (cuts.length === 0) return segments;
+  const sorted = [...cuts].sort((a, b) => a.startS - b.startS);
+  const result: TranscriptSegment[] = [];
+
+  for (const seg of segments) {
+    // Check if segment is inside any cut
+    let insideCut = false;
+    for (const cut of sorted) {
+      if (seg.start >= cut.startS && seg.end <= cut.endS) {
+        insideCut = true;
+        break;
+      }
+    }
+    if (insideCut) continue;
+
+    // Calculate cumulative shift from cuts before this segment
+    let shift = 0;
+    for (const cut of sorted) {
+      if (cut.endS <= seg.start) {
+        shift += cut.endS - cut.startS;
+      } else if (cut.startS < seg.start) {
+        // Segment starts inside a cut — partial overlap
+        shift += seg.start - cut.startS;
+      }
+    }
+
+    result.push({
+      start: seg.start - shift,
+      end: seg.end - shift,
+      text: seg.text,
+    });
+  }
+
+  return result;
+}
+
 export interface ComposeCaptionOptions {
   font?: string;
   fontSize?: CaptionFontSize;
@@ -65,6 +148,10 @@ export interface ComposeOptions {
   creatorVolume: number;
   referenceVolume: number;
   captions?: ComposeCaptionOptions;
+  /** Cuts to apply (output-timeline coordinates). Each cut has targets[] specifying which tracks. */
+  cuts?: Array<{ startS: number; endS: number; targets: string[] }>;
+  /** Map of track index to track ID (for matching cut targets to track indices) */
+  trackIds?: string[];
 }
 
 /**
@@ -410,15 +497,31 @@ export interface RenderResult {
 /**
  * Pre-trim the creator video using filter-level trim (frame-accurate, no keyframe snap).
  * Produces a clean intermediate with 1 video + 1 audio stream for perfect A/V sync.
+ * When cuts are provided, segments between cuts are concatenated.
  */
 async function preTrimCreator(
   creatorPath: string,
   trimStartS: number,
   trimEndS: number,
-  creatorDurationS: number
+  creatorDurationS: number,
+  cuts?: CutInfo[]
 ): Promise<{ path: string; durationS: number }> {
-  const durationS = trimEndS - trimStartS;
   const needsTrim = trimStartS > 0.01 || trimEndS < creatorDurationS - 0.01;
+
+  // Map output-timeline cuts back to original video coords
+  const mappedCuts = (cuts ?? []).map((c) => ({
+    startS: c.startS + trimStartS,
+    endS: c.endS + trimStartS,
+  }));
+
+  const segments =
+    mappedCuts.length > 0
+      ? computeKeptSegments(trimStartS, trimEndS, mappedCuts)
+      : [{ start: trimStartS, end: trimEndS }];
+
+  const durationS = segments.reduce((sum, s) => sum + (s.end - s.start), 0);
+  const hasCuts = segments.length > 1;
+  const needsProcess = needsTrim || hasCuts;
 
   const tmpPath = path.join(
     os.tmpdir(),
@@ -426,25 +529,47 @@ async function preTrimCreator(
   );
 
   console.log(
-    `[preTrimCreator] ${needsTrim ? 'Filter-trim' : 'Normalize'} ${trimStartS.toFixed(3)}s → ${trimEndS.toFixed(3)}s (${durationS.toFixed(3)}s)`
+    `[preTrimCreator] ${needsProcess ? (hasCuts ? `Trim+Cut (${segments.length} segments)` : 'Filter-trim') : 'Normalize'} → ${durationS.toFixed(3)}s`
   );
 
-  // Always normalize the creator video to ensure:
-  // - Single video stream with square SAR (setsar=1) and consistent pixel format
-  // - Single audio stream (0:a:0) — eliminates iPhone multi-mic streams
-  // - No rotation metadata — FFmpeg auto-rotates during filter_complex
-  // - Constant frame rate
-  // This prevents recurring width/scaling issues in the main render step.
-  // When trimming, uses filter_complex trim+atrim for frame-accurate cutting.
-  // -bf 0 prevents B-frame reordering delay so video starts at PTS 0.
-  // aresample=async=1:first_pts=0 forces audio to sync with video timestamps.
-  const videoFilter = needsTrim
-    ? `[0:v]trim=start=${trimStartS.toFixed(3)}:end=${trimEndS.toFixed(3)},setpts=PTS-STARTPTS,format=yuv420p,setsar=1[v]`
-    : `[0:v]format=yuv420p,setsar=1[v]`;
-  const audioFilter = needsTrim
-    ? `[0:a:0]atrim=start=${trimStartS.toFixed(3)}:end=${trimEndS.toFixed(3)},asetpts=PTS-STARTPTS,aresample=async=1:first_pts=0[a]`
-    : `[0:a:0]aresample=async=1:first_pts=0[a]`;
-  const filterComplex = [videoFilter, audioFilter].join(';');
+  // Build filter_complex
+  let filterComplex: string;
+  if (hasCuts) {
+    // Multiple segments: trim each, then concat
+    const videoFilters: string[] = [];
+    const audioFilters: string[] = [];
+    const concatInputs: string[] = [];
+
+    segments.forEach((seg, i) => {
+      videoFilters.push(
+        `[0:v]trim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},setpts=PTS-STARTPTS,format=yuv420p,setsar=1[v${i}]`
+      );
+      audioFilters.push(
+        `[0:a:0]atrim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`
+      );
+      concatInputs.push(`[v${i}][a${i}]`);
+    });
+
+    filterComplex = [
+      ...videoFilters,
+      ...audioFilters,
+      `${concatInputs.join('')}concat=n=${segments.length}:v=1:a=1[v][a]`,
+      `[a]aresample=async=1:first_pts=0[aout]`,
+    ].join(';');
+  } else {
+    // Single segment (simple trim or normalize)
+    const seg = segments[0];
+    const videoFilter = needsProcess
+      ? `[0:v]trim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},setpts=PTS-STARTPTS,format=yuv420p,setsar=1[v]`
+      : `[0:v]format=yuv420p,setsar=1[v]`;
+    const audioFilter = needsProcess
+      ? `[0:a:0]atrim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},asetpts=PTS-STARTPTS,aresample=async=1:first_pts=0[aout]`
+      : `[0:a:0]aresample=async=1:first_pts=0[aout]`;
+    filterComplex = [videoFilter, audioFilter].join(';');
+  }
+
+  const mapVideo = hasCuts ? '[v]' : '[v]';
+  const mapAudio = '[aout]';
 
   const args = [
     '-i',
@@ -452,9 +577,9 @@ async function preTrimCreator(
     '-filter_complex',
     filterComplex,
     '-map',
-    '[v]',
+    mapVideo,
     '-map',
-    '[a]',
+    mapAudio,
     '-c:v',
     'libx264',
     '-preset',
@@ -491,6 +616,110 @@ async function preTrimCreator(
 }
 
 /**
+ * Pre-trim a reference track with optional cuts.
+ * Maps output-timeline cut coords to track-local coords, produces a clean intermediate.
+ */
+export async function preTrimTrack(
+  trackPath: string,
+  track: TrackInfo,
+  cuts?: CutInfo[]
+): Promise<{ path: string; durationS: number }> {
+  const trimEnd = track.trimEndS ?? track.durationS;
+
+  // Map output-timeline cuts to track-local coords
+  const localCuts = (cuts ?? [])
+    .map((c) => ({
+      startS: c.startS - track.startAtS + track.trimStartS,
+      endS: c.endS - track.startAtS + track.trimStartS,
+    }))
+    .filter((c) => c.endS > track.trimStartS && c.startS < trimEnd)
+    .map((c) => ({
+      startS: Math.max(c.startS, track.trimStartS),
+      endS: Math.min(c.endS, trimEnd),
+    }));
+
+  const segments =
+    localCuts.length > 0
+      ? computeKeptSegments(track.trimStartS, trimEnd, localCuts)
+      : [{ start: track.trimStartS, end: trimEnd }];
+
+  const durationS = segments.reduce((sum, s) => sum + (s.end - s.start), 0);
+
+  if (segments.length === 1 && localCuts.length === 0) {
+    // No cuts needed — skip pre-processing, let buildFilterComplex handle trim
+    return { path: trackPath, durationS };
+  }
+
+  const tmpPath = path.join(
+    os.tmpdir(),
+    `track-cut-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`
+  );
+
+  console.log(`[preTrimTrack] ${segments.length} segments → ${durationS.toFixed(3)}s`);
+
+  const videoFilters: string[] = [];
+  const audioFilters: string[] = [];
+  const concatInputs: string[] = [];
+
+  segments.forEach((seg, i) => {
+    videoFilters.push(
+      `[0:v]trim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},setpts=PTS-STARTPTS,format=yuv420p,setsar=1[v${i}]`
+    );
+    if (track.hasAudio) {
+      audioFilters.push(
+        `[0:a:0]atrim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`
+      );
+      concatInputs.push(`[v${i}][a${i}]`);
+    } else {
+      concatInputs.push(`[v${i}]`);
+    }
+  });
+
+  const hasAudio = track.hasAudio;
+  const concatFilter = `${concatInputs.join('')}concat=n=${segments.length}:v=1:a=${hasAudio ? 1 : 0}${hasAudio ? '[v][a]' : '[v]'}`;
+  const filterComplex = [...videoFilters, ...audioFilters, concatFilter].join(';');
+
+  const args = [
+    '-i',
+    trackPath,
+    '-filter_complex',
+    filterComplex,
+    '-map',
+    '[v]',
+    ...(hasAudio ? ['-map', '[a]'] : []),
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-crf',
+    '18',
+    '-bf',
+    '0',
+    ...(hasAudio ? ['-c:a', 'aac', '-b:a', '192k'] : []),
+    '-movflags',
+    '+faststart',
+    '-y',
+    tmpPath,
+  ];
+
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn('ffmpeg', args);
+    let stderr = '';
+    proc.stderr.on('data', (d) => {
+      stderr += d.toString();
+    });
+    proc.on('error', reject);
+    proc.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`preTrimTrack ffmpeg failed (code ${code}): ${stderr.slice(-1000)}`));
+    });
+  });
+
+  console.log(`[preTrimTrack] Done → ${tmpPath}`);
+  return { path: tmpPath, durationS };
+}
+
+/**
  * Render a composition layout to S3.
  */
 export async function renderComposition(
@@ -503,12 +732,46 @@ export async function renderComposition(
   // Pre-trim creator for perfect A/V sync (uses filter-level trim, not -ss seek)
   const trimStartS = opts.creatorTrimStartS ?? 0;
   const trimEndS = opts.creatorTrimEndS ?? opts.creatorDurationS;
+
+  // Extract creator-targeted cuts (output-timeline coords)
+  const creatorCuts: CutInfo[] = (opts.cuts ?? [])
+    .filter((c) => c.targets.includes('creator'))
+    .map((c) => ({ startS: c.startS, endS: c.endS }));
+
   const trimResult = await preTrimCreator(
     opts.creatorPath,
     trimStartS,
     trimEndS,
-    opts.creatorDurationS
+    opts.creatorDurationS,
+    creatorCuts.length > 0 ? creatorCuts : undefined
   );
+
+  // Pre-trim reference tracks that have cuts
+  const preTrimmedTracks: TrackInfo[] = [];
+  const trackTempFiles: string[] = [];
+  for (let i = 0; i < opts.tracks.length; i++) {
+    const track = opts.tracks[i];
+    const trackId = opts.trackIds?.[i];
+    const trackCuts: CutInfo[] = trackId
+      ? (opts.cuts ?? [])
+          .filter((c) => c.targets.includes(trackId))
+          .map((c) => ({ startS: c.startS, endS: c.endS }))
+      : [];
+
+    if (trackCuts.length > 0) {
+      const result = await preTrimTrack(track.localPath, track, trackCuts);
+      trackTempFiles.push(result.path);
+      preTrimmedTracks.push({
+        ...track,
+        localPath: result.path,
+        durationS: result.durationS,
+        trimStartS: 0,
+        trimEndS: null,
+      });
+    } else {
+      preTrimmedTracks.push(track);
+    }
+  }
 
   // Build filter_complex with the pre-trimmed creator (no trim needed)
   const trimmedOpts: ComposeOptions = {
@@ -517,6 +780,7 @@ export async function renderComposition(
     creatorDurationS: trimResult.durationS,
     creatorTrimStartS: 0,
     creatorTrimEndS: undefined,
+    tracks: preTrimmedTracks,
   };
 
   let { filterComplex, outputMap } = buildFilterComplex(trimmedOpts);
@@ -567,13 +831,18 @@ export async function renderComposition(
       }
     }
 
-    if (outputSegments.length > 0) {
+    // Adjust captions for cuts (shift timestamps, drop segments inside cut regions)
+    const allCuts: CutInfo[] = (opts.cuts ?? []).map((c) => ({ startS: c.startS, endS: c.endS }));
+    const adjustedSegments =
+      allCuts.length > 0 ? adjustTimestampsForCuts(outputSegments, allCuts) : outputSegments;
+
+    if (adjustedSegments.length > 0) {
       // Sort by start time (merged creator + reference segments may interleave)
-      outputSegments.sort((a, b) => a.start - b.start);
+      adjustedSegments.sort((a, b) => a.start - b.start);
 
       const fontSizePx = getCaptionFontSizePx(opts.captions.fontSize);
       const assContent = generateAssSubtitles(
-        outputSegments,
+        adjustedSegments,
         0,
         outputDurationS,
         opts.captions.font || 'DejaVu Sans',
@@ -596,7 +865,7 @@ export async function renderComposition(
       outputMap[0] = '[captioned]';
 
       console.log(
-        `[renderComposition] Captions: ${outputSegments.length} segments, ASS file: ${assFilePath}`
+        `[renderComposition] Captions: ${adjustedSegments.length} segments, ASS file: ${assFilePath}`
       );
     }
   }
@@ -709,6 +978,11 @@ export async function renderComposition(
   if (trimResult.path !== opts.creatorPath) {
     try {
       fs.unlinkSync(trimResult.path);
+    } catch {}
+  }
+  for (const tmpFile of trackTempFiles) {
+    try {
+      fs.unlinkSync(tmpFile);
     } catch {}
   }
 

@@ -31,6 +31,8 @@ interface RenderControlsProps {
   onStatusChange: (status: string, outputs: Output[]) => void;
   compositionTitle?: string;
   trackLabels?: string[];
+  uploadsInProgress?: boolean;
+  uploadProgress?: number;
 }
 
 const LAYOUT_LABELS: Record<string, string> = {
@@ -50,6 +52,8 @@ export function RenderControls({
   onStatusChange,
   compositionTitle,
   trackLabels,
+  uploadsInProgress,
+  uploadProgress,
 }: RenderControlsProps) {
   const [rendering, setRendering] = useState(compositionStatus === 'rendering');
   const [publishTarget, setPublishTarget] = useState<{
@@ -181,6 +185,11 @@ export function RenderControls({
   const handleRender = async () => {
     if (!hasCreator || !hasTracks) return;
 
+    if (uploadsInProgress) {
+      toast(`Finishing upload… ${uploadProgress ?? 0}%`, { icon: '⏳' });
+      return;
+    }
+
     setRendering(true);
 
     // Optimistically reset outputs to pending so spinners show immediately
@@ -278,7 +287,13 @@ export function RenderControls({
           )}
           <Button onClick={handleRender} disabled={rendering || !hasCreator || !hasTracks}>
             {rendering && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {rendering ? 'Rendering...' : outputs.some((o) => o.s3Url) ? 'Re-render' : 'Render'}
+            {rendering
+              ? 'Rendering...'
+              : uploadsInProgress
+                ? `Uploading… ${uploadProgress ?? 0}%`
+                : outputs.some((o) => o.s3Url)
+                  ? 'Re-render'
+                  : 'Render'}
           </Button>
         </div>
       </div>

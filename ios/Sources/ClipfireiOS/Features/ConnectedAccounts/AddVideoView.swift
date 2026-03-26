@@ -41,7 +41,7 @@ public final class BackgroundUploadService: NSObject, URLSessionDataDelegate {
     public static let shared = BackgroundUploadService()
 
     private static let sessionIdentifier = "com.clipfire.upload"
-    private static let chunkSize = 10 * 1024 * 1024 // 10 MB (matching web client)
+    private static let chunkSize = 25 * 1024 * 1024 // 25 MB (matching web client)
     private static let maxConcurrency = 4
 
     private var bgSession: URLSession!
@@ -287,6 +287,28 @@ public final class BackgroundUploadService: NSObject, URLSessionDataDelegate {
 
         let sourceURL = URL(fileURLWithPath: state.sourceFileURL)
 
+        // Batch-fetch all presigned URLs at once
+        let urlMap: [Int: String]
+        do {
+            let batchResponse = try await api.getBatchMultipartPartURLs(
+                uploadId: state.uploadId, key: state.key, partNumbers: partsToSchedule
+            )
+            var map = [Int: String]()
+            for item in batchResponse.urls {
+                map[item.partNumber] = item.url
+            }
+            urlMap = map
+        } catch {
+            NSLog("[Upload] Failed to batch-fetch part URLs: %@", error.localizedDescription)
+            // Put parts back for retry
+            lock.lock()
+            if let first = partsToSchedule.first, let current = uploadState?.nextPart {
+                uploadState?.nextPart = min(current, first)
+            }
+            lock.unlock()
+            return
+        }
+
         for partNumber in partsToSchedule {
             do {
                 // Write chunk to temp file (background sessions require file-based uploads)
@@ -302,11 +324,8 @@ public final class BackgroundUploadService: NSObject, URLSessionDataDelegate {
                 }
                 try chunk.write(to: chunkFileURL)
 
-                // Get presigned URL for this part
-                let partURLResponse = try await api.getMultipartPartURL(
-                    uploadId: state.uploadId, key: state.key, partNumber: partNumber
-                )
-                guard let partURL = URL(string: partURLResponse.url) else {
+                guard let partURLString = urlMap[partNumber],
+                      let partURL = URL(string: partURLString) else {
                     throw APIError.statusCode(500)
                 }
 

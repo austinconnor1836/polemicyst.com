@@ -5,6 +5,8 @@ import { makeS3v2Client, S3_BUCKET } from '@/lib/s3-client';
 
 const s3 = makeS3v2Client();
 
+const MAX_PARTS = 1000;
+
 export async function POST(req: NextRequest) {
   const user = await getAuthenticatedUser(req);
   if (!user?.email) {
@@ -15,15 +17,30 @@ export async function POST(req: NextRequest) {
   const { userAgent } = getUploadContext(req);
 
   try {
-    const { uploadId, key, partNumber } = await req.json();
+    const { uploadId, key, partNumbers } = await req.json();
 
-    const url = await s3.getSignedUrlPromise('uploadPart', {
-      Bucket: S3_BUCKET,
-      Key: key,
-      UploadId: uploadId,
-      PartNumber: partNumber,
-      Expires: 3600, // 1 hour — background uploads may be delayed by the OS
-    });
+    if (!Array.isArray(partNumbers) || partNumbers.length === 0) {
+      return NextResponse.json({ error: 'partNumbers must be a non-empty array' }, { status: 400 });
+    }
+    if (partNumbers.length > MAX_PARTS) {
+      return NextResponse.json(
+        { error: `partNumbers exceeds max of ${MAX_PARTS}` },
+        { status: 400 }
+      );
+    }
+
+    const urls = await Promise.all(
+      partNumbers.map(async (partNumber: number) => {
+        const url = await s3.getSignedUrlPromise('uploadPart', {
+          Bucket: S3_BUCKET,
+          Key: key,
+          UploadId: uploadId,
+          PartNumber: partNumber,
+          Expires: 3600,
+        });
+        return { partNumber, url };
+      })
+    );
 
     const durationMs = Date.now() - startMs;
 
@@ -33,46 +50,31 @@ export async function POST(req: NextRequest) {
       status: 'success',
       key,
       uploadId,
-      partNumber,
       durationMs,
       userAgent,
+      metadata: { batch: true, partCount: partNumbers.length },
     });
 
-    return NextResponse.json({ url });
+    return NextResponse.json({ urls });
   } catch (error) {
     const durationMs = Date.now() - startMs;
     const errMsg = error instanceof Error ? error.message : String(error);
-
-    let uploadId: string | undefined;
-    let key: string | undefined;
-    let partNumber: number | undefined;
-    try {
-      const body = await req.clone().json();
-      uploadId = body.uploadId;
-      key = body.key;
-      partNumber = body.partNumber;
-    } catch {
-      /* ignore parse error on retry */
-    }
 
     await logUpload({
       userId: user.id,
       stage: 'part-url',
       status: 'failed',
-      key,
-      uploadId,
-      partNumber,
       durationMs,
       error: errMsg,
       userAgent,
-      metadata: { stack: error instanceof Error ? error.stack : undefined },
+      metadata: { batch: true, stack: error instanceof Error ? error.stack : undefined },
     });
 
     console.error(
-      `[upload:part-url] FAILED user=${user.id} uploadId=${uploadId} part=${partNumber} error=${errMsg} (${durationMs}ms)`
+      `[upload:batch-part-urls] FAILED user=${user.id} error=${errMsg} (${durationMs}ms)`
     );
     return NextResponse.json(
-      { error: 'Failed to generate part URL', detail: errMsg },
+      { error: 'Failed to generate batch part URLs', detail: errMsg },
       { status: 500 }
     );
   }

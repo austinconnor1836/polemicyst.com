@@ -20,6 +20,8 @@ S3_BUCKET=
 S3_REGION=us-east-1
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
+# Set to 'true' to use S3 Transfer Acceleration (bucket must have it enabled)
+S3_TRANSFER_ACCELERATION=false
 #
 # --- Optional: model APIs (only if using external scoring/models) ---
 GOOGLE_API_KEY=
