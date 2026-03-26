@@ -68,19 +68,93 @@ This file is the **canonical log** for structural changes to the viral clip gene
 
 If you change how scoring works, how candidates are selected, which models are called, or how the UI maps to backend scoring knobs, **update this file**.
 
+---
+
+## Application architecture
+
+### Guiding principle: Modular Monolith with Vertical Slices
+
+The codebase follows a **Modular Monolith** pattern. All code ships as a single Next.js deployment + independently-scaled BullMQ workers. Clean architecture is applied **selectively** via **Ports/Adapters** only where provider replaceability or testability demands it. See `docs/ARCHITECTURE_EVALUATION.md` for the full evaluation and migration plan.
+
+### Ports & Adapters (where they exist)
+
+Ports define **what** the business logic needs; adapters provide the **how**. New code touching these subsystems must follow the established patterns.
+
+#### LLM Scoring (`shared/lib/scoring/`)
+
+| File | Role |
+|------|------|
+| `scoring-provider.ts` | **Port** — `ScoringProvider` interface + `createScoringProvider()` factory |
+| `gemini-adapter.ts` | **Adapter** — Gemini multimodal implementation |
+| `ollama-adapter.ts` | **Adapter** — Ollama (local LLM) implementation |
+| `viral-scoring.ts` | **Orchestrator** — heuristic prefilter → calls `ScoringProvider.scoreSegment()` → aggregates subscores |
+
+**Rules:**
+- To add a new LLM provider (e.g. fine-tuned model), create a new adapter class implementing `ScoringProvider` and register it in `createScoringProvider()`. Do not modify the orchestrator.
+- The orchestrator accepts an injected `scoringProvider` parameter for testing.
+- Provider-specific concerns (API keys, prompt formatting, media extraction) live **inside the adapter**, never in the orchestrator.
+
+#### Object Storage (`shared/lib/storage/`)
+
+| File | Role |
+|------|------|
+| `storage-provider.ts` | **Port** — `StorageProvider` interface |
+| `s3-adapter.ts` | **Adapter** — AWS S3 via SDK v3 |
+
+**Rules:**
+- `shared/lib/s3.ts` is a backward-compatible shim that delegates to `S3StorageAdapter`. Prefer importing the adapter directly for new code.
+- All S3 operations must use **SDK v3** (`@aws-sdk/client-s3`). Do not introduce `aws-sdk` v2 imports.
+- The `S3_BUCKET`, `S3_REGION`, and `S3_PREFIX` env vars are read from `storage-provider.ts`.
+
+#### Where ports/adapters are NOT used (and shouldn't be)
+
+| Concern | Why |
+|---------|-----|
+| Database (Prisma) | Single DB engine; repository files suffice |
+| Auth (NextAuth) | Framework-specific; wrapping adds no value |
+| Queue (BullMQ/Redis) | Tight coupling is fine; unlikely to change |
+| FFmpeg | CLI tool, not a swappable service |
+
+### Authentication
+
+All API routes must use `getAuthenticatedUser(req)` from `@shared/lib/auth-helpers`. This unified helper tries cookie-based sessions (web) first, then falls back to Bearer JWT (mobile). **Never use raw `getServerSession()` in route handlers** — it silently breaks mobile clients.
+
+### API response helpers
+
+`shared/lib/api-response.ts` provides standardized response constructors: `unauthorized()`, `forbidden()`, `badRequest()`, `notFound()`, `serverError()`, `ok()`. Use these in new route handlers for consistent error shapes across the API.
+
+### Shared domain types
+
+`shared/virality.ts` is the **single source of truth** for cross-cutting domain types: `ScoringMode`, `TargetPlatform`, `ContentStyle`, `LLMProvider`, `ClipLengthPreference`, `ViralitySettingsValue`, etc. Scoring modules re-export from here — do not define parallel copies elsewhere.
+
+### Cross-cutting concerns (non-fatal side effects)
+
+Cost tracking, training data collection, and job logging all follow the same **"accumulate + flush, never block the pipeline"** pattern:
+
+| Concern | Accumulator | Flush target |
+|---------|------------|--------------|
+| Cost | `CostTracker` (`shared/lib/cost-tracking.ts`) | `CostEvent` table |
+| Training | `TrainingCollector` (`shared/lib/training-collector.ts`) | `TrainingExample` table |
+| Truth training | `TruthTrainingCollector` (`shared/lib/truth-training-collector.ts`) | `TruthTrainingExample` table |
+| Job logs | `logJob()` (`shared/lib/job-logger.ts`) | `JobLog` table |
+
+All are non-fatal — failures are logged but never crash the pipeline.
+
+---
+
 ## Current LLM scoring architecture
 
 ### High-level flow
 
 - **Candidate generation**: transcript windows produced server-side from `feedVideo.transcriptJson`
 - **Cheap scoring (heuristic)**: deterministic 0..10 heuristic score for all candidates (fast + offline)
-- **LLM rerank**: optional/capped rerank using frames + optional audio + transcript when Gemini is selected, or transcript + derived audio/visual stats when Ollama is selected (configurable via `LLM_PROVIDER`)
+- **LLM rerank**: the `ScoringProvider` adapter scores candidates — Gemini uses frames + optional audio + transcript; Ollama uses transcript + derived audio/visual stats. Provider selected via `LLM_PROVIDER` env or `providerOverride` parameter.
 - **Dynamic selection**: select a variable number of candidates based on score distribution (can return fewer, including 0)
 - **Video-level decision**: explicit `hasViralMoments` decision computed from the scored distribution + selection opts
 
 ### Council-style scoring (single-call)
 
-Instead of calling many models per candidate, we use a **single LLM call** (Gemini multimodal or Ollama text-only) that returns multiple specialist subscores:
+Each `ScoringProvider` adapter returns a single response with multiple specialist subscores:
 
 - `score` (overall)
 - `hookScore`
@@ -90,7 +164,7 @@ Instead of calling many models per candidate, we use a **single LLM call** (Gemi
 - `hasViralMoment` (boolean signal)
 - `confidence` + `rationale`
 
-The backend then **aggregates** these subscores deterministically into the final `candidate.score`, with different weights per target platform and optional risk penalties when “safer clips” is enabled.
+The orchestrator (`viral-scoring.ts`) then **aggregates** these subscores deterministically into the final `candidate.score`, with different weights per target platform and optional risk penalties when “safer clips” is enabled.
 
 ## User-facing controls → backend behavior
 
@@ -214,6 +288,16 @@ Switch to the private model when:
 - **Cost tracking**: each chat call tracked as `llm_scoring` stage with `metadata: { type: 'truth_chat' }`.
 
 ## Change log
+
+### 2026-03-26
+
+- **Architecture evaluation and cleanup** — full clean architecture conformance audit documented in `docs/ARCHITECTURE_EVALUATION.md`.
+- **Introduced Ports/Adapters pattern for LLM scoring** — `ScoringProvider` interface with `GeminiScoringAdapter` and `OllamaScoringAdapter`. The `viral-scoring.ts` orchestrator now depends on the port, not on inline provider branching. Adding a fine-tuned model adapter requires one new class.
+- **Introduced Ports/Adapters pattern for object storage** — `StorageProvider` interface with `S3StorageAdapter` (AWS SDK v3). `shared/lib/s3.ts` is now a backward-compatible shim.
+- **Standardized auth across all API routes** — replaced `getServerSession(authOptions)` with `getAuthenticatedUser(req)` in 14 routes. Mobile Bearer JWT now works on every endpoint.
+- **Added shared API response helpers** — `shared/lib/api-response.ts` with `unauthorized()`, `forbidden()`, `badRequest()`, `notFound()`, `serverError()`, `ok()`.
+- **Deduplicated domain types** — `ScoringMode`, `TargetPlatform`, `ContentStyle` now defined only in `shared/virality.ts`; scoring modules re-export from there.
+- **Removed 34 dead files** — 14 unused components, 3 dead lib files, 2 dead shared modules, 10 dead API routes, 2 superseded directories (`backend/`, `clip-worker/`), 2 stale scripts.
 
 ### 2026-03-16
 
