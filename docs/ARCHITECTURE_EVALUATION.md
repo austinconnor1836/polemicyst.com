@@ -346,3 +346,100 @@ export async function GET(req) {
 | **P3** | Full OpenAPI spec coverage | High | Medium — contract safety |
 
 The app does not need to adopt clean architecture wholesale. The Modular Monolith with Vertical Slices approach preserves the pragmatic speed the team clearly values while introducing boundaries exactly where the codebase needs them — around external providers, domain-critical scoring logic, and the 99 route handlers that currently carry too much responsibility.
+
+---
+
+## Appendix: Dead & Removable Files
+
+A repo-wide import/reference analysis identified the following files and directories that are never imported, never referenced by active code, or fully superseded. Removing them reduces surface area, confusion for new contributors, and bundle/build overhead.
+
+### Definitely Dead — Components (`src/app/_components/`)
+
+These components are defined but never imported by any page, layout, or other component:
+
+| File | What it is |
+|------|-----------|
+| `footer.tsx` | Footer component (app uses `DialogFooter` and inline `<footer>`, not this) |
+| `alert.tsx` | Alert component (never used) |
+| `custom-context-menu.tsx` | Custom right-click menu (never used) |
+| `HomeHeroBackground.tsx` | Particle hero (replaced by `GlassAmbientBackground` in `SharedLayout`) |
+| `section-separator.tsx` | Decorative separator (never used) |
+| `notifications.tsx` | Notifications panel (only consumer of `/api/checkCases`, both dead) |
+| `chat-gpt.tsx` | ChatGPT interface (never used; only consumer of `api-routes.ts`) |
+| `login-buttons.tsx` | Login button set (never used) |
+| `split-view.tsx` | Split view container (never imported; only real Redux consumer) |
+| `chat/chatbar.tsx` | Chat input bar (never imported) |
+| `chat/chatbot.tsx` | Chat bot interface (never imported) |
+| `chat/splitview-button.tsx` | Split view toggle (never imported) |
+| `circle-animation/circle-animation.tsx` | Circle animation + its CSS (never imported) |
+| `circle-animation/circle-animation.css` | CSS for above (transitively dead) |
+
+### Definitely Dead — Library Files (`src/lib/`)
+
+| File | Why dead |
+|------|----------|
+| `isMobile.ts` | Never imported anywhere |
+| `hooks.ts` | Redux typed hooks (`useAppDispatch`, `useAppSelector`) — never imported |
+| `api-routes.ts` | Only imported by dead `chat-gpt.tsx` (transitively dead) |
+
+### Definitely Dead — Shared Library
+
+| File | Why dead |
+|------|----------|
+| `shared/lib/scoring/content-style.ts` | `detectContentStyle` is never called; `viral-scoring.ts` handles content style inline |
+| `shared/util/downloadLatestFeedVideo.ts` | Never imported by any file |
+
+### Definitely Dead — API Routes
+
+These route handlers have no callers in the frontend, mobile clients, workers, or OpenAPI spec:
+
+| Route | Why dead |
+|-------|----------|
+| `src/app/api/page.tsx` | HTML page at `/api` URL; POSTs to `/api/send-email` which doesn't exist |
+| `src/app/api/gd/route.ts` | OpenAI + ffmpeg pipeline; no references anywhere |
+| `src/app/api/checkCases/route.ts` | Only called by dead `notifications.tsx` |
+| `src/app/api/clipVideo/route.ts` | Server-side clipping from `tmp/`; never called |
+| `src/app/api/uploadVideoForClipping/route.ts` | Writes to `tmp/`; superseded by multipart/S3 upload stack |
+| `src/app/api/feedVideos/delete/route.ts` | Redundant — `DELETE /api/feedVideos/[id]` is the canonical endpoint used by web + mobile |
+| `src/app/api/uploads/presigned/route.ts` | No callers; multipart + `from-url` + `complete` are the active upload paths |
+| `src/app/api/meta/account/route.ts` | Facebook/Instagram business lookup; no callers (only `meta/upload/*` is used) |
+| `src/app/api/admin/upload-logs/route.ts` | No admin UI page calls this; no external references |
+| `src/app/api/admin/instagram-repost/route.ts` | No callers anywhere in the repo |
+
+### Vestigial Pages (Orphaned — No Navigation Links)
+
+These pages exist but are not linked from the sidenav, any other page, or any navigation component:
+
+| Route | What it is |
+|-------|-----------|
+| `src/app/donation-splitter/` | Standalone calculator app — no incoming links |
+| `src/app/sushi-go/` | Card game scoring app — no incoming links |
+| `src/app/multiple-file-upload/` | Near-duplicate of `clips-genie/`; not linked from sidenav; `clips-genie` is the canonical path |
+
+### Superseded Directories
+
+| Directory | Status | Replacement |
+|-----------|--------|-------------|
+| `backend/` (10 compiled `.js` files) | **Stale build artifacts.** No `.ts` source, no `package.json`, no Docker service, no `next.config.js` rewrites. Express on port 3001 is not part of the active architecture. | Next.js API routes + workers |
+| `clip-worker/` (only `package-lock.json` + generated Prisma) | **Legacy.** Commented out in `docker-compose.yml`. No entrypoint. | `workers/clip-metadata-worker/` |
+
+### Stale Scripts
+
+| Script | Why stale |
+|--------|----------|
+| `scripts/smoke-clip-candidates.sh` | POSTs to `localhost:3001/api/clip-jobs/enqueue` (Express backend that no longer exists) |
+| `scripts/deploy_aws.sh` | References `backend/workers/llm-worker` and `backend/workers/clip-worker` paths that don't exist in repo |
+
+### One-Off Scripts (Low Priority — Keep or Archive)
+
+These are manual-run utility scripts with no automation wiring. They're not "dead" in the traditional sense, but they add noise if never used:
+
+`get-latest-video.ts`, `show-queue.ts`, `remove-clip-job.ts`, `inspect-latest-segments.ts`, `list-dev-ids.ts`, `show-feed-video.ts`, `update-video-url.ts`, `check-clips.ts`, `check-feed-videos.ts`, `label-philosophy-segment.ts`, `export-philosophy-training-data.ts`, `generate-ig-state.ts`, `migrate-substack-to-publishing-accounts.ts`
+
+### Other Cleanup Opportunities
+
+| Item | Description |
+|------|-------------|
+| **Redux store** (`src/lib/store.ts`, `src/lib/slices/uiSlice.ts`, `StoreProvider.tsx`) | Wraps entire app but effectively unused — navbar manages theme via its own `localStorage`, and `useAppSelector` / `useAppDispatch` hooks are never imported. Can be removed if theme is moved to React Context. |
+| **MUI dependencies** (`@mui/material`, `@mui/icons-material`, `@emotion/react`, `@emotion/styled`) | Only used in `navbar.tsx` and `sidenav.tsx`. Migrating these two components to Radix/lucide would allow removing 4 heavy packages. |
+| **`aws-sdk` v2** | Only used in `shared/lib/s3.ts` (3 functions). Workers and routes use `@aws-sdk/client-s3` v3. Consolidating to v3 removes a deprecated 60MB+ dependency. |
