@@ -1,6 +1,7 @@
 import type { LLMScoreResult } from './llm-types';
 import type { CostTracker } from '../cost-tracking';
 import type { TrainingCollector } from '../training-collector';
+import type { ScoringProvider } from './scoring-provider';
 
 export type TranscriptWordSegment = {
   start: number; // seconds
@@ -421,13 +422,13 @@ export function scoreAndRankCandidates(
 /**
  * Hybrid scoring strategy:
  * - Heuristic prefilter to reduce cost
- * - LLM rerank (Gemini multimodal or Ollama text-only)
+ * - LLM rerank via a ScoringProvider adapter (Gemini, Ollama, or future fine-tuned model)
  */
 export async function scoreAndRankCandidatesLLM(params: {
   s3Url: string;
   candidates: Array<Omit<ClipCandidate, 'score' | 'features'>>;
   topN: number;
-  prefilterMultiplier?: number; // how many to keep before Gemini pass
+  prefilterMultiplier?: number;
   includeAudio?: boolean;
   modelName?: string;
   targetPlatform?: TargetPlatform;
@@ -437,6 +438,8 @@ export async function scoreAndRankCandidatesLLM(params: {
   providerOverride?: string;
   costTracker?: CostTracker;
   trainingCollector?: TrainingCollector;
+  /** Inject a ScoringProvider directly (overrides providerOverride/env). */
+  scoringProvider?: ScoringProvider;
 }): Promise<ClipCandidate[]> {
   const {
     s3Url,
@@ -448,30 +451,22 @@ export async function scoreAndRankCandidatesLLM(params: {
     targetPlatform = 'all',
     contentStyle,
     saferClips = false,
-    localVideoPath: providedPath,
+    localVideoPath,
     providerOverride,
     costTracker,
     trainingCollector,
   } = params;
 
-  const provider = (providerOverride || process.env.LLM_PROVIDER || 'ollama').toLowerCase();
-  let cachedLocalVideoPath = providedPath;
-
-  async function ensureLocalVideo(): Promise<string> {
-    if (cachedLocalVideoPath) return cachedLocalVideoPath;
-    if (!s3Url) {
-      throw new Error('Missing s3Url for downloading video');
-    }
-    const cacheKey = Buffer.from(s3Url)
-      .toString('base64')
-      .replace(/[^a-zA-Z0-9]/g, '')
-      .slice(0, 24);
-    const { ensureLocalVideoForScoring } = await import('./gemini-scoring');
-    cachedLocalVideoPath = await ensureLocalVideoForScoring({ s3Url, cacheKey });
-    return cachedLocalVideoPath;
+  // Resolve the scoring provider: explicit injection > providerOverride > env
+  let adapter: ScoringProvider;
+  if (params.scoringProvider) {
+    adapter = params.scoringProvider;
+  } else {
+    const { createScoringProvider } = await import('./scoring-provider');
+    const providerKey = providerOverride || process.env.LLM_PROVIDER || 'ollama';
+    adapter = await createScoringProvider(providerKey, { modelName });
   }
 
-  // Pre-score heuristically to choose which windows are worth Gemini calls
   const preRanked = candidates
     .map((c) => {
       const h = scoreCandidateHeuristic(c.text);
@@ -532,178 +527,68 @@ export async function scoreAndRankCandidatesLLM(params: {
 
   const scored: ClipCandidate[] = [];
 
-  if (provider === 'ollama') {
-    const { scoreSegmentWithOllama, summarizeSegmentMedia } = await import('./ollama-scoring');
-    let localVideoPath: string | null = null;
-    if (s3Url) {
-      try {
-        localVideoPath = await ensureLocalVideo();
-      } catch (err) {
-        console.warn(
-          'Unable to cache video for Ollama scoring:',
-          err instanceof Error ? err.message : err
-        );
-      }
+  for (const c of preRanked) {
+    const llm = await adapter.scoreSegment({
+      transcriptText: c.text,
+      tStartS: c.tStartS,
+      tEndS: c.tEndS,
+      targetPlatform,
+      contentStyle,
+      saferClips,
+      includeAudio,
+      s3Url,
+      localVideoPath,
+    });
+
+    const candidate = buildCandidate(llm, c, adapter.name);
+    scored.push(candidate);
+
+    if (costTracker && llm._cost) {
+      costTracker.add({
+        stage: 'llm_scoring',
+        provider: adapter.name,
+        model: llm._cost.modelName,
+        inputTokens: llm._cost.inputTokens,
+        outputTokens: llm._cost.outputTokens,
+        inputImages: llm._cost.inputImages,
+        inputAudioS: llm._cost.audioSeconds,
+        durationMs: llm._cost.durationMs,
+        estimatedCostUsd: llm._cost.estimatedCostUsd,
+      });
     }
 
-    for (const c of preRanked) {
-      const mediaSummary = localVideoPath
-        ? await summarizeSegmentMedia({
-            videoPath: localVideoPath,
-            tStartS: c.tStartS,
-            tEndS: c.tEndS,
-            includeAudio,
-          })
-        : null;
-
-      const llm = await scoreSegmentWithOllama({
+    if (trainingCollector) {
+      trainingCollector.add({
+        provider: adapter.name,
+        model: llm._cost?.modelName,
         transcriptText: c.text,
         tStartS: c.tStartS,
         tEndS: c.tEndS,
         targetPlatform,
         contentStyle,
         saferClips,
-        mediaSummary,
+        includeAudio,
+        heuristicScore: c.hScore,
+        heuristicFeatures: c.hFeatures,
+        llmScore: llm.score,
+        hookScore: llm.hookScore,
+        contextScore: llm.contextScore,
+        captionabilityScore: llm.captionabilityScore,
+        comedicScore: llm.comedicScore,
+        provocativeScore: llm.provocativeScore,
+        visualEnergyScore: llm.visualEnergyScore,
+        audioEnergyScore: llm.audioEnergyScore,
+        riskScore: llm.riskScore,
+        riskFlags: llm.riskFlags,
+        hasViralMoment: llm.hasViralMoment,
+        confidence: llm.confidence,
+        rationale: llm.rationale,
+        finalScore: candidate.score,
+        inputTokens: llm._cost?.inputTokens,
+        outputTokens: llm._cost?.outputTokens,
+        estimatedCostUsd: llm._cost?.estimatedCostUsd,
+        durationMs: llm._cost?.durationMs,
       });
-      const candidate = buildCandidate(llm, c, 'ollama');
-      scored.push(candidate);
-
-      if (costTracker && llm._cost) {
-        costTracker.add({
-          stage: 'llm_scoring',
-          provider: 'ollama',
-          model: llm._cost.modelName,
-          inputTokens: llm._cost.inputTokens,
-          outputTokens: llm._cost.outputTokens,
-          durationMs: llm._cost.durationMs,
-          estimatedCostUsd: llm._cost.estimatedCostUsd,
-        });
-      }
-
-      if (trainingCollector) {
-        trainingCollector.add({
-          provider: 'ollama',
-          model: llm._cost?.modelName,
-          transcriptText: c.text,
-          tStartS: c.tStartS,
-          tEndS: c.tEndS,
-          targetPlatform,
-          contentStyle,
-          saferClips,
-          includeAudio,
-          heuristicScore: c.hScore,
-          heuristicFeatures: c.hFeatures,
-          llmScore: llm.score,
-          hookScore: llm.hookScore,
-          contextScore: llm.contextScore,
-          captionabilityScore: llm.captionabilityScore,
-          comedicScore: llm.comedicScore,
-          provocativeScore: llm.provocativeScore,
-          visualEnergyScore: llm.visualEnergyScore,
-          audioEnergyScore: llm.audioEnergyScore,
-          riskScore: llm.riskScore,
-          riskFlags: llm.riskFlags,
-          hasViralMoment: llm.hasViralMoment,
-          confidence: llm.confidence,
-          rationale: llm.rationale,
-          finalScore: candidate.score,
-          inputTokens: llm._cost?.inputTokens,
-          outputTokens: llm._cost?.outputTokens,
-          estimatedCostUsd: llm._cost?.estimatedCostUsd,
-          durationMs: llm._cost?.durationMs,
-        });
-      }
-    }
-  } else {
-    const apiKey = process.env.GOOGLE_API_KEY;
-    if (!apiKey) throw new Error('Missing GOOGLE_API_KEY for Gemini scoring');
-
-    const { extractAudioMp3Base64, extractJpegFramesBase64, scoreSegmentWithGeminiMultimodal } =
-      await import('./gemini-scoring');
-
-    const localVideoPath = await ensureLocalVideo();
-
-    for (const c of preRanked) {
-      const frames = await extractJpegFramesBase64({
-        videoPath: localVideoPath,
-        tStartS: c.tStartS,
-        tEndS: c.tEndS,
-        maxFrames: 4,
-      });
-      const audio = includeAudio
-        ? await extractAudioMp3Base64({
-            videoPath: localVideoPath,
-            tStartS: c.tStartS,
-            tEndS: c.tEndS,
-            maxSeconds: 18,
-          })
-        : null;
-
-      const llm = await scoreSegmentWithGeminiMultimodal({
-        apiKey,
-        modelName,
-        transcriptText: c.text,
-        tStartS: c.tStartS,
-        tEndS: c.tEndS,
-        framesJpegBase64: frames,
-        audioMp3Base64: audio,
-        targetPlatform,
-        contentStyle,
-        saferClips,
-      });
-
-      const candidate = buildCandidate(llm, c, 'gemini');
-      scored.push(candidate);
-
-      if (costTracker && llm._cost) {
-        costTracker.add({
-          stage: 'llm_scoring',
-          provider: 'gemini',
-          model: llm._cost.modelName,
-          inputTokens: llm._cost.inputTokens,
-          outputTokens: llm._cost.outputTokens,
-          inputImages: llm._cost.inputImages,
-          inputAudioS: llm._cost.audioSeconds,
-          durationMs: llm._cost.durationMs,
-          estimatedCostUsd: llm._cost.estimatedCostUsd,
-        });
-      }
-
-      if (trainingCollector) {
-        trainingCollector.add({
-          provider: 'gemini',
-          model: llm._cost?.modelName,
-          transcriptText: c.text,
-          tStartS: c.tStartS,
-          tEndS: c.tEndS,
-          targetPlatform,
-          contentStyle,
-          saferClips,
-          includeAudio,
-          frameCount: frames.length,
-          audioSeconds: audio ? c.tEndS - c.tStartS : 0,
-          heuristicScore: c.hScore,
-          heuristicFeatures: c.hFeatures,
-          llmScore: llm.score,
-          hookScore: llm.hookScore,
-          contextScore: llm.contextScore,
-          captionabilityScore: llm.captionabilityScore,
-          comedicScore: llm.comedicScore,
-          provocativeScore: llm.provocativeScore,
-          visualEnergyScore: llm.visualEnergyScore,
-          audioEnergyScore: llm.audioEnergyScore,
-          riskScore: llm.riskScore,
-          riskFlags: llm.riskFlags,
-          hasViralMoment: llm.hasViralMoment,
-          confidence: llm.confidence,
-          rationale: llm.rationale,
-          finalScore: candidate.score,
-          inputTokens: llm._cost?.inputTokens,
-          outputTokens: llm._cost?.outputTokens,
-          estimatedCostUsd: llm._cost?.estimatedCostUsd,
-          durationMs: llm._cost?.durationMs,
-        });
-      }
     }
   }
 
