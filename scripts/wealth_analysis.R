@@ -429,4 +429,138 @@ for (a in names(liab_map_bot50)) {
   }
 }
 
+# ============================================================
+# PART 9: Heavy-Tailed Pyramid Distribution Analysis
+# ============================================================
+cat("\n--- PART 9: Heavy-Tailed Pyramid Distribution ---\n")
+
+# The "pyramid" claim: wealth follows a power-law-like distribution
+# where a tiny fraction at the top holds a disproportionate share.
+# We quantify this by computing the Gini-like concentration ratios.
+
+cat("\n=== Wealth Pyramid: Households vs. Wealth Share ===\n")
+cat(sprintf("  %-30s  %10s  %12s  %12s  %14s\n",
+            "Group", "Households", "% of HH", "% of Wealth", "Ratio (W/HH)"))
+cat(sprintf("  %-30s  %10s  %12s  %12s  %14s\n",
+            "-----", "----------", "-------", "-----------", "------------"))
+
+pyramid_groups <- c("Top 0.1%", "Next 0.9% (99-99.9th)", "Next 9% (90-99th)",
+                    "Middle 40% (50-90th)", "Bottom 50%")
+
+for (grp in pyramid_groups) {
+  hh_pct <- hh_df$pct_of_total[hh_df$group == grp]
+  w_pct  <- latest_shares$share_pct[latest_shares$group == grp]
+  ratio  <- w_pct / hh_pct
+  hh_count <- hh_df$households[hh_df$group == grp]
+  cat(sprintf("  %-30s  %10s  %10.2f%%  %10.1f%%  %12.1fx\n",
+              grp,
+              format(round(hh_count), big.mark = ","),
+              hh_pct, w_pct, ratio))
+}
+
+# Cumulative distribution (Lorenz-like) from bottom to top
+cat("\n=== Cumulative Distribution (Bottom → Top) ===\n")
+cat("  (How wealth accumulates as you move up the distribution)\n\n")
+cat(sprintf("  %-45s  %12s  %12s\n", "Cumulative Group", "Cum. HH %", "Cum. Wealth %"))
+cat(sprintf("  %-45s  %12s  %12s\n", "----------------", "---------", "-------------"))
+
+# Build cumulative from bottom to top
+cum_groups <- rev(pyramid_groups)
+cum_hh <- 0
+cum_w  <- 0
+for (grp in cum_groups) {
+  hh_pct <- hh_df$pct_of_total[hh_df$group == grp]
+  w_pct  <- latest_shares$share_pct[latest_shares$group == grp]
+  cum_hh <- cum_hh + hh_pct
+  cum_w  <- cum_w + w_pct
+  cat(sprintf("  + %-43s  %10.1f%%  %10.1f%%\n", grp, cum_hh, cum_w))
+}
+
+# Per-household wealth distribution showing the exponential ramp
+cat("\n=== Per-Household Wealth Ladder ===\n")
+cat("  (Shows the exponential shape of the distribution)\n\n")
+
+for (grp in pyramid_groups) {
+  nw <- latest_shares$value_trillions[latest_shares$group == grp] * 1e12
+  hh <- hh_df$households[hh_df$group == grp]
+  if (length(nw) > 0 && length(hh) > 0 && hh > 0) {
+    avg <- nw / hh
+    # Scale bar visualization (each █ = ~$1M)
+    bar_units <- min(round(avg / 1e6), 100)
+    bar <- paste(rep("\u2588", bar_units), collapse = "")
+    cat(sprintf("  %-30s  $%12s  %s\n", grp,
+                format(round(avg), big.mark = ","), bar))
+  }
+}
+
+# How the distribution has changed over time: wealth share trends
+cat("\n=== Tail Concentration Over Time ===\n")
+cat("  (Top 0.1% share at key dates)\n\n")
+
+share_top01 <- pull_fred_csv("WFRBSTP1300")
+share_bot50 <- pull_fred_csv("WFRBSB50215")
+
+key_dates <- c("1989-07-01", "1995-01-01", "2000-01-01", "2005-01-01",
+               "2010-01-01", "2015-01-01", "2020-01-01", "2025-07-01")
+
+cat(sprintf("  %-12s  %12s  %12s  %12s\n",
+            "Date", "Top 0.1%", "Bottom 50%", "Ratio"))
+cat(sprintf("  %-12s  %12s  %12s  %12s\n",
+            "----", "--------", "----------", "-----"))
+
+for (d in key_dates) {
+  d_date <- as.Date(d)
+  # Find closest date in data
+  t01_row <- share_top01[which.min(abs(share_top01$date - d_date)), ]
+  b50_row <- share_bot50[which.min(abs(share_bot50$date - d_date)), ]
+  ratio <- t01_row$value / b50_row$value
+  cat(sprintf("  %-12s  %10.1f%%  %10.1f%%  %10.1fx\n",
+              format(t01_row$date, "%Y Q%q"),
+              t01_row$value, b50_row$value, ratio))
+}
+
+# Inter-group wealth step ratios
+cat("\n=== Step Ratios Between Adjacent Groups ===\n")
+cat("  (How much richer each tier is than the one below it)\n\n")
+
+avg_wealth <- list()
+for (grp in pyramid_groups) {
+  nw <- latest_shares$value_trillions[latest_shares$group == grp] * 1e12
+  hh <- hh_df$households[hh_df$group == grp]
+  avg_wealth[[grp]] <- nw / hh
+}
+
+step_pairs <- list(
+  c("Bottom 50%", "Middle 40% (50-90th)"),
+  c("Middle 40% (50-90th)", "Next 9% (90-99th)"),
+  c("Next 9% (90-99th)", "Next 0.9% (99-99.9th)"),
+  c("Next 0.9% (99-99.9th)", "Top 0.1%")
+)
+
+for (pair in step_pairs) {
+  lower <- pair[1]
+  upper <- pair[2]
+  ratio <- avg_wealth[[upper]] / avg_wealth[[lower]]
+  cat(sprintf("  %s → %s: %.1fx step up\n", lower, upper, ratio))
+}
+
+# Pareto tail index estimation
+cat("\n=== Pareto Tail Index Estimation ===\n")
+# For a Pareto distribution: P(X > x) ~ x^(-alpha)
+# Using the relationship between mean and threshold at each tier
+# alpha = 1 / (1 - threshold/mean) for the tail
+# We approximate using top 1% and top 0.1%
+
+top1_avg  <- avg_wealth[["Top 0.1%"]]  # average in top 0.1%
+top1_share <- latest_shares$share_pct[latest_shares$group == "Top 0.1%"] / 100
+top10_share <- (latest_shares$share_pct[latest_shares$group == "Top 0.1%"] +
+                latest_shares$share_pct[latest_shares$group == "Next 0.9% (99-99.9th)"]) / 100
+
+# Pareto alpha from share ratios: alpha ≈ 1 / log(share_ratio) * log(pop_ratio)
+# Using top 0.1% vs top 1%:
+alpha_est <- log(10) / log(top10_share / top1_share)
+cat(sprintf("  Estimated Pareto alpha (tail index): %.2f\n", alpha_est))
+cat(sprintf("  (alpha < 2 indicates infinite variance — an extremely heavy tail)\n"))
+cat(sprintf("  (alpha ≈ 1.5 is typical for U.S. wealth; lower = heavier tail)\n"))
+
 cat("\n=== ANALYSIS COMPLETE ===\n")
