@@ -2,6 +2,8 @@ import type { LLMScoreResult } from './llm-types';
 import type { CostTracker } from '../cost-tracking';
 import type { TrainingCollector } from '../training-collector';
 import type { ScoringProvider } from './scoring-provider';
+import type { ScoringMode, TargetPlatform, ContentStyle } from '../../virality';
+export type { ScoringMode, TargetPlatform, ContentStyle };
 
 export type TranscriptWordSegment = {
   start: number; // seconds
@@ -16,17 +18,6 @@ export type ClipCandidate = {
   score: number;
   features: Record<string, any>;
 };
-
-export type ScoringMode = 'heuristic' | 'gemini' | 'hybrid';
-export type TargetPlatform = 'all' | 'reels' | 'shorts' | 'youtube';
-export type ContentStyle =
-  | 'politics'
-  | 'comedy'
-  | 'education'
-  | 'podcast'
-  | 'gaming'
-  | 'vlog'
-  | 'other';
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));

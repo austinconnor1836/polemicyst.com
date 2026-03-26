@@ -1,5 +1,5 @@
-import type { LLMScoreResult, LLMCostMeta } from './llm-types';
-import type { TargetPlatform, ContentStyle } from './viral-scoring';
+import type { LLMScoreResult } from './llm-types';
+import type { TargetPlatform, ContentStyle } from '../../virality';
 
 /**
  * Input context passed to an LLM scoring provider for a single candidate segment.
