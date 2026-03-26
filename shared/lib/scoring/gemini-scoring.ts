@@ -4,6 +4,7 @@ import path from 'path';
 import { createWriteStream } from 'fs';
 import { spawn } from 'child_process';
 import type { LLMScoreResult } from './llm-types';
+import type { TargetPlatform, ContentStyle } from '../../virality';
 import { estimateGeminiCost } from '../cost-tracking';
 
 export type GeminiScoreResult = LLMScoreResult;
@@ -188,8 +189,8 @@ export async function scoreSegmentWithGeminiMultimodal(params: {
   tEndS: number;
   framesJpegBase64: string[];
   audioMp3Base64?: string | null;
-  targetPlatform?: 'all' | 'reels' | 'shorts' | 'youtube';
-  contentStyle?: 'politics' | 'comedy' | 'education' | 'podcast' | 'gaming' | 'vlog' | 'other';
+  targetPlatform?: TargetPlatform;
+  contentStyle?: ContentStyle;
   saferClips?: boolean;
 }): Promise<GeminiScoreResult> {
   const {

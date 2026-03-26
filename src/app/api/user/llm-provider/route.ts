@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../auth';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
 import type { LLMProvider } from '@shared/virality';
 import { checkLlmProviderAccess } from '@/lib/plans';
@@ -9,34 +8,21 @@ function normalizeProvider(value?: string | null): LLMProvider {
   return value && value.toLowerCase() === 'ollama' ? 'ollama' : 'gemini';
 }
 
-async function requireUserEmail() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return null;
-  }
-  return session.user.email;
-}
-
-export async function GET() {
-  const email = await requireUserEmail();
-  if (!email) {
+export async function GET(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: { defaultLLMProvider: true },
-  });
-
   const fallback = normalizeProvider(process.env.LLM_PROVIDER);
   return NextResponse.json({
-    llmProvider: normalizeProvider(user?.defaultLLMProvider ?? fallback),
+    llmProvider: normalizeProvider(user.defaultLLMProvider ?? fallback),
   });
 }
 
 async function handleUpdate(req: NextRequest) {
-  const email = await requireUserEmail();
-  if (!email) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -54,12 +40,7 @@ async function handleUpdate(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid provider' }, { status: 400 });
   }
 
-  // Check if user's plan allows this provider
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: { subscriptionPlan: true },
-  });
-  const providerAccess = checkLlmProviderAccess(provider, user?.subscriptionPlan);
+  const providerAccess = checkLlmProviderAccess(provider, user.subscriptionPlan);
   if (!providerAccess.allowed) {
     return NextResponse.json(
       {
@@ -72,7 +53,7 @@ async function handleUpdate(req: NextRequest) {
   }
 
   await prisma.user.update({
-    where: { email },
+    where: { id: user.id },
     data: { defaultLLMProvider: provider },
   });
 

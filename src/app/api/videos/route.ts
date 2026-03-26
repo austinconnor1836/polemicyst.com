@@ -1,7 +1,6 @@
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../auth';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import AWS from 'aws-sdk';
 import { randomUUID } from 'crypto';
 
@@ -14,25 +13,24 @@ const s3 = new AWS.S3({
   signatureVersion: 'v4',
 });
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.email) {
-    return new Response('Unauthorized', { status: 401 });
+export async function GET(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
+  const userWithVideos = await prisma.user.findUnique({
+    where: { id: user.id },
     include: { videos: true },
   });
 
-  return Response.json(user?.videos || []);
+  return Response.json(userWithVideos?.videos || []);
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return new Response('Unauthorized', { status: 401 });
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const formData = await req.formData();
@@ -44,14 +42,14 @@ export async function POST(req: NextRequest) {
     return new Response('Missing fields', { status: 400 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
+  const userWithPrefs = await prisma.user.findUnique({
+    where: { id: user.id },
     include: { templatePreferences: true },
   });
 
-  if (!user) return new Response('User not found', { status: 404 });
+  if (!userWithPrefs) return new Response('User not found', { status: 404 });
 
-  const preferences = user.templatePreferences;
+  const preferences = userWithPrefs.templatePreferences;
 
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);

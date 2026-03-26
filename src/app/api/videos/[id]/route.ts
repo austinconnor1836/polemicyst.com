@@ -1,8 +1,7 @@
 // /src/app/api/videos/[id]/route.ts
 import { prisma } from '@shared/lib/prisma';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../auth';
-import { NextRequest } from 'next/server';
+import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
+import { NextRequest, NextResponse } from 'next/server';
 import AWS from 'aws-sdk';
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
@@ -17,10 +16,9 @@ const s3 = new AWS.S3({
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.email) {
-    return new Response('Unauthorized', { status: 401 });
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const video = await prisma.video.findUnique({
