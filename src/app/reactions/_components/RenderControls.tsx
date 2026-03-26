@@ -31,6 +31,10 @@ interface RenderControlsProps {
   onStatusChange: (status: string, outputs: Output[]) => void;
   compositionTitle?: string;
   trackLabels?: string[];
+  /** If provided, called before render starts. Must upload pending files and return true to proceed. */
+  onBeforeRender?: (onProgress: (pct: number) => void) => Promise<boolean>;
+  /** Number of files pending local upload (controls UI messaging) */
+  pendingUploadCount?: number;
 }
 
 const LAYOUT_LABELS: Record<string, string> = {
@@ -50,8 +54,12 @@ export function RenderControls({
   onStatusChange,
   compositionTitle,
   trackLabels,
+  onBeforeRender,
+  pendingUploadCount = 0,
 }: RenderControlsProps) {
   const [rendering, setRendering] = useState(compositionStatus === 'rendering');
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [publishTarget, setPublishTarget] = useState<{
     s3Url: string;
     layout: string;
@@ -181,6 +189,24 @@ export function RenderControls({
   const handleRender = async () => {
     if (!hasCreator || !hasTracks) return;
 
+    // Upload pending files before rendering
+    if (onBeforeRender && pendingUploadCount > 0) {
+      setUploadingFiles(true);
+      setUploadProgress(0);
+      try {
+        const ok = await onBeforeRender((pct) => setUploadProgress(pct));
+        if (!ok) {
+          setUploadingFiles(false);
+          return;
+        }
+      } catch (err) {
+        toast.error('Failed to upload videos');
+        setUploadingFiles(false);
+        return;
+      }
+      setUploadingFiles(false);
+    }
+
     setRendering(true);
 
     // Optimistically reset outputs to pending so spinners show immediately
@@ -204,7 +230,6 @@ export function RenderControls({
         const data = await res.json();
         toast.error(data.error || 'Failed to start render');
         setRendering(false);
-        // Restore original outputs on failure
         onStatusChange(compositionStatus, outputs);
         return;
       }
@@ -276,9 +301,20 @@ export function RenderControls({
               Cancel
             </Button>
           )}
-          <Button onClick={handleRender} disabled={rendering || !hasCreator || !hasTracks}>
-            {rendering && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {rendering ? 'Rendering...' : outputs.some((o) => o.s3Url) ? 'Re-render' : 'Render'}
+          <Button
+            onClick={handleRender}
+            disabled={rendering || uploadingFiles || !hasCreator || !hasTracks}
+          >
+            {(rendering || uploadingFiles) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {uploadingFiles
+              ? `Uploading ${uploadProgress}%`
+              : rendering
+                ? 'Rendering...'
+                : pendingUploadCount > 0
+                  ? `Upload & Render (${pendingUploadCount} local)`
+                  : outputs.some((o) => o.s3Url)
+                    ? 'Re-render'
+                    : 'Render'}
           </Button>
         </div>
       </div>

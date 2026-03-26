@@ -5,11 +5,20 @@ import { cn } from '@/lib/utils';
 import { Upload, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
+export interface DeferredFileData {
+  file: File;
+  blobUrl: string;
+  filename: string;
+}
+
 interface VideoUploaderProps {
   label: string;
   s3Key?: string | null;
   s3Url?: string | null;
-  onUploaded: (data: { s3Key: string; s3Url: string; filename: string }) => void;
+  onUploaded?: (data: { s3Key: string; s3Url: string; filename: string }) => void;
+  /** When true, skips S3 upload and returns the raw File via onFileSelected */
+  deferred?: boolean;
+  onFileSelected?: (data: DeferredFileData) => void;
   onRemove?: () => void;
   className?: string;
   keyPrefix?: string;
@@ -22,6 +31,8 @@ export function VideoUploader({
   s3Key,
   s3Url,
   onUploaded,
+  deferred,
+  onFileSelected,
   onRemove,
   className,
   keyPrefix,
@@ -33,6 +44,14 @@ export function VideoUploader({
 
   const uploadFile = useCallback(
     async (file: File) => {
+      if (deferred && onFileSelected) {
+        const blobUrl = URL.createObjectURL(file);
+        onFileSelected({ file, blobUrl, filename: file.name });
+        return;
+      }
+
+      if (!onUploaded) return;
+
       setUploading(true);
       setProgress(0);
 
@@ -99,7 +118,7 @@ export function VideoUploader({
         setProgress(0);
       }
     },
-    [onUploaded, keyPrefix]
+    [onUploaded, onFileSelected, deferred, keyPrefix]
   );
 
   const handleDrop = useCallback(
