@@ -107,6 +107,20 @@ components:
         llmProvider:
           type: string
           enum: [gemini, ollama]
+        showTimestamp:
+          type: boolean
+          description: Briefly display the source video timestamp in the upper-left corner of each clip
+        captionsEnabled:
+          type: boolean
+          description: Burn transcript captions into generated clips
+        captionFont:
+          type: string
+          enum: [DejaVu Sans, Liberation Sans, Noto Sans, DejaVu Sans Mono, Liberation Mono, Noto Mono]
+          description: Font family for burned-in captions
+        captionFontSize:
+          type: string
+          enum: [small, medium, large, xlarge]
+          description: Size preset for burned-in captions
 
     VideoFeed:
       type: object
@@ -340,6 +354,18 @@ components:
           enum: [gemini, ollama]
         clipLength:
           type: string
+        showTimestamp:
+          type: boolean
+          description: Briefly display the source video timestamp in the upper-left corner of each clip
+        captionsEnabled:
+          type: boolean
+          description: Burn transcript captions into generated clips
+        captionFont:
+          type: string
+          enum: [DejaVu Sans, Liberation Sans, Noto Sans, DejaVu Sans Mono, Liberation Mono, Noto Mono]
+        captionFontSize:
+          type: string
+          enum: [small, medium, large, xlarge]
         minCandidates:
           type: integer
         maxCandidates:

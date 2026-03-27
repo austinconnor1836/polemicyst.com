@@ -69,6 +69,11 @@ public struct APIClient {
         )
     }
 
+    public func exchangeFacebookToken(_ accessToken: String) async throws -> FacebookTokenResponse {
+        struct Body: Encodable { let accessToken: String }
+        return try await post(path: "/api/auth/mobile/facebook", body: Body(accessToken: accessToken))
+    }
+
     // MARK: YouTube Channels
 
     public func fetchYouTubeChannels() async throws -> [YouTubeChannel] {
@@ -382,6 +387,54 @@ public struct APIClient {
     public func updatePublishDefaults(platforms: [String]) async throws -> PublishDefaultsResponse {
         struct Body: Encodable { let platforms: [String] }
         return try await put(path: "/api/user/publish-defaults", body: Body(platforms: platforms))
+    }
+
+    // MARK: Compositions
+
+    public func fetchCompositions() async throws -> [Composition] {
+        try await get(path: "/api/compositions")
+    }
+
+    public func createComposition(body: CreateCompositionRequest) async throws -> Composition {
+        try await post(path: "/api/compositions", body: body)
+    }
+
+    public func fetchComposition(id: String) async throws -> Composition {
+        try await get(path: "/api/compositions/\(id)")
+    }
+
+    public func updateComposition(id: String, body: UpdateCompositionRequest) async throws -> Composition {
+        try await patch(path: "/api/compositions/\(id)", body: body)
+    }
+
+    public func deleteComposition(id: String) async throws {
+        try await delete(path: "/api/compositions/\(id)")
+    }
+
+    public func addTrack(compositionId: String, body: CreateTrackRequest) async throws -> CompositionTrack {
+        try await post(path: "/api/compositions/\(compositionId)/tracks", body: body)
+    }
+
+    public func deleteTrack(compositionId: String, trackId: String) async throws {
+        try await delete(path: "/api/compositions/\(compositionId)/tracks/\(trackId)")
+    }
+
+    public func triggerRender(compositionId: String, body: RenderRequest) async throws -> AnyCodable {
+        try await post(path: "/api/compositions/\(compositionId)/render", body: body)
+    }
+
+    public func fetchRenderStatus(compositionId: String) async throws -> RenderStatusResponse {
+        try await get(path: "/api/compositions/\(compositionId)/render/status")
+    }
+
+    public func cancelRender(compositionId: String) async throws {
+        struct EmptyBody: Encodable {}
+        let _: AnyCodable = try await post(path: "/api/compositions/\(compositionId)/render/cancel", body: EmptyBody())
+    }
+
+    public func probeVideo(s3Key: String) async throws -> ProbeResponse {
+        struct Body: Encodable { let s3Key: String }
+        return try await post(path: "/api/compositions/probe", body: Body(s3Key: s3Key))
     }
 
     // MARK: Version Check

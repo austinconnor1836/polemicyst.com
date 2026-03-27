@@ -53,6 +53,12 @@ public struct AppleFullName: Encodable {
     }
 }
 
+/// Response from Facebook token exchange
+public struct FacebookTokenResponse: Decodable {
+    public let success: Bool
+    public let name: String?
+}
+
 /// Response from mobile auth endpoints
 public struct MobileAuthResponse: Decodable {
     public let token: String

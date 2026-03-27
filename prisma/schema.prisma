@@ -38,6 +38,7 @@ model User {
   publishingAccounts       PublishingAccount[]
   uploadLogs               UploadLog[]
   socialPosts              SocialPost[]
+  compositions             Composition[]
 }
 
 model TemplatePreferences {
@@ -628,4 +629,109 @@ model SocialPostPublish {
   @@index([socialPostId])
   @@index([platform])
   @@unique([socialPostId, platform])
+}
+
+model Composition {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title            String
+  mode             String   @default("pre-synced") // pre-synced | timeline
+  status           String   @default("draft") // draft | rendering | completed | failed
+  audioMode        String   @default("creator") // creator | reference | both
+  creatorVolume    Float    @default(1.0)
+  referenceVolume  Float    @default(1.0)
+  creatorS3Key     String?
+  creatorS3Url     String?
+  creatorDurationS    Float?
+  creatorWidth        Int?
+  creatorHeight       Int?
+  creatorTrimStartS   Float    @default(0)
+  creatorTrimEndS     Float?
+  creatorTranscript      String?  @db.Text
+  creatorTranscriptJson  Json?
+  thumbnailCutoutPosition String  @default("right") // left | right
+  thumbnailCutoutSize     String  @default("large")  // small | medium | large
+  createdAt           DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tracks           CompositionTrack[]
+  outputs          CompositionOutput[]
+  thumbnails       CompositionThumbnail[]
+  thumbnailAssets  ThumbnailAsset[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model CompositionTrack {
+  id            String      @id @default(cuid())
+  compositionId String
+  composition   Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
+  label         String?
+  s3Key         String
+  s3Url         String
+  durationS     Float
+  width         Int?
+  height        Int?
+  startAtS      Float       @default(0)
+  trimStartS    Float       @default(0)
+  trimEndS      Float?
+  sortOrder     Int         @default(0)
+  hasAudio      Boolean     @default(true)
+  transcript    String?     @db.Text
+  transcriptJson Json?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([compositionId])
+}
+
+model CompositionOutput {
+  id            String      @id @default(cuid())
+  compositionId String
+  composition   Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
+  layout        String      // mobile | landscape
+  s3Key         String?
+  s3Url         String?
+  status        String      @default("pending") // pending | rendering | completed | failed
+  renderError   String?     @db.Text
+  durationMs    Int?
+  fileSizeBytes BigInt?
+  transcript    String?     @db.Text
+  transcriptJson Json?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([compositionId])
+}
+
+model CompositionThumbnail {
+  id              String      @id @default(cuid())
+  compositionId   String
+  composition     Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
+  s3Key           String
+  s3Url           String
+  hookText        String
+  frameTimestampS Float
+  visionScore     Float?
+  selected        Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([compositionId])
+}
+
+model ThumbnailAsset {
+  id              String      @id @default(cuid())
+  compositionId   String
+  composition     Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
+  type            String      // "reference" | "cutout"
+  s3Key           String
+  s3Url           String
+  frameTimestampS Float
+  visionScore     Float?
+  createdAt       DateTime    @default(now())
+
+  @@index([compositionId, type])
 }

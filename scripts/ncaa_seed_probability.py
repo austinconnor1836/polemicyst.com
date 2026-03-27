@@ -6,17 +6,27 @@ Computes win probabilities for each seed (1-16) by round using
 historical tournament data from the 64-team era (1985-2024).
 39 tournaments (2020 cancelled due to COVID).
 
-Focus: 2-seed win probabilities and matchup history.
+Accepts an optional --seed argument (1-16) to focus on a specific seed.
+Defaults to seed 1 if not specified.
+
+Data sources:
+  - NCAA.com historical tournament records
+    https://www.ncaa.com/news/basketball-men/article/2025-02-05/records-every-seed-march-madness-1985-2024
+  - Sports-Reference.com college basketball tournament data
+    https://www.sports-reference.com/cbb/friv/ncaa-tourney-upsets.html
+  - BracketResearch.com seed-by-seed championship history
+    https://bracketresearch.com/the-dna-of-a-national-championship-team/seeds-of-ncaa-tournament-champions/
 """
 
+import argparse
 import json
 import sys
 
+# ---------------------------------------------------------------------------
 # Historical aggregate results by seed per round (1985-2024, 39 tournaments)
 # Format: { seed: { "round_name": (wins, total_games) } }
-# Sources: NCAA.com historical records, sports-reference.com
 # 4 teams of each seed per tournament, 39 tournaments = 156 entries per seed
-
+# ---------------------------------------------------------------------------
 SEED_ROUND_RESULTS = {
     1: {
         "Round of 64": (150, 156),
@@ -148,75 +158,193 @@ SEED_ROUND_RESULTS = {
     },
 }
 
-# Notable 2-seed upsets / losses in Round of 64 (15 over 2)
-NOTABLE_2_SEED_UPSETS = [
-    {
-        "year": 1991,
-        "winner": "Richmond",
-        "loser": "Syracuse",
-        "score": "73-69",
-        "round": "Round of 64",
-    },
-    {
-        "year": 2001,
-        "winner": "Hampton",
-        "loser": "Iowa State",
-        "score": "58-57",
-        "round": "Round of 64",
-    },
-    {
-        "year": 2012,
-        "winner": "Lehigh",
-        "loser": "Duke",
-        "score": "75-70",
-        "round": "Round of 64",
-    },
-    {
-        "year": 2012,
-        "winner": "Norfolk State",
-        "loser": "Missouri",
-        "score": "86-84",
-        "round": "Round of 64",
-    },
-    {
-        "year": 2013,
-        "winner": "Florida Gulf Coast",
-        "loser": "Georgetown",
-        "score": "78-68",
-        "round": "Round of 64",
-    },
-    {
-        "year": 2016,
-        "winner": "Middle Tennessee",
-        "loser": "Michigan State",
-        "score": "90-81",
-        "round": "Round of 64",
-    },
-    {
-        "year": 2022,
-        "winner": "Saint Peter's",
-        "loser": "Kentucky",
-        "score": "85-79",
-        "round": "Round of 64",
-    },
-    {
-        "year": 2023,
-        "winner": "Fairleigh Dickinson",
-        "loser": "Purdue",
-        "score": "63-58",
-        "round": "Round of 64",
-    },
-]
+# ---------------------------------------------------------------------------
+# First-round upsets keyed by the FAVORED seed (1-8).
+# Each entry records the lower-seeded team beating the higher-seeded team.
+# Seeds 9-16 share the same data from the underdog perspective.
+# ---------------------------------------------------------------------------
+FIRST_ROUND_UPSETS = {
+    1: [
+        {"year": 2018, "winner": "UMBC", "winner_seed": 16, "loser": "Virginia", "score": "74-54", "round": "Round of 64"},
+        {"year": 2023, "winner": "Fairleigh Dickinson", "winner_seed": 16, "loser": "Purdue", "score": "63-58", "round": "Round of 64"},
+    ],
+    2: [
+        {"year": 1991, "winner": "Richmond", "winner_seed": 15, "loser": "Syracuse", "score": "73-69", "round": "Round of 64"},
+        {"year": 1993, "winner": "Santa Clara", "winner_seed": 15, "loser": "Arizona", "score": "64-61", "round": "Round of 64"},
+        {"year": 1997, "winner": "Coppin State", "winner_seed": 15, "loser": "South Carolina", "score": "78-65", "round": "Round of 64"},
+        {"year": 2001, "winner": "Hampton", "winner_seed": 15, "loser": "Iowa State", "score": "58-57", "round": "Round of 64"},
+        {"year": 2012, "winner": "Lehigh", "winner_seed": 15, "loser": "Duke", "score": "75-70", "round": "Round of 64"},
+        {"year": 2012, "winner": "Norfolk State", "winner_seed": 15, "loser": "Missouri", "score": "86-84", "round": "Round of 64"},
+        {"year": 2013, "winner": "Florida Gulf Coast", "winner_seed": 15, "loser": "Georgetown", "score": "78-68", "round": "Round of 64"},
+        {"year": 2016, "winner": "Middle Tennessee", "winner_seed": 15, "loser": "Michigan State", "score": "90-81", "round": "Round of 64"},
+        {"year": 2021, "winner": "Oral Roberts", "winner_seed": 15, "loser": "Ohio State", "score": "75-72", "round": "Round of 64"},
+        {"year": 2022, "winner": "Saint Peter's", "winner_seed": 15, "loser": "Kentucky", "score": "85-79", "round": "Round of 64"},
+        {"year": 2023, "winner": "Princeton", "winner_seed": 15, "loser": "Arizona", "score": "59-55", "round": "Round of 64"},
+    ],
+    3: [
+        {"year": 1986, "winner": "Arkansas-Little Rock", "winner_seed": 14, "loser": "Notre Dame", "score": "90-83", "round": "Round of 64"},
+        {"year": 1986, "winner": "Cleveland State", "winner_seed": 14, "loser": "Indiana", "score": "83-79", "round": "Round of 64"},
+        {"year": 1987, "winner": "Austin Peay", "winner_seed": 14, "loser": "Illinois", "score": "68-67", "round": "Round of 64"},
+        {"year": 1988, "winner": "Murray State", "winner_seed": 14, "loser": "NC State", "score": "78-75", "round": "Round of 64"},
+        {"year": 1989, "winner": "Siena", "winner_seed": 14, "loser": "Stanford", "score": "80-78", "round": "Round of 64"},
+        {"year": 1990, "winner": "Northern Iowa", "winner_seed": 14, "loser": "Missouri", "score": "74-71", "round": "Round of 64"},
+        {"year": 1991, "winner": "Xavier", "winner_seed": 14, "loser": "Nebraska", "score": "89-84", "round": "Round of 64"},
+        {"year": 1992, "winner": "East Tennessee State", "winner_seed": 14, "loser": "Arizona", "score": "87-80", "round": "Round of 64"},
+        {"year": 1995, "winner": "Old Dominion", "winner_seed": 14, "loser": "Villanova", "score": "89-81", "round": "Round of 64"},
+        {"year": 1995, "winner": "Weber State", "winner_seed": 14, "loser": "Michigan State", "score": "79-72", "round": "Round of 64"},
+        {"year": 1997, "winner": "Chattanooga", "winner_seed": 14, "loser": "Georgia", "score": "73-70", "round": "Round of 64"},
+        {"year": 1998, "winner": "Richmond", "winner_seed": 14, "loser": "South Carolina", "score": "62-61", "round": "Round of 64"},
+        {"year": 1999, "winner": "Weber State", "winner_seed": 14, "loser": "North Carolina", "score": "76-74", "round": "Round of 64"},
+        {"year": 2005, "winner": "Bucknell", "winner_seed": 14, "loser": "Kansas", "score": "64-63", "round": "Round of 64"},
+        {"year": 2006, "winner": "Northwestern State", "winner_seed": 14, "loser": "Iowa", "score": "64-63", "round": "Round of 64"},
+        {"year": 2010, "winner": "Ohio", "winner_seed": 14, "loser": "Georgetown", "score": "97-83", "round": "Round of 64"},
+        {"year": 2013, "winner": "Harvard", "winner_seed": 14, "loser": "New Mexico", "score": "68-62", "round": "Round of 64"},
+        {"year": 2014, "winner": "Mercer", "winner_seed": 14, "loser": "Duke", "score": "78-71", "round": "Round of 64"},
+        {"year": 2015, "winner": "Georgia State", "winner_seed": 14, "loser": "Baylor", "score": "57-56", "round": "Round of 64"},
+        {"year": 2015, "winner": "UAB", "winner_seed": 14, "loser": "Iowa State", "score": "60-59", "round": "Round of 64"},
+        {"year": 2016, "winner": "Stephen F. Austin", "winner_seed": 14, "loser": "West Virginia", "score": "70-56", "round": "Round of 64"},
+        {"year": 2021, "winner": "Abilene Christian", "winner_seed": 14, "loser": "Texas", "score": "53-52", "round": "Round of 64"},
+        {"year": 2024, "winner": "Oakland", "winner_seed": 14, "loser": "Kentucky", "score": "80-76", "round": "Round of 64"},
+    ],
+    4: [
+        {"year": 1985, "winner": "Navy", "winner_seed": 13, "loser": "LSU", "score": "78-55", "round": "Round of 64"},
+        {"year": 1987, "winner": "Southwest Missouri State", "winner_seed": 13, "loser": "Clemson", "score": "65-60", "round": "Round of 64"},
+        {"year": 1988, "winner": "Richmond", "winner_seed": 13, "loser": "Indiana", "score": "72-69", "round": "Round of 64"},
+        {"year": 1991, "winner": "Penn State", "winner_seed": 13, "loser": "UCLA", "score": "74-69", "round": "Round of 64"},
+        {"year": 1992, "winner": "SW Louisiana", "winner_seed": 13, "loser": "Oklahoma", "score": "87-83", "round": "Round of 64"},
+        {"year": 1993, "winner": "Southern", "winner_seed": 13, "loser": "Georgia Tech", "score": "93-78", "round": "Round of 64"},
+        {"year": 1995, "winner": "Manhattan", "winner_seed": 13, "loser": "Oklahoma", "score": "77-67", "round": "Round of 64"},
+        {"year": 1996, "winner": "Princeton", "winner_seed": 13, "loser": "UCLA", "score": "43-41", "round": "Round of 64"},
+        {"year": 1998, "winner": "Valparaiso", "winner_seed": 13, "loser": "Ole Miss", "score": "70-69", "round": "Round of 64"},
+        {"year": 2001, "winner": "Indiana State", "winner_seed": 13, "loser": "Oklahoma", "score": "70-68", "round": "Round of 64"},
+        {"year": 2001, "winner": "Kent State", "winner_seed": 13, "loser": "Indiana", "score": "77-73", "round": "Round of 64"},
+        {"year": 2005, "winner": "Vermont", "winner_seed": 13, "loser": "Syracuse", "score": "60-57", "round": "Round of 64"},
+        {"year": 2006, "winner": "Bradley", "winner_seed": 13, "loser": "Kansas", "score": "77-73", "round": "Round of 64"},
+        {"year": 2008, "winner": "San Diego", "winner_seed": 13, "loser": "UConn", "score": "70-69", "round": "Round of 64"},
+        {"year": 2009, "winner": "Cleveland State", "winner_seed": 13, "loser": "Wake Forest", "score": "84-69", "round": "Round of 64"},
+        {"year": 2010, "winner": "Murray State", "winner_seed": 13, "loser": "Vanderbilt", "score": "66-65", "round": "Round of 64"},
+        {"year": 2011, "winner": "Morehead State", "winner_seed": 13, "loser": "Louisville", "score": "62-61", "round": "Round of 64"},
+        {"year": 2012, "winner": "Ohio", "winner_seed": 13, "loser": "Michigan", "score": "65-60", "round": "Round of 64"},
+        {"year": 2013, "winner": "La Salle", "winner_seed": 13, "loser": "Kansas State", "score": "63-61", "round": "Round of 64"},
+        {"year": 2016, "winner": "Hawaii", "winner_seed": 13, "loser": "California", "score": "77-66", "round": "Round of 64"},
+        {"year": 2018, "winner": "Buffalo", "winner_seed": 13, "loser": "Arizona", "score": "89-69", "round": "Round of 64"},
+        {"year": 2018, "winner": "Marshall", "winner_seed": 13, "loser": "Wichita State", "score": "81-75", "round": "Round of 64"},
+        {"year": 2019, "winner": "UC Irvine", "winner_seed": 13, "loser": "Kansas State", "score": "70-64", "round": "Round of 64"},
+        {"year": 2021, "winner": "Ohio", "winner_seed": 13, "loser": "Virginia", "score": "62-58", "round": "Round of 64"},
+        {"year": 2021, "winner": "North Texas", "winner_seed": 13, "loser": "Purdue", "score": "78-69", "round": "Round of 64"},
+        {"year": 2023, "winner": "Furman", "winner_seed": 13, "loser": "Virginia", "score": "68-67", "round": "Round of 64"},
+        {"year": 2024, "winner": "Yale", "winner_seed": 13, "loser": "Auburn", "score": "78-76", "round": "Round of 64"},
+    ],
+    5: [
+        {"year": 1985, "winner": "Kentucky", "winner_seed": 12, "loser": "Washington", "score": "66-58", "round": "Round of 64"},
+        {"year": 1990, "winner": "Dayton", "winner_seed": 12, "loser": "Illinois", "score": "88-86", "round": "Round of 64"},
+        {"year": 1994, "winner": "Tulsa", "winner_seed": 12, "loser": "UCLA", "score": "112-102", "round": "Round of 64"},
+        {"year": 2001, "winner": "Gonzaga", "winner_seed": 12, "loser": "Virginia", "score": "86-85", "round": "Round of 64"},
+        {"year": 2002, "winner": "Missouri", "winner_seed": 12, "loser": "Miami (FL)", "score": "93-80", "round": "Round of 64"},
+        {"year": 2008, "winner": "Western Kentucky", "winner_seed": 12, "loser": "Drake", "score": "101-99", "round": "Round of 64"},
+        {"year": 2010, "winner": "Cornell", "winner_seed": 12, "loser": "Temple", "score": "78-65", "round": "Round of 64"},
+        {"year": 2011, "winner": "Richmond", "winner_seed": 12, "loser": "Vanderbilt", "score": "69-66", "round": "Round of 64"},
+        {"year": 2016, "winner": "Yale", "winner_seed": 12, "loser": "Baylor", "score": "79-75", "round": "Round of 64"},
+        {"year": 2016, "winner": "Little Rock", "winner_seed": 12, "loser": "Purdue", "score": "85-83", "round": "Round of 64"},
+        {"year": 2019, "winner": "Murray State", "winner_seed": 12, "loser": "Marquette", "score": "83-64", "round": "Round of 64"},
+        {"year": 2022, "winner": "New Mexico State", "winner_seed": 12, "loser": "UConn", "score": "70-63", "round": "Round of 64"},
+        {"year": 2022, "winner": "Richmond", "winner_seed": 12, "loser": "Iowa", "score": "67-63", "round": "Round of 64"},
+        {"year": 2024, "winner": "Grand Canyon", "winner_seed": 12, "loser": "Saint Mary's", "score": "75-66", "round": "Round of 64"},
+    ],
+    6: [
+        {"year": 2006, "winner": "George Mason", "winner_seed": 11, "loser": "Michigan State", "score": "75-65", "round": "Round of 64"},
+        {"year": 2016, "winner": "Gonzaga", "winner_seed": 11, "loser": "Seton Hall", "score": "68-52", "round": "Round of 64"},
+        {"year": 2016, "winner": "Northern Iowa", "winner_seed": 11, "loser": "Texas", "score": "75-72", "round": "Round of 64"},
+        {"year": 2016, "winner": "Wichita State", "winner_seed": 11, "loser": "Arizona", "score": "65-55", "round": "Round of 64"},
+        {"year": 2018, "winner": "Loyola Chicago", "winner_seed": 11, "loser": "Miami", "score": "64-62", "round": "Round of 64"},
+        {"year": 2021, "winner": "UCLA", "winner_seed": 11, "loser": "BYU", "score": "73-62", "round": "Round of 64"},
+        {"year": 2024, "winner": "NC State", "winner_seed": 11, "loser": "Texas Tech", "score": "80-67", "round": "Round of 64"},
+        {"year": 2024, "winner": "Duquesne", "winner_seed": 11, "loser": "BYU", "score": "71-67", "round": "Round of 64"},
+        {"year": 2024, "winner": "Oregon", "winner_seed": 11, "loser": "South Carolina", "score": "87-73", "round": "Round of 64"},
+    ],
+    7: [
+        {"year": 1998, "winner": "West Virginia", "winner_seed": 10, "loser": "Temple", "score": "82-52", "round": "Round of 64"},
+        {"year": 2019, "winner": "Florida", "winner_seed": 10, "loser": "Nevada", "score": "70-61", "round": "Round of 64"},
+        {"year": 2019, "winner": "Iowa", "winner_seed": 10, "loser": "Cincinnati", "score": "79-72", "round": "Round of 64"},
+        {"year": 2019, "winner": "Minnesota", "winner_seed": 10, "loser": "Louisville", "score": "86-76", "round": "Round of 64"},
+        {"year": 2021, "winner": "Rutgers", "winner_seed": 10, "loser": "Clemson", "score": "60-56", "round": "Round of 64"},
+        {"year": 2024, "winner": "Colorado", "winner_seed": 10, "loser": "Florida", "score": "102-100", "round": "Round of 64"},
+    ],
+    8: [
+        {"year": 2019, "winner": "Baylor", "winner_seed": 9, "loser": "Syracuse", "score": "78-69", "round": "Round of 64"},
+        {"year": 2019, "winner": "UCF", "winner_seed": 9, "loser": "VCU", "score": "73-58", "round": "Round of 64"},
+        {"year": 2019, "winner": "Washington", "winner_seed": 9, "loser": "Utah State", "score": "78-61", "round": "Round of 64"},
+        {"year": 2019, "winner": "Oklahoma", "winner_seed": 9, "loser": "Ole Miss", "score": "95-72", "round": "Round of 64"},
+        {"year": 2024, "winner": "Texas A&M", "winner_seed": 9, "loser": "Nebraska", "score": "98-83", "round": "Round of 64"},
+        {"year": 2024, "winner": "Northwestern", "winner_seed": 9, "loser": "Florida Atlantic", "score": "77-65", "round": "Round of 64"},
+    ],
+}
 
-# 2-seed national champions
-TWO_SEED_CHAMPIONS = [
-    {"year": 1998, "team": "Kentucky"},
-    {"year": 2005, "team": "North Carolina"},
-    {"year": 2014, "team": "UConn"},
-    {"year": 2017, "team": "North Carolina"},
-    {"year": 2023, "team": "UConn"},
-    {"year": 2024, "team": "UConn"},
-]
+# ---------------------------------------------------------------------------
+# National champions by seed (1985-2024).
+# Source: BracketResearch.com, NCAA.com year-by-year records.
+# ---------------------------------------------------------------------------
+CHAMPIONS_BY_SEED = {
+    1: [
+        {"year": 1987, "team": "Indiana"},
+        {"year": 1990, "team": "UNLV"},
+        {"year": 1992, "team": "Duke"},
+        {"year": 1993, "team": "North Carolina"},
+        {"year": 1994, "team": "Arkansas"},
+        {"year": 1995, "team": "UCLA"},
+        {"year": 1996, "team": "Kentucky"},
+        {"year": 1999, "team": "UConn"},
+        {"year": 2000, "team": "Michigan State"},
+        {"year": 2001, "team": "Duke"},
+        {"year": 2002, "team": "Maryland"},
+        {"year": 2005, "team": "North Carolina"},
+        {"year": 2007, "team": "Florida"},
+        {"year": 2008, "team": "Kansas"},
+        {"year": 2009, "team": "North Carolina"},
+        {"year": 2010, "team": "Duke"},
+        {"year": 2012, "team": "Kentucky"},
+        {"year": 2013, "team": "Louisville"},
+        {"year": 2015, "team": "Duke"},
+        {"year": 2017, "team": "North Carolina"},
+        {"year": 2018, "team": "Villanova"},
+        {"year": 2019, "team": "Virginia"},
+        {"year": 2021, "team": "Baylor"},
+        {"year": 2022, "team": "Kansas"},
+        {"year": 2024, "team": "UConn"},
+    ],
+    2: [
+        {"year": 1986, "team": "Louisville"},
+        {"year": 1991, "team": "Duke"},
+        {"year": 1998, "team": "Kentucky"},
+        {"year": 2004, "team": "UConn"},
+        {"year": 2016, "team": "Villanova"},
+    ],
+    3: [
+        {"year": 1989, "team": "Michigan"},
+        {"year": 2003, "team": "Syracuse"},
+        {"year": 2006, "team": "Florida"},
+        {"year": 2011, "team": "UConn"},
+    ],
+    4: [
+        {"year": 1997, "team": "Arizona"},
+        {"year": 2023, "team": "UConn"},
+    ],
+    6: [
+        {"year": 1988, "team": "Kansas"},
+    ],
+    7: [
+        {"year": 2014, "team": "UConn"},
+    ],
+    8: [
+        {"year": 1985, "team": "Villanova"},
+    ],
+}
+
+# First-round opponent seed for each seed (standard NCAA bracket)
+FIRST_ROUND_MATCHUP = {
+    1: 16, 2: 15, 3: 14, 4: 13, 5: 12, 6: 11, 7: 10, 8: 9,
+    9: 8, 10: 7, 11: 6, 12: 5, 13: 4, 14: 3, 15: 2, 16: 1,
+}
 
 ROUND_ORDER = [
     "Round of 64",
@@ -225,6 +353,24 @@ ROUND_ORDER = [
     "Elite 8",
     "Final Four",
     "Championship",
+]
+
+DATA_SOURCES = [
+    {
+        "name": "NCAA.com",
+        "url": "https://www.ncaa.com/news/basketball-men/article/2025-02-05/records-every-seed-march-madness-1985-2024",
+        "description": "Official NCAA historical tournament records by seed",
+    },
+    {
+        "name": "Sports-Reference.com",
+        "url": "https://www.sports-reference.com/cbb/friv/ncaa-tourney-upsets.html",
+        "description": "College basketball tournament upset history and statistics",
+    },
+    {
+        "name": "BracketResearch.com",
+        "url": "https://bracketresearch.com/the-dna-of-a-national-championship-team/seeds-of-ncaa-tournament-champions/",
+        "description": "Championship winners by seed analysis",
+    },
 ]
 
 TOTAL_TOURNAMENTS = 39
@@ -259,6 +405,59 @@ def compute_seed_data(seed: int) -> dict:
     }
 
 
+def compute_upset_averages() -> dict:
+    """Compute upset averages per tournament by round and by R64 matchup."""
+    matchups = []
+    for favored in range(1, 9):
+        underdog = FIRST_ROUND_MATCHUP[favored]
+        underdog_wins = SEED_ROUND_RESULTS[underdog]["Round of 64"][0]
+        total_games = SEED_ROUND_RESULTS[underdog]["Round of 64"][1]
+        upset_pct = (underdog_wins / total_games * 100) if total_games > 0 else 0
+        avg_per_year = underdog_wins / TOTAL_TOURNAMENTS
+
+        matchups.append({
+            "matchup": f"#{underdog} over #{favored}",
+            "favoredSeed": favored,
+            "underdogSeed": underdog,
+            "totalUpsets": underdog_wins,
+            "totalGames": total_games,
+            "upsetPct": round(upset_pct, 1),
+            "avgPerYear": round(avg_per_year, 1),
+        })
+
+    by_round = []
+    for round_name in ROUND_ORDER:
+        total_upsets = sum(
+            SEED_ROUND_RESULTS[seed][round_name][0]
+            for seed in range(9, 17)
+        )
+        games_per_year = {
+            "Round of 64": 32, "Round of 32": 16, "Sweet 16": 8,
+            "Elite 8": 4, "Final Four": 2, "Championship": 1,
+        }[round_name]
+        total_games = games_per_year * TOTAL_TOURNAMENTS
+        upset_rate = (total_upsets / total_games * 100) if total_games > 0 else 0
+
+        by_round.append({
+            "round": round_name,
+            "totalUpsets": total_upsets,
+            "avgPerYear": round(total_upsets / TOTAL_TOURNAMENTS, 1),
+            "gamesPerYear": games_per_year,
+            "upsetRate": round(upset_rate, 1),
+        })
+
+    total_all = sum(r["totalUpsets"] for r in by_round)
+
+    return {
+        "totalTournaments": TOTAL_TOURNAMENTS,
+        "dataRange": "1985-2024",
+        "firstRoundByMatchup": matchups,
+        "byRound": by_round,
+        "totalAllRounds": total_all,
+        "avgAllRoundsPerYear": round(total_all / TOTAL_TOURNAMENTS, 1),
+    }
+
+
 def compute_all_seeds_comparison() -> list:
     """Compute summary data for all seeds for comparison."""
     comparison = []
@@ -267,11 +466,9 @@ def compute_all_seeds_comparison() -> list:
         r64_wins, r64_total = rounds["Round of 64"]
         r64_pct = (r64_wins / r64_total * 100) if r64_total > 0 else 0
 
-        # Championship wins
-        champ_wins, champ_total = rounds["Championship"]
+        champ_wins, _ = rounds["Championship"]
         titles = champ_wins
 
-        # Calculate probability of reaching each round from starting
         reach_sweet16 = rounds["Sweet 16"][1] / TOTAL_TEAMS_PER_SEED * 100
         reach_final4 = rounds["Final Four"][1] / TOTAL_TEAMS_PER_SEED * 100
 
@@ -286,29 +483,128 @@ def compute_all_seeds_comparison() -> list:
     return comparison
 
 
+def compute_upset_averages() -> dict:
+    """Compute upset averages by round and matchup."""
+    r64_pairs = [(1, 16), (2, 15), (3, 14), (4, 13), (5, 12), (6, 11), (7, 10), (8, 9)]
+
+    r64_matchups = []
+    for higher, lower in r64_pairs:
+        wins, total = SEED_ROUND_RESULTS[higher]["Round of 64"]
+        upsets = total - wins
+        r64_matchups.append({
+            "higherSeed": higher,
+            "lowerSeed": lower,
+            "totalGames": total,
+            "upsets": upsets,
+            "upsetPct": round(upsets / total * 100, 1) if total > 0 else 0,
+            "avgPerTournament": round(upsets / TOTAL_TOURNAMENTS, 2),
+        })
+
+    r64_total_upsets = sum(m["upsets"] for m in r64_matchups)
+
+    r32_sections_def = [
+        {"topSeed": 1, "bottomSeed": 16, "label": "1/16 vs 8/9",
+         "involvedSeeds": [1, 16, 8, 9],
+         "possibleMatchups": ["1 vs 8", "1 vs 9", "16 vs 8", "16 vs 9"]},
+        {"topSeed": 2, "bottomSeed": 15, "label": "2/15 vs 7/10",
+         "involvedSeeds": [2, 15, 7, 10],
+         "possibleMatchups": ["2 vs 7", "2 vs 10", "15 vs 7", "15 vs 10"]},
+        {"topSeed": 3, "bottomSeed": 14, "label": "3/14 vs 6/11",
+         "involvedSeeds": [3, 14, 6, 11],
+         "possibleMatchups": ["3 vs 6", "3 vs 11", "14 vs 6", "14 vs 11"]},
+        {"topSeed": 4, "bottomSeed": 13, "label": "4/13 vs 5/12",
+         "involvedSeeds": [4, 13, 5, 12],
+         "possibleMatchups": ["4 vs 5", "4 vs 12", "13 vs 5", "13 vs 12"]},
+    ]
+
+    r32_sections = []
+    for sec in r32_sections_def:
+        top_wins, top_total = SEED_ROUND_RESULTS[sec["topSeed"]]["Round of 32"]
+        bottom_wins, bottom_total = SEED_ROUND_RESULTS[sec["bottomSeed"]]["Round of 32"]
+        upsets = (top_total - top_wins) + bottom_wins
+        total_games = 4 * TOTAL_TOURNAMENTS
+        r32_sections.append({
+            **sec,
+            "totalGames": total_games,
+            "upsets": upsets,
+            "upsetPct": round(upsets / total_games * 100, 1) if total_games > 0 else 0,
+            "avgPerTournament": round(upsets / TOTAL_TOURNAMENTS, 2),
+        })
+
+    r32_total_upsets = sum(s["upsets"] for s in r32_sections)
+
+    later_rounds = []
+    for round_name in ["Sweet 16", "Elite 8", "Final Four", "Championship"]:
+        for seed in [1, 2]:
+            wins, total = SEED_ROUND_RESULTS[seed][round_name]
+            if total == 0:
+                continue
+            losses = total - wins
+            later_rounds.append({
+                "round": round_name,
+                "seed": seed,
+                "wins": wins,
+                "losses": losses,
+                "totalGames": total,
+                "lossRate": round(losses / total * 100, 1),
+                "avgLossesPerTournament": round(losses / TOTAL_TOURNAMENTS, 2),
+            })
+
+    return {
+        "tournaments": TOTAL_TOURNAMENTS,
+        "r64": {
+            "matchups": r64_matchups,
+            "totalUpsets": r64_total_upsets,
+            "avgPerTournament": round(r64_total_upsets / TOTAL_TOURNAMENTS, 1),
+        },
+        "r32": {
+            "sections": r32_sections,
+            "totalUpsets": r32_total_upsets,
+            "avgPerTournament": round(r32_total_upsets / TOTAL_TOURNAMENTS, 1),
+        },
+        "later": later_rounds,
+    }
+
+
 def main():
     """Main entry point - outputs JSON data to stdout."""
-    focus_seed = 2
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--seed", type=int, default=1, choices=range(1, 17),
+                        metavar="SEED", help="Seed number to focus on (1-16)")
+    args = parser.parse_args()
+    focus_seed = args.seed
 
-    # Primary data: focused 2-seed analysis
     seed_data = compute_seed_data(focus_seed)
-
-    # Comparison data: all seeds
     all_seeds = compute_all_seeds_comparison()
 
-    # 2-seed specific extras
-    seed_data["notable_upsets"] = NOTABLE_2_SEED_UPSETS
-    seed_data["championships"] = TWO_SEED_CHAMPIONS
+    opponent_seed = FIRST_ROUND_MATCHUP[focus_seed]
+
+    # For seeds 1-8, return their upset losses. For 9-16, return upset wins.
+    if focus_seed <= 8:
+        upset_key = focus_seed
+        upset_context = "losses"
+    else:
+        upset_key = opponent_seed
+        upset_context = "wins"
+
+    seed_data["notable_upsets"] = FIRST_ROUND_UPSETS.get(upset_key, [])
+    seed_data["upset_context"] = upset_context
+    seed_data["championships"] = CHAMPIONS_BY_SEED.get(focus_seed, [])
+    seed_data["opponent_seed"] = opponent_seed
     seed_data["data_range"] = "1985-2024"
+    seed_data["sources"] = DATA_SOURCES
     seed_data["note"] = (
-        "Data covers the 64-team era (1985-2024). "
-        "The 2020 tournament was cancelled due to COVID-19. "
-        "39 total tournaments, 156 total 2-seeds."
+        f"Data covers the 64-team era (1985-2024). "
+        f"The 2020 tournament was cancelled due to COVID-19. "
+        f"39 total tournaments, 156 total {focus_seed}-seeds."
     )
+
+    upset_averages = compute_upset_averages()
 
     output = {
         "seed_focus": seed_data,
         "all_seeds_comparison": all_seeds,
+        "upset_averages": upset_averages,
     }
 
     json.dump(output, sys.stdout, indent=2)

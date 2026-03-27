@@ -1,9 +1,7 @@
 const fetch = require('node-fetch');
 import { spawn } from 'child_process';
 import type { LLMScoreResult } from './llm-types';
-
-type TargetPlatform = 'all' | 'reels' | 'shorts' | 'youtube';
-type ContentStyle = 'politics' | 'comedy' | 'education' | 'podcast' | 'gaming' | 'vlog' | 'other';
+import type { TargetPlatform, ContentStyle } from '../../virality';
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));

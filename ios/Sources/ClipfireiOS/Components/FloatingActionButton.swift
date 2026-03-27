@@ -24,11 +24,13 @@ public struct ContentTypePicker: View {
     let onPublication: () -> Void
     let onVideo: () -> Void
     var onSocialPost: (() -> Void)?
+    var onReaction: (() -> Void)?
 
-    public init(onPublication: @escaping () -> Void, onVideo: @escaping () -> Void, onSocialPost: (() -> Void)? = nil) {
+    public init(onPublication: @escaping () -> Void, onVideo: @escaping () -> Void, onSocialPost: (() -> Void)? = nil, onReaction: (() -> Void)? = nil) {
         self.onPublication = onPublication
         self.onVideo = onVideo
         self.onSocialPost = onSocialPost
+        self.onReaction = onReaction
     }
 
     public var body: some View {
@@ -95,12 +97,34 @@ public struct ContentTypePicker: View {
                     }
                 }
                 .listRowBackground(DesignTokens.surface)
+
+                if let onReaction {
+                    Button {
+                        onReaction()
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Reaction")
+                                    .font(.body)
+                                    .foregroundStyle(DesignTokens.textPrimary)
+                                Text("Create a reaction composition video")
+                                    .font(.caption)
+                                    .foregroundStyle(DesignTokens.muted)
+                            }
+                        } icon: {
+                            Image(systemName: "rectangle.on.rectangle.angled")
+                                .foregroundStyle(DesignTokens.accent)
+                                .frame(width: 32)
+                        }
+                    }
+                    .listRowBackground(DesignTokens.surface)
+                }
             }
             .scrollContentBackground(.hidden)
             .background(DesignTokens.background.ignoresSafeArea())
             .navigationTitle("Create")
             .navigationBarTitleDisplayMode(.inline)
         }
-        .presentationDetents([.height(280)])
+        .presentationDetents([.height(350)])
     }
 }

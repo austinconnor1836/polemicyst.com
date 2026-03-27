@@ -62,7 +62,8 @@ export async function POST(req: NextRequest) {
       `[upload:complete-multipart] SUCCESS user=${user.id} uploadId=${uploadId} (${durationMs}ms)`
     );
 
-    return NextResponse.json({ success: true, key });
+    const s3Url = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
+    return NextResponse.json({ success: true, key, s3Url });
   } catch (error) {
     const durationMs = Date.now() - startMs;
     const errMsg = error instanceof Error ? error.message : String(error);

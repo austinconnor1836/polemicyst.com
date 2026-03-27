@@ -7,6 +7,9 @@ let feedDownloadQueue: Queue | null = null;
 let transcriptionQueue: Queue | null = null;
 let speakerTranscriptionQueue: Queue | null = null;
 let clipGenerationQueue: Queue | null = null;
+let reactionComposeQueue: Queue | null = null;
+let genericTranscriptionQueue: Queue | null = null;
+let thumbnailGenerationQueue: Queue | null = null;
 
 export function getRedisConnection() {
   if (redis) return redis;
@@ -107,4 +110,75 @@ export function getClipGenerationQueue() {
     connection: getRedisConnection() as any,
   });
   return clipGenerationQueue;
+}
+
+export interface ReactionComposeJob {
+  compositionId: string;
+  userId: string;
+  layouts: ('mobile' | 'landscape')[];
+}
+
+export function getReactionComposeQueue() {
+  if (reactionComposeQueue) return reactionComposeQueue;
+  reactionComposeQueue = new Queue('reaction-compose', {
+    connection: getRedisConnection() as any,
+  });
+  return reactionComposeQueue;
+}
+
+export function queueReactionComposeJob(data: ReactionComposeJob) {
+  return getReactionComposeQueue().add('reaction-compose', data, {
+    jobId: data.compositionId,
+    removeOnComplete: true,
+    removeOnFail: true,
+  });
+}
+
+// --- Generic transcription queue (for composition tracks, creator video, render outputs) ---
+
+export interface GenericTranscriptionJob {
+  s3Url: string;
+  targetModel: 'CompositionOutput' | 'CompositionTrack' | 'Composition';
+  targetId: string;
+  /** For Composition, specifies the field prefix (e.g. 'creator') */
+  fieldPrefix?: string;
+}
+
+export function getGenericTranscriptionQueue() {
+  if (genericTranscriptionQueue) return genericTranscriptionQueue;
+  genericTranscriptionQueue = new Queue('generic-transcription', {
+    connection: getRedisConnection() as any,
+  });
+  return genericTranscriptionQueue;
+}
+
+export function queueGenericTranscriptionJob(data: GenericTranscriptionJob) {
+  return getGenericTranscriptionQueue().add('generic-transcription', data, {
+    jobId: `${data.targetModel}-${data.targetId}`,
+    removeOnComplete: true,
+    removeOnFail: true,
+  });
+}
+
+// --- Thumbnail generation queue ---
+
+export interface ThumbnailGenerationJob {
+  compositionId: string;
+  userId: string;
+}
+
+export function getThumbnailGenerationQueue() {
+  if (thumbnailGenerationQueue) return thumbnailGenerationQueue;
+  thumbnailGenerationQueue = new Queue('thumbnail-generation', {
+    connection: getRedisConnection() as any,
+  });
+  return thumbnailGenerationQueue;
+}
+
+export function queueThumbnailGenerationJob(data: ThumbnailGenerationJob) {
+  return getThumbnailGenerationQueue().add('thumbnail-generation', data, {
+    jobId: `thumb-${data.compositionId}`,
+    removeOnComplete: true,
+    removeOnFail: true,
+  });
 }

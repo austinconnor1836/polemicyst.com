@@ -16,3 +16,44 @@
 .markdown h3 {
   @apply text-2xl mt-8 mb-4 leading-snug;
 }
+
+.markdown h4 {
+  @apply text-xl mt-6 mb-3 leading-snug;
+}
+
+.markdown pre {
+  @apply my-6 rounded-lg overflow-x-auto text-sm leading-relaxed;
+  padding: 1.25rem;
+}
+
+.markdown code {
+  @apply text-sm;
+}
+
+.markdown p code {
+  @apply bg-gray-800 text-gray-200 rounded px-1.5 py-0.5;
+}
+
+.markdown table {
+  @apply w-full my-6 border-collapse;
+}
+
+.markdown th {
+  @apply text-left p-3 border-b-2 border-gray-600 font-semibold;
+}
+
+.markdown td {
+  @apply p-3 border-b border-gray-700;
+}
+
+.markdown tr:hover td {
+  @apply bg-gray-800/30;
+}
+
+.markdown strong {
+  @apply font-bold;
+}
+
+.markdown hr {
+  @apply my-8 border-gray-700;
+}

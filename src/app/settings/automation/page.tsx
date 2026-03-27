@@ -24,7 +24,7 @@ import {
 } from '@shared/virality';
 import { ThemedToaster } from '@/components/themed-toaster';
 import toast from 'react-hot-toast';
-import { Zap, Captions, Crop, Send, Loader2, Save, Info } from 'lucide-react';
+import { Zap, Captions, Crop, Send, Share2, Loader2, Save, Info } from 'lucide-react';
 
 type AutomationState = {
   enabled: boolean;
@@ -50,6 +50,12 @@ const INITIAL_STATE: AutomationState = {
   publishPlatforms: [],
 };
 
+type SocialPlatformInfo = {
+  platform: string;
+  displayName: string;
+  connected: boolean;
+};
+
 export default function AutomationSettingsPage() {
   const { status: sessionStatus } = useSession();
   const router = useRouter();
@@ -59,14 +65,20 @@ export default function AutomationSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [defaultLLMProvider, setDefaultLLMProvider] = useState<LLMProvider>('ollama');
+  const [socialPlatforms, setSocialPlatforms] = useState<SocialPlatformInfo[]>([]);
+  const [defaultPublishPlatforms, setDefaultPublishPlatforms] = useState<string[]>([]);
+  const [serverDefaultPublishPlatforms, setServerDefaultPublishPlatforms] = useState<string[]>([]);
 
-  const isDirty = JSON.stringify(state) !== JSON.stringify(serverState);
+  const isDirty =
+    JSON.stringify(state) !== JSON.stringify(serverState) ||
+    JSON.stringify(defaultPublishPlatforms) !== JSON.stringify(serverDefaultPublishPlatforms);
 
   const fetchSettings = useCallback(async () => {
     try {
-      const [automationRes, providerRes] = await Promise.all([
+      const [automationRes, providerRes, platformsRes] = await Promise.all([
         fetch('/api/user/automation'),
         fetch('/api/user/llm-provider'),
+        fetch('/api/social-posts/platforms'),
       ]);
 
       if (automationRes.ok) {
@@ -90,6 +102,14 @@ export default function AutomationSettingsPage() {
         const providerData = await providerRes.json();
         setDefaultLLMProvider(providerData.llmProvider === 'ollama' ? 'ollama' : 'gemini');
       }
+
+      if (platformsRes.ok) {
+        const platformData = await platformsRes.json();
+        setSocialPlatforms(platformData.platforms ?? []);
+        const defaults = platformData.defaults ?? [];
+        setDefaultPublishPlatforms(defaults);
+        setServerDefaultPublishPlatforms(defaults);
+      }
     } catch {
       toast.error('Failed to load automation settings');
     } finally {
@@ -110,11 +130,18 @@ export default function AutomationSettingsPage() {
   async function handleSave() {
     setSaving(true);
     try {
-      const res = await fetch('/api/user/automation', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(state),
-      });
+      const [res, defaultsRes] = await Promise.all([
+        fetch('/api/user/automation', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(state),
+        }),
+        fetch('/api/user/publish-defaults', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ platforms: defaultPublishPlatforms }),
+        }),
+      ]);
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Save failed' }));
@@ -136,6 +163,14 @@ export default function AutomationSettingsPage() {
       };
       setState(saved);
       setServerState(saved);
+
+      if (defaultsRes.ok) {
+        const defaultsData = await defaultsRes.json();
+        const savedDefaults = defaultsData.platforms ?? [];
+        setDefaultPublishPlatforms(savedDefaults);
+        setServerDefaultPublishPlatforms(savedDefaults);
+      }
+
       toast.success('Automation settings saved');
     } catch {
       toast.error('Something went wrong');
@@ -151,6 +186,12 @@ export default function AutomationSettingsPage() {
         : [...prev.publishPlatforms, platform];
       return { ...prev, publishPlatforms: platforms };
     });
+  }
+
+  function toggleDefaultPublishPlatform(platform: string) {
+    setDefaultPublishPlatforms((prev) =>
+      prev.includes(platform) ? prev.filter((p) => p !== platform) : [...prev, platform]
+    );
   }
 
   if (sessionStatus === 'loading' || loading) {
@@ -404,6 +445,57 @@ export default function AutomationSettingsPage() {
               </div>
             </CardContent>
           )}
+        </Card>
+
+        {/* Default Publish Platforms */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary glass:bg-white/10 glass:text-white">
+                <Share2 className="h-4 w-4" />
+              </div>
+              <div>
+                <CardTitle>Default Publish Platforms</CardTitle>
+                <CardDescription>
+                  Pre-selected platforms when sharing videos to social accounts
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <Label>Pre-select when publishing</Label>
+              <div className="flex flex-wrap gap-2">
+                {socialPlatforms.map((p) => {
+                  const active = defaultPublishPlatforms.includes(p.platform);
+                  return (
+                    <button
+                      key={p.platform}
+                      type="button"
+                      onClick={() => toggleDefaultPublishPlatform(p.platform)}
+                      disabled={!p.connected}
+                      className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                        !p.connected
+                          ? 'cursor-not-allowed border-border/50 text-muted/50 glass:border-white/5 glass:text-zinc-600'
+                          : active
+                            ? 'border-primary bg-primary/10 text-primary glass:border-white/30 glass:bg-white/15 glass:text-white'
+                            : 'border-border text-muted hover:border-primary/50 hover:text-foreground glass:border-white/10 glass:text-zinc-400 glass:hover:border-white/25 glass:hover:text-zinc-200'
+                      }`}
+                    >
+                      {p.displayName}
+                      {!p.connected && (
+                        <span className="ml-1 text-xs opacity-60">(not connected)</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted">
+                These platforms will be pre-selected in the publish dialog. You can still change the
+                selection before publishing.
+              </p>
+            </div>
+          </CardContent>
         </Card>
 
         {/* Sticky save bar for mobile */}

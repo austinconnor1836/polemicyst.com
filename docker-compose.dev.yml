@@ -58,6 +58,7 @@ services:
       - .:/app
       - /app/node_modules
       - clip-metadata-worker-node-modules:/app/workers/clip-metadata-worker/node_modules
+      - rembg-model-cache:/root/.u2net
     command:
       [
         'sh',
@@ -88,3 +89,4 @@ volumes:
   download-worker-node-modules:
   clip-metadata-worker-node-modules:
   transcription-worker-node-modules:
+  rembg-model-cache:

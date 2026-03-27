@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useSession, signIn, signOut } from 'next-auth/react';
+import { useSession, signOut } from 'next-auth/react';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import WbSunnyIcon from '@mui/icons-material/WbSunny';
 import NightsStayIcon from '@mui/icons-material/NightsStay';
@@ -133,12 +133,8 @@ const Navbar: React.FC = () => {
                   </Button>
                 </>
               ) : (
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start rounded-none px-4"
-                  onClick={() => signIn('google')}
-                >
-                  Login
+                <Button variant="ghost" className="w-full justify-start rounded-none px-4" asChild>
+                  <a href="/auth/signin">Sign In</a>
                 </Button>
               )}
 

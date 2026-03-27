@@ -19,7 +19,16 @@ import { checkClipQuota } from '@shared/lib/plans';
 import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
 import { TrainingCollector } from '@shared/lib/training-collector';
 import { logJob } from '@shared/lib/job-logger';
+import type {
+  ReactionComposeJob,
+  GenericTranscriptionJob,
+  ThumbnailGenerationJob,
+} from '@shared/queues';
+import { queueGenericTranscriptionJob } from '@shared/queues';
+import { renderComposition } from '@shared/util/reactionCompose';
+import { transcribeFromS3Url } from '@shared/lib/transcription';
 
+console.log('[clip-metadata-worker] Starting with static reactionCompose import...');
 const redisConnection = getRedisConnection();
 
 function formatTime(seconds: number): string {
@@ -47,6 +56,10 @@ new Worker(
       maxGeminiCandidates,
       llmProvider,
       clipLength,
+      showTimestamp,
+      captionsEnabled,
+      captionFont,
+      captionFontSize,
     } = job.data;
 
     const costTracker = new CostTracker(userId, feedVideoId);
@@ -254,7 +267,20 @@ new Worker(
               formatTime(c.tStartS),
               formatTime(c.tEndS),
               s3Key,
-              aspectRatio || '9:16'
+              aspectRatio || '9:16',
+              {
+                showTimestamp: !!showTimestamp,
+                captions: captionsEnabled
+                  ? {
+                      enabled: true,
+                      segments: transcriptSegments.filter(
+                        (seg: any) => seg.end > c.tStartS && seg.start < c.tEndS
+                      ),
+                      font: captionFont,
+                      fontSize: captionFontSize,
+                    }
+                  : undefined,
+              }
             ),
           (result) => {
             // Record S3 upload cost separately
@@ -469,6 +495,10 @@ new Worker(
                 targetPlatform: settings.targetPlatform || 'reels',
                 contentStyle: settings.contentStyle || 'auto',
                 llmProvider: settings.llmProvider,
+                showTimestamp: settings.showTimestamp ?? false,
+                captionsEnabled: settings.captionsEnabled ?? false,
+                captionFont: settings.captionFont,
+                captionFontSize: settings.captionFontSize,
                 ...strictnessConfig,
               },
               { jobId: feedVideoId, removeOnComplete: true, removeOnFail: true }
@@ -501,6 +531,564 @@ new Worker(
       }
 
       console.error('❌ Transcription failed:', err);
+    }
+  },
+  { connection: redisConnection as any }
+);
+
+// --- Reaction Compose Worker ---
+// Processes the 'reaction-compose' queue — renders multi-source reaction video compositions.
+
+new Worker<ReactionComposeJob>(
+  'reaction-compose',
+  async (job) => {
+    const { compositionId, userId, layouts } = job.data;
+    const costTracker = new CostTracker(userId, compositionId);
+    const startMs = Date.now();
+
+    console.log(`🎬 Processing reaction-compose job for composition: ${compositionId}`);
+
+    const tempFiles: string[] = [];
+
+    try {
+      // 1. Load composition with tracks
+      const composition = await prisma.composition.findUnique({
+        where: { id: compositionId },
+        include: {
+          tracks: { orderBy: { sortOrder: 'asc' } },
+          outputs: true,
+        },
+      });
+
+      if (!composition || !composition.creatorS3Url) {
+        console.error(`❌ Composition ${compositionId} not found or missing creator video`);
+        await prisma.composition.update({
+          where: { id: compositionId },
+          data: { status: 'failed' },
+        });
+        return;
+      }
+
+      // 2. Download all inputs
+      const { downloadFeedVideoToTemp } = await import('../../shared/util/download');
+
+      console.log('⬇️ Downloading creator video...');
+      const creatorPath = await costTracker.track(
+        'download',
+        () => downloadFeedVideoToTemp(composition.creatorS3Url!),
+        (resultPath) => {
+          let fileSizeBytes: number | undefined;
+          try {
+            const fsSync = require('fs');
+            fileSizeBytes = fsSync.statSync(resultPath).size;
+          } catch {}
+          return {
+            provider: 's3',
+            fileSizeBytes,
+            estimatedCostUsd: fileSizeBytes ? estimateS3Cost(fileSizeBytes) : 0,
+          };
+        }
+      );
+      tempFiles.push(creatorPath);
+
+      const trackInfos: Array<{
+        localPath: string;
+        startAtS: number;
+        trimStartS: number;
+        trimEndS: number | null;
+        durationS: number;
+        width: number | null;
+        height: number | null;
+        hasAudio: boolean;
+        sortOrder: number;
+      }> = [];
+
+      for (const track of composition.tracks) {
+        console.log(`⬇️ Downloading reference track: ${track.label || track.id}`);
+        const trackPath = await costTracker.track(
+          'download',
+          () => downloadFeedVideoToTemp(track.s3Url),
+          (resultPath) => {
+            let fileSizeBytes: number | undefined;
+            try {
+              const fsSync = require('fs');
+              fileSizeBytes = fsSync.statSync(resultPath).size;
+            } catch {}
+            return {
+              provider: 's3',
+              fileSizeBytes,
+              estimatedCostUsd: fileSizeBytes ? estimateS3Cost(fileSizeBytes) : 0,
+            };
+          }
+        );
+        tempFiles.push(trackPath);
+
+        trackInfos.push({
+          localPath: trackPath,
+          startAtS: track.startAtS,
+          trimStartS: track.trimStartS,
+          trimEndS: track.trimEndS,
+          durationS: track.durationS,
+          width: track.width,
+          height: track.height,
+          hasAudio: track.hasAudio,
+          sortOrder: track.sortOrder,
+        });
+      }
+
+      // 3. Look up user's caption settings and wait for transcripts if needed
+      const automationRule = await prisma.automationRule.findUnique({
+        where: { userId },
+        select: { captionsEnabled: true, viralitySettings: true },
+      });
+
+      let captionOpts: import('@shared/util/reactionCompose').ComposeCaptionOptions | undefined;
+      if (automationRule?.captionsEnabled) {
+        // Wait for transcripts to be populated before rendering with captions.
+        // Transcription jobs are auto-queued when creator/tracks are added — we just
+        // need to poll until they finish (or timeout).
+        const POLL_INTERVAL_MS = 3000;
+        const POLL_TIMEOUT_MS = 180_000; // 3 minutes
+        const pollStart = Date.now();
+        let transcriptsReady = false;
+
+        while (Date.now() - pollStart < POLL_TIMEOUT_MS) {
+          const fresh = await prisma.composition.findUnique({
+            where: { id: compositionId },
+            select: {
+              creatorTranscriptJson: true,
+              tracks: {
+                select: { id: true, transcriptJson: true },
+                orderBy: { sortOrder: 'asc' },
+              },
+            },
+          });
+
+          const hasCreator = !!fresh?.creatorTranscriptJson;
+          const hasAllTracks = fresh?.tracks.every((t) => !!t.transcriptJson) ?? false;
+
+          if (hasCreator && hasAllTracks) {
+            transcriptsReady = true;
+            // Update composition reference with fresh transcript data
+            composition.creatorTranscriptJson = fresh!.creatorTranscriptJson;
+            for (const freshTrack of fresh!.tracks) {
+              const track = composition.tracks.find((t) => t.id === freshTrack.id);
+              if (track) track.transcriptJson = freshTrack.transcriptJson;
+            }
+            break;
+          }
+
+          const elapsed = ((Date.now() - pollStart) / 1000).toFixed(0);
+          console.log(
+            `⏳ Waiting for transcripts (${elapsed}s) — creator=${hasCreator}, tracks=${fresh?.tracks.map((t) => !!t.transcriptJson).join(',')}`
+          );
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        }
+
+        if (!transcriptsReady) {
+          console.warn('⚠️ Transcript timeout — rendering without captions');
+        } else {
+          const vs = (automationRule.viralitySettings as Record<string, any>) || {};
+          captionOpts = {
+            font: vs.captionFont || 'DejaVu Sans',
+            fontSize: vs.captionFontSize || 'medium',
+            creatorSegments: (composition.creatorTranscriptJson as any[]) || [],
+            trackSegments: composition.tracks.map((t) => ({
+              segments: (t.transcriptJson as any[]) || [],
+              startAtS: t.startAtS,
+              trimStartS: t.trimStartS,
+              trimEndS: t.trimEndS,
+            })),
+          };
+          console.log(
+            `📝 Captions enabled — font=${captionOpts.font}, size=${captionOpts.fontSize}, ` +
+              `creatorSegs=${captionOpts.creatorSegments?.length || 0}, ` +
+              `trackSegs=${captionOpts.trackSegments?.reduce((n, t) => n + t.segments.length, 0) || 0}`
+          );
+        }
+      }
+
+      // 4. Render each layout
+
+      for (const layout of layouts) {
+        const output = composition.outputs.find((o) => o.layout === layout);
+        if (!output) continue;
+
+        await prisma.compositionOutput.update({
+          where: { id: output.id },
+          data: { status: 'rendering' },
+        });
+
+        console.log(`🎥 Rendering ${layout} layout...`);
+        const s3Key = `compositions/${compositionId}/rendered/${layout}.mp4`;
+
+        try {
+          const result = await costTracker.track(
+            'ffmpeg_render',
+            () =>
+              renderComposition(
+                {
+                  layout: layout as 'mobile' | 'landscape',
+                  creatorPath,
+                  creatorDurationS: composition.creatorDurationS || 60,
+                  creatorTrimStartS: composition.creatorTrimStartS,
+                  creatorTrimEndS: composition.creatorTrimEndS,
+                  tracks: trackInfos,
+                  audioMode: composition.audioMode as 'creator' | 'reference' | 'both',
+                  creatorVolume: composition.creatorVolume,
+                  referenceVolume: composition.referenceVolume,
+                  captions: captionOpts,
+                },
+                s3Key
+              ),
+            (renderResult) => {
+              // Also track S3 upload cost
+              costTracker.add({
+                stage: 's3_upload',
+                provider: 's3',
+                estimatedCostUsd: estimateS3Cost(10 * 1024 * 1024), // ~10MB estimate
+                metadata: { s3Key },
+              });
+              return {
+                provider: 'ffmpeg',
+                estimatedCostUsd: 0,
+              };
+            }
+          );
+
+          await prisma.compositionOutput.update({
+            where: { id: output.id },
+            data: {
+              status: 'completed',
+              s3Key: result.s3Key,
+              s3Url: result.s3Url,
+              durationMs: result.durationMs,
+            },
+          });
+
+          console.log(`✅ ${layout} render complete: ${result.s3Url}`);
+
+          // Queue transcription for the completed output
+          try {
+            await queueGenericTranscriptionJob({
+              s3Url: result.s3Url,
+              targetModel: 'CompositionOutput',
+              targetId: output.id,
+            });
+            console.log(`📝 Queued transcription for ${layout} output`);
+          } catch (queueErr) {
+            console.warn('⚠️ Failed to queue output transcription (non-fatal):', queueErr);
+          }
+        } catch (renderErr) {
+          const errMsg = renderErr instanceof Error ? renderErr.message : String(renderErr);
+          console.error(`❌ ${layout} render failed:`, errMsg);
+
+          await prisma.compositionOutput.update({
+            where: { id: output.id },
+            data: { status: 'failed', renderError: errMsg },
+          });
+        }
+      }
+
+      // 4. Update composition status
+      const updatedOutputs = await prisma.compositionOutput.findMany({
+        where: { compositionId },
+      });
+      const allCompleted = updatedOutputs.every((o) => o.status === 'completed');
+      const anyFailed = updatedOutputs.some((o) => o.status === 'failed');
+
+      await prisma.composition.update({
+        where: { id: compositionId },
+        data: {
+          status: allCompleted ? 'completed' : anyFailed ? 'failed' : 'completed',
+        },
+      });
+
+      console.log(
+        `🏁 Reaction compose job complete for ${compositionId} (${Date.now() - startMs}ms)`
+      );
+
+      // 5. Auto-generate thumbnail assets (non-fatal)
+      if (allCompleted) {
+        try {
+          const referenceTrack = composition.tracks[0];
+          if (referenceTrack?.s3Url && composition.creatorS3Url) {
+            console.log('🖼️ Auto-generating thumbnail assets...');
+            const { generateThumbnailAssets, compositeThumbnailSharp } =
+              await import('../../shared/util/thumbnailGenerator');
+
+            const { referenceFrames, cutouts } = await generateThumbnailAssets({
+              compositionId,
+              referenceS3Url: referenceTrack.s3Url,
+              creatorS3Url: composition.creatorS3Url,
+              creatorTrimStartS: composition.creatorTrimStartS,
+              creatorDurationS: composition.creatorDurationS || undefined,
+            });
+
+            if (referenceFrames.length > 0 || cutouts.length > 0) {
+              // Delete existing assets for re-renders
+              await prisma.thumbnailAsset.deleteMany({
+                where: { compositionId },
+              });
+
+              // Store raw assets
+              const allAssets = [...referenceFrames, ...cutouts];
+              await prisma.thumbnailAsset.createMany({
+                data: allAssets.map((a) => ({
+                  compositionId,
+                  type: a.type,
+                  s3Key: a.s3Key,
+                  s3Url: a.s3Url,
+                  frameTimestampS: a.frameTimestampS,
+                  visionScore: a.visionScore ?? null,
+                })),
+              });
+
+              console.log(
+                `✅ Stored ${referenceFrames.length} reference frames + ${cutouts.length} cutouts`
+              );
+
+              // Auto-composite best ref + best cutout as the default thumbnail
+              if (referenceFrames.length > 0 && cutouts.length > 0) {
+                try {
+                  const bestRef = referenceFrames.reduce((a, b) =>
+                    (b.visionScore ?? 0) > (a.visionScore ?? 0) ? b : a
+                  );
+                  const bestCutout = cutouts.reduce((a, b) =>
+                    (b.visionScore ?? 0) > (a.visionScore ?? 0) ? b : a
+                  );
+
+                  const nodeFetch = require('node-fetch');
+                  const [refRes, cutoutRes] = await Promise.all([
+                    nodeFetch(bestRef.s3Url),
+                    nodeFetch(bestCutout.s3Url),
+                  ]);
+                  const [refBuf, cutoutBuf] = await Promise.all([
+                    refRes.buffer(),
+                    cutoutRes.buffer(),
+                  ]);
+
+                  const composited = await compositeThumbnailSharp(
+                    refBuf,
+                    cutoutBuf,
+                    'right',
+                    'large'
+                  );
+
+                  // Upload composited thumbnail
+                  const { S3Client } = await import('@aws-sdk/client-s3');
+                  const { Upload } = await import('@aws-sdk/lib-storage');
+                  const region = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-2';
+                  const bucket = process.env.S3_BUCKET || 'clips-genie-uploads';
+                  const s3 = new S3Client({ region });
+                  const { randomUUID } = await import('crypto');
+
+                  const thumbS3Key = `compositions/${compositionId}/thumbnails/${randomUUID()}.png`;
+                  const upload = new Upload({
+                    client: s3,
+                    params: {
+                      Bucket: bucket,
+                      Key: thumbS3Key,
+                      Body: composited,
+                      ContentType: 'image/png',
+                    },
+                  });
+                  await upload.done();
+
+                  const thumbS3Url = `https://${bucket}.s3.${region}.amazonaws.com/${thumbS3Key}`;
+
+                  // Delete old thumbnails and create the auto-composited one as selected
+                  await prisma.compositionThumbnail.deleteMany({
+                    where: { compositionId },
+                  });
+                  await prisma.compositionThumbnail.create({
+                    data: {
+                      compositionId,
+                      s3Key: thumbS3Key,
+                      s3Url: thumbS3Url,
+                      hookText: '',
+                      frameTimestampS: bestRef.frameTimestampS,
+                      visionScore: bestRef.visionScore ?? null,
+                      selected: true,
+                    },
+                  });
+
+                  console.log('✅ Auto-composited default thumbnail');
+                } catch (compErr) {
+                  console.warn(
+                    '⚠️ Auto-composite failed (non-fatal):',
+                    compErr instanceof Error ? compErr.message : compErr
+                  );
+                }
+              }
+            } else {
+              console.warn('⚠️ Thumbnail asset generation produced no results');
+            }
+          }
+        } catch (thumbErr) {
+          console.error(
+            '⚠️ Thumbnail generation failed (non-fatal):',
+            thumbErr instanceof Error ? thumbErr.message : thumbErr
+          );
+        }
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('❌ Reaction compose failed:', errorMessage);
+
+      await prisma.composition.update({
+        where: { id: compositionId },
+        data: { status: 'failed' },
+      });
+
+      throw err;
+    } finally {
+      // Flush cost events
+      try {
+        await costTracker.flush();
+      } catch (costErr) {
+        console.error('⚠️ Cost tracking flush failed (non-fatal):', costErr);
+      }
+
+      // Cleanup temp files
+      const fs = await import('fs');
+      for (const f of tempFiles) {
+        try {
+          if (fs.existsSync(f)) {
+            fs.unlinkSync(f);
+          }
+        } catch {}
+      }
+      if (tempFiles.length > 0) {
+        console.log(`🧹 Cleaned up ${tempFiles.length} temp files.`);
+      }
+    }
+  },
+  { connection: redisConnection as any }
+);
+
+// --- Generic Transcription Worker ---
+// Transcribes any S3 video and saves the transcript to the target model.
+// Used for composition tracks, creator videos, and render outputs.
+
+new Worker<GenericTranscriptionJob>(
+  'generic-transcription',
+  async (job) => {
+    const { s3Url, targetModel, targetId } = job.data;
+
+    console.log(`📝 [generic-transcription] ${targetModel}:${targetId}`);
+
+    try {
+      const result = await transcribeFromS3Url(s3Url);
+
+      switch (targetModel) {
+        case 'CompositionTrack':
+          await prisma.compositionTrack.update({
+            where: { id: targetId },
+            data: {
+              transcript: result.transcript,
+              transcriptJson: result.segments as any,
+            },
+          });
+          break;
+        case 'CompositionOutput':
+          await prisma.compositionOutput.update({
+            where: { id: targetId },
+            data: {
+              transcript: result.transcript,
+              transcriptJson: result.segments as any,
+            },
+          });
+          break;
+        case 'Composition':
+          await prisma.composition.update({
+            where: { id: targetId },
+            data: {
+              creatorTranscript: result.transcript,
+              creatorTranscriptJson: result.segments as any,
+            },
+          });
+          break;
+      }
+
+      console.log(
+        `✅ [generic-transcription] Saved transcript for ${targetModel}:${targetId} (${result.transcript.length} chars)`
+      );
+    } catch (err) {
+      console.error(
+        `❌ [generic-transcription] Failed for ${targetModel}:${targetId}:`,
+        err instanceof Error ? err.message : err
+      );
+      // Non-fatal — don't rethrow so the job doesn't retry
+    }
+  },
+  { connection: redisConnection as any }
+);
+
+// --- Thumbnail Generation Worker ---
+// Manual regeneration of composition thumbnail assets via queue.
+
+new Worker<ThumbnailGenerationJob>(
+  'thumbnail-generation',
+  async (job) => {
+    const { compositionId } = job.data;
+    console.log(`🖼️ [thumbnail-generation] Processing ${compositionId}`);
+
+    try {
+      const composition = await prisma.composition.findUnique({
+        where: { id: compositionId },
+        include: { outputs: true, tracks: { orderBy: { sortOrder: 'asc' } } },
+      });
+
+      if (!composition) {
+        console.error(`❌ [thumbnail-generation] Composition ${compositionId} not found`);
+        return;
+      }
+
+      const referenceTrack = composition.tracks[0];
+
+      if (!referenceTrack?.s3Url || !composition.creatorS3Url) {
+        console.warn(`⚠️ [thumbnail-generation] Missing reference track or creator video`);
+        return;
+      }
+
+      const { generateThumbnailAssets } = await import('../../shared/util/thumbnailGenerator');
+
+      const { referenceFrames, cutouts } = await generateThumbnailAssets({
+        compositionId,
+        referenceS3Url: referenceTrack.s3Url,
+        creatorS3Url: composition.creatorS3Url,
+        creatorTrimStartS: composition.creatorTrimStartS,
+        creatorDurationS: composition.creatorDurationS || undefined,
+      });
+
+      if (referenceFrames.length > 0 || cutouts.length > 0) {
+        // Delete existing assets
+        await prisma.thumbnailAsset.deleteMany({
+          where: { compositionId },
+        });
+
+        const allAssets = [...referenceFrames, ...cutouts];
+        await prisma.thumbnailAsset.createMany({
+          data: allAssets.map((a) => ({
+            compositionId,
+            type: a.type,
+            s3Key: a.s3Key,
+            s3Url: a.s3Url,
+            frameTimestampS: a.frameTimestampS,
+            visionScore: a.visionScore ?? null,
+          })),
+        });
+
+        console.log(
+          `✅ [thumbnail-generation] Generated ${referenceFrames.length} refs + ${cutouts.length} cutouts`
+        );
+      } else {
+        console.warn(`⚠️ [thumbnail-generation] No assets generated`);
+      }
+    } catch (err) {
+      console.error(`❌ [thumbnail-generation] Failed:`, err instanceof Error ? err.message : err);
+      // Non-fatal — don't rethrow
     }
   },
   { connection: redisConnection as any }

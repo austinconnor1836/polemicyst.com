@@ -2,7 +2,7 @@
 
 import React from 'react';
 import cn from 'classnames';
-import { useHamburger } from '../context/HamburgerContext'; // Import context
+import { useHamburger } from '../context/HamburgerContext';
 import { IconButton } from '@mui/material';
 import { SideNavItem } from '../ui/types';
 import Link from 'next/link';
@@ -14,35 +14,55 @@ import WorkIcon from '@mui/icons-material/Work';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import SettingsIcon from '@mui/icons-material/Settings';
+import VideoCallIcon from '@mui/icons-material/VideoCall';
+import LoginIcon from '@mui/icons-material/Login';
 import { useSession } from 'next-auth/react';
 
 interface SidePanelProps {
   onSelectItem?: (item: string) => void;
 }
 
-const sideNavItems: SideNavItem[] = [
+const publicNavItems: SideNavItem[] = [
+  { label: 'Home', element: <HomeIcon />, href: '/' },
+  { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
+];
+
+const authenticatedNavItems: SideNavItem[] = [
   { label: 'Dashboard', element: <HomeIcon />, href: '/connected-accounts' },
   { label: 'Automation', element: <SettingsIcon />, href: '/settings/automation' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
   { label: 'NCAA Seeds', element: <SportsBasketballIcon />, href: '/ncaa-seed-probability' },
+  { label: 'Reactions', element: <VideoCallIcon />, href: '/reactions' },
   { label: 'Billing', element: <PaymentIcon />, href: '/billing' },
   { label: 'Jobs', element: <WorkIcon />, href: '/jobs' },
 ];
 
+const signInItem: SideNavItem = {
+  label: 'Sign In',
+  element: <LoginIcon />,
+  href: '/auth/signin',
+};
+
 const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
   const { isOpen, closeMenu } = useHamburger();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+  const isAuthenticated = status === 'authenticated';
 
   const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
   const isAdmin = session?.user?.email === adminEmail;
 
-  const navItems = isAdmin
-    ? [
-        ...sideNavItems,
-        { label: 'Costs', element: <BarChartIcon />, href: '/admin/costs' },
-        { label: 'Logs', element: <ListAltIcon />, href: '/admin/logs' },
-      ]
-    : sideNavItems;
+  let navItems: SideNavItem[];
+  if (!isAuthenticated) {
+    navItems = [...publicNavItems, signInItem];
+  } else if (isAdmin) {
+    navItems = [
+      ...authenticatedNavItems,
+      { label: 'Costs', element: <BarChartIcon />, href: '/admin/costs' },
+      { label: 'Logs', element: <ListAltIcon />, href: '/admin/logs' },
+    ];
+  } else {
+    navItems = authenticatedNavItems;
+  }
 
   return (
     <div

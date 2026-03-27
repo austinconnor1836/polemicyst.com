@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Composition" ADD COLUMN     "creatorTrimEndS" DOUBLE PRECISION,
+ADD COLUMN     "creatorTrimStartS" DOUBLE PRECISION NOT NULL DEFAULT 0;

@@ -1047,6 +1047,137 @@ public struct CreateSocialPostRequest: Encodable {
     }
 }
 
+// MARK: - Compositions
+
+public struct Composition: Identifiable, Codable {
+    public let id: String
+    public let userId: String
+    public let title: String
+    public let mode: String
+    public let status: String
+    public let audioMode: String
+    public let creatorVolume: Double
+    public let referenceVolume: Double
+    public let creatorS3Key: String?
+    public let creatorS3Url: String?
+    public let creatorDurationS: Double?
+    public let creatorWidth: Int?
+    public let creatorHeight: Int?
+    public let creatorTrimStartS: Double
+    public let creatorTrimEndS: Double?
+    public let tracks: [CompositionTrack]?
+    public let outputs: [CompositionOutput]?
+    public let createdAt: Date
+    public let updatedAt: Date
+}
+
+public struct CompositionTrack: Identifiable, Codable {
+    public let id: String
+    public let compositionId: String
+    public let label: String?
+    public let s3Key: String
+    public let s3Url: String
+    public let durationS: Double
+    public let width: Int?
+    public let height: Int?
+    public let startAtS: Double
+    public let trimStartS: Double
+    public let trimEndS: Double?
+    public let sortOrder: Int
+    public let hasAudio: Bool
+    public let createdAt: Date
+    public let updatedAt: Date
+}
+
+public struct CompositionOutput: Identifiable, Codable {
+    public let id: String
+    public let compositionId: String
+    public let layout: String
+    public let s3Key: String?
+    public let s3Url: String?
+    public let status: String
+    public let renderError: String?
+    public let durationMs: Int?
+    public let fileSizeBytes: Int64?
+    public let createdAt: Date
+    public let updatedAt: Date
+}
+
+public struct CreateCompositionRequest: Encodable {
+    public let title: String?
+    public init(title: String? = nil) { self.title = title }
+}
+
+public struct UpdateCompositionRequest: Encodable {
+    public let title: String?
+    public let audioMode: String?
+    public let creatorS3Key: String?
+    public let creatorS3Url: String?
+    public let creatorDurationS: Double?
+    public let creatorWidth: Int?
+    public let creatorHeight: Int?
+    public let creatorTrimStartS: Double?
+    public let creatorTrimEndS: Double?
+
+    public init(
+        title: String? = nil, audioMode: String? = nil,
+        creatorS3Key: String? = nil, creatorS3Url: String? = nil,
+        creatorDurationS: Double? = nil, creatorWidth: Int? = nil,
+        creatorHeight: Int? = nil, creatorTrimStartS: Double? = nil,
+        creatorTrimEndS: Double? = nil
+    ) {
+        self.title = title
+        self.audioMode = audioMode
+        self.creatorS3Key = creatorS3Key
+        self.creatorS3Url = creatorS3Url
+        self.creatorDurationS = creatorDurationS
+        self.creatorWidth = creatorWidth
+        self.creatorHeight = creatorHeight
+        self.creatorTrimStartS = creatorTrimStartS
+        self.creatorTrimEndS = creatorTrimEndS
+    }
+}
+
+public struct CreateTrackRequest: Encodable {
+    public let s3Key: String
+    public let s3Url: String
+    public let durationS: Double
+    public let label: String?
+    public let width: Int?
+    public let height: Int?
+    public let hasAudio: Bool?
+
+    public init(s3Key: String, s3Url: String, durationS: Double,
+                label: String? = nil, width: Int? = nil, height: Int? = nil,
+                hasAudio: Bool? = nil) {
+        self.s3Key = s3Key
+        self.s3Url = s3Url
+        self.durationS = durationS
+        self.label = label
+        self.width = width
+        self.height = height
+        self.hasAudio = hasAudio
+    }
+}
+
+public struct RenderRequest: Encodable {
+    public let layouts: [String]?
+    public init(layouts: [String]? = nil) { self.layouts = layouts }
+}
+
+public struct RenderStatusResponse: Codable {
+    public let id: String
+    public let status: String
+    public let outputs: [CompositionOutput]
+}
+
+public struct ProbeResponse: Codable {
+    public let durationS: Double
+    public let width: Int
+    public let height: Int
+    public let hasAudio: Bool
+}
+
 // MARK: - API Error
 
 public struct APIErrorResponse: Codable {

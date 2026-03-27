@@ -117,6 +117,10 @@ new Worker(
               targetPlatform: settings.targetPlatform || 'reels',
               contentStyle: settings.contentStyle || 'auto',
               llmProvider: settings.llmProvider,
+              showTimestamp: settings.showTimestamp ?? false,
+              captionsEnabled: settings.captionsEnabled ?? false,
+              captionFont: settings.captionFont,
+              captionFontSize: settings.captionFontSize,
               ...strictnessConfig,
             },
             { jobId: resolvedFeedVideoId, removeOnComplete: true, removeOnFail: true }
