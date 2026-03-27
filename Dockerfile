@@ -31,6 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOSTNAME=0.0.0.0
 
 COPY --from=base /app/.next/standalone ./
 COPY --from=base /app/.next/static ./.next/static
