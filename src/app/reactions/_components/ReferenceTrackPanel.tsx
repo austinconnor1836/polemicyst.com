@@ -20,6 +20,7 @@ interface ReferenceTrackPanelProps {
   track: Track;
   index: number;
   mode: 'pre-synced' | 'timeline';
+  isLocal?: boolean;
   onUpdate: (trackId: string, data: Partial<Track>) => void;
   onRemove: (trackId: string) => void;
   disabled?: boolean;
@@ -30,6 +31,7 @@ interface ReferenceTrackPanelProps {
 export function ReferenceTrackPanel({
   track,
   index,
+  isLocal,
   onRemove,
   disabled,
   deleting,
@@ -43,9 +45,16 @@ export function ReferenceTrackPanel({
       src={track.s3Url}
       label={track.label || `Reference ${index + 1}`}
       badge={
-        <Badge variant="secondary" className="text-[11px] shrink-0">
-          {effectiveDuration.toFixed(1)}s
-        </Badge>
+        <div className="flex gap-1">
+          <Badge variant="secondary" className="text-[11px] shrink-0">
+            {effectiveDuration.toFixed(1)}s
+          </Badge>
+          {isLocal && (
+            <Badge className="text-[11px] bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+              Local
+            </Badge>
+          )}
+        </div>
       }
       sublabel={!track.hasAudio ? 'No audio' : undefined}
       onClick={onClick}

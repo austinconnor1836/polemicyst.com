@@ -8,6 +8,8 @@ import { Trash2, Loader2 } from 'lucide-react';
 
 interface CreatorVideoPanelProps {
   s3Url: string;
+  /** When true, a badge indicates the video is only local (not yet uploaded) */
+  isLocal?: boolean;
   durationS?: number;
   onTimeUpdate?: (currentTime: number) => void;
   onClick?: () => void;
@@ -23,6 +25,7 @@ function formatDuration(s: number): string {
 
 export function CreatorVideoPanel({
   s3Url,
+  isLocal,
   durationS,
   onTimeUpdate,
   onClick,
@@ -37,9 +40,16 @@ export function CreatorVideoPanel({
       src={s3Url}
       label="Creator Video"
       badge={
-        <Badge variant="secondary" className="text-[11px]">
-          Commentary
-        </Badge>
+        <div className="flex gap-1">
+          <Badge variant="secondary" className="text-[11px]">
+            Commentary
+          </Badge>
+          {isLocal && (
+            <Badge className="text-[11px] bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+              Local
+            </Badge>
+          )}
+        </div>
       }
       sublabel={durationS != null ? formatDuration(durationS) : undefined}
       videoRef={videoRef}

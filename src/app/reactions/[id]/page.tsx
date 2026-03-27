@@ -8,15 +8,17 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, Loader2, RefreshCw, Share2 } from 'lucide-react';
 import { ModeSelector } from '../_components/ModeSelector';
-import { VideoUploader } from '../_components/VideoUploader';
+import { VideoUploader, type DeferredFileData } from '../_components/VideoUploader';
 import { CreatorVideoPanel } from '../_components/CreatorVideoPanel';
 import { ReferenceTrackPanel } from '../_components/ReferenceTrackPanel';
 import { TimelineEditor } from '../_components/TimelineEditor';
 import { AudioMixPanel } from '../_components/AudioMixPanel';
-import { RenderControls } from '../_components/RenderControls';
+import { RenderControls, type LocalOutput } from '../_components/RenderControls';
 import { ThumbnailPanel } from '../_components/ThumbnailPanel';
 import { TrimModal } from '../_components/TrimModal';
 import { PublishModal } from '@/components/PublishModal';
+import { probeVideoFile } from '../_lib/client-probe';
+import { uploadFileToS3 } from '../_lib/upload-to-s3';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
@@ -64,9 +66,23 @@ interface Composition {
   outputs: Output[];
 }
 
-/**
- * Always render both mobile (9:16) and landscape (16:9) outputs.
- */
+/** Tracks a locally-selected file not yet uploaded to S3 */
+interface PendingFile {
+  file: File;
+  blobUrl: string;
+}
+
+const LOCAL_ID_PREFIX = 'local-';
+
+function isLocalId(id: string): boolean {
+  return id.startsWith(LOCAL_ID_PREFIX);
+}
+
+let localIdCounter = 0;
+function nextLocalId(): string {
+  return `${LOCAL_ID_PREFIX}${++localIdCounter}`;
+}
+
 function detectOutputLayouts(): ('mobile' | 'landscape')[] {
   return ['mobile', 'landscape'];
 }
@@ -104,7 +120,6 @@ export default function CompositionEditorPage() {
   const [composition, setComposition] = useState<Composition | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [addingTrack, setAddingTrack] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [deletingCreator, setDeletingCreator] = useState(false);
   const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null);
@@ -121,6 +136,13 @@ export default function CompositionEditorPage() {
     title: string;
   } | null>(null);
 
+  // Pending local files: creator video and reference tracks not yet uploaded to S3
+  const [pendingCreator, setPendingCreator] = useState<PendingFile | null>(null);
+  const [pendingTracks, setPendingTracks] = useState<Map<string, PendingFile>>(new Map());
+
+  // Rendered output blobs (downloaded from server after render)
+  const [localOutputs, setLocalOutputs] = useState<Map<string, LocalOutput>>(new Map());
+
   const fetchComposition = useCallback(async () => {
     try {
       const res = await fetch(`/api/compositions/${compositionId}`);
@@ -133,7 +155,7 @@ export default function CompositionEditorPage() {
       }
       const data = await res.json();
       setComposition(data);
-    } catch (err) {
+    } catch {
       toast.error('Failed to load composition');
     } finally {
       setLoading(false);
@@ -143,6 +165,16 @@ export default function CompositionEditorPage() {
   useEffect(() => {
     fetchComposition();
   }, [fetchComposition]);
+
+  // Cleanup blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      if (pendingCreator) URL.revokeObjectURL(pendingCreator.blobUrl);
+      pendingTracks.forEach((p) => URL.revokeObjectURL(p.blobUrl));
+      localOutputs.forEach((lo) => URL.revokeObjectURL(lo.blobUrl));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const save = useCallback(
     async (updates: Partial<Composition>) => {
@@ -156,7 +188,7 @@ export default function CompositionEditorPage() {
         if (!res.ok) throw new Error('Save failed');
         const data = await res.json();
         setComposition(data);
-      } catch (err) {
+      } catch {
         toast.error('Failed to save');
       } finally {
         setSaving(false);
@@ -184,6 +216,36 @@ export default function CompositionEditorPage() {
     []
   );
 
+  // --- Creator video: deferred file selection ---
+  const handleCreatorFileSelected = useCallback(
+    async (data: DeferredFileData) => {
+      try {
+        const probe = await probeVideoFile(data.file);
+
+        // Revoke old blob URL if replacing
+        if (pendingCreator) URL.revokeObjectURL(pendingCreator.blobUrl);
+
+        setPendingCreator({ file: data.file, blobUrl: data.blobUrl });
+
+        // Update composition state with local preview data
+        setComposition((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            creatorS3Key: null,
+            creatorS3Url: data.blobUrl,
+            creatorDurationS: probe.durationS,
+            creatorWidth: probe.width,
+            creatorHeight: probe.height,
+          };
+        });
+      } catch {
+        toast.error('Failed to read video file');
+      }
+    },
+    [pendingCreator]
+  );
+
   const handleCreatorUploaded = useCallback(
     async (data: { s3Key: string; s3Url: string }) => {
       const probe = await probeVideo(data.s3Key);
@@ -198,9 +260,45 @@ export default function CompositionEditorPage() {
     [save, probeVideo]
   );
 
+  // --- Reference tracks: deferred file selection ---
+  const handleTrackFileSelected = useCallback(async (data: DeferredFileData) => {
+    try {
+      const probe = await probeVideoFile(data.file);
+      const localId = nextLocalId();
+
+      setPendingTracks((prev) => {
+        const next = new Map(prev);
+        next.set(localId, { file: data.file, blobUrl: data.blobUrl });
+        return next;
+      });
+
+      setComposition((prev) => {
+        if (!prev) return prev;
+        const newTrack: Track = {
+          id: localId,
+          label: data.filename,
+          s3Key: '',
+          s3Url: data.blobUrl,
+          durationS: probe.durationS,
+          width: probe.width,
+          height: probe.height,
+          startAtS: 0,
+          trimStartS: 0,
+          trimEndS: null,
+          sortOrder: prev.tracks.length,
+          hasAudio: probe.hasAudio,
+        };
+        return { ...prev, tracks: [...prev.tracks, newTrack] };
+      });
+
+      toast.success('Reference clip added (local)');
+    } catch {
+      toast.error('Failed to read video file');
+    }
+  }, []);
+
   const handleAddTrack = useCallback(
     async (data: { s3Key: string; s3Url: string; filename: string }) => {
-      setAddingTrack(true);
       try {
         const probe = await probeVideo(data.s3Key);
         const res = await fetch(`/api/compositions/${compositionId}/tracks`, {
@@ -219,10 +317,8 @@ export default function CompositionEditorPage() {
         if (!res.ok) throw new Error('Failed to add track');
         await fetchComposition();
         toast.success('Reference track added');
-      } catch (err) {
+      } catch {
         toast.error('Failed to add track');
-      } finally {
-        setAddingTrack(false);
       }
     },
     [compositionId, fetchComposition, probeVideo]
@@ -230,14 +326,8 @@ export default function CompositionEditorPage() {
 
   const handleUpdateTrack = useCallback(
     async (trackId: string, data: Partial<Track>) => {
-      try {
-        const res = await fetch(`/api/compositions/${compositionId}/tracks/${trackId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        });
-        if (!res.ok) throw new Error('Failed to update track');
-        // Update local state optimistically
+      if (isLocalId(trackId)) {
+        // Local track: update state only, no API call
         setComposition((prev) => {
           if (!prev) return prev;
           return {
@@ -245,7 +335,23 @@ export default function CompositionEditorPage() {
             tracks: prev.tracks.map((t) => (t.id === trackId ? { ...t, ...data } : t)),
           };
         });
-      } catch (err) {
+        return;
+      }
+      try {
+        const res = await fetch(`/api/compositions/${compositionId}/tracks/${trackId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        if (!res.ok) throw new Error('Failed to update track');
+        setComposition((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            tracks: prev.tracks.map((t) => (t.id === trackId ? { ...t, ...data } : t)),
+          };
+        });
+      } catch {
         toast.error('Failed to update track');
       }
     },
@@ -255,6 +361,24 @@ export default function CompositionEditorPage() {
   const handleRemoveTrack = useCallback(
     async (trackId: string) => {
       if (!confirm('Remove this reference track?')) return;
+
+      if (isLocalId(trackId)) {
+        // Local track: remove from state, revoke blob URL, no API call
+        setPendingTracks((prev) => {
+          const next = new Map(prev);
+          const pending = next.get(trackId);
+          if (pending) URL.revokeObjectURL(pending.blobUrl);
+          next.delete(trackId);
+          return next;
+        });
+        setComposition((prev) => {
+          if (!prev) return prev;
+          return { ...prev, tracks: prev.tracks.filter((t) => t.id !== trackId) };
+        });
+        toast.success('Track removed');
+        return;
+      }
+
       setDeletingTrackId(trackId);
       try {
         const res = await fetch(`/api/compositions/${compositionId}/tracks/${trackId}`, {
@@ -266,7 +390,7 @@ export default function CompositionEditorPage() {
           return { ...prev, tracks: prev.tracks.filter((t) => t.id !== trackId) };
         });
         toast.success('Track removed');
-      } catch (err) {
+      } catch {
         toast.error('Failed to remove track');
       } finally {
         setDeletingTrackId(null);
@@ -293,16 +417,106 @@ export default function CompositionEditorPage() {
     async (trimStartS: number, trimEndS: number) => {
       if (!trimTarget) return;
       if (trimTarget.type === 'creator') {
-        await save({ creatorTrimStartS: trimStartS, creatorTrimEndS: trimEndS } as any);
-        toast.success('Creator trim updated');
+        if (pendingCreator) {
+          // Local creator: update state only
+          setComposition((prev) => {
+            if (!prev) return prev;
+            return { ...prev, creatorTrimStartS: trimStartS, creatorTrimEndS: trimEndS };
+          });
+          toast.success('Creator trim updated');
+        } else {
+          await save({ creatorTrimStartS: trimStartS, creatorTrimEndS: trimEndS } as any);
+          toast.success('Creator trim updated');
+        }
       } else if (trimTarget.trackId) {
         await handleUpdateTrack(trimTarget.trackId, { trimStartS, trimEndS });
         toast.success('Track trim updated');
       }
       setTrimTarget(null);
     },
-    [trimTarget, save, handleUpdateTrack]
+    [trimTarget, save, handleUpdateTrack, pendingCreator]
   );
+
+  // --- Silently upload pending files before render ---
+  const handleBeforeRender = useCallback(async (): Promise<boolean> => {
+    const keyPrefix = `compositions/${compositionId}/raw`;
+    const hasPending = !!pendingCreator || pendingTracks.size > 0;
+    if (!hasPending) return true;
+
+    // 1. Upload creator if pending
+    if (pendingCreator) {
+      try {
+        const result = await uploadFileToS3(pendingCreator.file, keyPrefix);
+        const probe = await probeVideo(result.s3Key);
+
+        await save({
+          creatorS3Key: result.s3Key,
+          creatorS3Url: result.s3Url,
+          creatorDurationS: probe?.durationS ?? composition?.creatorDurationS ?? null,
+          creatorWidth: probe?.width ?? composition?.creatorWidth ?? null,
+          creatorHeight: probe?.height ?? composition?.creatorHeight ?? null,
+        } as any);
+
+        URL.revokeObjectURL(pendingCreator.blobUrl);
+        setPendingCreator(null);
+      } catch (err) {
+        console.error('Creator upload failed:', err);
+        toast.error('Failed to upload creator video');
+        return false;
+      }
+    }
+
+    // 2. Upload pending tracks
+    const trackEntries = Array.from(pendingTracks.entries());
+    for (const [localId, pending] of trackEntries) {
+      try {
+        const localTrack = composition?.tracks.find((t) => t.id === localId);
+        const result = await uploadFileToS3(pending.file, keyPrefix);
+        const probe = await probeVideo(result.s3Key);
+
+        const res = await fetch(`/api/compositions/${compositionId}/tracks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            s3Key: result.s3Key,
+            s3Url: result.s3Url,
+            label: localTrack?.label || pending.file.name,
+            durationS: probe?.durationS ?? localTrack?.durationS ?? 10,
+            width: probe?.width ?? localTrack?.width ?? null,
+            height: probe?.height ?? localTrack?.height ?? null,
+            hasAudio: probe?.hasAudio ?? localTrack?.hasAudio ?? true,
+            startAtS: localTrack?.startAtS ?? 0,
+            trimStartS: localTrack?.trimStartS ?? 0,
+            trimEndS: localTrack?.trimEndS ?? null,
+          }),
+        });
+        if (!res.ok) throw new Error('Failed to create track');
+
+        URL.revokeObjectURL(pending.blobUrl);
+        setPendingTracks((prev) => {
+          const next = new Map(prev);
+          next.delete(localId);
+          return next;
+        });
+      } catch (err) {
+        console.error(`Track upload failed for ${localId}:`, err);
+        toast.error('Failed to upload reference track');
+        return false;
+      }
+    }
+
+    // Re-fetch composition from server to get authoritative state
+    await fetchComposition();
+    return true;
+  }, [
+    compositionId,
+    pendingCreator,
+    pendingTracks,
+    composition,
+    save,
+    probeVideo,
+    fetchComposition,
+  ]);
 
   if (loading) {
     return (
@@ -321,7 +535,11 @@ export default function CompositionEditorPage() {
   }
 
   const isRendering = composition.status === 'rendering';
-  const completedOutputs = composition.outputs.filter((o) => o.status === 'completed' && o.s3Url);
+  const completedOutputs = composition.outputs.filter(
+    (o) => o.status === 'completed' && (o.s3Url || localOutputs.has(o.layout))
+  );
+  const hasCreatorVideo = !!pendingCreator || !!composition.creatorS3Key;
+  const totalTracks = composition.tracks.length;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 space-y-4">
@@ -367,10 +585,11 @@ export default function CompositionEditorPage() {
           <CardDescription>Your commentary footage</CardDescription>
         </CardHeader>
         <CardContent>
-          {composition.creatorS3Url ? (
+          {composition.creatorS3Url || pendingCreator ? (
             <div className="max-w-sm">
               <CreatorVideoPanel
-                s3Url={composition.creatorS3Url}
+                s3Url={pendingCreator?.blobUrl || composition.creatorS3Url!}
+                isLocal={!!pendingCreator}
                 durationS={composition.creatorDurationS ?? undefined}
                 onTimeUpdate={setCurrentTime}
                 onClick={
@@ -378,7 +597,7 @@ export default function CompositionEditorPage() {
                     ? () =>
                         setTrimTarget({
                           type: 'creator',
-                          src: composition.creatorS3Url!,
+                          src: pendingCreator?.blobUrl || composition.creatorS3Url!,
                           durationS: composition.creatorDurationS!,
                           trimStartS: composition.creatorTrimStartS,
                           trimEndS: composition.creatorTrimEndS ?? null,
@@ -389,6 +608,25 @@ export default function CompositionEditorPage() {
                 deletingCreator={deletingCreator}
                 onDelete={async () => {
                   if (!confirm('Delete this creator video?')) return;
+                  if (pendingCreator) {
+                    URL.revokeObjectURL(pendingCreator.blobUrl);
+                    setPendingCreator(null);
+                    setComposition((prev) => {
+                      if (!prev) return prev;
+                      return {
+                        ...prev,
+                        creatorS3Key: null,
+                        creatorS3Url: null,
+                        creatorDurationS: null,
+                        creatorWidth: null,
+                        creatorHeight: null,
+                        creatorTrimStartS: 0,
+                        creatorTrimEndS: null,
+                      };
+                    });
+                    toast.success('Creator video removed');
+                    return;
+                  }
                   setDeletingCreator(true);
                   try {
                     await save({
@@ -412,6 +650,8 @@ export default function CompositionEditorPage() {
           ) : (
             <VideoUploader
               label="Upload your commentary video"
+              deferred
+              onFileSelected={handleCreatorFileSelected}
               onUploaded={handleCreatorUploaded}
               keyPrefix={`compositions/${compositionId}/raw`}
             />
@@ -426,9 +666,7 @@ export default function CompositionEditorPage() {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <CardTitle>Reference Clips</CardTitle>
-                {composition.tracks.length > 0 && (
-                  <Badge variant="secondary">{composition.tracks.length}/10</Badge>
-                )}
+                {totalTracks > 0 && <Badge variant="secondary">{totalTracks}/10</Badge>}
               </div>
               <CardDescription>Source videos you&#39;re reacting to</CardDescription>
             </div>
@@ -441,6 +679,7 @@ export default function CompositionEditorPage() {
                 key={track.id}
                 track={track}
                 index={i}
+                isLocal={isLocalId(track.id)}
                 mode={composition.mode as 'pre-synced' | 'timeline'}
                 onUpdate={handleUpdateTrack}
                 onRemove={handleRemoveTrack}
@@ -460,11 +699,12 @@ export default function CompositionEditorPage() {
               />
             ))}
 
-            {composition.tracks.length < 10 && (
+            {totalTracks < 10 && (
               <VideoUploader
-                label={addingTrack ? 'Adding track...' : 'Add reference clip'}
+                label="Add reference clip"
+                deferred
+                onFileSelected={handleTrackFileSelected}
                 onUploaded={handleAddTrack}
-                className={addingTrack ? 'pointer-events-none opacity-50' : ''}
                 keyPrefix={`compositions/${compositionId}/raw`}
               />
             )}
@@ -473,23 +713,21 @@ export default function CompositionEditorPage() {
       </Card>
 
       {/* Timeline (only in timeline mode) */}
-      {composition.mode === 'timeline' &&
-        composition.tracks.length > 0 &&
-        composition.creatorDurationS && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Timeline</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TimelineEditor
-                tracks={composition.tracks}
-                creatorDurationS={composition.creatorDurationS}
-                currentTime={currentTime}
-                onTrackMove={handleTrackMove}
-              />
-            </CardContent>
-          </Card>
-        )}
+      {composition.mode === 'timeline' && totalTracks > 0 && composition.creatorDurationS && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Timeline</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TimelineEditor
+              tracks={composition.tracks}
+              creatorDurationS={composition.creatorDurationS}
+              currentTime={currentTime}
+              onTrackMove={handleTrackMove}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Audio mix */}
       <Card>
@@ -531,8 +769,8 @@ export default function CompositionEditorPage() {
             compositionId={compositionId}
             compositionStatus={composition.status}
             outputs={composition.outputs}
-            hasCreator={!!composition.creatorS3Key}
-            hasTracks={composition.tracks.length > 0}
+            hasCreator={hasCreatorVideo}
+            hasTracks={totalTracks > 0}
             hasPortraitRef={composition.tracks.some(
               (t) => t.width != null && t.height != null && t.height > t.width
             )}
@@ -543,6 +781,9 @@ export default function CompositionEditorPage() {
             onStatusChange={handleStatusChange}
             compositionTitle={composition.title}
             trackLabels={composition.tracks.map((t) => t.label || '').filter(Boolean)}
+            onBeforeRender={handleBeforeRender}
+            localOutputs={localOutputs}
+            onLocalOutputsChange={setLocalOutputs}
           />
         </CardContent>
       </Card>
@@ -590,10 +831,13 @@ export default function CompositionEditorPage() {
       <PublishModal
         open={publishAllOpen}
         onOpenChange={setPublishAllOpen}
-        mediaItems={completedOutputs.map((o) => ({
-          url: o.s3Url!,
-          label: o.layout,
-        }))}
+        mediaItems={completedOutputs.map((o) => {
+          const lo = localOutputs.get(o.layout);
+          return {
+            url: lo?.blobUrl || o.s3Url!,
+            label: o.layout,
+          };
+        })}
         generationContext={{
           title: composition.title,
           trackLabels: composition.tracks.map((t) => t.label || '').filter(Boolean),
