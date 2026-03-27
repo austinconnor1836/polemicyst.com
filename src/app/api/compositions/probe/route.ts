@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { spawn } from 'child_process';
 import AWS from 'aws-sdk';
+import { detectEmbeddedPortrait } from '@shared/util/embeddedPortraitDetect';
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
@@ -101,7 +102,18 @@ export async function POST(req: NextRequest) {
 
     const result = await ffprobe(presignedUrl);
 
-    return NextResponse.json(result);
+    // Detect embedded portrait video (landscape file with black sidebars around portrait content)
+    const embeddedPortrait = await detectEmbeddedPortrait(
+      presignedUrl,
+      result.width,
+      result.height,
+      result.durationS
+    );
+
+    return NextResponse.json({
+      ...result,
+      embeddedPortrait: embeddedPortrait.detected ? embeddedPortrait : undefined,
+    });
   } catch (err) {
     console.error('[POST /api/compositions/probe]', err);
     return NextResponse.json({ error: 'Failed to probe video' }, { status: 500 });

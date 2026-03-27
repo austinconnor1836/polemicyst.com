@@ -33,6 +33,11 @@ interface Track {
   trimEndS: number | null;
   sortOrder: number;
   hasAudio: boolean;
+  embeddedPortrait?: boolean;
+  cropX?: number | null;
+  cropY?: number | null;
+  cropW?: number | null;
+  cropH?: number | null;
 }
 
 interface Output {
@@ -168,7 +173,19 @@ export default function CompositionEditorPage() {
   const probeVideo = useCallback(
     async (
       s3Key: string
-    ): Promise<{ durationS: number; width: number; height: number; hasAudio: boolean } | null> => {
+    ): Promise<{
+      durationS: number;
+      width: number;
+      height: number;
+      hasAudio: boolean;
+      embeddedPortrait?: {
+        detected: boolean;
+        cropX: number;
+        cropY: number;
+        cropW: number;
+        cropH: number;
+      };
+    } | null> => {
       try {
         const res = await fetch('/api/compositions/probe', {
           method: 'POST',
@@ -203,6 +220,9 @@ export default function CompositionEditorPage() {
       setAddingTrack(true);
       try {
         const probe = await probeVideo(data.s3Key);
+        const ep = probe?.embeddedPortrait;
+        const trackWidth = ep?.detected ? ep.cropW : (probe?.width ?? null);
+        const trackHeight = ep?.detected ? ep.cropH : (probe?.height ?? null);
         const res = await fetch(`/api/compositions/${compositionId}/tracks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -211,9 +231,14 @@ export default function CompositionEditorPage() {
             s3Url: data.s3Url,
             label: data.filename,
             durationS: probe?.durationS ?? 10,
-            width: probe?.width ?? null,
-            height: probe?.height ?? null,
+            width: trackWidth,
+            height: trackHeight,
             hasAudio: probe?.hasAudio ?? true,
+            embeddedPortrait: ep?.detected ?? false,
+            cropX: ep?.detected ? ep.cropX : undefined,
+            cropY: ep?.detected ? ep.cropY : undefined,
+            cropW: ep?.detected ? ep.cropW : undefined,
+            cropH: ep?.detected ? ep.cropH : undefined,
           }),
         });
         if (!res.ok) throw new Error('Failed to add track');
