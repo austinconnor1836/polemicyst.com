@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Loader2, RefreshCw, Scissors, Share2, X } from 'lucide-react';
+import { ArrowLeft, Loader2, RefreshCw, Scissors, Share2 } from 'lucide-react';
 import { ModeSelector } from '../_components/ModeSelector';
 import { VideoUploader, type UploadStatus } from '../_components/VideoUploader';
 import { CreatorVideoPanel } from '../_components/CreatorVideoPanel';
@@ -16,7 +16,7 @@ import { AudioMixPanel } from '../_components/AudioMixPanel';
 import { RenderControls } from '../_components/RenderControls';
 import { ThumbnailPanel } from '../_components/ThumbnailPanel';
 import { TrimModal } from '../_components/TrimModal';
-import { CutModal, type CompositionCut } from '../_components/CutModal';
+import { EditOutputModal } from '../_components/EditOutputModal';
 import { PublishModal } from '@/components/PublishModal';
 import { supportsClientRender } from '@/lib/client-render';
 import toast from 'react-hot-toast';
@@ -62,7 +62,6 @@ interface Composition {
   creatorHeight?: number | null;
   creatorTrimStartS: number;
   creatorTrimEndS?: number | null;
-  cuts?: CompositionCut[] | null;
   tracks: Track[];
   outputs: Output[];
 }
@@ -99,23 +98,6 @@ function statusBadge(status: string) {
   }
 }
 
-function formatTimeShort(s: number): string {
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${String(sec).padStart(2, '0')}`;
-}
-
-function formatCutLabel(cut: CompositionCut, tracks: Track[]): string {
-  const time = `${formatTimeShort(cut.startS)}–${formatTimeShort(cut.endS)}`;
-  const targetLabels = cut.targets.map((t) => {
-    if (t === 'creator') return 'Creator';
-    const track = tracks.find((tr) => tr.id === t);
-    return track?.label || 'Ref';
-  });
-  if (targetLabels.length === tracks.length + 1) return `${time} (All)`;
-  return `${time} (${targetLabels.join(', ')})`;
-}
-
 export default function CompositionEditorPage() {
   const params = useParams();
   const router = useRouter();
@@ -131,7 +113,7 @@ export default function CompositionEditorPage() {
   const [publishAllOpen, setPublishAllOpen] = useState(false);
   const [thumbnailGenerating, setThumbnailGenerating] = useState(false);
   const thumbnailRegenerateRef = useRef<(() => void) | null>(null);
-  const [cutModalOpen, setCutModalOpen] = useState(false);
+  const [editOutputOpen, setEditOutputOpen] = useState(false);
   const [trimTarget, setTrimTarget] = useState<{
     type: 'creator' | 'reference';
     trackId?: string;
@@ -170,6 +152,10 @@ export default function CompositionEditorPage() {
   const [creatorFile, setCreatorFile] = useState<File | null>(null);
   const [refFiles, setRefFiles] = useState<Map<string, File>>(new Map());
 
+  // Client-rendered output blobs (lifted from RenderControls for EditOutputModal access)
+  const [clientOutputBlobs, setClientOutputBlobs] = useState<Map<string, Blob>>(new Map());
+  const [clientOutputUrls, setClientOutputUrls] = useState<Map<string, string>>(new Map());
+
   const fetchComposition = useCallback(async () => {
     try {
       const res = await fetch(`/api/compositions/${compositionId}`);
@@ -204,7 +190,19 @@ export default function CompositionEditorPage() {
         });
         if (!res.ok) throw new Error('Save failed');
         const data = await res.json();
-        setComposition(data);
+        // Merge API response with local-only state (client-render mode stores
+        // tracks and creator metadata locally — the DB doesn't have them)
+        setComposition((prev) => {
+          if (!prev) return data;
+          const localTracks = prev.tracks.filter((t) => t.id.startsWith('local_'));
+          return {
+            ...data,
+            tracks: [...(data.tracks || []), ...localTracks],
+            creatorDurationS: data.creatorDurationS ?? prev.creatorDurationS,
+            creatorWidth: data.creatorWidth ?? prev.creatorWidth,
+            creatorHeight: data.creatorHeight ?? prev.creatorHeight,
+          };
+        });
       } catch (err) {
         toast.error('Failed to save');
       } finally {
@@ -255,18 +253,17 @@ export default function CompositionEditorPage() {
       }
       setCreatorUploadProgress(null);
       // Update local composition state immediately so trim/timeline works
-      setComposition((prev) =>
-        prev
-          ? {
-              ...prev,
-              creatorDurationS: data.durationS,
-              creatorWidth: data.width,
-              creatorHeight: data.height,
-            }
-          : prev
-      );
+      setComposition((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          creatorDurationS: data.durationS,
+          creatorWidth: data.width,
+          creatorHeight: data.height,
+        };
+      });
     },
-    [useClientRender]
+    [useClientRender, save]
   );
 
   const handleCreatorUploadComplete = useCallback(
@@ -455,54 +452,48 @@ export default function CompositionEditorPage() {
     [trimTarget, save, handleUpdateTrack]
   );
 
-  const handleCutSave = useCallback(
-    async (cut: { startS: number; endS: number; targets: string[] }) => {
-      const existingCuts: CompositionCut[] = composition?.cuts ?? [];
-      const newCut: CompositionCut = {
-        id: `cut_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        ...cut,
-      };
-      const updated = [...existingCuts, newCut].sort((a, b) => a.startS - b.startS);
-      await save({ cuts: updated } as any);
-      toast.success('Cut added');
+  // Callback when RenderControls produces a new blob
+  const handleBlobReady = useCallback((layout: string, blob: Blob, url: string) => {
+    setClientOutputBlobs((prev) => new Map(prev).set(layout, blob));
+    setClientOutputUrls((prev) => new Map(prev).set(layout, url));
+  }, []);
+
+  // Callback when EditOutputModal finishes splicing
+  const handleSpliceComplete = useCallback(
+    (blobs: Map<string, Blob>, urls: Map<string, string>) => {
+      // Replace blobs
+      setClientOutputBlobs((prev) => {
+        const next = new Map(prev);
+        blobs.forEach((b, k) => next.set(k, b));
+        return next;
+      });
+      // Revoke old URLs and set new ones
+      setClientOutputUrls((prev) => {
+        const next = new Map(prev);
+        urls.forEach((u, k) => {
+          const old = next.get(k);
+          if (old) URL.revokeObjectURL(old);
+          next.set(k, u);
+        });
+        return next;
+      });
+      // Update output s3Urls so video cards show spliced versions
+      setComposition((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          outputs: prev.outputs.map((o) => {
+            const newUrl = urls.get(o.layout);
+            return newUrl ? { ...o, s3Url: newUrl } : o;
+          }),
+        };
+      });
     },
-    [composition, save]
+    []
   );
 
-  const handleCutDelete = useCallback(
-    async (cutId: string) => {
-      if (!confirm('Remove this cut?')) return;
-      const existingCuts: CompositionCut[] = composition?.cuts ?? [];
-      const updated = existingCuts.filter((c) => c.id !== cutId);
-      await save({ cuts: updated.length > 0 ? updated : null } as any);
-      toast.success('Cut removed');
-    },
-    [composition, save]
-  );
-
-  // Compute effective output duration (post-trim, post-cuts)
-  const effectiveOutputDuration = (() => {
-    if (!composition?.creatorDurationS) return 0;
-    const trimEnd = composition.creatorTrimEndS ?? composition.creatorDurationS;
-    let dur = trimEnd - composition.creatorTrimStartS;
-    for (const cut of composition.cuts ?? []) {
-      dur -= cut.endS - cut.startS;
-    }
-    return Math.max(0, dur);
-  })();
-
-  // Build available cut targets
-  const cutTargets = (() => {
-    if (!composition) return [];
-    const targets: Array<{ id: string; label: string }> = [];
-    if (composition.creatorS3Url || creatorBlobUrl) {
-      targets.push({ id: 'creator', label: 'Creator' });
-    }
-    composition.tracks.forEach((track, i) => {
-      targets.push({ id: track.id, label: track.label || `Reference ${i + 1}` });
-    });
-    return targets;
-  })();
+  // Effective creator duration — local metadata as fallback (client-render may not persist to DB)
+  const creatorDurationS = composition?.creatorDurationS ?? creatorLocalMeta?.durationS ?? 0;
 
   if (loading) {
     return (
@@ -760,61 +751,10 @@ export default function CompositionEditorPage() {
                 creatorDurationS={composition.creatorDurationS}
                 currentTime={currentTime}
                 onTrackMove={handleTrackMove}
-                cuts={composition.cuts ?? undefined}
               />
             </CardContent>
           </Card>
         )}
-
-      {/* Cuts */}
-      {composition.creatorDurationS && composition.creatorDurationS > 0 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <CardTitle>Cuts</CardTitle>
-                <CardDescription>Remove unwanted sections from the output</CardDescription>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1 text-xs"
-                onClick={() => setCutModalOpen(true)}
-                disabled={isRendering}
-              >
-                <Scissors className="h-3 w-3" />
-                Add Cut
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {composition.cuts && composition.cuts.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {composition.cuts.map((cut) => (
-                  <Badge
-                    key={cut.id}
-                    variant="secondary"
-                    className="gap-1 pl-2 pr-1 py-1 bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-800"
-                  >
-                    {formatCutLabel(cut, composition.tracks)}
-                    <button
-                      onClick={() => handleCutDelete(cut.id)}
-                      className="ml-1 rounded-sm p-0.5 hover:bg-red-200 dark:hover:bg-red-800 transition-colors"
-                      disabled={isRendering}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                No cuts yet. Click &quot;Add Cut&quot; to remove a section.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       {/* Audio mix */}
       <Card>
@@ -838,17 +778,31 @@ export default function CompositionEditorPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Output</CardTitle>
-            {completedOutputs.length > 1 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1 text-xs"
-                onClick={() => setPublishAllOpen(true)}
-              >
-                <Share2 className="h-3 w-3" />
-                Publish All
-              </Button>
-            )}
+            <div className="flex gap-2">
+              {completedOutputs.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 text-xs"
+                  onClick={() => setEditOutputOpen(true)}
+                  disabled={isRendering}
+                >
+                  <Scissors className="h-3 w-3" />
+                  Edit
+                </Button>
+              )}
+              {completedOutputs.length > 1 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 text-xs"
+                  onClick={() => setPublishAllOpen(true)}
+                >
+                  <Share2 className="h-3 w-3" />
+                  Publish All
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -876,6 +830,9 @@ export default function CompositionEditorPage() {
             creatorFile={creatorFile}
             refFiles={refFiles}
             composition={composition}
+            clientOutputBlobs={clientOutputBlobs}
+            clientOutputUrls={clientOutputUrls}
+            onBlobReady={handleBlobReady}
           />
         </CardContent>
       </Card>
@@ -956,16 +913,18 @@ export default function CompositionEditorPage() {
         />
       )}
 
-      {/* Cut modal */}
-      {(composition.creatorS3Url || creatorBlobUrl) && composition.creatorDurationS && (
-        <CutModal
-          open={cutModalOpen}
-          onOpenChange={setCutModalOpen}
-          videoSrc={(composition.creatorS3Url || creatorBlobUrl)!}
-          durationS={effectiveOutputDuration}
-          existingCuts={composition.cuts ?? []}
-          availableTargets={cutTargets}
-          onSave={handleCutSave}
+      {/* Edit output modal */}
+      {completedOutputs.length > 0 && (
+        <EditOutputModal
+          open={editOutputOpen}
+          onOpenChange={setEditOutputOpen}
+          outputs={completedOutputs.map((o) => ({
+            id: o.id,
+            layout: o.layout,
+            s3Url: o.s3Url!,
+          }))}
+          outputBlobs={clientOutputBlobs}
+          onSpliceComplete={handleSpliceComplete}
         />
       )}
     </div>

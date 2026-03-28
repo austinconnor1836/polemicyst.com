@@ -19,12 +19,6 @@ export interface ClientTrackInfo {
   sortOrder: number;
 }
 
-export interface CutInfo {
-  startS: number;
-  endS: number;
-  targets: string[];
-}
-
 export interface ClientRenderOptions {
   layout: Layout;
   creatorFile: File;
@@ -34,11 +28,9 @@ export interface ClientRenderOptions {
   creatorWidth: number;
   creatorHeight: number;
   tracks: ClientTrackInfo[];
-  trackIds: string[];
   audioMode: AudioMode;
   creatorVolume: number;
   referenceVolume: number;
-  cuts?: CutInfo[];
 }
 
 export type RenderPhase =

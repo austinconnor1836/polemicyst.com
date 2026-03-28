@@ -36,7 +36,6 @@ interface CompositionData {
   creatorHeight?: number | null;
   creatorTrimStartS: number;
   creatorTrimEndS?: number | null;
-  cuts?: Array<{ id: string; startS: number; endS: number; targets: string[] }> | null;
   tracks: Array<{
     id: string;
     durationS: number;
@@ -68,6 +67,10 @@ interface RenderControlsProps {
   creatorFile?: File | null;
   refFiles?: Map<string, File>;
   composition?: CompositionData | null;
+  /** Externally managed blob state for client-rendered outputs */
+  clientOutputBlobs: Map<string, Blob>;
+  clientOutputUrls: Map<string, string>;
+  onBlobReady: (layout: string, blob: Blob, url: string) => void;
 }
 
 const LAYOUT_LABELS: Record<string, string> = {
@@ -92,6 +95,9 @@ export function RenderControls({
   creatorFile,
   refFiles,
   composition,
+  clientOutputBlobs,
+  clientOutputUrls,
+  onBlobReady,
 }: RenderControlsProps) {
   const [rendering, setRendering] = useState(compositionStatus === 'rendering');
   const [publishTarget, setPublishTarget] = useState<{
@@ -106,8 +112,6 @@ export function RenderControls({
 
   // Client-side render state
   const [clientRenderProgress, setClientRenderProgress] = useState<RenderProgress | null>(null);
-  const [clientOutputBlobs, setClientOutputBlobs] = useState<Map<string, Blob>>(new Map());
-  const [clientOutputUrls, setClientOutputUrls] = useState<Map<string, string>>(new Map());
   const [uploadingOutput, setUploadingOutput] = useState<string | null>(null);
   const [uploadOutputProgress, setUploadOutputProgress] = useState(0);
   const canClientRender = supportsClientRender() && !!creatorFile;
@@ -234,7 +238,6 @@ export function RenderControls({
       if (!creatorFile || !composition) return null;
 
       const tracks: ClientTrackInfo[] = [];
-      const trackIds: string[] = [];
 
       for (const track of composition.tracks) {
         const file = refFiles?.get(track.id);
@@ -251,7 +254,6 @@ export function RenderControls({
           hasAudio: track.hasAudio,
           sortOrder: track.sortOrder,
         });
-        trackIds.push(track.id);
       }
 
       return {
@@ -263,15 +265,9 @@ export function RenderControls({
         creatorWidth: composition.creatorWidth ?? 1920,
         creatorHeight: composition.creatorHeight ?? 1080,
         tracks,
-        trackIds,
         audioMode: composition.audioMode as 'creator' | 'reference' | 'both',
         creatorVolume: composition.creatorVolume,
         referenceVolume: composition.referenceVolume,
-        cuts: composition.cuts?.map((c) => ({
-          startS: c.startS,
-          endS: c.endS,
-          targets: c.targets,
-        })),
       };
     },
     [creatorFile, refFiles, composition]
@@ -315,10 +311,9 @@ export function RenderControls({
         });
         const durationMs = Date.now() - startMs;
 
-        // Store the blob and create a local URL for preview
-        setClientOutputBlobs((prev) => new Map(prev).set(layout, blob));
+        // Notify parent of the new blob
         const blobUrl = URL.createObjectURL(blob);
-        setClientOutputUrls((prev) => new Map(prev).set(layout, blobUrl));
+        onBlobReady(layout, blob, blobUrl);
 
         allOutputs[li] = {
           ...allOutputs[li],
@@ -348,7 +343,14 @@ export function RenderControls({
 
     const allSucceeded = allOutputs.every((o) => o.status === 'completed');
     onStatusChange(allSucceeded ? 'completed' : 'failed', [...allOutputs]);
-  }, [creatorFile, composition, autoLayouts, onStatusChange, buildClientRenderOptions]);
+  }, [
+    creatorFile,
+    composition,
+    autoLayouts,
+    onStatusChange,
+    buildClientRenderOptions,
+    onBlobReady,
+  ]);
 
   /** Upload a client-rendered blob to S3 and save to the composition */
   const handleUploadOutput = useCallback(

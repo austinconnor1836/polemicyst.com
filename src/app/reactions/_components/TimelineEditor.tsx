@@ -12,19 +12,11 @@ interface Track {
   trimEndS: number | null;
 }
 
-interface CutRegion {
-  id: string;
-  startS: number;
-  endS: number;
-  targets: string[];
-}
-
 interface TimelineEditorProps {
   tracks: Track[];
   creatorDurationS: number;
   currentTime?: number;
   onTrackMove: (trackId: string, startAtS: number) => void;
-  cuts?: CutRegion[];
   className?: string;
 }
 
@@ -47,7 +39,6 @@ export function TimelineEditor({
   creatorDurationS,
   currentTime,
   onTrackMove,
-  cuts,
   className,
 }: TimelineEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -141,20 +132,6 @@ export function TimelineEditor({
               style={{ left: currentTime * PX_PER_SECOND }}
             />
           )}
-
-          {/* Cut overlays */}
-          {cuts?.map((cut) => (
-            <div
-              key={cut.id}
-              className="absolute bg-red-500/20 dark:bg-red-400/20 border-x border-red-500/40 pointer-events-none z-[5]"
-              style={{
-                left: cut.startS * PX_PER_SECOND,
-                width: (cut.endS - cut.startS) * PX_PER_SECOND,
-                top: 0,
-                bottom: 0,
-              }}
-            />
-          ))}
 
           {/* Track lanes */}
           {tracks.map((track, i) => {

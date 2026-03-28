@@ -5,7 +5,8 @@
 import type { ClientRenderOptions, RenderProgress } from './types';
 
 export type { ClientRenderOptions, RenderProgress } from './types';
-export type { Layout, AudioMode, ClientTrackInfo, CutInfo } from './types';
+export type { Layout, AudioMode, ClientTrackInfo } from './types';
+export { spliceMP4, computeKeptSegments } from './mp4-splicer';
 
 /**
  * Check if the browser supports client-side rendering via WebCodecs.

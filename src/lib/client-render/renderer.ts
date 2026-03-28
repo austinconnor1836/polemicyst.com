@@ -20,7 +20,6 @@ import { getVideoEncoderConfig, getAudioEncoderConfig } from './encoder';
 import {
   type ClientRenderOptions,
   type RenderProgress,
-  type CutInfo,
   type DecodedFrame,
   MOBILE_CANVAS_W,
   MOBILE_CANVAS_H,
@@ -28,38 +27,6 @@ import {
   LANDSCAPE_CANVAS_H,
   TARGET_FPS,
 } from './types';
-
-/**
- * Subtracts cut ranges from [start, end], returns the remaining segments.
- * Matches shared/util/reactionCompose.ts computeKeptSegments.
- */
-function computeKeptSegments(
-  start: number,
-  end: number,
-  cuts: CutInfo[]
-): Array<{ start: number; end: number }> {
-  const sorted = [...cuts].sort((a, b) => a.startS - b.startS);
-  const segments: Array<{ start: number; end: number }> = [];
-  let cursor = start;
-
-  for (const cut of sorted) {
-    const cutStart = Math.max(cut.startS, start);
-    const cutEnd = Math.min(cut.endS, end);
-    if (cutStart >= cutEnd) continue;
-    if (cutStart < cursor) continue;
-
-    if (cursor < cutStart) {
-      segments.push({ start: cursor, end: cutStart });
-    }
-    cursor = Math.max(cursor, cutEnd);
-  }
-
-  if (cursor < end) {
-    segments.push({ start: cursor, end });
-  }
-
-  return segments;
-}
 
 /**
  * On-demand video decoder that feeds samples without flush() until the end.
@@ -292,16 +259,7 @@ export async function render(
 
   // Calculate output duration
   const creatorTrimEnd = opts.creatorTrimEndS ?? creatorDurationS;
-  const baseDuration = creatorTrimEnd - opts.creatorTrimStartS;
-
-  // Apply cuts
-  const creatorCuts = (opts.cuts ?? []).filter((c) => c.targets.includes('creator'));
-  let outputDurationS = baseDuration;
-  for (const cut of creatorCuts) {
-    outputDurationS -= Math.min(cut.endS, baseDuration) - Math.max(cut.startS, 0);
-  }
-  outputDurationS = Math.max(0, outputDurationS);
-
+  const outputDurationS = creatorTrimEnd - opts.creatorTrimStartS;
   const totalFrames = Math.ceil(outputDurationS * TARGET_FPS);
 
   console.log(
@@ -419,12 +377,14 @@ export async function render(
   for (let frameIdx = 0; frameIdx < totalFrames; frameIdx++) {
     const outputTimeS = frameIdx / TARGET_FPS;
     const outputTimeUs = Math.round(outputTimeS * 1_000_000);
+    const sourceTimeS = outputTimeS;
+    const sourceTimeUs = outputTimeUs;
 
     // Feed creator samples ahead of current time for B-frame reordering
-    await creatorDecoder.feedUpTo(outputTimeUs + DECODE_AHEAD_US);
+    await creatorDecoder.feedUpTo(sourceTimeUs + DECODE_AHEAD_US);
 
-    // Find the active reference track
-    const activeRef = findActiveTrack(opts.tracks, outputTimeS);
+    // Find the active reference track (uses source time for correct track placement)
+    const activeRef = findActiveTrack(opts.tracks, sourceTimeS);
     let refFrame: DecodedFrame | null = null;
 
     if (activeRef) {
@@ -437,7 +397,7 @@ export async function render(
       }
     }
 
-    const creatorFrame = creatorDecoder.consumeFrame(outputTimeUs);
+    const creatorFrame = creatorDecoder.consumeFrame(sourceTimeUs);
 
     // Log first frame diagnostics
     if (frameIdx === 0) {
@@ -564,7 +524,6 @@ export async function render(
     referenceVolume: opts.referenceVolume,
     audioMode: opts.audioMode,
     outputDurationS,
-    cuts: opts.cuts,
   });
 
   // Now free audio samples

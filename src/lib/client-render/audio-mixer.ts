@@ -4,13 +4,7 @@
  * Uses demuxed EncodedAudioChunks instead of file.arrayBuffer() to avoid
  * loading entire source files (potentially GBs) into memory.
  */
-import {
-  type AudioMode,
-  type ClientTrackInfo,
-  type CutInfo,
-  AUDIO_SAMPLE_RATE,
-  AUDIO_CHANNELS,
-} from './types';
+import { type AudioMode, type ClientTrackInfo, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS } from './types';
 
 export interface DemuxedAudioSource {
   config: AudioDecoderConfig;
@@ -25,7 +19,6 @@ export interface AudioMixOptions {
   referenceVolume: number;
   audioMode: AudioMode;
   outputDurationS: number;
-  cuts?: CutInfo[];
 }
 
 /**
@@ -175,14 +168,13 @@ export async function mixAudio(opts: AudioMixOptions): Promise<AudioBuffer> {
           `${creatorBuffer.numberOfChannels}ch, ${creatorBuffer.sampleRate}Hz`
       );
 
-      const source = offlineCtx.createBufferSource();
-      source.buffer = creatorBuffer;
-
       const gain = offlineCtx.createGain();
       gain.gain.value = opts.creatorVolume;
-
-      source.connect(gain);
       gain.connect(offlineCtx.destination);
+
+      const source = offlineCtx.createBufferSource();
+      source.buffer = creatorBuffer;
+      source.connect(gain);
       source.start(0);
     } catch (err) {
       console.warn('[audio-mixer] Failed to decode creator audio, skipping:', err);
@@ -205,14 +197,13 @@ export async function mixAudio(opts: AudioMixOptions): Promise<AudioBuffer> {
             `${refBuffer.numberOfChannels}ch`
         );
 
-        const source = offlineCtx.createBufferSource();
-        source.buffer = refBuffer;
-
         const gain = offlineCtx.createGain();
         gain.gain.value = opts.referenceVolume;
-
-        source.connect(gain);
         gain.connect(offlineCtx.destination);
+
+        const source = offlineCtx.createBufferSource();
+        source.buffer = refBuffer;
+        source.connect(gain);
         source.start(track.startAtS);
       } catch (err) {
         console.warn(`[audio-mixer] Failed to decode ref ${i} audio, skipping:`, err);
