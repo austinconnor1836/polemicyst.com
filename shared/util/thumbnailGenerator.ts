@@ -62,6 +62,11 @@ export interface ThumbnailAssetResult {
   type: 'reference' | 'cutout';
 }
 
+export interface PreExtractedFrame {
+  s3Url: string;
+  timestampS: number;
+}
+
 export interface GenerateThumbnailsOptions {
   compositionId: string;
   /** S3 URL of the reference (original content) video — used as background frames */
@@ -72,6 +77,18 @@ export interface GenerateThumbnailsOptions {
   creatorTrimStartS?: number;
   /** Total creator video duration (for best-frame extraction) */
   creatorDurationS?: number;
+  /**
+   * Pre-extracted reference frame images already on S3.
+   * When provided, skips downloading the reference video and FFmpeg extraction.
+   * The face detection + moondream scoring pipeline still runs on these frames.
+   */
+  preExtractedReferenceFrames?: PreExtractedFrame[];
+  /**
+   * Pre-extracted creator frame images already on S3.
+   * When provided, skips downloading the creator video and FFmpeg extraction.
+   * The face detection + moondream + rembg pipeline still runs on these frames.
+   */
+  preExtractedCreatorFrames?: PreExtractedFrame[];
 }
 
 // ---------------------------------------------------------------------------
@@ -938,42 +955,76 @@ export async function generateThumbnailAssets(
   const cutouts: ThumbnailAssetResult[] = [];
 
   try {
-    // 1. Download both videos
-    const referencePath = path.join(tmpDir, 'reference.mp4');
-    const creatorPath = path.join(tmpDir, 'creator.mp4');
+    const hasPreExtractedRef =
+      opts.preExtractedReferenceFrames && opts.preExtractedReferenceFrames.length > 0;
+    const hasPreExtractedCreator =
+      opts.preExtractedCreatorFrames && opts.preExtractedCreatorFrames.length > 0;
 
-    await Promise.all([
-      downloadFile(opts.referenceS3Url, referencePath),
-      downloadFile(opts.creatorS3Url, creatorPath),
-    ]);
+    // 1. Download videos (only if we need FFmpeg extraction)
+    let referencePath = '';
+    let creatorPath = '';
+    let referenceDuration = 0;
+    let creatorDuration = opts.creatorDurationS ?? 0;
 
-    // 2. Get durations
-    const [referenceDuration, creatorDuration] = await Promise.all([
-      getVideoDuration(referencePath),
-      opts.creatorDurationS ?? getVideoDuration(creatorPath),
-    ]);
-
-    if (referenceDuration <= 0) {
-      console.warn('[thumbnailAssets] Could not determine reference video duration');
-      return { referenceFrames, cutouts };
+    if (!hasPreExtractedRef || !hasPreExtractedCreator) {
+      if (!hasPreExtractedRef) {
+        referencePath = path.join(tmpDir, 'reference.mp4');
+        await downloadFile(opts.referenceS3Url, referencePath);
+        referenceDuration = await getVideoDuration(referencePath);
+      }
+      if (!hasPreExtractedCreator) {
+        creatorPath = path.join(tmpDir, 'creator.mp4');
+        await downloadFile(opts.creatorS3Url, creatorPath);
+        if (!creatorDuration) {
+          creatorDuration = await getVideoDuration(creatorPath);
+        }
+      }
     }
 
-    // 3. Extract + score reference frames (same as generateThumbnails)
-    const candidateFrames = await extractCandidateFrames(
-      referencePath,
-      referenceDuration,
-      MAX_CANDIDATES,
-      tmpDir
-    );
-    if (candidateFrames.length === 0) {
-      console.warn('[thumbnailAssets] No frames extracted from reference video');
-      return { referenceFrames, cutouts };
+    // 3. Extract + score reference frames
+    let selectedRefFrames: Array<{ framePath: string; timestampS: number; visionScore?: number }>;
+
+    if (hasPreExtractedRef) {
+      // Download pre-extracted frame images from S3 to temp dir
+      console.log(
+        `[thumbnailAssets] Using ${opts.preExtractedReferenceFrames!.length} pre-extracted reference frames`
+      );
+      const candidateFrames: Array<{ framePath: string; timestampS: number }> = [];
+      for (let i = 0; i < opts.preExtractedReferenceFrames!.length; i++) {
+        const pf = opts.preExtractedReferenceFrames![i];
+        const framePath = path.join(tmpDir, `pre_ref_${i}.png`);
+        try {
+          await downloadFile(pf.s3Url, framePath);
+          if (fs.existsSync(framePath)) {
+            candidateFrames.push({ framePath, timestampS: pf.timestampS });
+          }
+        } catch (err) {
+          console.warn(
+            `[thumbnailAssets] Failed to download pre-extracted ref frame ${i}:`,
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+      selectedRefFrames = await scoreAndSelectFrames(candidateFrames, NUM_FRAMES);
+    } else {
+      if (referenceDuration <= 0) {
+        console.warn('[thumbnailAssets] Could not determine reference video duration');
+        return { referenceFrames, cutouts };
+      }
+      const candidateFrames = await extractCandidateFrames(
+        referencePath,
+        referenceDuration,
+        MAX_CANDIDATES,
+        tmpDir
+      );
+      if (candidateFrames.length === 0) {
+        console.warn('[thumbnailAssets] No frames extracted from reference video');
+        return { referenceFrames, cutouts };
+      }
+      selectedRefFrames = await scoreAndSelectFrames(candidateFrames, NUM_FRAMES);
     }
 
-    const selectedRefFrames = await scoreAndSelectFrames(candidateFrames, NUM_FRAMES);
-    console.log(
-      `[thumbnailAssets] Selected ${selectedRefFrames.length} reference frames from ${candidateFrames.length} candidates`
-    );
+    console.log(`[thumbnailAssets] Selected ${selectedRefFrames.length} reference frames`);
 
     // 4. Upload raw reference frames to S3
     for (const frame of selectedRefFrames) {
@@ -996,23 +1047,45 @@ export async function generateThumbnailAssets(
     }
 
     // 5. Extract creator candidate frames and score by face area
-    //    Extract 20 candidates to pick the top 12 most expressive
-    const effectiveStart = opts.creatorTrimStartS || 0;
-    const effectiveDuration = creatorDuration - effectiveStart;
-    const numCreatorFrames = 20;
-    const step = effectiveDuration / (numCreatorFrames + 1);
-
     const creatorFrames: Array<{ path: string; ts: number }> = [];
-    for (let i = 1; i <= numCreatorFrames; i++) {
-      const ts = effectiveStart + step * i;
-      const framePath = path.join(tmpDir, `creator_cand_${i}.png`);
-      try {
-        await extractFrame(creatorPath, ts, framePath);
-        if (fs.existsSync(framePath)) {
-          creatorFrames.push({ path: framePath, ts });
+
+    if (hasPreExtractedCreator) {
+      // Download pre-extracted creator frame images from S3 to temp dir
+      console.log(
+        `[thumbnailAssets] Using ${opts.preExtractedCreatorFrames!.length} pre-extracted creator frames`
+      );
+      for (let i = 0; i < opts.preExtractedCreatorFrames!.length; i++) {
+        const pf = opts.preExtractedCreatorFrames![i];
+        const framePath = path.join(tmpDir, `pre_creator_${i}.png`);
+        try {
+          await downloadFile(pf.s3Url, framePath);
+          if (fs.existsSync(framePath)) {
+            creatorFrames.push({ path: framePath, ts: pf.timestampS });
+          }
+        } catch (err) {
+          console.warn(
+            `[thumbnailAssets] Failed to download pre-extracted creator frame ${i}:`,
+            err instanceof Error ? err.message : err
+          );
         }
-      } catch {
-        // Non-fatal
+      }
+    } else {
+      const effectiveStart = opts.creatorTrimStartS || 0;
+      const effectiveDuration = creatorDuration - effectiveStart;
+      const numCreatorFrames = 20;
+      const step = effectiveDuration / (numCreatorFrames + 1);
+
+      for (let i = 1; i <= numCreatorFrames; i++) {
+        const ts = effectiveStart + step * i;
+        const framePath = path.join(tmpDir, `creator_cand_${i}.png`);
+        try {
+          await extractFrame(creatorPath, ts, framePath);
+          if (fs.existsSync(framePath)) {
+            creatorFrames.push({ path: framePath, ts });
+          }
+        } catch {
+          // Non-fatal
+        }
       }
     }
 

@@ -2,8 +2,10 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { Upload, Loader2, X, Check, RotateCcw, AlertCircle } from 'lucide-react';
+import { Upload, Loader2, X, RotateCcw, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { VideoCard } from '@/components/ui/video-card';
 import { probeVideo } from '@/lib/probe-video';
 
 export type UploadStatus = 'idle' | 'uploading' | 'complete' | 'error';
@@ -163,6 +165,8 @@ export function VideoUploader({
   const [internalEta, setInternalEta] = useState(0);
   const [internalStatus, setInternalStatus] = useState<UploadStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [filename, setFilename] = useState<string | null>(null);
+  const [durationS, setDurationS] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<File | null>(null);
   const abortRef = useRef(false);
@@ -376,10 +380,12 @@ export function VideoUploader({
   const handleFile = useCallback(
     async (file: File) => {
       fileRef.current = file;
+      setFilename(file.name);
       const blobUrl = URL.createObjectURL(file);
 
       // Client-side probe for instant metadata
       const meta = await probeVideo(blobUrl);
+      setDurationS(meta.durationS);
 
       // Fire immediately so parent can show preview + enable editing
       onFileSelected({
@@ -443,87 +449,84 @@ export function VideoUploader({
   const hasVideo = !!(s3Key && s3Url) || !!blobUrl;
   const videoSrc = s3Url || blobUrl;
 
-  // State: has a video (uploading, complete, or error) — show preview with overlay
+  // State: has a video (uploading, complete, or error) — show preview with VideoCard
   if (hasVideo && videoSrc) {
+    const displayDuration =
+      durationS != null
+        ? `${Math.floor(durationS / 60)}:${String(Math.floor(durationS % 60)).padStart(2, '0')}`
+        : null;
+
     return (
-      <div className={cn('relative rounded-lg overflow-hidden group', className)}>
-        {/* Video preview */}
-        <video
-          src={videoSrc}
-          className="w-full aspect-video rounded-lg object-cover bg-black"
-          muted
-          playsInline
-          preload="metadata"
-        />
-
-        {/* Upload progress overlay */}
-        {status === 'uploading' && (
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-8">
-            <div className="flex items-center justify-between text-xs text-white/90 mb-1.5">
-              <span>Uploading... {progress}%</span>
-              {speed > 0 && (
-                <span>
-                  {formatBytes(speed)}/s
-                  {internalEta > 0 ? ` • ${formatEta(internalEta)}` : ''}
-                </span>
-              )}
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/20">
-              <div
-                className="h-full rounded-full bg-blue-400 transition-[width] duration-300"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Complete checkmark */}
-        {status === 'complete' && (
-          <div className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white shadow-sm">
-            <Check className="h-3.5 w-3.5" />
-          </div>
-        )}
-
-        {/* Already uploaded (s3Key present) */}
-        {s3Key && s3Url && status !== 'uploading' && status !== 'error' && (
-          <div className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white shadow-sm">
-            <Check className="h-3.5 w-3.5" />
-          </div>
-        )}
-
-        {/* Error overlay with retry */}
-        {status === 'error' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
-            <AlertCircle className="h-8 w-8 text-red-400 mb-2" />
-            <p className="text-sm text-white/90 mb-1">Upload failed</p>
-            {errorMessage && (
-              <p className="text-xs text-white/60 mb-3 max-w-[200px] text-center truncate">
-                {errorMessage}
-              </p>
+      <VideoCard
+        size="md"
+        src={videoSrc}
+        label={filename || label}
+        badge={
+          displayDuration ? (
+            <Badge variant="secondary" className="text-[11px] shrink-0">
+              {displayDuration}
+            </Badge>
+          ) : undefined
+        }
+        className={className}
+        overlay={
+          <>
+            {/* Upload progress overlay */}
+            {status === 'uploading' && (
+              <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 to-transparent p-3 pt-8">
+                <div className="flex items-center justify-between text-xs text-white/90 mb-1.5">
+                  <span>Uploading... {progress}%</span>
+                  {speed > 0 && (
+                    <span>
+                      {formatBytes(speed)}/s
+                      {internalEta > 0 ? ` • ${formatEta(internalEta)}` : ''}
+                    </span>
+                  )}
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/20">
+                  <div
+                    className="h-full rounded-full bg-blue-400 transition-[width] duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
             )}
-            <Button variant="secondary" size="sm" onClick={handleRetry} className="gap-1.5">
-              <RotateCcw className="h-3.5 w-3.5" />
-              Retry
-            </Button>
-          </div>
-        )}
 
-        {/* Remove button (hover-revealed) */}
-        {onRemove && status !== 'uploading' && (
-          <Button
-            variant="secondary"
-            size="icon"
-            className="absolute right-1.5 top-1.5 h-7 w-7 rounded-full bg-white/85 text-gray-900 opacity-0 backdrop-blur transition-opacity hover:bg-white group-hover:opacity-100 dark:bg-zinc-900/80 dark:text-zinc-100 dark:hover:bg-zinc-900"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove();
-            }}
-            title="Remove video"
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        )}
-      </div>
+            {/* Error overlay with retry */}
+            {status === 'error' && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
+                <AlertCircle className="h-8 w-8 text-red-400 mb-2" />
+                <p className="text-sm text-white/90 mb-1">Upload failed</p>
+                {errorMessage && (
+                  <p className="text-xs text-white/60 mb-3 max-w-[200px] text-center truncate">
+                    {errorMessage}
+                  </p>
+                )}
+                <Button variant="secondary" size="sm" onClick={handleRetry} className="gap-1.5">
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Retry
+                </Button>
+              </div>
+            )}
+
+            {/* Remove button (hover-revealed) */}
+            {onRemove && status !== 'uploading' && (
+              <Button
+                variant="secondary"
+                size="icon"
+                className="absolute right-1.5 top-1.5 h-7 w-7 rounded-full bg-white/85 text-gray-900 opacity-0 backdrop-blur transition-opacity hover:bg-white group-hover:opacity-100 dark:bg-zinc-900/80 dark:text-zinc-100 dark:hover:bg-zinc-900"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove();
+                }}
+                title="Remove video"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </>
+        }
+      />
     );
   }
 

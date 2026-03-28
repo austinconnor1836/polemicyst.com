@@ -581,42 +581,47 @@ export function RenderControls({
         </div>
       </div>
 
-      {/* Output cards */}
-      {outputs.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {outputs.map((output) => (
+      {/* Output cards — always show placeholders for expected layouts */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {autoLayouts.map((layout) => {
+          const output = outputs.find((o) => o.layout === layout);
+          const isCompleted = output?.status === 'completed' && output.s3Url;
+          const isActive = output?.status === 'rendering' || output?.status === 'pending';
+          const isFailed = output?.status === 'failed';
+
+          return (
             <VideoCard
-              key={output.id}
+              key={layout}
               size="md"
-              src={output.status === 'completed' && output.s3Url ? output.s3Url : undefined}
-              controls={output.status === 'completed' && !!output.s3Url}
-              label={LAYOUT_LABELS[output.layout] || output.layout}
-              badge={statusBadge(output.status)}
+              src={isCompleted ? output.s3Url! : undefined}
+              controls={!!isCompleted}
+              label={LAYOUT_LABELS[layout] || layout}
+              badge={output ? statusBadge(output.status) : undefined}
               sublabel={
                 <>
-                  {output.renderError && (
+                  {isFailed && output?.renderError && (
                     <p className="text-xs text-destructive line-clamp-2">{output.renderError}</p>
                   )}
-                  <div className="mt-1 flex items-center justify-between">
-                    {output.durationMs ? (
-                      <span className="text-xs text-muted-foreground">
-                        Rendered in {(output.durationMs / 1000).toFixed(1)}s
-                      </span>
-                    ) : (
-                      <span />
-                    )}
-                    {output.status === 'completed' && output.s3Url && (
+                  {isCompleted && (
+                    <div className="mt-1 flex items-center justify-between">
+                      {output.durationMs ? (
+                        <span className="text-xs text-muted-foreground">
+                          Rendered in {(output.durationMs / 1000).toFixed(1)}s
+                        </span>
+                      ) : (
+                        <span />
+                      )}
                       <div className="flex gap-1 flex-wrap">
                         {/* Upload to cloud button (only for local renders) */}
-                        {clientOutputBlobs.has(output.layout) && (
+                        {clientOutputBlobs.has(layout) && (
                           <Button
                             variant="outline"
                             size="sm"
                             className="h-7 gap-1 text-xs"
-                            onClick={() => handleUploadOutput(output.layout)}
-                            disabled={uploadingOutput === output.layout}
+                            onClick={() => handleUploadOutput(layout)}
+                            disabled={uploadingOutput === layout}
                           >
-                            {uploadingOutput === output.layout ? (
+                            {uploadingOutput === layout ? (
                               <>
                                 <Loader2 className="h-3 w-3 animate-spin" />
                                 {uploadOutputProgress}%
@@ -641,9 +646,9 @@ export function RenderControls({
                             })
                           }
                         >
-                          {generatingDesc.has(output.layout) ? (
+                          {generatingDesc.has(layout) ? (
                             <Sparkles className="h-3 w-3 animate-pulse text-amber-500" />
-                          ) : preGenDescriptions[output.layout] ? (
+                          ) : preGenDescriptions[layout] ? (
                             <Sparkles className="h-3 w-3 text-green-500" />
                           ) : (
                             <Share2 className="h-3 w-3" />
@@ -651,31 +656,35 @@ export function RenderControls({
                           Share
                         </Button>
                         <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-xs">
-                          <a href={output.s3Url} download>
+                          <a href={output.s3Url!} download>
                             <Download className="h-3 w-3" />
                             Download
                           </a>
                         </Button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </>
               }
               className="max-w-none"
             >
-              {output.status === 'rendering' || output.status === 'pending' ? (
+              {isActive ? (
                 <div className="flex h-full items-center justify-center">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
-              ) : output.status !== 'completed' ? (
+              ) : isFailed ? (
                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                  {output.renderError ? 'Render failed' : 'No output'}
+                  {output?.renderError ? 'Render failed' : 'No output'}
+                </div>
+              ) : !isCompleted ? (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  Ready to render
                 </div>
               ) : null}
             </VideoCard>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
 
       <PublishModal
         open={!!publishTarget}

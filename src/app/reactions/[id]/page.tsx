@@ -567,8 +567,8 @@ export default function CompositionEditorPage() {
           <CardDescription>Your commentary footage</CardDescription>
         </CardHeader>
         <CardContent>
-          {composition.creatorS3Url && !creatorBlobUrl ? (
-            <div className="max-w-sm">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {composition.creatorS3Url && !creatorBlobUrl ? (
               <CreatorVideoPanel
                 s3Url={composition.creatorS3Url}
                 durationS={composition.creatorDurationS ?? undefined}
@@ -608,74 +608,74 @@ export default function CompositionEditorPage() {
                   }
                 }}
               />
-            </div>
-          ) : (
-            <div className="max-w-sm space-y-2">
-              <VideoUploader
-                label={
-                  useClientRender ? 'Add your commentary video' : 'Upload your commentary video'
-                }
-                blobUrl={creatorBlobUrl}
-                uploadStatus={creatorUploadStatus}
-                uploadProgress={creatorUploadProgress}
-                uploadSpeed={creatorUploadSpeed}
-                localOnly={useClientRender}
-                onFileSelected={handleCreatorFileSelected}
-                onUploadComplete={handleCreatorUploadComplete}
-                onUploadProgress={(p, s) => {
-                  setCreatorUploadProgress(p);
-                  setCreatorUploadSpeed(s);
-                }}
-                onUploadError={(msg) => {
-                  setCreatorUploadStatus('error');
-                  toast.error(msg);
-                }}
-                onRemove={
-                  creatorBlobUrl
-                    ? () => {
-                        if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
-                        setCreatorBlobUrl(null);
-                        setCreatorFile(null);
-                        setCreatorLocalMeta(null);
-                        setCreatorUploadStatus('idle');
-                        setComposition((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                creatorDurationS: null,
-                                creatorWidth: null,
-                                creatorHeight: null,
-                              }
-                            : prev
-                        );
-                      }
-                    : undefined
-                }
-                keyPrefix={`compositions/${compositionId}/raw`}
-              />
-              {/* Trim available during upload */}
-              {creatorBlobUrl && creatorLocalMeta && creatorLocalMeta.durationS > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1 text-xs"
-                  onClick={() =>
-                    setTrimTarget({
-                      type: 'creator',
-                      src: creatorBlobUrl,
-                      durationS: creatorLocalMeta.durationS,
-                      trimStartS: composition.creatorTrimStartS,
-                      trimEndS: composition.creatorTrimEndS ?? null,
-                      title: 'Trim Creator Video',
-                    })
+            ) : (
+              <div className="space-y-2">
+                <VideoUploader
+                  label={
+                    useClientRender ? 'Add your commentary video' : 'Upload your commentary video'
                   }
-                >
-                  <Scissors className="h-3 w-3" />
-                  Trim
-                </Button>
-              )}
-            </div>
-          )}
+                  blobUrl={creatorBlobUrl}
+                  uploadStatus={creatorUploadStatus}
+                  uploadProgress={creatorUploadProgress}
+                  uploadSpeed={creatorUploadSpeed}
+                  localOnly={useClientRender}
+                  onFileSelected={handleCreatorFileSelected}
+                  onUploadComplete={handleCreatorUploadComplete}
+                  onUploadProgress={(p, s) => {
+                    setCreatorUploadProgress(p);
+                    setCreatorUploadSpeed(s);
+                  }}
+                  onUploadError={(msg) => {
+                    setCreatorUploadStatus('error');
+                    toast.error(msg);
+                  }}
+                  onRemove={
+                    creatorBlobUrl
+                      ? () => {
+                          if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
+                          setCreatorBlobUrl(null);
+                          setCreatorFile(null);
+                          setCreatorLocalMeta(null);
+                          setCreatorUploadStatus('idle');
+                          setComposition((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  creatorDurationS: null,
+                                  creatorWidth: null,
+                                  creatorHeight: null,
+                                }
+                              : prev
+                          );
+                        }
+                      : undefined
+                  }
+                  keyPrefix={`compositions/${compositionId}/raw`}
+                />
+                {/* Trim available during upload */}
+                {creatorBlobUrl && creatorLocalMeta && creatorLocalMeta.durationS > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 text-xs"
+                    onClick={() =>
+                      setTrimTarget({
+                        type: 'creator',
+                        src: creatorBlobUrl,
+                        durationS: creatorLocalMeta.durationS,
+                        trimStartS: composition.creatorTrimStartS,
+                        trimEndS: composition.creatorTrimEndS ?? null,
+                        title: 'Trim Creator Video',
+                      })
+                    }
+                  >
+                    <Scissors className="h-3 w-3" />
+                    Trim
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -915,6 +915,11 @@ export default function CompositionEditorPage() {
             hideHeader
             onGeneratingChange={setThumbnailGenerating}
             regenerateRef={thumbnailRegenerateRef}
+            // Skip API polling when outputs are client-rendered blobs (not yet on S3).
+            // Instead, extract frames client-side from local files.
+            skipAutoGenerate={composition.outputs?.some((o) => o.s3Url?.startsWith('blob:'))}
+            creatorFile={creatorFile}
+            refFiles={refFiles}
           />
         </CardContent>
       </Card>
