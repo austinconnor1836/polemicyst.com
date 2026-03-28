@@ -115,6 +115,7 @@ export function RenderControls({
   const [uploadingOutput, setUploadingOutput] = useState<string | null>(null);
   const [uploadOutputProgress, setUploadOutputProgress] = useState(0);
   const canClientRender = supportsClientRender() && !!creatorFile;
+  const clientRenderingRef = useRef(false);
 
   const onStatusChangeRef = useRef(onStatusChange);
   onStatusChangeRef.current = onStatusChange;
@@ -153,7 +154,9 @@ export function RenderControls({
   );
 
   useEffect(() => {
-    if (!rendering) return;
+    // Only poll the server for server-side renders.
+    // Client-side renders manage state locally — polling would overwrite it.
+    if (!rendering || clientRenderingRef.current) return;
 
     const poll = async () => {
       try {
@@ -277,6 +280,7 @@ export function RenderControls({
   const handleClientRender = useCallback(async () => {
     if (!creatorFile || !composition) return;
 
+    clientRenderingRef.current = true;
     setRendering(true);
     setClientRenderProgress(null);
 
@@ -338,6 +342,7 @@ export function RenderControls({
       }
     }
 
+    clientRenderingRef.current = false;
     setRendering(false);
     setClientRenderProgress(null);
 
