@@ -110,8 +110,10 @@ export function RenderControls({
   const [generatingDesc, setGeneratingDesc] = useState<Set<string>>(new Set());
   const generatedForRef = useRef<Set<string>>(new Set());
 
-  // Client-side render state
-  const [clientRenderProgress, setClientRenderProgress] = useState<RenderProgress | null>(null);
+  // Client-side render state — per-layout progress for parallel rendering
+  const [clientRenderProgress, setClientRenderProgress] = useState<Map<string, RenderProgress>>(
+    new Map()
+  );
   const [uploadingOutput, setUploadingOutput] = useState<string | null>(null);
   const [uploadOutputProgress, setUploadOutputProgress] = useState(0);
   const canClientRender = supportsClientRender() && !!creatorFile;
@@ -276,78 +278,81 @@ export function RenderControls({
     [creatorFile, refFiles, composition]
   );
 
-  /** Client-side render: render locally, then upload only the output */
+  /** Client-side render: render all layouts in parallel */
   const handleClientRender = useCallback(async () => {
     if (!creatorFile || !composition) return;
 
     clientRenderingRef.current = true;
     setRendering(true);
-    setClientRenderProgress(null);
+    setClientRenderProgress(new Map());
 
     // Create placeholder outputs — show "rendering" cards immediately
-    const allOutputs: Output[] = autoLayouts.map((layout) => ({
-      id: `client_${layout}`,
-      layout,
-      status: 'rendering',
-      s3Url: null,
-      renderError: null,
-      durationMs: null,
-    }));
-    onStatusChange('rendering', [...allOutputs]);
-
-    for (let li = 0; li < autoLayouts.length; li++) {
-      const layout = autoLayouts[li];
-      const opts = buildClientRenderOptions(layout);
-      if (!opts) {
-        allOutputs[li] = {
-          ...allOutputs[li],
-          status: 'failed',
-          renderError: 'Missing files for client render',
-        };
-        onStatusChange('rendering', [...allOutputs]);
-        continue;
-      }
-
-      try {
-        const startMs = Date.now();
-        const blob = await renderCompositionClient(opts, (progress) => {
-          setClientRenderProgress(progress);
-        });
-        const durationMs = Date.now() - startMs;
-
-        // Notify parent of the new blob
-        const blobUrl = URL.createObjectURL(blob);
-        onBlobReady(layout, blob, blobUrl);
-
-        allOutputs[li] = {
-          ...allOutputs[li],
-          status: 'completed',
-          s3Url: blobUrl,
-          durationMs,
-        };
-
-        // Show this layout's output immediately — don't wait for the other layout
-        onStatusChange('rendering', [...allOutputs]);
-        toast.success(`${layout === 'mobile' ? '9:16' : '16:9'} render complete!`);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error(`[client-render] ${layout} failed:`, err);
-        allOutputs[li] = {
-          ...allOutputs[li],
-          status: 'failed',
-          renderError: message,
-        };
-        onStatusChange('rendering', [...allOutputs]);
-        toast.error(`${layout === 'mobile' ? '9:16' : '16:9'} render failed`);
-      }
+    const outputsByLayout: Record<string, Output> = {};
+    for (const layout of autoLayouts) {
+      outputsByLayout[layout] = {
+        id: `client_${layout}`,
+        layout,
+        status: 'rendering',
+        s3Url: null,
+        renderError: null,
+        durationMs: null,
+      };
     }
+    onStatusChange('rendering', Object.values(outputsByLayout));
+
+    // Render all layouts in parallel
+    await Promise.all(
+      autoLayouts.map(async (layout) => {
+        const opts = buildClientRenderOptions(layout);
+        if (!opts) {
+          outputsByLayout[layout] = {
+            ...outputsByLayout[layout],
+            status: 'failed',
+            renderError: 'Missing files for client render',
+          };
+          onStatusChange('rendering', Object.values(outputsByLayout));
+          return;
+        }
+
+        try {
+          const startMs = Date.now();
+          const blob = await renderCompositionClient(opts, (progress) => {
+            setClientRenderProgress((prev) => new Map(prev).set(layout, progress));
+          });
+          const durationMs = Date.now() - startMs;
+
+          const blobUrl = URL.createObjectURL(blob);
+          onBlobReady(layout, blob, blobUrl);
+
+          outputsByLayout[layout] = {
+            ...outputsByLayout[layout],
+            status: 'completed',
+            s3Url: blobUrl,
+            durationMs,
+          };
+          onStatusChange('rendering', Object.values(outputsByLayout));
+          toast.success(`${layout === 'mobile' ? '9:16' : '16:9'} render complete!`);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`[client-render] ${layout} failed:`, err);
+          outputsByLayout[layout] = {
+            ...outputsByLayout[layout],
+            status: 'failed',
+            renderError: message,
+          };
+          onStatusChange('rendering', Object.values(outputsByLayout));
+          toast.error(`${layout === 'mobile' ? '9:16' : '16:9'} render failed`);
+        }
+      })
+    );
 
     clientRenderingRef.current = false;
     setRendering(false);
-    setClientRenderProgress(null);
+    setClientRenderProgress(new Map());
 
-    const allSucceeded = allOutputs.every((o) => o.status === 'completed');
-    onStatusChange(allSucceeded ? 'completed' : 'failed', [...allOutputs]);
+    const finalOutputs = Object.values(outputsByLayout);
+    const allSucceeded = finalOutputs.every((o) => o.status === 'completed');
+    onStatusChange(allSucceeded ? 'completed' : 'failed', finalOutputs);
   }, [
     creatorFile,
     composition,
@@ -521,9 +526,18 @@ export function RenderControls({
       ? 'Client-side render (no upload needed)'
       : 'Rendering both 9:16 and 16:9 formats';
 
+  // Aggregate progress across all layouts for the button label
+  const aggregatePercent =
+    clientRenderProgress.size > 0
+      ? Math.round(
+          Array.from(clientRenderProgress.values()).reduce((sum, p) => sum + p.percent, 0) /
+            autoLayouts.length
+        )
+      : 0;
+
   const renderButtonLabel = rendering
-    ? clientRenderProgress
-      ? `Rendering... ${clientRenderProgress.percent}%`
+    ? aggregatePercent > 0
+      ? `Rendering... ${aggregatePercent}%`
       : 'Rendering...'
     : uploadsInProgress
       ? `Uploading… ${uploadProgress ?? 0}%`
@@ -561,16 +575,20 @@ export function RenderControls({
               </Badge>
             )}
           </div>
-          {/* Client render progress bar */}
-          {rendering && clientRenderProgress && (
+          {/* Client render progress bar (aggregate) */}
+          {rendering && clientRenderProgress.size > 0 && (
             <div className="mt-1.5 space-y-1">
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full rounded-full bg-blue-500 transition-[width] duration-300"
-                  style={{ width: `${clientRenderProgress.percent}%` }}
+                  style={{ width: `${aggregatePercent}%` }}
                 />
               </div>
-              <p className="text-[10px] text-muted-foreground">{clientRenderProgress.message}</p>
+              <p className="text-[10px] text-muted-foreground">
+                {Array.from(clientRenderProgress.entries())
+                  .map(([l, p]) => `${l === 'mobile' ? '9:16' : '16:9'}: ${p.percent}%`)
+                  .join(' · ')}
+              </p>
             </div>
           )}
         </div>
@@ -676,8 +694,18 @@ export function RenderControls({
               className="max-w-none"
             >
               {isActive ? (
-                <div className="flex h-full items-center justify-center">
+                <div className="flex h-full flex-col items-center justify-center gap-1.5">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  {clientRenderProgress.has(layout) && (
+                    <>
+                      <span className="text-sm font-medium text-muted-foreground tabular-nums">
+                        {clientRenderProgress.get(layout)!.percent}%
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/70 max-w-[200px] text-center truncate">
+                        {clientRenderProgress.get(layout)!.message}
+                      </span>
+                    </>
+                  )}
                 </div>
               ) : isFailed ? (
                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
