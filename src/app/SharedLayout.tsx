@@ -11,7 +11,7 @@ const SharedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       <GlassAmbientBackground />
       <Navbar />
       <SidePanel />
-      <main className="pt-[var(--navbar-height)]">{children}</main>
+      <main className="pt-[var(--navbar-height)] overflow-x-hidden">{children}</main>
     </>
   );
 };

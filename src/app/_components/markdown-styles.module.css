@@ -1,5 +1,7 @@
 .markdown {
   @apply text-lg leading-relaxed;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .markdown p,
@@ -36,6 +38,9 @@
 
 .markdown table {
   @apply w-full my-6 border-collapse;
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .markdown th {
@@ -56,4 +61,8 @@
 
 .markdown hr {
   @apply my-8 border-gray-700;
+}
+
+.markdown img {
+  @apply max-w-full h-auto;
 }
