@@ -1,0 +1,231 @@
+/**
+ * Canvas-based layout compositor.
+ * Replicates the layout logic from shared/util/reactionCompose.ts buildFilterComplex().
+ */
+import {
+  type Layout,
+  type ClientTrackInfo,
+  type DecodedFrame,
+  MOBILE_CANVAS_W,
+  MOBILE_CANVAS_H,
+  LANDSCAPE_CANVAS_W,
+  LANDSCAPE_CANVAS_H,
+  PIP_W,
+  PIP_H,
+  MOBILE_CREATOR_W,
+  MOBILE_CREATOR_H,
+} from './types';
+
+export interface CompositorConfig {
+  layout: Layout;
+  canvasWidth: number;
+  canvasHeight: number;
+}
+
+/**
+ * Create a compositor config for the given layout.
+ */
+export function createCompositorConfig(layout: Layout): CompositorConfig {
+  const isMobile = layout === 'mobile';
+  return {
+    layout,
+    canvasWidth: isMobile ? MOBILE_CANVAS_W : LANDSCAPE_CANVAS_W,
+    canvasHeight: isMobile ? MOBILE_CANVAS_H : LANDSCAPE_CANVAS_H,
+  };
+}
+
+function isPortrait(track: { width: number; height: number }): boolean {
+  return track.height > track.width;
+}
+
+/**
+ * Draw a scaled-and-cropped "cover" fill of a decoded frame into a region.
+ * Equivalent to FFmpeg scale=W:H:force_original_aspect_ratio=increase,crop=W:H
+ */
+function drawCover(
+  ctx: OffscreenCanvasRenderingContext2D,
+  frame: DecodedFrame,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number
+): void {
+  const fw = frame.displayWidth;
+  const fh = frame.displayHeight;
+
+  // Compute source rect for "cover" fit
+  const scale = Math.max(dw / fw, dh / fh);
+  const sw = dw / scale;
+  const sh = dh / scale;
+  const sx = (fw - sw) / 2;
+  const sy = (fh - sh) / 2;
+
+  ctx.drawImage(frame.source, sx, sy, sw, sh, dx, dy, dw, dh);
+}
+
+/**
+ * Draw a "contain" fit of a decoded frame into a region (no cropping, may letterbox).
+ * Returns the actual drawn dimensions and position.
+ */
+function drawContain(
+  ctx: OffscreenCanvasRenderingContext2D,
+  frame: DecodedFrame,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number
+): { x: number; y: number; w: number; h: number } {
+  const fw = frame.displayWidth;
+  const fh = frame.displayHeight;
+
+  const scale = Math.min(dw / fw, dh / fh);
+  const sw = Math.round(fw * scale);
+  const sh = Math.round(fh * scale);
+  const x = dx + Math.round((dw - sw) / 2);
+  const y = dy + Math.round((dh - sh) / 2);
+
+  ctx.drawImage(frame.source, x, y, sw, sh);
+  return { x, y, w: sw, h: sh };
+}
+
+/**
+ * Draw a blurred background fill from a decoded frame.
+ * Uses a small downscaled version + filter blur for performance.
+ */
+function drawBlurredBackground(
+  ctx: OffscreenCanvasRenderingContext2D,
+  frame: DecodedFrame,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number
+): void {
+  ctx.save();
+  ctx.filter = 'blur(20px)';
+  // Draw cover-fit with blur
+  drawCover(ctx, frame, dx - 20, dy - 20, dw + 40, dh + 40);
+  ctx.restore();
+}
+
+/**
+ * Find the active reference track for a given output timestamp.
+ * Returns the track index and time within the track, or null if none active.
+ */
+export function findActiveTrack(
+  tracks: ClientTrackInfo[],
+  outputTimeS: number
+): { trackIndex: number; trackTimeS: number } | null {
+  for (let i = tracks.length - 1; i >= 0; i--) {
+    const track = tracks[i];
+    if (outputTimeS < track.startAtS) continue;
+
+    const effectiveEnd = track.trimEndS ?? track.durationS;
+    const trackTimeS = outputTimeS - track.startAtS + track.trimStartS;
+
+    if (trackTimeS < track.trimStartS) continue;
+    if (trackTimeS >= effectiveEnd) continue;
+
+    return { trackIndex: i, trackTimeS };
+  }
+  return null;
+}
+
+/**
+ * Composite a single frame onto the canvas.
+ *
+ * @param canvas - The OffscreenCanvas to draw on
+ * @param creatorFrame - The decoded creator frame (OffscreenCanvas snapshot)
+ * @param refFrame - The decoded reference frame (null if no ref active)
+ * @param layout - 'mobile' or 'landscape'
+ * @param refTrack - Info about the active reference track (for layout decisions)
+ */
+export function compositeFrame(
+  canvas: OffscreenCanvas,
+  creatorFrame: DecodedFrame,
+  refFrame: DecodedFrame | null,
+  layout: Layout,
+  refTrack: ClientTrackInfo | null
+): void {
+  const ctx = canvas.getContext('2d')!;
+  const canvasW = canvas.width;
+  const canvasH = canvas.height;
+  const isMobile = layout === 'mobile';
+
+  // Clear canvas to black
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  if (!refFrame || !refTrack) {
+    // No reference active — full-frame creator
+    drawCover(ctx, creatorFrame, 0, 0, canvasW, canvasH);
+    return;
+  }
+
+  const refIsPortrait = isPortrait(refTrack);
+
+  if (isMobile) {
+    if (refIsPortrait) {
+      // Mobile + portrait ref:
+      // Reference fills full frame, creator overlaid at bottom (720x405)
+      drawCover(ctx, refFrame, 0, 0, canvasW, canvasH);
+      drawCover(
+        ctx,
+        creatorFrame,
+        0,
+        canvasH - MOBILE_CREATOR_H,
+        MOBILE_CREATOR_W,
+        MOBILE_CREATOR_H
+      );
+    } else {
+      // Mobile + landscape ref:
+      // Blurred ref background, sharp ref centered above creator, creator at bottom
+      drawBlurredBackground(ctx, refFrame, 0, 0, canvasW, canvasH);
+
+      // Sharp reference centered in the space above creator
+      const refH =
+        Math.round((canvasW * refTrack.height) / refTrack.width) || Math.round((canvasW * 9) / 16);
+      const availableH = canvasH - MOBILE_CREATOR_H;
+      const refY = Math.max(0, Math.round((availableH - refH) / 2));
+
+      // Draw sharp ref, scaled to full width
+      const scale = canvasW / refFrame.displayWidth;
+      const scaledH = Math.round(refFrame.displayHeight * scale);
+      ctx.drawImage(refFrame.source, 0, refY, canvasW, scaledH);
+
+      // Creator at bottom
+      drawCover(
+        ctx,
+        creatorFrame,
+        0,
+        canvasH - MOBILE_CREATOR_H,
+        MOBILE_CREATOR_W,
+        MOBILE_CREATOR_H
+      );
+    }
+  } else {
+    // Landscape layout
+    if (refIsPortrait) {
+      // Landscape + portrait ref:
+      // Reference flush-right full-height, creator fills remaining left
+      const refScaledW = Math.round((refTrack.width * canvasH) / refTrack.height);
+      const creatorFillW = canvasW - refScaledW;
+      const refX = canvasW - refScaledW;
+
+      // Creator fills left
+      if (creatorFillW > 0) {
+        drawCover(ctx, creatorFrame, 0, 0, creatorFillW, canvasH);
+      }
+
+      // Reference flush-right full-height
+      drawCover(ctx, refFrame, refX, 0, refScaledW, canvasH);
+    } else {
+      // Landscape + landscape ref:
+      // Reference fills entire frame, creator PIP at bottom-right
+      drawCover(ctx, refFrame, 0, 0, canvasW, canvasH);
+
+      const pipX = canvasW - PIP_W;
+      const pipY = canvasH - PIP_H;
+      drawCover(ctx, creatorFrame, pipX, pipY, PIP_W, PIP_H);
+    }
+  }
+}

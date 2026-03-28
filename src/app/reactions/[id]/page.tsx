@@ -18,6 +18,7 @@ import { ThumbnailPanel } from '../_components/ThumbnailPanel';
 import { TrimModal } from '../_components/TrimModal';
 import { CutModal, type CompositionCut } from '../_components/CutModal';
 import { PublishModal } from '@/components/PublishModal';
+import { supportsClientRender } from '@/lib/client-render';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
@@ -164,6 +165,11 @@ export default function CompositionEditorPage() {
   const [refUploadProgress, setRefUploadProgress] = useState<number | null>(null);
   const [refUploadSpeed, setRefUploadSpeed] = useState<number | null>(null);
 
+  // Client-side rendering: store raw File objects for WebCodecs demuxer
+  const useClientRender = supportsClientRender();
+  const [creatorFile, setCreatorFile] = useState<File | null>(null);
+  const [refFiles, setRefFiles] = useState<Map<string, File>>(new Map());
+
   const fetchComposition = useCallback(async () => {
     try {
       const res = await fetch(`/api/compositions/${compositionId}`);
@@ -231,6 +237,7 @@ export default function CompositionEditorPage() {
   const handleCreatorFileSelected = useCallback(
     (data: {
       blobUrl: string;
+      file: File;
       filename: string;
       fileSize: number;
       durationS: number;
@@ -238,8 +245,14 @@ export default function CompositionEditorPage() {
       height: number;
     }) => {
       setCreatorBlobUrl(data.blobUrl);
+      setCreatorFile(data.file);
       setCreatorLocalMeta({ durationS: data.durationS, width: data.width, height: data.height });
-      setCreatorUploadStatus('uploading');
+      if (useClientRender) {
+        // Client-render mode: no upload needed, mark complete immediately
+        setCreatorUploadStatus('complete');
+      } else {
+        setCreatorUploadStatus('uploading');
+      }
       setCreatorUploadProgress(null);
       // Update local composition state immediately so trim/timeline works
       setComposition((prev) =>
@@ -253,7 +266,7 @@ export default function CompositionEditorPage() {
           : prev
       );
     },
-    []
+    [useClientRender]
   );
 
   const handleCreatorUploadComplete = useCallback(
@@ -280,6 +293,7 @@ export default function CompositionEditorPage() {
   const handleRefFileSelected = useCallback(
     (data: {
       blobUrl: string;
+      file: File;
       filename: string;
       fileSize: number;
       durationS: number;
@@ -293,10 +307,41 @@ export default function CompositionEditorPage() {
         width: data.width,
         height: data.height,
       });
-      setRefUploadStatus('uploading');
+      if (useClientRender) {
+        // Client-render mode: create a local track immediately instead of uploading
+        setRefUploadStatus('complete');
+        // Generate a temporary track ID and add to composition locally
+        const tempId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        setRefFiles((prev) => new Map(prev).set(tempId, data.file));
+        setComposition((prev) => {
+          if (!prev) return prev;
+          const newTrack: Track = {
+            id: tempId,
+            label: data.filename,
+            s3Key: '',
+            s3Url: data.blobUrl,
+            durationS: data.durationS,
+            width: data.width,
+            height: data.height,
+            startAtS: 0,
+            trimStartS: 0,
+            trimEndS: null,
+            sortOrder: prev.tracks.length,
+            hasAudio: true, // assume true; no server probe in local mode
+          };
+          return { ...prev, tracks: [...prev.tracks, newTrack] };
+        });
+        // Clean up pending ref state
+        setPendingRefBlobUrl(null);
+        setPendingRefMeta(null);
+        setRefUploadStatus('idle');
+        toast.success('Reference track added');
+      } else {
+        setRefUploadStatus('uploading');
+      }
       setRefUploadProgress(null);
     },
-    []
+    [useClientRender]
   );
 
   const handleRefUploadComplete = useCallback(
@@ -567,11 +612,14 @@ export default function CompositionEditorPage() {
           ) : (
             <div className="max-w-sm space-y-2">
               <VideoUploader
-                label="Upload your commentary video"
+                label={
+                  useClientRender ? 'Add your commentary video' : 'Upload your commentary video'
+                }
                 blobUrl={creatorBlobUrl}
                 uploadStatus={creatorUploadStatus}
                 uploadProgress={creatorUploadProgress}
                 uploadSpeed={creatorUploadSpeed}
+                localOnly={useClientRender}
                 onFileSelected={handleCreatorFileSelected}
                 onUploadComplete={handleCreatorUploadComplete}
                 onUploadProgress={(p, s) => {
@@ -587,6 +635,7 @@ export default function CompositionEditorPage() {
                     ? () => {
                         if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
                         setCreatorBlobUrl(null);
+                        setCreatorFile(null);
                         setCreatorLocalMeta(null);
                         setCreatorUploadStatus('idle');
                         setComposition((prev) =>
@@ -678,6 +727,7 @@ export default function CompositionEditorPage() {
                 uploadStatus={refUploadStatus}
                 uploadProgress={refUploadProgress}
                 uploadSpeed={refUploadSpeed}
+                localOnly={useClientRender}
                 onFileSelected={handleRefFileSelected}
                 onUploadComplete={handleRefUploadComplete}
                 onUploadProgress={(p, s) => {
@@ -822,6 +872,10 @@ export default function CompositionEditorPage() {
             onStatusChange={handleStatusChange}
             compositionTitle={composition.title}
             trackLabels={composition.tracks.map((t) => t.label || '').filter(Boolean)}
+            // Client-side render props
+            creatorFile={creatorFile}
+            refFiles={refFiles}
+            composition={composition}
           />
         </CardContent>
       </Card>

@@ -4,7 +4,7 @@
  */
 export function probeVideo(
   blobUrl: string,
-  timeoutMs = 5000
+  timeoutMs = 30000
 ): Promise<{ durationS: number; width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');

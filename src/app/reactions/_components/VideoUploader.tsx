@@ -10,6 +10,7 @@ export type UploadStatus = 'idle' | 'uploading' | 'complete' | 'error';
 
 interface FileSelectedData {
   blobUrl: string;
+  file: File;
   filename: string;
   fileSize: number;
   durationS: number;
@@ -37,6 +38,8 @@ interface VideoUploaderProps {
   onRemove?: () => void;
   className?: string;
   keyPrefix?: string;
+  /** If true, skip S3 upload — just provide local file for client-side rendering */
+  localOnly?: boolean;
 }
 
 const CHUNK_SIZE = 64 * 1024 * 1024; // 64MB chunks
@@ -152,6 +155,7 @@ export function VideoUploader({
   onRemove,
   className,
   keyPrefix,
+  localOnly,
 }: VideoUploaderProps) {
   const [dragOver, setDragOver] = useState(false);
   const [internalProgress, setInternalProgress] = useState(0);
@@ -380,6 +384,7 @@ export function VideoUploader({
       // Fire immediately so parent can show preview + enable editing
       onFileSelected({
         blobUrl,
+        file,
         filename: file.name,
         fileSize: file.size,
         durationS: meta.durationS,
@@ -387,10 +392,16 @@ export function VideoUploader({
         height: meta.height,
       });
 
-      // Start upload in background
-      startUpload(file);
+      if (localOnly) {
+        // Skip S3 upload — mark as complete immediately
+        setInternalStatus('complete');
+        setInternalProgress(100);
+      } else {
+        // Start upload in background
+        startUpload(file);
+      }
     },
-    [onFileSelected, startUpload]
+    [onFileSelected, startUpload, localOnly]
   );
 
   const handleRetry = useCallback(() => {
