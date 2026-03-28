@@ -19,6 +19,7 @@ import { TrimModal } from '../_components/TrimModal';
 import { EditOutputModal } from '../_components/EditOutputModal';
 import { PublishModal } from '@/components/PublishModal';
 import { supportsClientRender } from '@/lib/client-render';
+import { saveBlobToCache, loadBlobsFromCache } from '@/lib/client-render/blob-cache';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
@@ -178,6 +179,44 @@ export default function CompositionEditorPage() {
   useEffect(() => {
     fetchComposition();
   }, [fetchComposition]);
+
+  // Restore cached rendered blobs from IndexedDB on mount
+  useEffect(() => {
+    if (!compositionId) return;
+    const layouts = ['mobile', 'landscape'];
+    loadBlobsFromCache(compositionId, layouts).then((cached) => {
+      if (cached.size === 0) return;
+      const newBlobs = new Map<string, Blob>();
+      const newUrls = new Map<string, string>();
+      cached.forEach((blob, layout) => {
+        newBlobs.set(layout, blob);
+        newUrls.set(layout, URL.createObjectURL(blob));
+      });
+      setClientOutputBlobs(newBlobs);
+      setClientOutputUrls(newUrls);
+      // Update outputs so video cards show cached versions
+      setComposition((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          status: prev.status === 'draft' ? 'completed' : prev.status,
+          outputs:
+            prev.outputs.length > 0
+              ? prev.outputs.map((o) => {
+                  const cachedUrl = newUrls.get(o.layout);
+                  return cachedUrl ? { ...o, s3Url: cachedUrl, status: 'completed' } : o;
+                })
+              : Array.from(newUrls.entries()).map(([layout, url]) => ({
+                  id: `cached_${layout}`,
+                  layout,
+                  status: 'completed',
+                  s3Url: url,
+                })),
+        };
+      });
+      console.log(`[page] Restored ${cached.size} cached output(s) from IndexedDB`);
+    });
+  }, [compositionId]);
 
   const save = useCallback(
     async (updates: Partial<Composition>) => {
@@ -453,10 +492,14 @@ export default function CompositionEditorPage() {
   );
 
   // Callback when RenderControls produces a new blob
-  const handleBlobReady = useCallback((layout: string, blob: Blob, url: string) => {
-    setClientOutputBlobs((prev) => new Map(prev).set(layout, blob));
-    setClientOutputUrls((prev) => new Map(prev).set(layout, url));
-  }, []);
+  const handleBlobReady = useCallback(
+    (layout: string, blob: Blob, url: string) => {
+      setClientOutputBlobs((prev) => new Map(prev).set(layout, blob));
+      setClientOutputUrls((prev) => new Map(prev).set(layout, url));
+      saveBlobToCache(compositionId, layout, blob);
+    },
+    [compositionId]
+  );
 
   // Callback when EditOutputModal finishes splicing
   const handleSpliceComplete = useCallback(
@@ -488,8 +531,10 @@ export default function CompositionEditorPage() {
           }),
         };
       });
+      // Persist spliced blobs to IndexedDB
+      blobs.forEach((blob, layout) => saveBlobToCache(compositionId, layout, blob));
     },
-    []
+    [compositionId]
   );
 
   // Effective creator duration — local metadata as fallback (client-render may not persist to DB)
