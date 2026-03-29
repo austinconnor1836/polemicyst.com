@@ -183,9 +183,6 @@ export default function CompositionEditorPage() {
   const [clientOutputBlobs, setClientOutputBlobs] = useState<Map<string, Blob>>(new Map());
   const [clientOutputUrls, setClientOutputUrls] = useState<Map<string, string>>(new Map());
 
-  // Auto-start server render after uploads complete (mobile)
-  const [renderRequested, setRenderRequested] = useState(false);
-
   const fetchComposition = useCallback(async () => {
     try {
       const res = await fetchWithRetry(`/api/compositions/${compositionId}`);
@@ -246,15 +243,6 @@ export default function CompositionEditorPage() {
       console.log(`[page] Restored ${cached.size} cached output(s) from IndexedDB`);
     });
   }, [compositionId]);
-
-  // Cancel queued render if an upload fails
-  useEffect(() => {
-    if (!renderRequested) return;
-    if (creatorUploadStatus === 'error' || refUploadStatus === 'error') {
-      setRenderRequested(false);
-      toast.error('Upload failed — render cancelled');
-    }
-  }, [renderRequested, creatorUploadStatus, refUploadStatus]);
 
   const save = useCallback(
     async (updates: Partial<Composition>) => {
@@ -346,24 +334,19 @@ export default function CompositionEditorPage() {
   const handleCreatorUploadComplete = useCallback(
     async (data: { s3Key: string; s3Url: string }) => {
       setCreatorUploadStatus('complete');
-      try {
-        // Server probe for accuracy (hasAudio, precise duration)
-        const probe = await probeVideo(data.s3Key);
-        await save({
-          creatorS3Key: data.s3Key,
-          creatorS3Url: data.s3Url,
-          creatorDurationS: probe?.durationS ?? creatorLocalMeta?.durationS ?? null,
-          creatorWidth: probe?.width ?? creatorLocalMeta?.width ?? null,
-          creatorHeight: probe?.height ?? creatorLocalMeta?.height ?? null,
-        } as any);
-        // Revoke blob URL and switch to CreatorVideoPanel
-        if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
-        setCreatorBlobUrl(null);
-        setCreatorUploadStatus('idle');
-      } catch {
-        setCreatorUploadStatus('error');
-        toast.error('Failed to save creator video — please retry');
-      }
+      // Server probe for accuracy (hasAudio, precise duration)
+      const probe = await probeVideo(data.s3Key);
+      await save({
+        creatorS3Key: data.s3Key,
+        creatorS3Url: data.s3Url,
+        creatorDurationS: probe?.durationS ?? creatorLocalMeta?.durationS ?? null,
+        creatorWidth: probe?.width ?? creatorLocalMeta?.width ?? null,
+        creatorHeight: probe?.height ?? creatorLocalMeta?.height ?? null,
+      } as any);
+      // Revoke blob URL and switch to CreatorVideoPanel
+      if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
+      setCreatorBlobUrl(null);
+      setCreatorUploadStatus('idle');
     },
     [save, probeVideo, creatorLocalMeta, creatorBlobUrl]
   );
@@ -453,6 +436,10 @@ export default function CompositionEditorPage() {
         toast.error('Failed to add track — please retry');
         setRefUploadStatus('error');
       } finally {
+        if (pendingRefBlobUrl) URL.revokeObjectURL(pendingRefBlobUrl);
+        setPendingRefBlobUrl(null);
+        setPendingRefMeta(null);
+        setRefUploadStatus('idle');
         setAddingTrack(false);
       }
     },
@@ -583,14 +570,6 @@ export default function CompositionEditorPage() {
 
   // Effective creator duration — local metadata as fallback (client-render may not persist to DB)
   const creatorDurationS = composition?.creatorDurationS ?? creatorLocalMeta?.durationS ?? 0;
-
-  // Upload + server render readiness (for mobile auto-start)
-  const uploadsInProgress = creatorUploadStatus === 'uploading' || refUploadStatus === 'uploading';
-  const serverRenderReady =
-    !uploadsInProgress &&
-    !!composition?.creatorS3Key &&
-    composition.tracks.length > 0 &&
-    composition.tracks.every((t) => !!t.s3Url);
 
   if (loading) {
     return (
@@ -909,12 +888,10 @@ export default function CompositionEditorPage() {
             outputs={composition.outputs}
             hasCreator={!!(composition.creatorS3Key || creatorBlobUrl)}
             hasTracks={composition.tracks.length > 0}
-            uploadsInProgress={uploadsInProgress}
+            uploadsInProgress={
+              creatorUploadStatus === 'uploading' || refUploadStatus === 'uploading'
+            }
             uploadProgress={Math.max(creatorUploadProgress ?? 0, refUploadProgress ?? 0)}
-            renderRequested={renderRequested}
-            onRenderRequested={() => setRenderRequested(true)}
-            onCancelRenderRequest={() => setRenderRequested(false)}
-            serverRenderReady={serverRenderReady}
             hasPortraitRef={composition.tracks.some(
               (t) => t.width != null && t.height != null && t.height > t.width
             )}

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { VideoCard } from '@/components/ui/video-card';
-import { Loader2, Download, Share2, Sparkles, Monitor, X } from 'lucide-react';
+import { Loader2, Download, Share2, Sparkles, Monitor } from 'lucide-react';
 import { LayoutPreview } from './LayoutPreview';
 import { PublishModal } from '@/components/PublishModal';
 import {
@@ -63,10 +63,6 @@ interface RenderControlsProps {
   trackLabels?: string[];
   uploadsInProgress?: boolean;
   uploadProgress?: number;
-  renderRequested?: boolean;
-  onRenderRequested?: () => void;
-  onCancelRenderRequest?: () => void;
-  serverRenderReady?: boolean;
   // Client-side render props
   creatorFile?: File | null;
   refFiles?: Map<string, File>;
@@ -96,10 +92,6 @@ export function RenderControls({
   trackLabels,
   uploadsInProgress,
   uploadProgress,
-  renderRequested,
-  onRenderRequested,
-  onCancelRenderRequest,
-  serverRenderReady,
   creatorFile,
   refFiles,
   composition,
@@ -452,8 +444,21 @@ export function RenderControls({
     [clientOutputBlobs, compositionId]
   );
 
-  /** Server-side render: POST to API and begin polling */
-  const handleServerRender = useCallback(async () => {
+  const handleRender = async () => {
+    if (!hasCreator || !hasTracks) return;
+
+    if (uploadsInProgress) {
+      toast(`Finishing upload… ${uploadProgress ?? 0}%`, { icon: '⏳' });
+      return;
+    }
+
+    // Use client-side rendering if supported and files are available
+    if (canClientRender) {
+      handleClientRender();
+      return;
+    }
+
+    // Fall back to server-side rendering
     setRendering(true);
 
     const resetOutputs = outputs.map((o) => ({
@@ -560,21 +565,69 @@ export function RenderControls({
     ? aggregatePercent > 0
       ? `Rendering... ${aggregatePercent}%`
       : 'Rendering...'
-    : renderRequested && uploadsInProgress
-      ? `Render queued — uploading ${uploadProgress ?? 0}%`
-      : uploadsInProgress
-        ? `Uploading… ${uploadProgress ?? 0}%`
-        : outputs.some((o) => o.s3Url) || clientOutputUrls.size > 0
-          ? 'Re-render'
-          : 'Render';
+    : uploadsInProgress
+      ? `Uploading… ${uploadProgress ?? 0}%`
+      : outputs.some((o) => o.s3Url) || clientOutputUrls.size > 0
+        ? 'Re-render'
+        : 'Render';
 
   return (
     <div className="space-y-4">
-      {/* Render button */}
-      <div className="flex items-center gap-2">
-        {rendering && !canClientRender && (
-          <Button variant="outline" size="sm" onClick={handleCancel}>
-            Cancel
+      {/* Auto-detected layout previews */}
+      <div className="flex items-center gap-4">
+        <div className="flex gap-3">
+          {autoLayouts.map((layout) => (
+            <div
+              key={layout}
+              className="rounded-lg border border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950 p-2"
+            >
+              <LayoutPreview
+                layout={layout}
+                hasReference={hasTracks}
+                hasPortraitRef={hasPortraitRef}
+                hasLandscapeRef={hasLandscapeRef}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-muted-foreground">{detectionSummary}</p>
+            {canClientRender && (
+              <Badge variant="secondary" className="gap-1 text-[10px] h-5">
+                <Monitor className="h-3 w-3" />
+                Local
+              </Badge>
+            )}
+          </div>
+          {/* Client render progress bar (aggregate) */}
+          {rendering && clientRenderProgress.size > 0 && (
+            <div className="mt-1.5 space-y-1">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-blue-500 transition-[width] duration-300"
+                  style={{ width: `${aggregatePercent}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                {Array.from(clientRenderProgress.entries())
+                  .map(([l, p]) => `${l === 'mobile' ? '9:16' : '16:9'}: ${p.percent}%`)
+                  .join(' · ')}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="ml-auto flex gap-2 shrink-0">
+          {rendering && !canClientRender && (
+            <Button variant="outline" onClick={handleCancel}>
+              Cancel
+            </Button>
+          )}
+          <Button onClick={handleRender} disabled={rendering || !hasCreator || !hasTracks}>
+            {rendering && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {renderButtonLabel}
           </Button>
         )}
         {renderRequested && uploadsInProgress && (
@@ -607,23 +660,6 @@ export function RenderControls({
           </Badge>
         )}
       </div>
-
-      {/* Client render progress bar */}
-      {rendering && clientRenderProgress.size > 0 && (
-        <div className="space-y-1">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-blue-500 transition-[width] duration-300"
-              style={{ width: `${aggregatePercent}%` }}
-            />
-          </div>
-          <p className="text-[10px] text-muted-foreground">
-            {Array.from(clientRenderProgress.entries())
-              .map(([l, p]) => `${l === 'mobile' ? '9:16' : '16:9'}: ${p.percent}%`)
-              .join(' · ')}
-          </p>
-        </div>
-      )}
 
       {/* Output cards — always show placeholders for expected layouts */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
