@@ -176,7 +176,7 @@ public final class CompositionEditorViewModel: ObservableObject {
     private static let chunkSize = 10 * 1024 * 1024 // 10 MB
 
     private func uploadVideoFile(item: PhotosPickerItem, prefix: String) async throws -> (s3Key: String, s3Url: String) {
-        guard let movie = try await item.loadTransferable(type: VideoTransferable.self) else {
+        guard let movie = try await item.loadTransferable(type: CompositionVideoTransferable.self) else {
             throw UploadError.noVideo
         }
         let fileURL = movie.url
@@ -245,7 +245,7 @@ private enum UploadError: LocalizedError {
     }
 }
 
-struct VideoTransferable: Transferable {
+struct CompositionVideoTransferable: Transferable {
     let url: URL
 
     static var transferRepresentation: some TransferRepresentation {

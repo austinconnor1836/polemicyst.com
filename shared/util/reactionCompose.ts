@@ -148,8 +148,10 @@ export interface ComposeOptions {
   creatorVolume: number;
   referenceVolume: number;
   captions?: ComposeCaptionOptions;
-  /** Cuts to apply (output-timeline coordinates). Applied globally to all tracks. */
-  cuts?: Array<{ startS: number; endS: number }>;
+  /** Cuts to apply (output-timeline coordinates). Each cut has targets[] specifying which tracks. */
+  cuts?: Array<{ startS: number; endS: number; targets: string[] }>;
+  /** Map of track index to track ID (for matching cut targets to track indices) */
+  trackIds?: string[];
 }
 
 /**
@@ -731,25 +733,33 @@ export async function renderComposition(
   const trimStartS = opts.creatorTrimStartS ?? 0;
   const trimEndS = opts.creatorTrimEndS ?? opts.creatorDurationS;
 
-  // All cuts apply globally to every track
-  const allCuts: CutInfo[] = (opts.cuts ?? []).map((c) => ({ startS: c.startS, endS: c.endS }));
+  // Extract creator-targeted cuts (output-timeline coords)
+  const creatorCuts: CutInfo[] = (opts.cuts ?? [])
+    .filter((c) => c.targets.includes('creator'))
+    .map((c) => ({ startS: c.startS, endS: c.endS }));
 
   const trimResult = await preTrimCreator(
     opts.creatorPath,
     trimStartS,
     trimEndS,
     opts.creatorDurationS,
-    allCuts.length > 0 ? allCuts : undefined
+    creatorCuts.length > 0 ? creatorCuts : undefined
   );
 
-  // Pre-trim reference tracks with global cuts
+  // Pre-trim reference tracks that have cuts
   const preTrimmedTracks: TrackInfo[] = [];
   const trackTempFiles: string[] = [];
   for (let i = 0; i < opts.tracks.length; i++) {
     const track = opts.tracks[i];
+    const trackId = opts.trackIds?.[i];
+    const trackCuts: CutInfo[] = trackId
+      ? (opts.cuts ?? [])
+          .filter((c) => c.targets.includes(trackId))
+          .map((c) => ({ startS: c.startS, endS: c.endS }))
+      : [];
 
-    if (allCuts.length > 0) {
-      const result = await preTrimTrack(track.localPath, track, allCuts);
+    if (trackCuts.length > 0) {
+      const result = await preTrimTrack(track.localPath, track, trackCuts);
       trackTempFiles.push(result.path);
       preTrimmedTracks.push({
         ...track,

@@ -39,6 +39,11 @@ locals {
 
         # Redis (environment-specific service discovery)
         REDIS_HOST = "redis-${env_name}.${var.app_name}.local"
+
+        # Next.js standalone server bind address — ECS sets HOSTNAME to the
+        # container task ID, which Next reads and tries to bind to. Override
+        # to 0.0.0.0 so the server is reachable by the ALB health checks.
+        HOSTNAME = "0.0.0.0"
       }
 
       # Clip worker environment variables

@@ -650,7 +650,7 @@ model Composition {
   creatorTrimEndS     Float?
   creatorTranscript      String?  @db.Text
   creatorTranscriptJson  Json?
-  cuts                    Json?    // Array<{ id: string; startS: number; endS: number }> — applied globally to all tracks
+  cuts                    Json?    // Array<{ id: string; startS: number; endS: number; targets: string[] }>
   thumbnailCutoutPosition String  @default("right") // left | right
   thumbnailCutoutSize     String  @default("large")  // small | medium | large
   createdAt           DateTime @default(now())

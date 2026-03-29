@@ -43,12 +43,12 @@ resource "aws_lb_target_group" "web" {
   target_type = "ip"
 
   health_check {
-    path                = "/"
+    path                = "/api/health"
     healthy_threshold   = 2
-    unhealthy_threshold = 2
+    unhealthy_threshold = 3
     timeout             = 5
     interval            = 30
-    matcher             = "200-399"
+    matcher             = "200"
   }
 
   tags = {
