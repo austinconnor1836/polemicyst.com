@@ -708,10 +708,12 @@ new Worker<ReactionComposeJob>(
         }
       }
 
-      // 4. Parse cuts from composition
-      const compositionCuts: Array<{ startS: number; endS: number; targets: string[] }> =
-        Array.isArray(composition.cuts) ? (composition.cuts as any[]) : [];
-      const trackIds = composition.tracks.map((t) => t.id);
+      // 4. Parse cuts from composition (global — no per-target filtering)
+      const compositionCuts: Array<{ startS: number; endS: number }> = Array.isArray(
+        composition.cuts
+      )
+        ? (composition.cuts as any[]).map((c: any) => ({ startS: c.startS, endS: c.endS }))
+        : [];
 
       // 5. Render each layout
 
@@ -744,7 +746,6 @@ new Worker<ReactionComposeJob>(
                   referenceVolume: composition.referenceVolume,
                   captions: captionOpts,
                   cuts: compositionCuts.length > 0 ? compositionCuts : undefined,
-                  trackIds: compositionCuts.length > 0 ? trackIds : undefined,
                 },
                 s3Key
               ),
