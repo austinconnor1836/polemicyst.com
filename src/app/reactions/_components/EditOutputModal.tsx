@@ -308,253 +308,260 @@ export function EditOutputModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>Edit Output</DialogTitle>
-          <DialogDescription>
-            Play the video, then use Mark Start / Mark End to select segments to remove.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          {/* Side-by-side video previews */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            {outputs.map((output, i) => {
-              const isPortrait = output.layout === 'mobile';
-              return (
-                <div
-                  key={output.id}
-                  className={cn(
-                    'bg-black rounded-md overflow-hidden flex-shrink-0',
-                    isPortrait ? 'aspect-[9/16] max-h-[280px]' : 'aspect-video max-h-[280px] flex-1'
-                  )}
-                >
-                  <video
-                    ref={i === 0 ? primaryVideoRef : secondaryVideoRef}
-                    src={output.s3Url}
-                    preload="auto"
-                    playsInline
-                    controls={false}
-                    muted={i !== 0}
-                    className="h-full w-full object-contain"
-                    onLoadedMetadata={i === 0 ? handleLoadedMetadata : undefined}
-                    onTimeUpdate={i === 0 ? handleTimeUpdate : undefined}
-                    onPlay={i === 0 ? handlePlay : undefined}
-                    onPause={i === 0 ? handlePause : undefined}
-                  />
-                </div>
-              );
-            })}
+      <DialogContent
+        className="flex h-[100dvh] max-h-[100dvh] w-screen max-w-[100vw] flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:rounded-none"
+        aria-describedby={undefined}
+      >
+        {/* Sticky header */}
+        <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6">
+          <div>
+            <DialogTitle className="text-base">Edit Output</DialogTitle>
+            <DialogDescription className="text-xs">
+              Mark Start / Mark End to select segments to remove.
+            </DialogDescription>
           </div>
-
-          {/* Unified play/pause + marker buttons */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={togglePlayPause}
-              disabled={durationS <= 0}
-            >
-              {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-              {isPlaying ? 'Pause' : 'Play'}
-            </Button>
-
-            <div className="w-px h-5 bg-border" />
-
-            {pendingStartS === null ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                onClick={handleMarkStart}
-                disabled={isInsideCut(currentTime)}
-              >
-                <Flag className="h-3.5 w-3.5" />
-                Mark Start
-              </Button>
-            ) : (
-              <>
-                <span className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 dark:bg-red-950/30 dark:text-red-300">
-                  <Flag className="h-3 w-3" />
-                  Start: {formatTime(pendingStartS)}
-                </span>
-                <Button variant="destructive" size="sm" className="gap-1.5" onClick={handleMarkEnd}>
-                  <Scissors className="h-3.5 w-3.5" />
-                  Mark End
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs"
-                  onClick={() => setPendingStartS(null)}
-                >
-                  Cancel
-                </Button>
-              </>
-            )}
-            <span className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">
-              {formatTime(currentTime)} / {formatTime(durationS)}
-            </span>
-          </div>
-
-          {/* Timeline visualization */}
-          {durationS > 0 && (
-            <div className="space-y-1">
-              <div
-                ref={timelineRef}
-                className="relative overflow-hidden rounded-lg border bg-muted/40 cursor-pointer"
-                style={{ height: 56 }}
-                onClick={handleTimelineClick}
-              >
-                {/* Ruler */}
-                <div className="relative h-5 border-b border-border/50">
-                  {rulerMarks.map((t) => {
-                    const pct = (t / durationS) * 100;
-                    return (
-                      <div
-                        key={t}
-                        className="absolute top-0 flex flex-col items-center pointer-events-none"
-                        style={{ left: `${pct}%` }}
-                      >
-                        <div className="h-2 w-px bg-border" />
-                        <span className="text-[8px] text-muted-foreground/70 leading-none mt-px">
-                          {formatTimeShort(t)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Track area */}
-                <div className="relative mx-1" style={{ height: 28, marginTop: 1 }}>
-                  {/* Base bar */}
-                  <div className="absolute inset-x-0 top-1 bottom-1 rounded bg-muted/60" />
-
-                  {/* Confirmed cut zones */}
-                  {localCuts.map((cut) => {
-                    const startPct = (cut.startS / durationS) * 100;
-                    const widthPct = ((cut.endS - cut.startS) / durationS) * 100;
-                    return (
-                      <div
-                        key={cut.id}
-                        className="absolute top-0 bottom-0 group/cut"
-                        style={{ left: `${startPct}%`, width: `${widthPct}%` }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          seekTo(cut.startS);
-                        }}
-                      >
-                        <div className="absolute inset-0 rounded-sm bg-red-500/30 dark:bg-red-400/25" />
-                        <button
-                          className="absolute -top-1.5 right-0 z-30 h-4 w-4 rounded-full bg-red-600 text-white opacity-0 group-hover/cut:opacity-100 transition-opacity flex items-center justify-center"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteCut(cut.id);
-                          }}
-                        >
-                          <X className="h-2.5 w-2.5" />
-                        </button>
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <span className="text-[8px] font-medium text-red-700 dark:text-red-300 truncate px-0.5">
-                            {formatTimeShort(cut.startS)}–{formatTimeShort(cut.endS)}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Pending region preview */}
-                  {pendingRegion && pendingRegion.right - pendingRegion.left > 0 && (
-                    <div
-                      className="absolute top-0 bottom-0 bg-red-500/15 border border-dashed border-red-400/50 rounded-sm pointer-events-none"
-                      style={{
-                        left: `${(pendingRegion.left / durationS) * 100}%`,
-                        width: `${((pendingRegion.right - pendingRegion.left) / durationS) * 100}%`,
-                      }}
-                    />
-                  )}
-
-                  {/* Pending start marker */}
-                  {pendingStartPct !== null && (
-                    <div
-                      className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
-                      style={{ left: `${pendingStartPct}%` }}
-                    >
-                      <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-red-500 shadow" />
-                    </div>
-                  )}
-
-                  {/* Playhead */}
-                  <div
-                    className="absolute top-0 bottom-0 w-0.5 bg-white shadow-sm z-30 pointer-events-none"
-                    style={{ left: `${playheadPct}%` }}
-                  >
-                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-white shadow" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Time labels */}
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                <span>{formatTimeShort(0)}</span>
-                {totalCutDuration > 0 && (
-                  <span className="text-red-500 dark:text-red-400 font-medium">
-                    {formatTime(totalCutDuration)} to remove
-                  </span>
-                )}
-                <span>{formatTimeShort(durationS)}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Cuts list */}
           {localCuts.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {localCuts.map((cut, i) => (
-                <span
-                  key={cut.id}
-                  className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-950/30 dark:text-red-300"
-                >
-                  Cut {i + 1}: {formatTime(cut.startS)} – {formatTime(cut.endS)}
-                  <button
-                    onClick={() => handleDeleteCut(cut.id)}
-                    className="ml-0.5 rounded-sm p-0.5 hover:bg-red-200 dark:hover:bg-red-800 transition-colors"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Splice progress */}
-          {splicing && (
-            <div className="space-y-1">
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-blue-500 transition-[width] duration-300"
-                  style={{ width: `${spliceProgress}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-muted-foreground">
-                Applying cuts... {spliceProgress}%
-              </p>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter className="pt-4 gap-2 sm:gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={splicing}>
-            Cancel
-          </Button>
-          {localCuts.length > 0 && (
-            <Button onClick={handleApplyCuts} disabled={splicing}>
+            <Button size="sm" onClick={handleApplyCuts} disabled={splicing}>
               {splicing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Apply Cuts
             </Button>
           )}
-        </DialogFooter>
+        </div>
+
+        {/* Video previews — fill remaining space */}
+        <div className="flex min-h-0 flex-1 items-center justify-center gap-3 px-4 py-3 sm:px-6">
+          {outputs.map((output, i) => {
+            const isPortrait = output.layout === 'mobile';
+            return (
+              <div
+                key={output.id}
+                className={cn(
+                  'bg-black rounded-md overflow-hidden h-full',
+                  isPortrait ? 'aspect-[9/16]' : 'aspect-video'
+                )}
+              >
+                <video
+                  ref={i === 0 ? primaryVideoRef : secondaryVideoRef}
+                  src={output.s3Url}
+                  preload="auto"
+                  playsInline
+                  controls={false}
+                  muted={i !== 0}
+                  className="h-full w-full object-contain"
+                  onLoadedMetadata={i === 0 ? handleLoadedMetadata : undefined}
+                  onTimeUpdate={i === 0 ? handleTimeUpdate : undefined}
+                  onPlay={i === 0 ? handlePlay : undefined}
+                  onPause={i === 0 ? handlePause : undefined}
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Controls + timeline pinned to bottom */}
+        <div className="border-t px-4 py-3 sm:px-6">
+          <div className="space-y-3">
+            {/* Play/pause + marker buttons */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={togglePlayPause}
+                disabled={durationS <= 0}
+              >
+                {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                {isPlaying ? 'Pause' : 'Play'}
+              </Button>
+
+              <div className="w-px h-5 bg-border" />
+
+              {pendingStartS === null ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleMarkStart}
+                  disabled={isInsideCut(currentTime)}
+                >
+                  <Flag className="h-3.5 w-3.5" />
+                  Mark Start
+                </Button>
+              ) : (
+                <>
+                  <span className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 dark:bg-red-950/30 dark:text-red-300">
+                    <Flag className="h-3 w-3" />
+                    Start: {formatTime(pendingStartS)}
+                  </span>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={handleMarkEnd}
+                  >
+                    <Scissors className="h-3.5 w-3.5" />
+                    Mark End
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => setPendingStartS(null)}
+                  >
+                    Cancel
+                  </Button>
+                </>
+              )}
+              <span className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">
+                {formatTime(currentTime)} / {formatTime(durationS)}
+              </span>
+            </div>
+
+            {/* Timeline visualization */}
+            {durationS > 0 && (
+              <div className="space-y-1">
+                <div
+                  ref={timelineRef}
+                  className="relative overflow-hidden rounded-lg border bg-muted/40 cursor-pointer"
+                  style={{ height: 56 }}
+                  onClick={handleTimelineClick}
+                >
+                  {/* Ruler */}
+                  <div className="relative h-5 border-b border-border/50">
+                    {rulerMarks.map((t) => {
+                      const pct = (t / durationS) * 100;
+                      return (
+                        <div
+                          key={t}
+                          className="absolute top-0 flex flex-col items-center pointer-events-none"
+                          style={{ left: `${pct}%` }}
+                        >
+                          <div className="h-2 w-px bg-border" />
+                          <span className="text-[8px] text-muted-foreground/70 leading-none mt-px">
+                            {formatTimeShort(t)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Track area */}
+                  <div className="relative mx-1" style={{ height: 28, marginTop: 1 }}>
+                    <div className="absolute inset-x-0 top-1 bottom-1 rounded bg-muted/60" />
+
+                    {/* Confirmed cut zones */}
+                    {localCuts.map((cut) => {
+                      const startPct = (cut.startS / durationS) * 100;
+                      const widthPct = ((cut.endS - cut.startS) / durationS) * 100;
+                      return (
+                        <div
+                          key={cut.id}
+                          className="absolute top-0 bottom-0 group/cut"
+                          style={{ left: `${startPct}%`, width: `${widthPct}%` }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            seekTo(cut.startS);
+                          }}
+                        >
+                          <div className="absolute inset-0 rounded-sm bg-red-500/30 dark:bg-red-400/25" />
+                          <button
+                            className="absolute -top-1.5 right-0 z-30 h-4 w-4 rounded-full bg-red-600 text-white opacity-0 group-hover/cut:opacity-100 transition-opacity flex items-center justify-center"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteCut(cut.id);
+                            }}
+                          >
+                            <X className="h-2.5 w-2.5" />
+                          </button>
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <span className="text-[8px] font-medium text-red-700 dark:text-red-300 truncate px-0.5">
+                              {formatTimeShort(cut.startS)}–{formatTimeShort(cut.endS)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Pending region preview */}
+                    {pendingRegion && pendingRegion.right - pendingRegion.left > 0 && (
+                      <div
+                        className="absolute top-0 bottom-0 bg-red-500/15 border border-dashed border-red-400/50 rounded-sm pointer-events-none"
+                        style={{
+                          left: `${(pendingRegion.left / durationS) * 100}%`,
+                          width: `${((pendingRegion.right - pendingRegion.left) / durationS) * 100}%`,
+                        }}
+                      />
+                    )}
+
+                    {/* Pending start marker */}
+                    {pendingStartPct !== null && (
+                      <div
+                        className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
+                        style={{ left: `${pendingStartPct}%` }}
+                      >
+                        <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-red-500 shadow" />
+                      </div>
+                    )}
+
+                    {/* Playhead */}
+                    <div
+                      className="absolute top-0 bottom-0 w-0.5 bg-white shadow-sm z-30 pointer-events-none"
+                      style={{ left: `${playheadPct}%` }}
+                    >
+                      <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-white shadow" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Time labels */}
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span>{formatTimeShort(0)}</span>
+                  {totalCutDuration > 0 && (
+                    <span className="text-red-500 dark:text-red-400 font-medium">
+                      {formatTime(totalCutDuration)} to remove
+                    </span>
+                  )}
+                  <span>{formatTimeShort(durationS)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Cuts list */}
+            {localCuts.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {localCuts.map((cut, i) => (
+                  <span
+                    key={cut.id}
+                    className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-950/30 dark:text-red-300"
+                  >
+                    Cut {i + 1}: {formatTime(cut.startS)} – {formatTime(cut.endS)}
+                    <button
+                      onClick={() => handleDeleteCut(cut.id)}
+                      className="ml-0.5 rounded-sm p-0.5 hover:bg-red-200 dark:hover:bg-red-800 transition-colors"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Splice progress */}
+            {splicing && (
+              <div className="space-y-1">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-blue-500 transition-[width] duration-300"
+                    style={{ width: `${spliceProgress}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Applying cuts... {spliceProgress}%
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -71,6 +71,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
+    // Auto-clear cuts when creator video is removed (stale cuts for old content)
+    if (data.creatorS3Key === null && data.cuts === undefined) {
+      data.cuts = null;
+    }
+
     // Validate cuts if provided
     if (data.cuts !== undefined && data.cuts !== null) {
       if (!Array.isArray(data.cuts)) {
