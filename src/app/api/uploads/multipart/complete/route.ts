@@ -1,22 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
-import { S3Client, CompleteMultipartUploadCommand } from '@aws-sdk/client-s3';
+import { CompleteMultipartUploadCommand } from '@aws-sdk/client-s3';
 import { logUpload, getUploadContext } from '@shared/lib/upload-logger';
+import { makeS3v3Client, S3_BUCKET, S3_REGION } from '@/lib/s3-client';
 
-const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
-const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
-
-const s3 = new S3Client({
-  region: S3_REGION,
-  ...(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
-    ? {
-        credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        },
-      }
-    : {}),
-});
+const s3 = makeS3v3Client();
 
 export async function POST(req: NextRequest) {
   const user = await getAuthenticatedUser(req);

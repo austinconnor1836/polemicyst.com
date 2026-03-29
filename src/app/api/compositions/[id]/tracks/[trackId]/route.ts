@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
+import { Prisma } from '@prisma/client';
 
 export async function PATCH(
   req: NextRequest,
@@ -84,6 +85,30 @@ export async function DELETE(
     }
 
     await prisma.compositionTrack.delete({ where: { id: trackId } });
+
+    // Clean orphaned cut targets
+    if (composition.cuts && Array.isArray(composition.cuts)) {
+      const cleaned = (composition.cuts as any[])
+        .map((cut: any) => ({
+          ...cut,
+          targets: cut.targets.filter((t: string) => t !== trackId),
+        }))
+        .filter((cut: any) => cut.targets.length > 0);
+
+      const cutsChanged =
+        cleaned.length !== (composition.cuts as any[]).length ||
+        cleaned.some(
+          (c: any, i: number) =>
+            c.targets.length !== (composition.cuts as any[])[i]?.targets?.length
+        );
+
+      if (cutsChanged) {
+        await prisma.composition.update({
+          where: { id },
+          data: { cuts: cleaned.length > 0 ? cleaned : Prisma.DbNull },
+        });
+      }
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {

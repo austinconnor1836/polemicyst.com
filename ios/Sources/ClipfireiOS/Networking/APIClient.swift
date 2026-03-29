@@ -153,6 +153,10 @@ public struct APIClient {
         try await post(path: "/api/uploads/multipart/part-url", body: MultipartPartURLRequest(uploadId: uploadId, key: key, partNumber: partNumber))
     }
 
+    public func getBatchMultipartPartURLs(uploadId: String, key: String, partNumbers: [Int]) async throws -> MultipartBatchPartURLResponse {
+        try await post(path: "/api/uploads/multipart/batch-part-urls", body: MultipartBatchPartURLRequest(uploadId: uploadId, key: key, partNumbers: partNumbers))
+    }
+
     public func completeMultipartUpload(uploadId: String, key: String, parts: [MultipartCompletePart]) async throws {
         struct Response: Decodable { let success: Bool }
         let _: Response = try await post(path: "/api/uploads/multipart/complete", body: MultipartCompleteRequest(uploadId: uploadId, key: key, parts: parts))

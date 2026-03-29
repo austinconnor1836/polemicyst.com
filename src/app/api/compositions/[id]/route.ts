@@ -62,11 +62,46 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       'creatorHeight',
       'creatorTrimStartS',
       'creatorTrimEndS',
+      'cuts',
     ] as const;
     const data: Record<string, any> = {};
     for (const key of allowed) {
       if (body[key] !== undefined) {
         data[key] = body[key];
+      }
+    }
+
+    // Validate cuts if provided
+    if (data.cuts !== undefined && data.cuts !== null) {
+      if (!Array.isArray(data.cuts)) {
+        return NextResponse.json({ error: 'cuts must be an array' }, { status: 400 });
+      }
+      for (const cut of data.cuts) {
+        if (!cut.id || typeof cut.startS !== 'number' || typeof cut.endS !== 'number') {
+          return NextResponse.json(
+            { error: 'Each cut must have id, startS, endS' },
+            { status: 400 }
+          );
+        }
+        if (cut.startS < 0 || cut.endS < 0) {
+          return NextResponse.json({ error: 'Cut times must be >= 0' }, { status: 400 });
+        }
+        if (cut.endS <= cut.startS) {
+          return NextResponse.json({ error: 'Cut endS must be > startS' }, { status: 400 });
+        }
+        if (!Array.isArray(cut.targets) || cut.targets.length === 0) {
+          return NextResponse.json(
+            { error: 'Each cut must have non-empty targets' },
+            { status: 400 }
+          );
+        }
+      }
+      // Check for overlapping cuts (sorted by startS)
+      const sorted = [...data.cuts].sort((a: any, b: any) => a.startS - b.startS);
+      for (let i = 0; i < sorted.length - 1; i++) {
+        if (sorted[i].endS > sorted[i + 1].startS) {
+          return NextResponse.json({ error: 'Cuts must not overlap' }, { status: 400 });
+        }
       }
     }
 

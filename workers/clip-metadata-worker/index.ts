@@ -708,7 +708,12 @@ new Worker<ReactionComposeJob>(
         }
       }
 
-      // 4. Render each layout
+      // 4. Parse cuts from composition
+      const compositionCuts: Array<{ startS: number; endS: number; targets: string[] }> =
+        Array.isArray(composition.cuts) ? (composition.cuts as any[]) : [];
+      const trackIds = composition.tracks.map((t) => t.id);
+
+      // 5. Render each layout
 
       for (const layout of layouts) {
         const output = composition.outputs.find((o) => o.layout === layout);
@@ -738,6 +743,8 @@ new Worker<ReactionComposeJob>(
                   creatorVolume: composition.creatorVolume,
                   referenceVolume: composition.referenceVolume,
                   captions: captionOpts,
+                  cuts: compositionCuts.length > 0 ? compositionCuts : undefined,
+                  trackIds: compositionCuts.length > 0 ? trackIds : undefined,
                 },
                 s3Key
               ),
@@ -1031,8 +1038,11 @@ new Worker<GenericTranscriptionJob>(
 new Worker<ThumbnailGenerationJob>(
   'thumbnail-generation',
   async (job) => {
-    const { compositionId } = job.data;
-    console.log(`🖼️ [thumbnail-generation] Processing ${compositionId}`);
+    const { compositionId, preExtractedReferenceFrames, preExtractedCreatorFrames } = job.data;
+    const hasPreExtracted = !!preExtractedReferenceFrames || !!preExtractedCreatorFrames;
+    console.log(
+      `🖼️ [thumbnail-generation] Processing ${compositionId}${hasPreExtracted ? ' (pre-extracted frames)' : ''}`
+    );
 
     try {
       const composition = await prisma.composition.findUnique({
@@ -1047,7 +1057,8 @@ new Worker<ThumbnailGenerationJob>(
 
       const referenceTrack = composition.tracks[0];
 
-      if (!referenceTrack?.s3Url || !composition.creatorS3Url) {
+      // When using pre-extracted frames, S3 URLs for source videos are optional
+      if (!hasPreExtracted && (!referenceTrack?.s3Url || !composition.creatorS3Url)) {
         console.warn(`⚠️ [thumbnail-generation] Missing reference track or creator video`);
         return;
       }
@@ -1056,10 +1067,12 @@ new Worker<ThumbnailGenerationJob>(
 
       const { referenceFrames, cutouts } = await generateThumbnailAssets({
         compositionId,
-        referenceS3Url: referenceTrack.s3Url,
-        creatorS3Url: composition.creatorS3Url,
+        referenceS3Url: referenceTrack?.s3Url || '',
+        creatorS3Url: composition.creatorS3Url || '',
         creatorTrimStartS: composition.creatorTrimStartS,
         creatorDurationS: composition.creatorDurationS || undefined,
+        preExtractedReferenceFrames,
+        preExtractedCreatorFrames,
       });
 
       if (referenceFrames.length > 0 || cutouts.length > 0) {
