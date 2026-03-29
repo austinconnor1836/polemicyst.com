@@ -347,8 +347,28 @@ export const authOptions: NextAuthOptions = {
   },
 };
 
-const handler = NextAuth(authOptions);
-export { handler as GET, handler as POST };
+const nextAuthHandler = NextAuth(authOptions);
+
+// Dynamically set NEXTAUTH_URL from the request Host header so OAuth
+// callbacks work for both localhost and Tailscale without restarts.
+function withDynamicUrl(handler: typeof nextAuthHandler) {
+  return async (req: Request, ctx: any) => {
+    const fwdHost = req.headers.get('x-forwarded-host');
+    const host = fwdHost || req.headers.get('host');
+    if (host) {
+      const proto = req.headers.get('x-forwarded-proto') || 'https';
+      // Strip port for non-localhost hosts — Tailscale serve listens on 443
+      // but forwards :3000 in the Host header
+      const isLocalhost = host.startsWith('localhost') || host.startsWith('127.0.0.1');
+      const cleanHost = isLocalhost ? host : host.replace(/:\d+$/, '');
+      process.env.NEXTAUTH_URL = `${proto}://${cleanHost}`;
+    }
+    return handler(req, ctx);
+  };
+}
+
+export const GET = withDynamicUrl(nextAuthHandler);
+export const POST = withDynamicUrl(nextAuthHandler);
 
 async function refreshAccessToken(token: ExtendedJWT): Promise<ExtendedJWT> {
   try {
