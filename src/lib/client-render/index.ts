@@ -10,8 +10,13 @@ export { spliceMP4, computeKeptSegments } from './mp4-splicer';
 
 /**
  * Check if the browser supports client-side rendering via WebCodecs.
+ * iOS Safari exposes WebCodecs APIs but the VideoDecoder is unreliable
+ * (produces 0 output frames for many H.264 files), so we exclude it.
  */
 export function supportsClientRender(): boolean {
+  if (typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
+    return false;
+  }
   return (
     typeof VideoEncoder !== 'undefined' &&
     typeof VideoDecoder !== 'undefined' &&

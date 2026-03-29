@@ -99,6 +99,32 @@ function statusBadge(status: string) {
   }
 }
 
+/** Fetch with exponential backoff for flaky network (e.g. Tailscale relay). */
+async function fetchWithRetry(
+  input: RequestInfo,
+  init?: RequestInit,
+  { retries = 3, baseDelayMs = 1000 } = {}
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(input, init);
+      // Retry on 5xx server errors
+      if (res.status >= 500 && attempt < retries) {
+        await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** attempt));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastError = err;
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** attempt));
+      }
+    }
+  }
+  throw lastError;
+}
+
 export default function CompositionEditorPage() {
   const params = useParams();
   const router = useRouter();
@@ -157,9 +183,12 @@ export default function CompositionEditorPage() {
   const [clientOutputBlobs, setClientOutputBlobs] = useState<Map<string, Blob>>(new Map());
   const [clientOutputUrls, setClientOutputUrls] = useState<Map<string, string>>(new Map());
 
+  // Auto-start server render after uploads complete (mobile)
+  const [renderRequested, setRenderRequested] = useState(false);
+
   const fetchComposition = useCallback(async () => {
     try {
-      const res = await fetch(`/api/compositions/${compositionId}`);
+      const res = await fetchWithRetry(`/api/compositions/${compositionId}`);
       if (!res.ok) {
         if (res.status === 404) {
           router.push('/reactions');
@@ -218,11 +247,20 @@ export default function CompositionEditorPage() {
     });
   }, [compositionId]);
 
+  // Cancel queued render if an upload fails
+  useEffect(() => {
+    if (!renderRequested) return;
+    if (creatorUploadStatus === 'error' || refUploadStatus === 'error') {
+      setRenderRequested(false);
+      toast.error('Upload failed — render cancelled');
+    }
+  }, [renderRequested, creatorUploadStatus, refUploadStatus]);
+
   const save = useCallback(
     async (updates: Partial<Composition>) => {
       setSaving(true);
       try {
-        const res = await fetch(`/api/compositions/${compositionId}`, {
+        const res = await fetchWithRetry(`/api/compositions/${compositionId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updates),
@@ -256,7 +294,7 @@ export default function CompositionEditorPage() {
       s3Key: string
     ): Promise<{ durationS: number; width: number; height: number; hasAudio: boolean } | null> => {
       try {
-        const res = await fetch('/api/compositions/probe', {
+        const res = await fetchWithRetry('/api/compositions/probe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ s3Key }),
@@ -308,19 +346,24 @@ export default function CompositionEditorPage() {
   const handleCreatorUploadComplete = useCallback(
     async (data: { s3Key: string; s3Url: string }) => {
       setCreatorUploadStatus('complete');
-      // Server probe for accuracy (hasAudio, precise duration)
-      const probe = await probeVideo(data.s3Key);
-      await save({
-        creatorS3Key: data.s3Key,
-        creatorS3Url: data.s3Url,
-        creatorDurationS: probe?.durationS ?? creatorLocalMeta?.durationS ?? null,
-        creatorWidth: probe?.width ?? creatorLocalMeta?.width ?? null,
-        creatorHeight: probe?.height ?? creatorLocalMeta?.height ?? null,
-      } as any);
-      // Revoke blob URL and switch to CreatorVideoPanel
-      if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
-      setCreatorBlobUrl(null);
-      setCreatorUploadStatus('idle');
+      try {
+        // Server probe for accuracy (hasAudio, precise duration)
+        const probe = await probeVideo(data.s3Key);
+        await save({
+          creatorS3Key: data.s3Key,
+          creatorS3Url: data.s3Url,
+          creatorDurationS: probe?.durationS ?? creatorLocalMeta?.durationS ?? null,
+          creatorWidth: probe?.width ?? creatorLocalMeta?.width ?? null,
+          creatorHeight: probe?.height ?? creatorLocalMeta?.height ?? null,
+        } as any);
+        // Revoke blob URL and switch to CreatorVideoPanel
+        if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
+        setCreatorBlobUrl(null);
+        setCreatorUploadStatus('idle');
+      } catch {
+        setCreatorUploadStatus('error');
+        toast.error('Failed to save creator video — please retry');
+      }
     },
     [save, probeVideo, creatorLocalMeta, creatorBlobUrl]
   );
@@ -386,7 +429,7 @@ export default function CompositionEditorPage() {
       setAddingTrack(true);
       try {
         const probe = await probeVideo(data.s3Key);
-        const res = await fetch(`/api/compositions/${compositionId}/tracks`, {
+        const res = await fetchWithRetry(`/api/compositions/${compositionId}/tracks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -402,13 +445,14 @@ export default function CompositionEditorPage() {
         if (!res.ok) throw new Error('Failed to add track');
         await fetchComposition();
         toast.success('Reference track added');
-      } catch (err) {
-        toast.error('Failed to add track');
-      } finally {
         if (pendingRefBlobUrl) URL.revokeObjectURL(pendingRefBlobUrl);
         setPendingRefBlobUrl(null);
         setPendingRefMeta(null);
         setRefUploadStatus('idle');
+      } catch (err) {
+        toast.error('Failed to add track — please retry');
+        setRefUploadStatus('error');
+      } finally {
         setAddingTrack(false);
       }
     },
@@ -539,6 +583,14 @@ export default function CompositionEditorPage() {
 
   // Effective creator duration — local metadata as fallback (client-render may not persist to DB)
   const creatorDurationS = composition?.creatorDurationS ?? creatorLocalMeta?.durationS ?? 0;
+
+  // Upload + server render readiness (for mobile auto-start)
+  const uploadsInProgress = creatorUploadStatus === 'uploading' || refUploadStatus === 'uploading';
+  const serverRenderReady =
+    !uploadsInProgress &&
+    !!composition?.creatorS3Key &&
+    composition.tracks.length > 0 &&
+    composition.tracks.every((t) => !!t.s3Url);
 
   if (loading) {
     return (
@@ -857,10 +909,12 @@ export default function CompositionEditorPage() {
             outputs={composition.outputs}
             hasCreator={!!(composition.creatorS3Key || creatorBlobUrl)}
             hasTracks={composition.tracks.length > 0}
-            uploadsInProgress={
-              creatorUploadStatus === 'uploading' || refUploadStatus === 'uploading'
-            }
+            uploadsInProgress={uploadsInProgress}
             uploadProgress={Math.max(creatorUploadProgress ?? 0, refUploadProgress ?? 0)}
+            renderRequested={renderRequested}
+            onRenderRequested={() => setRenderRequested(true)}
+            onCancelRenderRequest={() => setRenderRequested(false)}
+            serverRenderReady={serverRenderReady}
             hasPortraitRef={composition.tracks.some(
               (t) => t.width != null && t.height != null && t.height > t.width
             )}
@@ -896,17 +950,17 @@ export default function CompositionEditorPage() {
             </div>
             <Button
               variant="outline"
-              size="sm"
-              className="h-7 gap-1 text-xs"
+              size="icon"
+              className="h-7 w-7"
               onClick={() => thumbnailRegenerateRef.current?.()}
               disabled={thumbnailGenerating || isRendering}
+              title="Regenerate thumbnails"
             >
               {thumbnailGenerating ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <RefreshCw className="h-3 w-3" />
+                <RefreshCw className="h-3.5 w-3.5" />
               )}
-              Regenerate
             </Button>
           </div>
         </CardHeader>

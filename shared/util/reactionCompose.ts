@@ -733,8 +733,14 @@ export async function renderComposition(
   const trimStartS = opts.creatorTrimStartS ?? 0;
   const trimEndS = opts.creatorTrimEndS ?? opts.creatorDurationS;
 
+  // Normalize cuts: default missing targets to all sources
+  const normalizedCuts = (opts.cuts ?? []).map((c) => ({
+    ...c,
+    targets: c.targets ?? ['creator', ...(opts.trackIds ?? [])],
+  }));
+
   // Extract creator-targeted cuts (output-timeline coords)
-  const creatorCuts: CutInfo[] = (opts.cuts ?? [])
+  const creatorCuts: CutInfo[] = normalizedCuts
     .filter((c) => c.targets.includes('creator'))
     .map((c) => ({ startS: c.startS, endS: c.endS }));
 
@@ -753,7 +759,7 @@ export async function renderComposition(
     const track = opts.tracks[i];
     const trackId = opts.trackIds?.[i];
     const trackCuts: CutInfo[] = trackId
-      ? (opts.cuts ?? [])
+      ? normalizedCuts
           .filter((c) => c.targets.includes(trackId))
           .map((c) => ({ startS: c.startS, endS: c.endS }))
       : [];
