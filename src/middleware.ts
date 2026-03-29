@@ -25,12 +25,30 @@ const PUBLIC_PATHS = [
 
 const PUBLIC_PATH_PREFIXES = ['/posts'];
 
+// Build a base URL from forwarded headers (Tailscale serve) or fall back to req.url
+function getBaseUrl(req: NextRequest): string {
+  const fwdHost = req.headers.get('x-forwarded-host') || req.headers.get('host');
+  if (
+    fwdHost &&
+    !fwdHost.startsWith('localhost') &&
+    !fwdHost.startsWith('127.0.0.1') &&
+    !fwdHost.startsWith('0.0.0.0')
+  ) {
+    const proto = req.headers.get('x-forwarded-proto') || 'https';
+    const cleanHost = fwdHost.replace(/:\d+$/, '');
+    return `${proto}://${cleanHost}`;
+  }
+  return req.url;
+}
+
 export async function middleware(req: NextRequest) {
+  const baseUrl = getBaseUrl(req);
+
   // Redirect authenticated users from home to dashboard
   if (req.nextUrl.pathname === '/') {
     const token = await getToken({ req });
     if (token && isAllowedEmail(token.email)) {
-      return NextResponse.redirect(new URL('/connected-accounts', req.url));
+      return NextResponse.redirect(new URL('/connected-accounts', baseUrl));
     }
     return NextResponse.next();
   }
@@ -51,7 +69,7 @@ export async function middleware(req: NextRequest) {
       if (isApiRoute) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
       }
-      const url = new URL('/access-denied', req.url);
+      const url = new URL('/access-denied', baseUrl);
       return NextResponse.redirect(url);
     }
     return NextResponse.next();
@@ -79,8 +97,9 @@ export async function middleware(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const signInUrl = new URL('/auth/signin', req.url);
-  signInUrl.searchParams.set('callbackUrl', req.url);
+  const currentUrl = new URL(req.nextUrl.pathname + req.nextUrl.search, baseUrl);
+  const signInUrl = new URL('/auth/signin', baseUrl);
+  signInUrl.searchParams.set('callbackUrl', currentUrl.toString());
   return NextResponse.redirect(signInUrl);
 }
 

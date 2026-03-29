@@ -10,7 +10,7 @@ ogImage:
   url: '/assets/blog/hello-world/cover.jpg'
 ---
 
-On March 24, 2026, the Wall Street Journal published an article by Rachel Louise Ensign titled *"They're Rich but Not Famous—and They're Suddenly Everywhere"* [<a id="wsj-citation"></a><a href="#wsj-reference" style="text-decoration: underline; color: green">1</a>]. The article claims that the number of Americans worth tens of millions has "boomed," citing Princeton economist Owen Zidar's analysis of Federal Reserve data: approximately 430,000 households worth $30 million or more, and 74,000 worth $100 million or more.
+On March 24, 2026, the Wall Street Journal published an article by Rachel Louise Ensign titled _"They're Rich but Not Famous—and They're Suddenly Everywhere"_ [<a id="wsj-citation"></a><a href="#wsj-reference" style="text-decoration: underline; color: green">1</a>]. The article claims that the number of Americans worth tens of millions has "boomed," citing Princeton economist Owen Zidar's analysis of Federal Reserve data: approximately 430,000 households worth $30 million or more, and 74,000 worth $100 million or more.
 
 We asked Google's Gemini to analyze the article's veracity. Gemini declared the claims "highly veracious" and offered its own statistical elaborations — household counts at various wealth thresholds, growth multiples, percentile cutoffs, and a distribution breakdown. But how much of that analysis was substantiated, and how much was confabulation?
 
@@ -377,7 +377,7 @@ Each step up the ladder is not linear — it's multiplicative:
   Next 0.9%  → Top 0.1%:               7.4x step up
 ```
 
-The step from the bottom 50% to the middle 40% is a **15x** jump. From the middle to the next 9%, another **5.5x**. But the final step — from the top 1% to the top 0.1% — is **7.4x**, larger than either of the two steps before it. In a normal distribution, each step would get *smaller* as you move up. In this distribution, the top step is among the *largest*. That's the mathematical definition of a heavy tail: the extreme values are far more extreme than a bell curve would predict.
+The step from the bottom 50% to the middle 40% is a **15x** jump. From the middle to the next 9%, another **5.5x**. But the final step — from the top 1% to the top 0.1% — is **7.4x**, larger than either of the two steps before it. In a normal distribution, each step would get _smaller_ as you move up. In this distribution, the top step is among the _largest_. That's the mathematical definition of a heavy tail: the extreme values are far more extreme than a bell curve would predict.
 
 ### How the Tail Has Changed Over Time
 
@@ -431,7 +431,7 @@ The WSJ article's core narrative is confirmed by the Federal Reserve data: wealt
 
 1. **136,000 families hold nearly six times the wealth of 67.8 million families.** The per-household ratio is 2,907 to 1. This is not a rounding error. One top-0.1% household holds, on average, the equivalent wealth of 2,907 bottom-half households.
 
-2. **The "13x" growth claim is sloppy.** The DFA shows 5.5x real growth for the top 0.1% over 36 years. The 13x figure requires a different dataset, a longer timeframe, and a different methodology. The *nominal* growth of 14.2x is likely what's being conflated. Journalists and AIs alike should distinguish between nominal and real growth — a factor of 2.6x in distortion over this period.
+2. **The "13x" growth claim is sloppy.** The DFA shows 5.5x real growth for the top 0.1% over 36 years. The 13x figure requires a different dataset, a longer timeframe, and a different methodology. The _nominal_ growth of 14.2x is likely what's being conflated. Journalists and AIs alike should distinguish between nominal and real growth — a factor of 2.6x in distortion over this period.
 
 3. **The bottom 50% are leveraged at 65 times the rate of the top 0.1%.** Their debt-to-asset ratio is 58.5% vs. 0.9%. When interest rates rise, the bottom 50%'s net worth compresses. When they fall, it expands — but slowly, because most of their debt is in fixed-rate mortgages.
 
@@ -439,13 +439,13 @@ The WSJ article's core narrative is confirmed by the Federal Reserve data: wealt
 
 5. **There is nothing "sudden" about this.** Every group is at its all-time maximum, and the trend has been monotonically upward for the top percentiles since 1989. What's changed is that 136,000 families now hold $25 trillion, giving them enough collective spending power to visibly distort luxury goods markets, real estate, and private aviation — markets that used to be the province of the few thousand true billionaires.
 
-6. **Gemini's analysis was directionally correct but quantitatively unreliable.** It cited precise numbers ($192,900 median, $13.7M top-1% threshold, 13x real growth) with the confidence of measurement when they were estimates, extrapolations, or outright conflations of nominal and real values. This is a general problem with AI analysis of economic data — the model knows the *narrative* of wealth inequality very well, but it confabulates the specifics.
+6. **Gemini's analysis was directionally correct but quantitatively unreliable.** It cited precise numbers ($192,900 median, $13.7M top-1% threshold, 13x real growth) with the confidence of measurement when they were estimates, extrapolations, or outright conflations of nominal and real values. This is a general problem with AI analysis of economic data — the model knows the _narrative_ of wealth inequality very well, but it confabulates the specifics.
 
 The R code and FRED series IDs above are fully reproducible. Pull the data yourself: every series is public, every computation is transparent. The data doesn't lie, even when the headlines — and the AIs — do.
 
 ## References
 
-<a id="wsj-reference"></a> 1. Ensign, Rachel Louise. "They're Rich but Not Famous—and They're Suddenly Everywhere." *The Wall Street Journal*, March 24, 2026. [↩](#wsj-citation)
+<a id="wsj-reference"></a> 1. Ensign, Rachel Louise. "They're Rich but Not Famous—and They're Suddenly Everywhere." _The Wall Street Journal_, March 24, 2026. [↩](#wsj-citation)
 
 <a id="fed-dfa-reference"></a> 2. Board of Governors of the Federal Reserve System. "Distributional Financial Accounts." Federal Reserve, updated quarterly. [https://www.federalreserve.gov/releases/efa/efa-distributional-financial-accounts.htm](https://www.federalreserve.gov/releases/efa/efa-distributional-financial-accounts.htm)
 
