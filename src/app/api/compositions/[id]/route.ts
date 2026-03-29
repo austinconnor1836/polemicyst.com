@@ -71,6 +71,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
+    // Auto-clear cuts when creator video is removed (stale cuts for old content)
+    if (data.creatorS3Key === null && data.cuts === undefined) {
+      data.cuts = null;
+    }
+
     // Validate cuts if provided
     if (data.cuts !== undefined && data.cuts !== null) {
       if (!Array.isArray(data.cuts)) {
@@ -88,12 +93,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
         if (cut.endS <= cut.startS) {
           return NextResponse.json({ error: 'Cut endS must be > startS' }, { status: 400 });
-        }
-        if (!Array.isArray(cut.targets) || cut.targets.length === 0) {
-          return NextResponse.json(
-            { error: 'Each cut must have non-empty targets' },
-            { status: 400 }
-          );
         }
       }
       // Check for overlapping cuts (sorted by startS)
