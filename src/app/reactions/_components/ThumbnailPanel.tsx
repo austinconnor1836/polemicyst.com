@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { Check, Download, Loader2, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { extractFrames } from '@/lib/client-render/extract-frames';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,6 +32,16 @@ interface ThumbnailPanelProps {
   onGeneratingChange?: (generating: boolean) => void;
   /** Ref that the parent can call to trigger regeneration from an external button. */
   regenerateRef?: React.MutableRefObject<(() => void) | null>;
+  /**
+   * When true, suppress automatic polling on rendering→completed transition.
+   * Used when outputs are client-rendered (local blobs, not yet on S3) —
+   * thumbnail generation requires S3 files for server-side processing.
+   */
+  skipAutoGenerate?: boolean;
+  /** Local creator video file for client-side frame extraction */
+  creatorFile?: File | null;
+  /** Local reference video files for client-side frame extraction */
+  refFiles?: Map<string, File>;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,6 +74,9 @@ export function ThumbnailPanel({
   hideHeader,
   onGeneratingChange,
   regenerateRef,
+  skipAutoGenerate,
+  creatorFile,
+  refFiles,
 }: ThumbnailPanelProps) {
   // Asset state
   const [referenceFrames, setReferenceFrames] = useState<ThumbnailAsset[]>([]);
@@ -144,12 +158,94 @@ export function ThumbnailPanel({
     }
   }, [compositionId]);
 
-  // Initial fetch
+  // Initial fetch — if composition is completed but no assets exist, resume polling
+  // (handles page refresh while worker is still running)
   useEffect(() => {
-    fetchAssets();
-  }, [fetchAssets]);
+    fetchAssets().then((data) => {
+      if (
+        compositionStatus === 'completed' &&
+        data &&
+        data.refs.length === 0 &&
+        data.cuts.length === 0
+      ) {
+        setGenerating(true);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Clear when render starts; poll when render completes
+  // Extract frames from local files → upload to server for moondream + rembg processing
+  const localExtractedRef = useRef(false);
+  useEffect(() => {
+    // Only trigger once, when we have local files and rendering just completed
+    if (localExtractedRef.current) return;
+    if (!skipAutoGenerate) return;
+    if (compositionStatus !== 'completed') return;
+
+    const refFile = refFiles?.values().next().value as File | undefined;
+    if (!creatorFile && !refFile) return;
+
+    localExtractedRef.current = true;
+    setGenerating(true);
+
+    (async () => {
+      try {
+        // Extract candidate frames client-side (~20 each for scoring variety)
+        const formData = new FormData();
+
+        if (refFile) {
+          const refFrames = await extractFrames(refFile, 20);
+          const refTimestamps: number[] = [];
+          for (const frame of refFrames) {
+            formData.append(
+              'referenceFrames',
+              frame.blob,
+              `ref_${frame.timestampS.toFixed(2)}.jpg`
+            );
+            refTimestamps.push(frame.timestampS);
+          }
+          formData.append('refTimestamps', JSON.stringify(refTimestamps));
+        }
+
+        if (creatorFile) {
+          const creatorFrames = await extractFrames(creatorFile, 20);
+          const creatorTimestamps: number[] = [];
+          for (const frame of creatorFrames) {
+            formData.append(
+              'creatorFrames',
+              frame.blob,
+              `creator_${frame.timestampS.toFixed(2)}.jpg`
+            );
+            creatorTimestamps.push(frame.timestampS);
+          }
+          formData.append('creatorTimestamps', JSON.stringify(creatorTimestamps));
+        }
+
+        // Upload frames to S3 and queue server-side thumbnail generation
+        const res = await fetch(
+          `/api/compositions/${compositionId}/thumbnails/generate-from-frames`,
+          { method: 'POST', body: formData }
+        );
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          console.error('[ThumbnailPanel] Frame upload failed:', data.error);
+          toast.error('Failed to generate thumbnails');
+          setGenerating(false);
+          return;
+        }
+
+        // Polling will pick up results once the worker processes the frames
+        console.log('[ThumbnailPanel] Frames uploaded, waiting for server processing...');
+      } catch (err) {
+        console.error('[ThumbnailPanel] Local frame extraction/upload failed:', err);
+        toast.error('Failed to extract frames');
+        setGenerating(false);
+      }
+    })();
+  }, [skipAutoGenerate, compositionStatus, compositionId, creatorFile, refFiles, setGenerating]);
+
+  // Clear when render starts; poll when render completes (server-side only)
   useEffect(() => {
     if (compositionStatus === 'rendering' && prevStatusRef.current !== 'rendering') {
       setReferenceFrames([]);
@@ -157,12 +253,18 @@ export function ThumbnailPanel({
       setCompositeUrl(null);
       setSelectedRefId(null);
       setSelectedCutoutId(null);
-      setGenerating(true);
+      localExtractedRef.current = false; // Allow re-extraction on next render
+      // Only auto-poll if NOT a client-side render (which hasn't uploaded to S3 yet)
+      if (!skipAutoGenerate) {
+        setGenerating(true);
+      }
     } else if (prevStatusRef.current === 'rendering' && compositionStatus === 'completed') {
-      setGenerating(true);
+      if (!skipAutoGenerate) {
+        setGenerating(true);
+      }
     }
     prevStatusRef.current = compositionStatus;
-  }, [compositionStatus, setGenerating]);
+  }, [compositionStatus, setGenerating, skipAutoGenerate]);
 
   // Poll while generating
   useEffect(() => {
@@ -171,8 +273,8 @@ export function ThumbnailPanel({
     pollCountRef.current = 0;
     const poll = async () => {
       pollCountRef.current++;
-      // 120 polls * 5s = 10 minutes (moondream + rembg can take 5+ minutes)
-      if (pollCountRef.current > 120) {
+      // 240 polls * 5s = 20 minutes (moondream on CPU can take 2min/frame × 8 frames + rembg)
+      if (pollCountRef.current > 240) {
         stopPolling();
         setGenerating(false);
         // Final fetch in case assets appeared right at timeout
@@ -198,16 +300,26 @@ export function ThumbnailPanel({
     if (!selectedRefId || !selectedCutoutId) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/compositions/${compositionId}/thumbnails/composite`, {
+      const payload = {
+        referenceAssetId: selectedRefId,
+        cutoutAssetId: selectedCutoutId,
+        position,
+        size,
+      };
+      let res = await fetch(`/api/compositions/${compositionId}/thumbnails/composite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          referenceAssetId: selectedRefId,
-          cutoutAssetId: selectedCutoutId,
-          position,
-          size,
-        }),
+        body: JSON.stringify(payload),
       });
+      // Retry once on transient failure (e.g. HMR rebuild makes route temporarily unavailable)
+      if (!res.ok && (res.status === 404 || res.status >= 500)) {
+        await new Promise((r) => setTimeout(r, 2000));
+        res = await fetch(`/api/compositions/${compositionId}/thumbnails/composite`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Composite failed');
@@ -231,6 +343,9 @@ export function ThumbnailPanel({
     }
     if (!selectedRefId || !selectedCutoutId) return;
 
+    // Clear stale composite so the live preview shows while we generate the new one
+    setCompositeUrl(null);
+
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(doComposite, 800);
 
@@ -250,6 +365,62 @@ export function ThumbnailPanel({
     setCompositeUrl(null);
     setSelectedRefId(null);
     setSelectedCutoutId(null);
+
+    // When local files are available (client-side render), re-extract frames
+    // and upload via generate-from-frames instead of using the server-side regenerate endpoint.
+    const refFile = refFiles?.values().next().value as File | undefined;
+    if (creatorFile || refFile) {
+      try {
+        const formData = new FormData();
+
+        if (refFile) {
+          const refFrames = await extractFrames(refFile, 20);
+          const refTimestamps: number[] = [];
+          for (const frame of refFrames) {
+            formData.append(
+              'referenceFrames',
+              frame.blob,
+              `ref_${frame.timestampS.toFixed(2)}.jpg`
+            );
+            refTimestamps.push(frame.timestampS);
+          }
+          formData.append('refTimestamps', JSON.stringify(refTimestamps));
+        }
+
+        if (creatorFile) {
+          const creatorFrames = await extractFrames(creatorFile, 20);
+          const creatorTimestamps: number[] = [];
+          for (const frame of creatorFrames) {
+            formData.append(
+              'creatorFrames',
+              frame.blob,
+              `creator_${frame.timestampS.toFixed(2)}.jpg`
+            );
+            creatorTimestamps.push(frame.timestampS);
+          }
+          formData.append('creatorTimestamps', JSON.stringify(creatorTimestamps));
+        }
+
+        const res = await fetch(
+          `/api/compositions/${compositionId}/thumbnails/generate-from-frames`,
+          { method: 'POST', body: formData }
+        );
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          toast.error(data.error || 'Failed to regenerate');
+          setGenerating(false);
+          return;
+        }
+        toast.success('Regenerating thumbnails...');
+      } catch {
+        toast.error('Failed to regenerate thumbnails');
+        setGenerating(false);
+      }
+      return;
+    }
+
+    // Fallback: server-side regenerate (source videos on S3)
     try {
       const res = await fetch(`/api/compositions/${compositionId}/thumbnails/regenerate`, {
         method: 'POST',
@@ -265,7 +436,7 @@ export function ThumbnailPanel({
       toast.error('Failed to regenerate thumbnails');
       setGenerating(false);
     }
-  }, [compositionId, setGenerating]);
+  }, [compositionId, setGenerating, creatorFile, refFiles]);
 
   // Expose regenerate handler to parent
   useEffect(() => {
@@ -499,11 +670,29 @@ export function ThumbnailPanel({
           {/* Download */}
           {compositeUrl && (
             <div className="flex justify-end">
-              <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-xs">
-                <a href={compositeUrl} download>
-                  <Download className="h-3 w-3" />
-                  Download Thumbnail
-                </a>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1 text-xs"
+                onClick={async () => {
+                  try {
+                    const res = await fetch(compositeUrl);
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'thumbnail.png';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                  } catch {
+                    toast.error('Failed to download thumbnail');
+                  }
+                }}
+              >
+                <Download className="h-3 w-3" />
+                Download Thumbnail
               </Button>
             </div>
           )}

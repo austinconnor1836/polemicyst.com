@@ -165,6 +165,10 @@ export function queueGenericTranscriptionJob(data: GenericTranscriptionJob) {
 export interface ThumbnailGenerationJob {
   compositionId: string;
   userId: string;
+  /** Pre-extracted reference frame images on S3 (skips FFmpeg extraction) */
+  preExtractedReferenceFrames?: Array<{ s3Url: string; timestampS: number }>;
+  /** Pre-extracted creator frame images on S3 (skips FFmpeg extraction) */
+  preExtractedCreatorFrames?: Array<{ s3Url: string; timestampS: number }>;
 }
 
 export function getThumbnailGenerationQueue() {

@@ -122,6 +122,7 @@ _Eliminate `develop` branch. Ship from `main` with short-lived feature branches,
 
 ## Infrastructure & DevOps
 
+- [ ] **S3 cleanup on composition deletion** — When a composition is deleted, orphaned S3 objects (creator video, reference videos, rendered outputs, thumbnail assets) remain in the bucket indefinitely. Add S3 object deletion to the `DELETE /api/compositions/[id]` handler: collect all S3 keys from the composition, tracks, outputs, and thumbnail assets, then batch-delete from S3 before (or after) the Prisma cascade delete. Consider a background job for large compositions.
 - [ ] Set up CloudWatch alarms for ECS task failures, high CPU, high memory
 - [ ] Set up billing alerts in AWS to monitor costs
 - [ ] Add CloudFront CDN in front of S3 for clip delivery

@@ -446,6 +446,27 @@ public struct MultipartPartURLResponse: Codable {
     public let url: String
 }
 
+public struct MultipartBatchPartURLRequest: Encodable {
+    public let uploadId: String
+    public let key: String
+    public let partNumbers: [Int]
+
+    public init(uploadId: String, key: String, partNumbers: [Int]) {
+        self.uploadId = uploadId
+        self.key = key
+        self.partNumbers = partNumbers
+    }
+}
+
+public struct MultipartBatchPartURLResponseItem: Codable {
+    public let partNumber: Int
+    public let url: String
+}
+
+public struct MultipartBatchPartURLResponse: Codable {
+    public let urls: [MultipartBatchPartURLResponseItem]
+}
+
 public struct MultipartCompleteRequest: Encodable {
     public let uploadId: String
     public let key: String

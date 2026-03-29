@@ -20,9 +20,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    if (composition.status !== 'completed') {
+    if (composition.status !== 'completed' && composition.status !== 'rendering') {
       return NextResponse.json(
-        { error: 'Composition must be completed before generating thumbnails' },
+        { error: 'Composition must be completed or rendering before generating thumbnails' },
         { status: 400 }
       );
     }

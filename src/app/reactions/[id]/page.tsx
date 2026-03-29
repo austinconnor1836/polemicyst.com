@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Loader2, RefreshCw, Share2 } from 'lucide-react';
+import { ArrowLeft, Loader2, RefreshCw, Scissors, Share2 } from 'lucide-react';
 import { ModeSelector } from '../_components/ModeSelector';
-import { VideoUploader } from '../_components/VideoUploader';
+import { VideoUploader, type UploadStatus } from '../_components/VideoUploader';
 import { CreatorVideoPanel } from '../_components/CreatorVideoPanel';
 import { ReferenceTrackPanel } from '../_components/ReferenceTrackPanel';
 import { TimelineEditor } from '../_components/TimelineEditor';
@@ -16,7 +16,10 @@ import { AudioMixPanel } from '../_components/AudioMixPanel';
 import { RenderControls } from '../_components/RenderControls';
 import { ThumbnailPanel } from '../_components/ThumbnailPanel';
 import { TrimModal } from '../_components/TrimModal';
+import { EditOutputModal } from '../_components/EditOutputModal';
 import { PublishModal } from '@/components/PublishModal';
+import { supportsClientRender } from '@/lib/client-render';
+import { saveBlobToCache, loadBlobsFromCache } from '@/lib/client-render/blob-cache';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
@@ -96,6 +99,32 @@ function statusBadge(status: string) {
   }
 }
 
+/** Fetch with exponential backoff for flaky network (e.g. Tailscale relay). */
+async function fetchWithRetry(
+  input: RequestInfo,
+  init?: RequestInit,
+  { retries = 3, baseDelayMs = 1000 } = {}
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(input, init);
+      // Retry on 5xx server errors
+      if (res.status >= 500 && attempt < retries) {
+        await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** attempt));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastError = err;
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** attempt));
+      }
+    }
+  }
+  throw lastError;
+}
+
 export default function CompositionEditorPage() {
   const params = useParams();
   const router = useRouter();
@@ -111,6 +140,7 @@ export default function CompositionEditorPage() {
   const [publishAllOpen, setPublishAllOpen] = useState(false);
   const [thumbnailGenerating, setThumbnailGenerating] = useState(false);
   const thumbnailRegenerateRef = useRef<(() => void) | null>(null);
+  const [editOutputOpen, setEditOutputOpen] = useState(false);
   const [trimTarget, setTrimTarget] = useState<{
     type: 'creator' | 'reference';
     trackId?: string;
@@ -121,9 +151,44 @@ export default function CompositionEditorPage() {
     title: string;
   } | null>(null);
 
+  // Background upload state — creator video
+  const [creatorBlobUrl, setCreatorBlobUrl] = useState<string | null>(null);
+  const [creatorUploadStatus, setCreatorUploadStatus] = useState<UploadStatus>('idle');
+  const [creatorUploadProgress, setCreatorUploadProgress] = useState<number | null>(null);
+  const [creatorUploadSpeed, setCreatorUploadSpeed] = useState<number | null>(null);
+  const [creatorLocalMeta, setCreatorLocalMeta] = useState<{
+    durationS: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  // Background upload state — reference track
+  const [pendingRefBlobUrl, setPendingRefBlobUrl] = useState<string | null>(null);
+  const [pendingRefMeta, setPendingRefMeta] = useState<{
+    filename: string;
+    durationS: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [refUploadStatus, setRefUploadStatus] = useState<UploadStatus>('idle');
+  const [refUploadProgress, setRefUploadProgress] = useState<number | null>(null);
+  const [refUploadSpeed, setRefUploadSpeed] = useState<number | null>(null);
+
+  // Client-side rendering: store raw File objects for WebCodecs demuxer
+  const useClientRender = supportsClientRender();
+  const [creatorFile, setCreatorFile] = useState<File | null>(null);
+  const [refFiles, setRefFiles] = useState<Map<string, File>>(new Map());
+
+  // Client-rendered output blobs (lifted from RenderControls for EditOutputModal access)
+  const [clientOutputBlobs, setClientOutputBlobs] = useState<Map<string, Blob>>(new Map());
+  const [clientOutputUrls, setClientOutputUrls] = useState<Map<string, string>>(new Map());
+
+  // Auto-start server render after uploads complete (mobile)
+  const [renderRequested, setRenderRequested] = useState(false);
+
   const fetchComposition = useCallback(async () => {
     try {
-      const res = await fetch(`/api/compositions/${compositionId}`);
+      const res = await fetchWithRetry(`/api/compositions/${compositionId}`);
       if (!res.ok) {
         if (res.status === 404) {
           router.push('/reactions');
@@ -144,18 +209,77 @@ export default function CompositionEditorPage() {
     fetchComposition();
   }, [fetchComposition]);
 
+  // Restore cached rendered blobs from IndexedDB on mount
+  useEffect(() => {
+    if (!compositionId) return;
+    const layouts = ['mobile', 'landscape'];
+    loadBlobsFromCache(compositionId, layouts).then((cached) => {
+      if (cached.size === 0) return;
+      const newBlobs = new Map<string, Blob>();
+      const newUrls = new Map<string, string>();
+      cached.forEach((blob, layout) => {
+        newBlobs.set(layout, blob);
+        newUrls.set(layout, URL.createObjectURL(blob));
+      });
+      setClientOutputBlobs(newBlobs);
+      setClientOutputUrls(newUrls);
+      // Update outputs so video cards show cached versions
+      setComposition((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          status: prev.status === 'draft' ? 'completed' : prev.status,
+          outputs:
+            prev.outputs.length > 0
+              ? prev.outputs.map((o) => {
+                  const cachedUrl = newUrls.get(o.layout);
+                  return cachedUrl ? { ...o, s3Url: cachedUrl, status: 'completed' } : o;
+                })
+              : Array.from(newUrls.entries()).map(([layout, url]) => ({
+                  id: `cached_${layout}`,
+                  layout,
+                  status: 'completed',
+                  s3Url: url,
+                })),
+        };
+      });
+      console.log(`[page] Restored ${cached.size} cached output(s) from IndexedDB`);
+    });
+  }, [compositionId]);
+
+  // Cancel queued render if an upload fails
+  useEffect(() => {
+    if (!renderRequested) return;
+    if (creatorUploadStatus === 'error' || refUploadStatus === 'error') {
+      setRenderRequested(false);
+      toast.error('Upload failed — render cancelled');
+    }
+  }, [renderRequested, creatorUploadStatus, refUploadStatus]);
+
   const save = useCallback(
     async (updates: Partial<Composition>) => {
       setSaving(true);
       try {
-        const res = await fetch(`/api/compositions/${compositionId}`, {
+        const res = await fetchWithRetry(`/api/compositions/${compositionId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updates),
         });
         if (!res.ok) throw new Error('Save failed');
         const data = await res.json();
-        setComposition(data);
+        // Merge API response with local-only state (client-render mode stores
+        // tracks and creator metadata locally — the DB doesn't have them)
+        setComposition((prev) => {
+          if (!prev) return data;
+          const localTracks = prev.tracks.filter((t) => t.id.startsWith('local_'));
+          return {
+            ...data,
+            tracks: [...(data.tracks || []), ...localTracks],
+            creatorDurationS: data.creatorDurationS ?? prev.creatorDurationS,
+            creatorWidth: data.creatorWidth ?? prev.creatorWidth,
+            creatorHeight: data.creatorHeight ?? prev.creatorHeight,
+          };
+        });
       } catch (err) {
         toast.error('Failed to save');
       } finally {
@@ -170,7 +294,7 @@ export default function CompositionEditorPage() {
       s3Key: string
     ): Promise<{ durationS: number; width: number; height: number; hasAudio: boolean } | null> => {
       try {
-        const res = await fetch('/api/compositions/probe', {
+        const res = await fetchWithRetry('/api/compositions/probe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ s3Key }),
@@ -184,48 +308,155 @@ export default function CompositionEditorPage() {
     []
   );
 
-  const handleCreatorUploaded = useCallback(
-    async (data: { s3Key: string; s3Url: string }) => {
-      const probe = await probeVideo(data.s3Key);
-      await save({
-        creatorS3Key: data.s3Key,
-        creatorS3Url: data.s3Url,
-        creatorDurationS: probe?.durationS ?? null,
-        creatorWidth: probe?.width ?? null,
-        creatorHeight: probe?.height ?? null,
-      } as any);
+  // --- Non-blocking creator upload handlers ---
+  const handleCreatorFileSelected = useCallback(
+    (data: {
+      blobUrl: string;
+      file: File;
+      filename: string;
+      fileSize: number;
+      durationS: number;
+      width: number;
+      height: number;
+    }) => {
+      setCreatorBlobUrl(data.blobUrl);
+      setCreatorFile(data.file);
+      setCreatorLocalMeta({ durationS: data.durationS, width: data.width, height: data.height });
+      if (useClientRender) {
+        // Client-render mode: no upload needed, mark complete immediately
+        setCreatorUploadStatus('complete');
+      } else {
+        setCreatorUploadStatus('uploading');
+      }
+      setCreatorUploadProgress(null);
+      // Update local composition state immediately so trim/timeline works
+      setComposition((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          creatorDurationS: data.durationS,
+          creatorWidth: data.width,
+          creatorHeight: data.height,
+        };
+      });
     },
-    [save, probeVideo]
+    [useClientRender, save]
   );
 
-  const handleAddTrack = useCallback(
-    async (data: { s3Key: string; s3Url: string; filename: string }) => {
+  const handleCreatorUploadComplete = useCallback(
+    async (data: { s3Key: string; s3Url: string }) => {
+      setCreatorUploadStatus('complete');
+      try {
+        // Server probe for accuracy (hasAudio, precise duration)
+        const probe = await probeVideo(data.s3Key);
+        await save({
+          creatorS3Key: data.s3Key,
+          creatorS3Url: data.s3Url,
+          creatorDurationS: probe?.durationS ?? creatorLocalMeta?.durationS ?? null,
+          creatorWidth: probe?.width ?? creatorLocalMeta?.width ?? null,
+          creatorHeight: probe?.height ?? creatorLocalMeta?.height ?? null,
+        } as any);
+        // Revoke blob URL and switch to CreatorVideoPanel
+        if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
+        setCreatorBlobUrl(null);
+        setCreatorUploadStatus('idle');
+      } catch {
+        setCreatorUploadStatus('error');
+        toast.error('Failed to save creator video — please retry');
+      }
+    },
+    [save, probeVideo, creatorLocalMeta, creatorBlobUrl]
+  );
+
+  // --- Non-blocking reference track upload handlers ---
+  const handleRefFileSelected = useCallback(
+    (data: {
+      blobUrl: string;
+      file: File;
+      filename: string;
+      fileSize: number;
+      durationS: number;
+      width: number;
+      height: number;
+    }) => {
+      setPendingRefBlobUrl(data.blobUrl);
+      setPendingRefMeta({
+        filename: data.filename,
+        durationS: data.durationS,
+        width: data.width,
+        height: data.height,
+      });
+      if (useClientRender) {
+        // Client-render mode: create a local track immediately instead of uploading
+        setRefUploadStatus('complete');
+        // Generate a temporary track ID and add to composition locally
+        const tempId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        setRefFiles((prev) => new Map(prev).set(tempId, data.file));
+        setComposition((prev) => {
+          if (!prev) return prev;
+          const newTrack: Track = {
+            id: tempId,
+            label: data.filename,
+            s3Key: '',
+            s3Url: data.blobUrl,
+            durationS: data.durationS,
+            width: data.width,
+            height: data.height,
+            startAtS: 0,
+            trimStartS: 0,
+            trimEndS: null,
+            sortOrder: prev.tracks.length,
+            hasAudio: true, // assume true; no server probe in local mode
+          };
+          return { ...prev, tracks: [...prev.tracks, newTrack] };
+        });
+        // Clean up pending ref state
+        setPendingRefBlobUrl(null);
+        setPendingRefMeta(null);
+        setRefUploadStatus('idle');
+        toast.success('Reference track added');
+      } else {
+        setRefUploadStatus('uploading');
+      }
+      setRefUploadProgress(null);
+    },
+    [useClientRender]
+  );
+
+  const handleRefUploadComplete = useCallback(
+    async (data: { s3Key: string; s3Url: string }) => {
+      setRefUploadStatus('complete');
       setAddingTrack(true);
       try {
         const probe = await probeVideo(data.s3Key);
-        const res = await fetch(`/api/compositions/${compositionId}/tracks`, {
+        const res = await fetchWithRetry(`/api/compositions/${compositionId}/tracks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             s3Key: data.s3Key,
             s3Url: data.s3Url,
-            label: data.filename,
-            durationS: probe?.durationS ?? 10,
-            width: probe?.width ?? null,
-            height: probe?.height ?? null,
+            label: pendingRefMeta?.filename ?? 'Reference',
+            durationS: probe?.durationS ?? pendingRefMeta?.durationS ?? 10,
+            width: probe?.width ?? pendingRefMeta?.width ?? null,
+            height: probe?.height ?? pendingRefMeta?.height ?? null,
             hasAudio: probe?.hasAudio ?? true,
           }),
         });
         if (!res.ok) throw new Error('Failed to add track');
         await fetchComposition();
         toast.success('Reference track added');
+        if (pendingRefBlobUrl) URL.revokeObjectURL(pendingRefBlobUrl);
+        setPendingRefBlobUrl(null);
+        setPendingRefMeta(null);
+        setRefUploadStatus('idle');
       } catch (err) {
-        toast.error('Failed to add track');
+        toast.error('Failed to add track — please retry');
+        setRefUploadStatus('error');
       } finally {
         setAddingTrack(false);
       }
     },
-    [compositionId, fetchComposition, probeVideo]
+    [compositionId, fetchComposition, probeVideo, pendingRefMeta, pendingRefBlobUrl]
   );
 
   const handleUpdateTrack = useCallback(
@@ -304,6 +535,63 @@ export default function CompositionEditorPage() {
     [trimTarget, save, handleUpdateTrack]
   );
 
+  // Callback when RenderControls produces a new blob
+  const handleBlobReady = useCallback(
+    (layout: string, blob: Blob, url: string) => {
+      setClientOutputBlobs((prev) => new Map(prev).set(layout, blob));
+      setClientOutputUrls((prev) => new Map(prev).set(layout, url));
+      saveBlobToCache(compositionId, layout, blob);
+    },
+    [compositionId]
+  );
+
+  // Callback when EditOutputModal finishes splicing
+  const handleSpliceComplete = useCallback(
+    (blobs: Map<string, Blob>, urls: Map<string, string>) => {
+      // Replace blobs
+      setClientOutputBlobs((prev) => {
+        const next = new Map(prev);
+        blobs.forEach((b, k) => next.set(k, b));
+        return next;
+      });
+      // Revoke old URLs and set new ones
+      setClientOutputUrls((prev) => {
+        const next = new Map(prev);
+        urls.forEach((u, k) => {
+          const old = next.get(k);
+          if (old) URL.revokeObjectURL(old);
+          next.set(k, u);
+        });
+        return next;
+      });
+      // Update output s3Urls so video cards show spliced versions
+      setComposition((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          outputs: prev.outputs.map((o) => {
+            const newUrl = urls.get(o.layout);
+            return newUrl ? { ...o, s3Url: newUrl } : o;
+          }),
+        };
+      });
+      // Persist spliced blobs to IndexedDB
+      blobs.forEach((blob, layout) => saveBlobToCache(compositionId, layout, blob));
+    },
+    [compositionId]
+  );
+
+  // Effective creator duration — local metadata as fallback (client-render may not persist to DB)
+  const creatorDurationS = composition?.creatorDurationS ?? creatorLocalMeta?.durationS ?? 0;
+
+  // Upload + server render readiness (for mobile auto-start)
+  const uploadsInProgress = creatorUploadStatus === 'uploading' || refUploadStatus === 'uploading';
+  const serverRenderReady =
+    !uploadsInProgress &&
+    !!composition?.creatorS3Key &&
+    composition.tracks.length > 0 &&
+    composition.tracks.every((t) => !!t.s3Url);
+
   if (loading) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8">
@@ -367,8 +655,8 @@ export default function CompositionEditorPage() {
           <CardDescription>Your commentary footage</CardDescription>
         </CardHeader>
         <CardContent>
-          {composition.creatorS3Url ? (
-            <div className="max-w-sm">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {composition.creatorS3Url && !creatorBlobUrl ? (
               <CreatorVideoPanel
                 s3Url={composition.creatorS3Url}
                 durationS={composition.creatorDurationS ?? undefined}
@@ -408,14 +696,74 @@ export default function CompositionEditorPage() {
                   }
                 }}
               />
-            </div>
-          ) : (
-            <VideoUploader
-              label="Upload your commentary video"
-              onUploaded={handleCreatorUploaded}
-              keyPrefix={`compositions/${compositionId}/raw`}
-            />
-          )}
+            ) : (
+              <div className="space-y-2">
+                <VideoUploader
+                  label={
+                    useClientRender ? 'Add your commentary video' : 'Upload your commentary video'
+                  }
+                  blobUrl={creatorBlobUrl}
+                  uploadStatus={creatorUploadStatus}
+                  uploadProgress={creatorUploadProgress}
+                  uploadSpeed={creatorUploadSpeed}
+                  localOnly={useClientRender}
+                  onFileSelected={handleCreatorFileSelected}
+                  onUploadComplete={handleCreatorUploadComplete}
+                  onUploadProgress={(p, s) => {
+                    setCreatorUploadProgress(p);
+                    setCreatorUploadSpeed(s);
+                  }}
+                  onUploadError={(msg) => {
+                    setCreatorUploadStatus('error');
+                    toast.error(msg);
+                  }}
+                  onRemove={
+                    creatorBlobUrl
+                      ? () => {
+                          if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
+                          setCreatorBlobUrl(null);
+                          setCreatorFile(null);
+                          setCreatorLocalMeta(null);
+                          setCreatorUploadStatus('idle');
+                          setComposition((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  creatorDurationS: null,
+                                  creatorWidth: null,
+                                  creatorHeight: null,
+                                }
+                              : prev
+                          );
+                        }
+                      : undefined
+                  }
+                  keyPrefix={`compositions/${compositionId}/raw`}
+                />
+                {/* Trim available during upload */}
+                {creatorBlobUrl && creatorLocalMeta && creatorLocalMeta.durationS > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 text-xs"
+                    onClick={() =>
+                      setTrimTarget({
+                        type: 'creator',
+                        src: creatorBlobUrl,
+                        durationS: creatorLocalMeta.durationS,
+                        trimStartS: composition.creatorTrimStartS,
+                        trimEndS: composition.creatorTrimEndS ?? null,
+                        title: 'Trim Creator Video',
+                      })
+                    }
+                  >
+                    <Scissors className="h-3 w-3" />
+                    Trim
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -463,7 +811,21 @@ export default function CompositionEditorPage() {
             {composition.tracks.length < 10 && (
               <VideoUploader
                 label={addingTrack ? 'Adding track...' : 'Add reference clip'}
-                onUploaded={handleAddTrack}
+                blobUrl={pendingRefBlobUrl}
+                uploadStatus={refUploadStatus}
+                uploadProgress={refUploadProgress}
+                uploadSpeed={refUploadSpeed}
+                localOnly={useClientRender}
+                onFileSelected={handleRefFileSelected}
+                onUploadComplete={handleRefUploadComplete}
+                onUploadProgress={(p, s) => {
+                  setRefUploadProgress(p);
+                  setRefUploadSpeed(s);
+                }}
+                onUploadError={(msg) => {
+                  setRefUploadStatus('error');
+                  toast.error(msg);
+                }}
                 className={addingTrack ? 'pointer-events-none opacity-50' : ''}
                 keyPrefix={`compositions/${compositionId}/raw`}
               />
@@ -513,17 +875,31 @@ export default function CompositionEditorPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Output</CardTitle>
-            {completedOutputs.length > 1 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1 text-xs"
-                onClick={() => setPublishAllOpen(true)}
-              >
-                <Share2 className="h-3 w-3" />
-                Publish All
-              </Button>
-            )}
+            <div className="flex gap-2">
+              {completedOutputs.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 text-xs"
+                  onClick={() => setEditOutputOpen(true)}
+                  disabled={isRendering}
+                >
+                  <Scissors className="h-3 w-3" />
+                  Edit
+                </Button>
+              )}
+              {completedOutputs.length > 1 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 text-xs"
+                  onClick={() => setPublishAllOpen(true)}
+                >
+                  <Share2 className="h-3 w-3" />
+                  Publish All
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -531,8 +907,14 @@ export default function CompositionEditorPage() {
             compositionId={compositionId}
             compositionStatus={composition.status}
             outputs={composition.outputs}
-            hasCreator={!!composition.creatorS3Key}
+            hasCreator={!!(composition.creatorS3Key || creatorBlobUrl)}
             hasTracks={composition.tracks.length > 0}
+            uploadsInProgress={uploadsInProgress}
+            uploadProgress={Math.max(creatorUploadProgress ?? 0, refUploadProgress ?? 0)}
+            renderRequested={renderRequested}
+            onRenderRequested={() => setRenderRequested(true)}
+            onCancelRenderRequest={() => setRenderRequested(false)}
+            serverRenderReady={serverRenderReady}
             hasPortraitRef={composition.tracks.some(
               (t) => t.width != null && t.height != null && t.height > t.width
             )}
@@ -543,6 +925,13 @@ export default function CompositionEditorPage() {
             onStatusChange={handleStatusChange}
             compositionTitle={composition.title}
             trackLabels={composition.tracks.map((t) => t.label || '').filter(Boolean)}
+            // Client-side render props
+            creatorFile={creatorFile}
+            refFiles={refFiles}
+            composition={composition}
+            clientOutputBlobs={clientOutputBlobs}
+            clientOutputUrls={clientOutputUrls}
+            onBlobReady={handleBlobReady}
           />
         </CardContent>
       </Card>
@@ -561,17 +950,17 @@ export default function CompositionEditorPage() {
             </div>
             <Button
               variant="outline"
-              size="sm"
-              className="h-7 gap-1 text-xs"
+              size="icon"
+              className="h-7 w-7"
               onClick={() => thumbnailRegenerateRef.current?.()}
               disabled={thumbnailGenerating || isRendering}
+              title="Regenerate thumbnails"
             >
               {thumbnailGenerating ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <RefreshCw className="h-3 w-3" />
+                <RefreshCw className="h-3.5 w-3.5" />
               )}
-              Regenerate
             </Button>
           </div>
         </CardHeader>
@@ -582,6 +971,11 @@ export default function CompositionEditorPage() {
             hideHeader
             onGeneratingChange={setThumbnailGenerating}
             regenerateRef={thumbnailRegenerateRef}
+            // Skip API polling when outputs are client-rendered blobs (not yet on S3).
+            // Instead, extract frames client-side from local files.
+            skipAutoGenerate={composition.outputs?.some((o) => o.s3Url?.startsWith('blob:'))}
+            creatorFile={creatorFile}
+            refFiles={refFiles}
           />
         </CardContent>
       </Card>
@@ -615,6 +1009,21 @@ export default function CompositionEditorPage() {
           trimEndS={trimTarget.trimEndS}
           onSave={handleTrimSave}
           title={trimTarget.title}
+        />
+      )}
+
+      {/* Edit output modal */}
+      {completedOutputs.length > 0 && (
+        <EditOutputModal
+          open={editOutputOpen}
+          onOpenChange={setEditOutputOpen}
+          outputs={completedOutputs.map((o) => ({
+            id: o.id,
+            layout: o.layout,
+            s3Url: o.s3Url!,
+          }))}
+          outputBlobs={clientOutputBlobs}
+          onSpliceComplete={handleSpliceComplete}
         />
       )}
     </div>

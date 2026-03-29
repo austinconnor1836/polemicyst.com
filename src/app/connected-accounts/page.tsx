@@ -277,7 +277,7 @@ export default function FeedsPage() {
         parts: existingParts,
       }: { parts: { PartNumber: number; ETag: string; Size: number }[] } = await listRes.json();
 
-      const CHUNK_SIZE = 10 * 1024 * 1024;
+      const CHUNK_SIZE = 25 * 1024 * 1024;
       const totalParts = Math.ceil(file.size / CHUNK_SIZE);
 
       // Map of existing parts for O(1) lookup
@@ -298,19 +298,39 @@ export default function FeedsPage() {
         return next;
       });
 
+      // Build queue of remaining parts
+      const CONCURRENCY = 4;
+      const queue: number[] = [];
+      for (let i = 1; i <= totalParts; i++) {
+        if (!uploadedMap.has(i)) queue.push(i);
+      }
+
+      // Batch-fetch all presigned URLs at once
+      const presignedUrlMap = new Map<number, string>();
+      if (queue.length > 0) {
+        const batchRes = await fetch('/api/uploads/multipart/batch-part-urls', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uploadId: meta.uploadId,
+            key: meta.key,
+            partNumbers: queue,
+          }),
+        });
+        if (!batchRes.ok) throw new Error('Failed to get batch part URLs');
+        const { urls: batchUrls } = await batchRes.json();
+        for (const u of batchUrls as { partNumber: number; url: string }[]) {
+          presignedUrlMap.set(u.partNumber, u.url);
+        }
+      }
+
       const uploadPart = async (partNumber: number) => {
         const start = (partNumber - 1) * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, file.size);
         const chunk = file.slice(start, end);
 
-        const partUrlRes = await fetch('/api/uploads/multipart/part-url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ uploadId: meta.uploadId, key: meta.key, partNumber }),
-        });
-
-        if (!partUrlRes.ok) throw new Error(`Failed to get URL for part ${partNumber}`);
-        const { url } = await partUrlRes.json();
+        const url = presignedUrlMap.get(partNumber);
+        if (!url) throw new Error(`No presigned URL for part ${partNumber}`);
 
         const uploadRes = await fetch(url, { method: 'PUT', body: chunk });
         if (!uploadRes.ok) throw new Error(`Failed to upload part ${partNumber}`);
@@ -320,13 +340,6 @@ export default function FeedsPage() {
 
         return eTag;
       };
-
-      // CONCURRENCY LOOP
-      const CONCURRENCY = 4;
-      const queue = [];
-      for (let i = 1; i <= totalParts; i++) {
-        if (!uploadedMap.has(i)) queue.push(i);
-      }
 
       const activeWorkers = new Set<Promise<void>>();
 
