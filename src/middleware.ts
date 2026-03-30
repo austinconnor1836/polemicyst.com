@@ -28,17 +28,23 @@ const PUBLIC_PATH_PREFIXES = ['/posts'];
 // Build a base URL from forwarded headers (Tailscale serve) or fall back to req.url
 function getBaseUrl(req: NextRequest): string {
   const fwdHost = req.headers.get('x-forwarded-host') || req.headers.get('host');
-  if (
-    fwdHost &&
-    !fwdHost.startsWith('localhost') &&
-    !fwdHost.startsWith('127.0.0.1') &&
-    !fwdHost.startsWith('0.0.0.0')
-  ) {
-    const proto = req.headers.get('x-forwarded-proto') || 'https';
-    const cleanHost = fwdHost.replace(/:\d+$/, '');
-    return `${proto}://${cleanHost}`;
+  if (!fwdHost) return req.url;
+
+  const proto = req.headers.get('x-forwarded-proto') || 'https';
+  const isLocal =
+    fwdHost.startsWith('localhost') ||
+    fwdHost.startsWith('127.0.0.1') ||
+    fwdHost.startsWith('0.0.0.0');
+
+  if (isLocal) {
+    // Use the host header directly (preserves port) — avoids req.url's 0.0.0.0
+    // binding address which breaks cookies set on localhost
+    return `${proto}://${fwdHost}`;
   }
-  return req.url;
+
+  // For remote hosts (Tailscale etc), strip port (serve listens on 443)
+  const cleanHost = fwdHost.replace(/:\d+$/, '');
+  return `${proto}://${cleanHost}`;
 }
 
 export async function middleware(req: NextRequest) {
