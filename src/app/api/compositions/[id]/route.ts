@@ -94,12 +94,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (cut.endS <= cut.startS) {
           return NextResponse.json({ error: 'Cut endS must be > startS' }, { status: 400 });
         }
-        if (!Array.isArray(cut.targets) || cut.targets.length === 0) {
-          return NextResponse.json(
-            { error: 'Each cut must have non-empty targets' },
-            { status: 400 }
-          );
-        }
       }
       // Check for overlapping cuts (sorted by startS)
       const sorted = [...data.cuts].sort((a: any, b: any) => a.startS - b.startS);
