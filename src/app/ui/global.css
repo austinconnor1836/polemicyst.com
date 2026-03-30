@@ -14,6 +14,12 @@
   height: var(--navbar-height);
 }
 
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 :root {
   --navbar-height: 3.3rem; /* Adjust this value to match the actual height of your navbar */
   --bg-color: rgb(var(--color-background));

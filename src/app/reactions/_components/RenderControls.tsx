@@ -547,8 +547,38 @@ export function RenderControls({
 
   return (
     <div className="space-y-4">
+      {/* Render button */}
+      <div className="flex gap-2">
+        {rendering && !canClientRender && (
+          <Button variant="outline" onClick={handleCancel}>
+            Cancel
+          </Button>
+        )}
+        <Button onClick={handleRender} disabled={rendering || !hasCreator || !hasTracks}>
+          {rendering && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {renderButtonLabel}
+        </Button>
+      </div>
+
+      {/* Client render progress bar (aggregate) */}
+      {rendering && clientRenderProgress.size > 0 && (
+        <div className="space-y-1">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-blue-500 transition-[width] duration-300"
+              style={{ width: `${aggregatePercent}%` }}
+            />
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            {Array.from(clientRenderProgress.entries())
+              .map(([l, p]) => `${l === 'mobile' ? '9:16' : '16:9'}: ${p.percent}%`)
+              .join(' · ')}
+          </p>
+        </div>
+      )}
+
       {/* Auto-detected layout previews */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3 flex-wrap">
         <div className="flex gap-3">
           {autoLayouts.map((layout) => (
             <div
@@ -564,46 +594,17 @@ export function RenderControls({
             </div>
           ))}
         </div>
+      </div>
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-xs text-muted-foreground">{detectionSummary}</p>
-            {canClientRender && (
-              <Badge variant="secondary" className="gap-1 text-[10px] h-5">
-                <Monitor className="h-3 w-3" />
-                Local
-              </Badge>
-            )}
-          </div>
-          {/* Client render progress bar (aggregate) */}
-          {rendering && clientRenderProgress.size > 0 && (
-            <div className="mt-1.5 space-y-1">
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-blue-500 transition-[width] duration-300"
-                  style={{ width: `${aggregatePercent}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-muted-foreground">
-                {Array.from(clientRenderProgress.entries())
-                  .map(([l, p]) => `${l === 'mobile' ? '9:16' : '16:9'}: ${p.percent}%`)
-                  .join(' · ')}
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="ml-auto flex gap-2 shrink-0">
-          {rendering && !canClientRender && (
-            <Button variant="outline" onClick={handleCancel}>
-              Cancel
-            </Button>
-          )}
-          <Button onClick={handleRender} disabled={rendering || !hasCreator || !hasTracks}>
-            {rendering && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {renderButtonLabel}
-          </Button>
-        </div>
+      {/* Detection summary */}
+      <div className="flex items-center gap-2">
+        <p className="text-xs text-muted-foreground">{detectionSummary}</p>
+        {canClientRender && (
+          <Badge variant="secondary" className="gap-1 text-[10px] h-5">
+            <Monitor className="h-3 w-3" />
+            Local
+          </Badge>
+        )}
       </div>
 
       {/* Output cards — always show placeholders for expected layouts */}
