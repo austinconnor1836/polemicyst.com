@@ -338,6 +338,7 @@ model AutomationRule {
   cropTemplateId   String?
   autoPublish      Boolean  @default(false)
   publishPlatforms Json?
+  autoEditSettings Json?
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
