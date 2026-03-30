@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
+import { deleteFromS3 } from '@shared/lib/s3';
 
 export async function PATCH(
   req: NextRequest,
@@ -81,6 +82,15 @@ export async function DELETE(
     });
     if (!existing) {
       return NextResponse.json({ error: 'Track not found' }, { status: 404 });
+    }
+
+    // Best-effort S3 cleanup
+    if (existing.s3Key) {
+      try {
+        await deleteFromS3(existing.s3Key);
+      } catch (err) {
+        console.error(`[DELETE track] Failed to delete S3 object ${existing.s3Key}:`, err);
+      }
     }
 
     await prisma.compositionTrack.delete({ where: { id: trackId } });
