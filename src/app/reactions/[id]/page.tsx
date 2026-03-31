@@ -18,7 +18,16 @@ import { TrimModal } from '../_components/TrimModal';
 import { EditOutputModal, type CompositionCut } from '../_components/EditOutputModal';
 import { PublishModal } from '@/components/PublishModal';
 import { supportsClientRender } from '@/lib/client-render';
-import { saveBlobToCache, loadBlobsFromCache } from '@/lib/client-render/blob-cache';
+import {
+  saveBlobToCache,
+  loadBlobsFromCache,
+  saveCreatorFileToCache,
+  loadCreatorFileFromCache,
+  clearCreatorFileCache,
+  saveRefFileToCache,
+  loadRefFilesFromCache,
+  clearRefFileCache,
+} from '@/lib/client-render/blob-cache';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
@@ -228,8 +237,12 @@ export default function CompositionEditorPage() {
   }, []);
 
   // Restore cached rendered blobs from IndexedDB on mount
+  // Must wait for composition to load so the setComposition functional update
+  // has a non-null prev (otherwise it races with fetchComposition and gets skipped).
+  const blobRestoreRanRef = useRef(false);
   useEffect(() => {
-    if (!compositionId) return;
+    if (!composition || blobRestoreRanRef.current) return;
+    blobRestoreRanRef.current = true;
     const layouts = ['mobile', 'landscape'];
     loadBlobsFromCache(compositionId, layouts).then((cached) => {
       if (cached.size === 0) return;
@@ -263,7 +276,88 @@ export default function CompositionEditorPage() {
       });
       console.log(`[page] Restored ${cached.size} cached output(s) from IndexedDB`);
     });
-  }, [compositionId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composition, compositionId]);
+
+  // Restore cached source files (creator + reference) from IndexedDB on mount
+  const fileRestoreRanRef = useRef(false);
+  useEffect(() => {
+    if (!composition || !useClientRender || fileRestoreRanRef.current) return;
+    fileRestoreRanRef.current = true;
+
+    // Restore creator file
+    loadCreatorFileFromCache(compositionId).then((cached) => {
+      if (!cached) return;
+      const file = new File([cached.blob], cached.name, {
+        type: cached.type,
+        lastModified: cached.lastModified,
+      });
+      const blobUrl = URL.createObjectURL(cached.blob);
+      setCreatorFile(file);
+      setCreatorBlobUrl(blobUrl);
+      setCreatorLocalMeta({
+        durationS: cached.durationS,
+        width: cached.width,
+        height: cached.height,
+      });
+      setCreatorUploadStatus('complete');
+      setComposition((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          creatorDurationS: cached.durationS,
+          creatorWidth: cached.width,
+          creatorHeight: cached.height,
+        };
+      });
+      console.log('[page] Restored creator file from IndexedDB');
+    });
+
+    // Restore reference files
+    loadRefFilesFromCache(compositionId).then((cached) => {
+      if (cached.size === 0) return;
+      const newRefFiles = new Map<string, File>();
+      const newTracks: Track[] = [];
+      cached.forEach((entry) => {
+        const file = new File([entry.blob], entry.name, {
+          type: entry.type,
+          lastModified: entry.lastModified,
+        });
+        const blobUrl = URL.createObjectURL(entry.blob);
+        newRefFiles.set(entry.trackId, file);
+        newTracks.push({
+          id: entry.trackId,
+          label: entry.label,
+          s3Key: '',
+          s3Url: blobUrl,
+          durationS: entry.durationS,
+          width: entry.width,
+          height: entry.height,
+          startAtS: 0,
+          trimStartS: 0,
+          trimEndS: null,
+          sortOrder: 0,
+          hasAudio: true,
+        });
+      });
+      setRefFiles((prev) => {
+        const merged = new Map(prev);
+        newRefFiles.forEach((f, id) => merged.set(id, f));
+        return merged;
+      });
+      setComposition((prev) => {
+        if (!prev) return prev;
+        // Only add tracks whose IDs aren't already present
+        const existingIds = new Set(prev.tracks.map((t) => t.id));
+        const toAdd = newTracks
+          .filter((t) => !existingIds.has(t.id))
+          .map((t, i) => ({ ...t, sortOrder: prev.tracks.length + i }));
+        return toAdd.length > 0 ? { ...prev, tracks: [...prev.tracks, ...toAdd] } : prev;
+      });
+      console.log(`[page] Restored ${cached.size} ref file(s) from IndexedDB`);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composition, useClientRender, compositionId]);
 
   // Transcript polling: poll for transcript + auto-edit results when creator video exists but transcript is missing
   useEffect(() => {
@@ -374,6 +468,12 @@ export default function CompositionEditorPage() {
       setCreatorBlobUrl(data.blobUrl);
       setCreatorFile(data.file);
       setCreatorLocalMeta({ durationS: data.durationS, width: data.width, height: data.height });
+      // Persist to IndexedDB so file survives page refresh (fire-and-forget)
+      saveCreatorFileToCache(compositionId, data.file, {
+        durationS: data.durationS,
+        width: data.width,
+        height: data.height,
+      });
       if (useClientRender) {
         // Client-render mode: no upload needed, mark complete immediately
         setCreatorUploadStatus('complete');
@@ -491,6 +591,13 @@ export default function CompositionEditorPage() {
         // Generate a temporary track ID and add to composition locally
         const tempId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         setRefFiles((prev) => new Map(prev).set(tempId, data.file));
+        // Persist to IndexedDB so file survives page refresh (fire-and-forget)
+        saveRefFileToCache(compositionId, tempId, data.file, {
+          label: data.filename,
+          durationS: data.durationS,
+          width: data.width,
+          height: data.height,
+        });
         setComposition((prev) => {
           if (!prev) return prev;
           const newTrack: Track = {
@@ -519,7 +626,7 @@ export default function CompositionEditorPage() {
       }
       setRefUploadProgress(null);
     },
-    [useClientRender]
+    [useClientRender, compositionId]
   );
 
   const handleRefUploadComplete = useCallback(
@@ -586,10 +693,20 @@ export default function CompositionEditorPage() {
       if (!confirm('Remove this reference track?')) return;
       setDeletingTrackId(trackId);
       try {
-        const res = await fetch(`/api/compositions/${compositionId}/tracks/${trackId}`, {
-          method: 'DELETE',
-        });
-        if (!res.ok) throw new Error('Failed to remove track');
+        // Local tracks (client-render) don't exist on the server — just remove locally
+        if (trackId.startsWith('local_')) {
+          setRefFiles((prev) => {
+            const next = new Map(prev);
+            next.delete(trackId);
+            return next;
+          });
+          clearRefFileCache(compositionId, trackId);
+        } else {
+          const res = await fetch(`/api/compositions/${compositionId}/tracks/${trackId}`, {
+            method: 'DELETE',
+          });
+          if (!res.ok) throw new Error('Failed to remove track');
+        }
         setComposition((prev) => {
           if (!prev) return prev;
           return { ...prev, tracks: prev.tracks.filter((t) => t.id !== trackId) };
@@ -898,6 +1015,7 @@ export default function CompositionEditorPage() {
                           setCreatorLocalMeta(null);
                           setCreatorUploadStatus('idle');
                           setTranscriptionStatus('idle');
+                          clearCreatorFileCache(compositionId);
                           setComposition((prev) =>
                             prev
                               ? {
