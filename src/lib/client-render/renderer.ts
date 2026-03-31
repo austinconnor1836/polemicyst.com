@@ -414,7 +414,9 @@ export async function render(
         creatorFrame,
         refFrame,
         opts.layout,
-        activeRef ? opts.tracks[activeRef.trackIndex] : null
+        activeRef ? opts.tracks[activeRef.trackIndex] : null,
+        outputTimeS,
+        opts.captions
       );
 
       // Diagnostic: dump first composited frame as PNG to console for inspection

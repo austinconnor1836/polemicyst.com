@@ -177,6 +177,44 @@ export async function transcribeFeedVideo(
 }
 
 /**
+ * Run Whisper on a local file. No download, no cleanup — caller manages the file.
+ */
+export async function transcribeLocalFile(
+  localPath: string
+): Promise<{ transcript: string; segments: any[] }> {
+  const pythonPath = process.env.PYTHON_PATH || 'python3';
+  const pythonProcess = spawn(pythonPath, ['scripts/transcribe.py', localPath], {
+    cwd: process.cwd(),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  let output = '';
+  let error = '';
+
+  pythonProcess.stdout.on('data', (d: Buffer) => (output += d.toString()));
+  pythonProcess.stderr.on('data', (d: Buffer) => (error += d.toString()));
+
+  const exitCode: number = await new Promise((resolve, reject) => {
+    pythonProcess.on('error', reject);
+    pythonProcess.on('close', (code) => resolve(code ?? 1));
+  });
+
+  if (exitCode !== 0) {
+    const msg = error?.trim() || output?.trim() || 'Unknown transcription error';
+    throw new Error(`Transcription failed (exit ${exitCode}): ${msg}`);
+  }
+
+  let parsed: { transcript: string; segments: any[] };
+  try {
+    parsed = JSON.parse(output);
+  } catch {
+    throw new Error(`Failed to parse transcript output: ${output} (Error: ${error})`);
+  }
+
+  return parsed;
+}
+
+/**
  * Generic Whisper transcription from an S3 URL. No DB access — pure function.
  * Downloads the file, runs Whisper, returns { transcript, segments }.
  */
@@ -199,36 +237,7 @@ export async function transcribeFromS3Url(
     await pipeline(videoRes.body, fs.createWriteStream(tempFilePath));
     console.info('✅ [generic-transcription] Download complete.');
 
-    const pythonPath = process.env.PYTHON_PATH || 'python3';
-    const pythonProcess = spawn(pythonPath, ['scripts/transcribe.py', tempFilePath], {
-      cwd: process.cwd(),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    let output = '';
-    let error = '';
-
-    pythonProcess.stdout.on('data', (d: Buffer) => (output += d.toString()));
-    pythonProcess.stderr.on('data', (d: Buffer) => (error += d.toString()));
-
-    const exitCode: number = await new Promise((resolve, reject) => {
-      pythonProcess.on('error', reject);
-      pythonProcess.on('close', (code) => resolve(code ?? 1));
-    });
-
-    if (exitCode !== 0) {
-      const msg = error?.trim() || output?.trim() || 'Unknown transcription error';
-      throw new Error(`Transcription failed (exit ${exitCode}): ${msg}`);
-    }
-
-    let parsed: { transcript: string; segments: any[] };
-    try {
-      parsed = JSON.parse(output);
-    } catch {
-      throw new Error(`Failed to parse transcript output: ${output} (Error: ${error})`);
-    }
-
-    return parsed;
+    return await transcribeLocalFile(tempFilePath);
   } finally {
     if (fs.existsSync(tempFilePath)) {
       fs.unlinkSync(tempFilePath);

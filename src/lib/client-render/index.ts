@@ -12,11 +12,14 @@ export { spliceMP4, computeKeptSegments } from './mp4-splicer';
  * Check if the browser supports client-side rendering via WebCodecs.
  */
 export function supportsClientRender(): boolean {
+  if (typeof window === 'undefined') return false;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (isIOS) return false;
   return (
-    typeof VideoEncoder !== 'undefined' &&
     typeof VideoDecoder !== 'undefined' &&
-    typeof AudioEncoder !== 'undefined' &&
+    typeof VideoEncoder !== 'undefined' &&
     typeof AudioDecoder !== 'undefined' &&
+    typeof AudioEncoder !== 'undefined' &&
     typeof OffscreenCanvas !== 'undefined'
   );
 }

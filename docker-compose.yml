@@ -49,6 +49,8 @@ services:
       context: .
       dockerfile: ./workers/clip-metadata-worker/Dockerfile
     command: ['npx', 'tsx', 'index.ts']
+    ports:
+      - '3001:3001'
     environment:
       - REDIS_HOST=redis
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
