@@ -500,7 +500,12 @@ export default function CompositionEditorPage() {
               {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(workerResult),
+                body: JSON.stringify({
+                  ...workerResult,
+                  creatorDurationS: data.durationS,
+                  creatorWidth: data.width,
+                  creatorHeight: data.height,
+                }),
               }
             );
             if (!saveRes.ok) throw new Error('Failed to save transcript');
@@ -1281,6 +1286,7 @@ export default function CompositionEditorPage() {
             onBlobReady={handleBlobReady}
             captionsEnabled={captionsEnabled}
             captionFontSizePx={captionFontSizePx}
+            autoEditing={autoEditing}
           />
         </CardContent>
       </Card>

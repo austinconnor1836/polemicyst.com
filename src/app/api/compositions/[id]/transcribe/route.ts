@@ -35,6 +35,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       creatorTranscriptJson: result.segments,
     };
 
+    // Client-render mode sends creator metadata alongside transcript
+    if (result.creatorDurationS != null) updateData.creatorDurationS = result.creatorDurationS;
+    if (result.creatorWidth != null) updateData.creatorWidth = result.creatorWidth;
+    if (result.creatorHeight != null) updateData.creatorHeight = result.creatorHeight;
+
     if (result.silenceRegions) {
       updateData.silenceRegions = result.silenceRegions;
     }

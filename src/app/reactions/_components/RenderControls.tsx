@@ -77,6 +77,7 @@ interface RenderControlsProps {
   onBlobReady: (layout: string, blob: Blob, url: string) => void;
   captionsEnabled?: boolean;
   captionFontSizePx?: number;
+  autoEditing?: boolean;
 }
 
 const LAYOUT_LABELS: Record<string, string> = {
@@ -106,6 +107,7 @@ export function RenderControls({
   onBlobReady,
   captionsEnabled,
   captionFontSizePx,
+  autoEditing,
 }: RenderControlsProps) {
   const [rendering, setRendering] = useState(compositionStatus === 'rendering');
   const [publishTarget, setPublishTarget] = useState<{
@@ -762,9 +764,21 @@ export function RenderControls({
                   )}
                 </>
               }
+              overlay={
+                autoEditing && !isActive ? (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-background/80 backdrop-blur-sm dark:bg-black/60">
+                    <div className="flex flex-col items-center gap-1.5">
+                      <Loader2 className="h-6 w-6 animate-spin text-foreground dark:text-white" />
+                      <span className="text-sm font-medium text-foreground dark:text-white">
+                        Auto-editing…
+                      </span>
+                    </div>
+                  </div>
+                ) : undefined
+              }
               className="max-w-none"
             >
-              {isActive ? (
+              {isActive && !autoEditing ? (
                 <div className="flex h-full flex-col items-center justify-center gap-1.5">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   {clientRenderProgress.has(layout) && (

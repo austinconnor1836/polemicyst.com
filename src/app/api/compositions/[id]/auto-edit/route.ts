@@ -38,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (!composition) return notFound('Composition not found');
 
-    if (!composition.creatorTranscriptJson || !composition.creatorDurationS) {
+    if (!composition.creatorTranscriptJson) {
       return badRequest(
         'Creator video transcript not available. Upload a creator video and wait for transcription to complete.'
       );
@@ -68,6 +68,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const segments = composition.creatorTranscriptJson as unknown as TranscriptSegment[];
     if (!Array.isArray(segments) || segments.length === 0) {
       return badRequest('Transcript is empty or invalid');
+    }
+
+    // Derive duration from transcript when DB value is missing (client-render mode)
+    const creatorDurationS =
+      composition.creatorDurationS && composition.creatorDurationS > 0
+        ? composition.creatorDurationS
+        : (segments[segments.length - 1]?.end ?? 0);
+
+    if (!creatorDurationS) {
+      return badRequest('Cannot determine creator video duration');
     }
 
     // FFmpeg silencedetect — use cached regions when available, otherwise download + detect
@@ -111,12 +121,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     // Run analysis (FFmpeg silence cuts + transcript-based bad take detection)
-    const result = analyzeForAutoEdit(
-      segments,
-      settings,
-      composition.creatorDurationS,
-      ffmpegSilenceCuts
-    );
+    const result = analyzeForAutoEdit(segments, settings, creatorDurationS, ffmpegSilenceCuts);
 
     // Cache the auto-edit result and optionally persist cuts
     const updateData: Record<string, any> = {
