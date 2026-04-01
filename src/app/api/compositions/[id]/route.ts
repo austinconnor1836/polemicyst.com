@@ -72,9 +72,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
-    // Auto-clear cuts when creator video is removed (stale cuts for old content)
-    if (data.creatorS3Key === null && data.cuts === undefined) {
-      data.cuts = null;
+    // Auto-clear cuts and cached auto-edit data when creator video is removed or replaced
+    if (data.creatorS3Key === null) {
+      if (data.cuts === undefined) data.cuts = null;
+      data.silenceRegions = null;
+      data.autoEditResult = null;
+      data.creatorTranscript = null;
+      data.creatorTranscriptJson = null;
+    } else if (data.creatorS3Url && data.creatorS3Url !== existing.creatorS3Url) {
+      // New creator video — clear stale cached analysis
+      data.silenceRegions = null;
+      data.autoEditResult = null;
+      data.creatorTranscript = null;
+      data.creatorTranscriptJson = null;
+      if (data.cuts === undefined) data.cuts = null;
     }
 
     // Validate cuts if provided

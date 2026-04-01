@@ -6,20 +6,28 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Loader2, RefreshCw, Scissors, Share2 } from 'lucide-react';
+import { ArrowLeft, Loader2, RefreshCw, Scissors, Share2, Wand2, X } from 'lucide-react';
 import { ModeSelector } from '../_components/ModeSelector';
 import { VideoUploader, type UploadStatus } from '../_components/VideoUploader';
 import { CreatorVideoPanel } from '../_components/CreatorVideoPanel';
 import { ReferenceTrackPanel } from '../_components/ReferenceTrackPanel';
 import { TimelineEditor } from '../_components/TimelineEditor';
-import { AudioMixPanel } from '../_components/AudioMixPanel';
 import { RenderControls } from '../_components/RenderControls';
 import { ThumbnailPanel } from '../_components/ThumbnailPanel';
 import { TrimModal } from '../_components/TrimModal';
-import { EditOutputModal } from '../_components/EditOutputModal';
+import { EditOutputModal, type CompositionCut } from '../_components/EditOutputModal';
 import { PublishModal } from '@/components/PublishModal';
 import { supportsClientRender } from '@/lib/client-render';
-import { saveBlobToCache, loadBlobsFromCache } from '@/lib/client-render/blob-cache';
+import {
+  saveBlobToCache,
+  loadBlobsFromCache,
+  saveCreatorFileToCache,
+  loadCreatorFileFromCache,
+  clearCreatorFileCache,
+  saveRefFileToCache,
+  loadRefFilesFromCache,
+  clearRefFileCache,
+} from '@/lib/client-render/blob-cache';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
@@ -36,6 +44,7 @@ interface Track {
   trimEndS: number | null;
   sortOrder: number;
   hasAudio: boolean;
+  transcriptJson?: Array<{ start: number; end: number; text: string }> | null;
 }
 
 interface Output {
@@ -46,6 +55,15 @@ interface Output {
   renderError?: string | null;
   durationMs?: number | null;
   transcript?: string | null;
+}
+
+interface AutoEditSummary {
+  silenceCuts: number;
+  badTakeCuts: number;
+  totalCuts: number;
+  totalRemovedS: number;
+  originalDurationS: number;
+  newDurationS: number;
 }
 
 interface Composition {
@@ -63,6 +81,10 @@ interface Composition {
   creatorHeight?: number | null;
   creatorTrimStartS: number;
   creatorTrimEndS?: number | null;
+  creatorTranscriptJson?: Array<{ start: number; end: number; text: string }> | null;
+  cuts?: CompositionCut[] | null;
+  silenceRegions?: Array<{ startS: number; endS: number }> | null;
+  autoEditResult?: { cuts: any[]; summary: AutoEditSummary } | null;
   tracks: Track[];
   outputs: Output[];
 }
@@ -115,6 +137,8 @@ export default function CompositionEditorPage() {
   const [thumbnailGenerating, setThumbnailGenerating] = useState(false);
   const thumbnailRegenerateRef = useRef<(() => void) | null>(null);
   const [editOutputOpen, setEditOutputOpen] = useState(false);
+  const [autoEditing, setAutoEditing] = useState(false);
+  const [autoEditCuts, setAutoEditCuts] = useState<CompositionCut[] | undefined>(undefined);
   const [trimTarget, setTrimTarget] = useState<{
     type: 'creator' | 'reference';
     trackId?: string;
@@ -157,6 +181,15 @@ export default function CompositionEditorPage() {
   const [clientOutputBlobs, setClientOutputBlobs] = useState<Map<string, Blob>>(new Map());
   const [clientOutputUrls, setClientOutputUrls] = useState<Map<string, string>>(new Map());
 
+  // Client-render transcription state
+  const [transcriptionStatus, setTranscriptionStatus] = useState<
+    'idle' | 'transcribing' | 'complete' | 'error'
+  >('idle');
+
+  // Caption settings from user automation config
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
+  const [captionFontSizePx, setCaptionFontSizePx] = useState(36);
+
   const fetchComposition = useCallback(async () => {
     try {
       const res = await fetch(`/api/compositions/${compositionId}`);
@@ -180,9 +213,36 @@ export default function CompositionEditorPage() {
     fetchComposition();
   }, [fetchComposition]);
 
-  // Restore cached rendered blobs from IndexedDB on mount
+  // Fetch caption settings from user automation config
   useEffect(() => {
-    if (!compositionId) return;
+    fetch('/api/user/automation')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setCaptionsEnabled(data.captionsEnabled ?? false);
+        const vs = data.viralitySettings;
+        if (vs?.captionFontSize) {
+          const sizes: Record<string, number> = {
+            small: 24,
+            medium: 36,
+            large: 48,
+            xlarge: 64,
+          };
+          setCaptionFontSizePx(sizes[vs.captionFontSize] ?? 36);
+        }
+      })
+      .catch(() => {
+        // Non-fatal — defaults already set
+      });
+  }, []);
+
+  // Restore cached rendered blobs from IndexedDB on mount
+  // Must wait for composition to load so the setComposition functional update
+  // has a non-null prev (otherwise it races with fetchComposition and gets skipped).
+  const blobRestoreRanRef = useRef(false);
+  useEffect(() => {
+    if (!composition || blobRestoreRanRef.current) return;
+    blobRestoreRanRef.current = true;
     const layouts = ['mobile', 'landscape'];
     loadBlobsFromCache(compositionId, layouts).then((cached) => {
       if (cached.size === 0) return;
@@ -216,7 +276,131 @@ export default function CompositionEditorPage() {
       });
       console.log(`[page] Restored ${cached.size} cached output(s) from IndexedDB`);
     });
-  }, [compositionId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composition, compositionId]);
+
+  // Restore cached source files (creator + reference) from IndexedDB on mount
+  const fileRestoreRanRef = useRef(false);
+  useEffect(() => {
+    if (!composition || !useClientRender || fileRestoreRanRef.current) return;
+    fileRestoreRanRef.current = true;
+
+    // Restore creator file
+    loadCreatorFileFromCache(compositionId).then((cached) => {
+      if (!cached) return;
+      const file = new File([cached.blob], cached.name, {
+        type: cached.type,
+        lastModified: cached.lastModified,
+      });
+      const blobUrl = URL.createObjectURL(cached.blob);
+      setCreatorFile(file);
+      setCreatorBlobUrl(blobUrl);
+      setCreatorLocalMeta({
+        durationS: cached.durationS,
+        width: cached.width,
+        height: cached.height,
+      });
+      setCreatorUploadStatus('complete');
+      setComposition((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          creatorDurationS: cached.durationS,
+          creatorWidth: cached.width,
+          creatorHeight: cached.height,
+        };
+      });
+      console.log('[page] Restored creator file from IndexedDB');
+    });
+
+    // Restore reference files
+    loadRefFilesFromCache(compositionId).then((cached) => {
+      if (cached.size === 0) return;
+      const newRefFiles = new Map<string, File>();
+      const newTracks: Track[] = [];
+      cached.forEach((entry) => {
+        const file = new File([entry.blob], entry.name, {
+          type: entry.type,
+          lastModified: entry.lastModified,
+        });
+        const blobUrl = URL.createObjectURL(entry.blob);
+        newRefFiles.set(entry.trackId, file);
+        newTracks.push({
+          id: entry.trackId,
+          label: entry.label,
+          s3Key: '',
+          s3Url: blobUrl,
+          durationS: entry.durationS,
+          width: entry.width,
+          height: entry.height,
+          startAtS: 0,
+          trimStartS: 0,
+          trimEndS: null,
+          sortOrder: 0,
+          hasAudio: true,
+        });
+      });
+      setRefFiles((prev) => {
+        const merged = new Map(prev);
+        newRefFiles.forEach((f, id) => merged.set(id, f));
+        return merged;
+      });
+      setComposition((prev) => {
+        if (!prev) return prev;
+        // Only add tracks whose IDs aren't already present
+        const existingIds = new Set(prev.tracks.map((t) => t.id));
+        const toAdd = newTracks
+          .filter((t) => !existingIds.has(t.id))
+          .map((t, i) => ({ ...t, sortOrder: prev.tracks.length + i }));
+        return toAdd.length > 0 ? { ...prev, tracks: [...prev.tracks, ...toAdd] } : prev;
+      });
+      console.log(`[page] Restored ${cached.size} ref file(s) from IndexedDB`);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composition, useClientRender, compositionId]);
+
+  // Transcript polling: poll for transcript + auto-edit results when creator video exists but transcript is missing
+  useEffect(() => {
+    // Only poll when there's a creator video but no transcript yet
+    const needsPoll = composition?.creatorS3Url && !composition.creatorTranscriptJson && !loading;
+    if (!needsPoll) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/compositions/${compositionId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.creatorTranscriptJson) {
+          setComposition((prev) => {
+            if (!prev) return data;
+            const localTracks = prev.tracks.filter((t) => t.id.startsWith('local_'));
+            return {
+              ...data,
+              tracks: [...(data.tracks || []), ...localTracks],
+              creatorDurationS: data.creatorDurationS ?? prev.creatorDurationS,
+              creatorWidth: data.creatorWidth ?? prev.creatorWidth,
+              creatorHeight: data.creatorHeight ?? prev.creatorHeight,
+            };
+          });
+
+          // Show auto-edit summary toast if available
+          const summary = data.autoEditResult?.summary;
+          if (summary && summary.totalCuts > 0) {
+            toast.success(
+              `Auto-edit: ${summary.totalCuts} cut${summary.totalCuts === 1 ? '' : 's'} (${summary.totalRemovedS}s removed)`,
+              { duration: 4000 }
+            );
+          }
+
+          clearInterval(interval);
+        }
+      } catch {
+        // Ignore polling errors
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [compositionId, composition?.creatorS3Url, composition?.creatorTranscriptJson, loading]);
 
   const save = useCallback(
     async (updates: Partial<Composition>) => {
@@ -284,9 +468,72 @@ export default function CompositionEditorPage() {
       setCreatorBlobUrl(data.blobUrl);
       setCreatorFile(data.file);
       setCreatorLocalMeta({ durationS: data.durationS, width: data.width, height: data.height });
+      // Persist to IndexedDB so file survives page refresh (fire-and-forget)
+      saveCreatorFileToCache(compositionId, data.file, {
+        durationS: data.durationS,
+        width: data.width,
+        height: data.height,
+      });
       if (useClientRender) {
         // Client-render mode: no upload needed, mark complete immediately
         setCreatorUploadStatus('complete');
+
+        // Fire background transcription via Next.js rewrite proxy to worker
+        setTranscriptionStatus('transcribing');
+        (async () => {
+          try {
+            // Step 1: Upload file directly to worker (CORS enabled, bypasses Next.js body limit)
+            const workerBase =
+              process.env.NEXT_PUBLIC_TRANSCRIPTION_WORKER_URL || 'http://localhost:3001';
+            const formData = new FormData();
+            formData.append('file', data.file);
+            const workerRes = await fetch(
+              `${workerBase}/transcribe?compositionId=${compositionId}`,
+              { method: 'POST', body: formData }
+            );
+            if (!workerRes.ok) throw new Error('Worker transcription failed');
+            const workerResult = await workerRes.json();
+
+            // Step 2: Save results to DB via API
+            const saveRes = await fetch(
+              `/api/compositions/${compositionId}/transcribe?action=save`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  ...workerResult,
+                  creatorDurationS: data.durationS,
+                  creatorWidth: data.width,
+                  creatorHeight: data.height,
+                }),
+              }
+            );
+            if (!saveRes.ok) throw new Error('Failed to save transcript');
+            const saved = await saveRes.json();
+
+            setTranscriptionStatus('complete');
+            setComposition((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                creatorTranscriptJson: saved.creatorTranscriptJson,
+                silenceRegions: saved.silenceRegions ?? prev.silenceRegions,
+                autoEditResult: saved.autoEditResult ?? prev.autoEditResult,
+                cuts: saved.cuts ?? prev.cuts,
+              };
+            });
+            const summary = saved.autoEditResult?.summary;
+            if (summary && summary.totalCuts > 0) {
+              toast.success(
+                `Auto-edit: ${summary.totalCuts} cut${summary.totalCuts === 1 ? '' : 's'} (${summary.totalRemovedS}s removed)`,
+                { duration: 4000 }
+              );
+            }
+          } catch {
+            setTranscriptionStatus('error');
+            toast.error('Transcription failed — captions unavailable');
+          }
+        })();
       } else {
         setCreatorUploadStatus('uploading');
       }
@@ -302,27 +549,27 @@ export default function CompositionEditorPage() {
         };
       });
     },
-    [useClientRender, save]
+    [useClientRender, compositionId]
   );
 
   const handleCreatorUploadComplete = useCallback(
     async (data: { s3Key: string; s3Url: string }) => {
       setCreatorUploadStatus('complete');
-      // Server probe for accuracy (hasAudio, precise duration)
-      const probe = await probeVideo(data.s3Key);
+      // Use local WebCodecs metadata directly — skip server FFprobe for creator
+      // (saves 2-10s round trip; worker will re-probe if needed)
       await save({
         creatorS3Key: data.s3Key,
         creatorS3Url: data.s3Url,
-        creatorDurationS: probe?.durationS ?? creatorLocalMeta?.durationS ?? null,
-        creatorWidth: probe?.width ?? creatorLocalMeta?.width ?? null,
-        creatorHeight: probe?.height ?? creatorLocalMeta?.height ?? null,
+        creatorDurationS: creatorLocalMeta?.durationS ?? null,
+        creatorWidth: creatorLocalMeta?.width ?? null,
+        creatorHeight: creatorLocalMeta?.height ?? null,
       } as any);
       // Revoke blob URL and switch to CreatorVideoPanel
       if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
       setCreatorBlobUrl(null);
       setCreatorUploadStatus('idle');
     },
-    [save, probeVideo, creatorLocalMeta, creatorBlobUrl]
+    [save, creatorLocalMeta, creatorBlobUrl]
   );
 
   // --- Non-blocking reference track upload handlers ---
@@ -349,6 +596,13 @@ export default function CompositionEditorPage() {
         // Generate a temporary track ID and add to composition locally
         const tempId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         setRefFiles((prev) => new Map(prev).set(tempId, data.file));
+        // Persist to IndexedDB so file survives page refresh (fire-and-forget)
+        saveRefFileToCache(compositionId, tempId, data.file, {
+          label: data.filename,
+          durationS: data.durationS,
+          width: data.width,
+          height: data.height,
+        });
         setComposition((prev) => {
           if (!prev) return prev;
           const newTrack: Track = {
@@ -377,7 +631,7 @@ export default function CompositionEditorPage() {
       }
       setRefUploadProgress(null);
     },
-    [useClientRender]
+    [useClientRender, compositionId]
   );
 
   const handleRefUploadComplete = useCallback(
@@ -444,10 +698,20 @@ export default function CompositionEditorPage() {
       if (!confirm('Remove this reference track?')) return;
       setDeletingTrackId(trackId);
       try {
-        const res = await fetch(`/api/compositions/${compositionId}/tracks/${trackId}`, {
-          method: 'DELETE',
-        });
-        if (!res.ok) throw new Error('Failed to remove track');
+        // Local tracks (client-render) don't exist on the server — just remove locally
+        if (trackId.startsWith('local_')) {
+          setRefFiles((prev) => {
+            const next = new Map(prev);
+            next.delete(trackId);
+            return next;
+          });
+          clearRefFileCache(compositionId, trackId);
+        } else {
+          const res = await fetch(`/api/compositions/${compositionId}/tracks/${trackId}`, {
+            method: 'DELETE',
+          });
+          if (!res.ok) throw new Error('Failed to remove track');
+        }
         setComposition((prev) => {
           if (!prev) return prev;
           return { ...prev, tracks: prev.tracks.filter((t) => t.id !== trackId) };
@@ -536,6 +800,88 @@ export default function CompositionEditorPage() {
     },
     [compositionId]
   );
+
+  // Auto-Edit: analyze transcript, save cuts, and trigger a re-render.
+  // Uses server-side FFmpeg (not the client-side splicer) so cuts are applied
+  // precisely without keyframe snap-back artifacts.
+  const handleAutoEdit = useCallback(async () => {
+    setAutoEditing(true);
+    try {
+      const res = await fetch(`/api/compositions/${compositionId}/auto-edit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Auto-edit failed' }));
+        toast.error(err.error || 'Auto-edit failed');
+        return;
+      }
+      const result = await res.json();
+      const { summary, cuts } = result;
+
+      if (cuts.length === 0) {
+        toast('No dead space or bad takes detected', { icon: '👍', duration: 3000 });
+        return;
+      }
+
+      toast.success(
+        `Auto-edit: ${summary.totalCuts} cut${summary.totalCuts === 1 ? '' : 's'} (${summary.totalRemovedS}s removed). Re-rendering…`,
+        { duration: 4000 }
+      );
+
+      // Update local composition state with new cuts
+      setComposition((prev) => (prev ? { ...prev, cuts } : prev));
+
+      // Store cuts for EditOutputModal (if user opens it later for review)
+      const modalCuts: CompositionCut[] = cuts.map(
+        (c: { id: string; startS: number; endS: number }) => ({
+          id: c.id,
+          startS: c.startS,
+          endS: c.endS,
+        })
+      );
+      setAutoEditCuts(modalCuts);
+
+      // Trigger a server-side re-render so FFmpeg applies cuts precisely
+      const renderRes = await fetch(`/api/compositions/${compositionId}/render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ layouts: detectOutputLayouts() }),
+      });
+      if (renderRes.ok) {
+        // Update status to rendering so RenderControls shows progress
+        setComposition((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            status: 'rendering',
+            outputs: prev.outputs.map((o) => ({
+              ...o,
+              status: 'pending',
+              s3Url: null,
+              renderError: null,
+            })),
+          };
+        });
+      }
+    } catch {
+      toast.error('Auto-edit failed');
+    } finally {
+      setAutoEditing(false);
+    }
+  }, [compositionId, composition?.outputs, detectOutputLayouts]);
+
+  // Clear all cuts from composition
+  const handleClearCuts = useCallback(async () => {
+    try {
+      await save({ cuts: null } as any);
+      setAutoEditCuts(undefined);
+      toast.success('Cuts cleared');
+    } catch {
+      toast.error('Failed to clear cuts');
+    }
+  }, [save]);
 
   // Effective creator duration — local metadata as fallback (client-render may not persist to DB)
   const creatorDurationS = composition?.creatorDurationS ?? creatorLocalMeta?.durationS ?? 0;
@@ -673,6 +1019,8 @@ export default function CompositionEditorPage() {
                           setCreatorFile(null);
                           setCreatorLocalMeta(null);
                           setCreatorUploadStatus('idle');
+                          setTranscriptionStatus('idle');
+                          clearCreatorFileCache(compositionId);
                           setComposition((prev) =>
                             prev
                               ? {
@@ -708,6 +1056,19 @@ export default function CompositionEditorPage() {
                     <Scissors className="h-3 w-3" />
                     Trim
                   </Button>
+                )}
+                {/* Transcription status for client-render mode */}
+                {useClientRender && transcriptionStatus === 'transcribing' && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Transcribing...
+                  </div>
+                )}
+                {useClientRender && transcriptionStatus === 'complete' && (
+                  <div className="text-xs text-green-600 dark:text-green-400">Transcript ready</div>
+                )}
+                {useClientRender && transcriptionStatus === 'error' && (
+                  <div className="text-xs text-destructive">Transcription failed</div>
                 )}
               </div>
             )}
@@ -802,34 +1163,79 @@ export default function CompositionEditorPage() {
         )}
 
       {/* Audio mix */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Audio Mixing</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <AudioMixPanel
-            audioMode={composition.audioMode as 'creator' | 'reference' | 'both'}
-            creatorVolume={composition.creatorVolume}
-            referenceVolume={composition.referenceVolume}
-            onAudioModeChange={(audioMode) => save({ audioMode })}
-            onCreatorVolumeChange={(creatorVolume) => save({ creatorVolume })}
-            onReferenceVolumeChange={(referenceVolume) => save({ referenceVolume })}
-          />
-        </CardContent>
-      </Card>
+      {/* Audio defaults to 'both' — no UI panel needed */}
 
       {/* Render controls */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Output</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle>Output</CardTitle>
+              {composition.creatorS3Url && !composition.creatorTranscriptJson && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 text-xs font-normal text-muted-foreground"
+                >
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Transcribing...
+                </Badge>
+              )}
+              {composition.autoEditResult?.summary &&
+                composition.autoEditResult.summary.totalCuts > 0 && (
+                  <Badge variant="secondary" className="text-xs font-normal">
+                    {composition.autoEditResult.summary.totalCuts} cut
+                    {composition.autoEditResult.summary.totalCuts === 1 ? '' : 's'} (
+                    {composition.autoEditResult.summary.totalRemovedS}s removed)
+                  </Badge>
+                )}
+            </div>
             <div className="flex gap-2">
+              {(composition.creatorS3Key || creatorBlobUrl) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 text-xs"
+                  onClick={handleAutoEdit}
+                  disabled={isRendering || autoEditing || !composition.creatorTranscriptJson}
+                  title={
+                    !composition.creatorTranscriptJson
+                      ? 'Waiting for transcript...'
+                      : composition.silenceRegions
+                        ? 'Re-analyze with current settings (instant — cached)'
+                        : 'Auto-detect and remove dead space & bad takes'
+                  }
+                >
+                  {autoEditing ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Wand2 className="h-3 w-3" />
+                  )}
+                  {composition.silenceRegions ? 'Re-analyze' : 'Auto-Edit'}
+                </Button>
+              )}
+              {composition.cuts &&
+                Array.isArray(composition.cuts) &&
+                composition.cuts.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    onClick={handleClearCuts}
+                    disabled={isRendering || saving}
+                  >
+                    <X className="h-3 w-3" />
+                    Clear Cuts
+                  </Button>
+                )}
               {completedOutputs.length > 0 && (
                 <Button
                   variant="outline"
                   size="sm"
                   className="h-7 gap-1 text-xs"
-                  onClick={() => setEditOutputOpen(true)}
+                  onClick={() => {
+                    setAutoEditCuts(undefined);
+                    setEditOutputOpen(true);
+                  }}
                   disabled={isRendering}
                 >
                   <Scissors className="h-3 w-3" />
@@ -878,6 +1284,9 @@ export default function CompositionEditorPage() {
             clientOutputBlobs={clientOutputBlobs}
             clientOutputUrls={clientOutputUrls}
             onBlobReady={handleBlobReady}
+            captionsEnabled={captionsEnabled}
+            captionFontSizePx={captionFontSizePx}
+            autoEditing={autoEditing}
           />
         </CardContent>
       </Card>
@@ -970,6 +1379,7 @@ export default function CompositionEditorPage() {
           }))}
           outputBlobs={clientOutputBlobs}
           onSpliceComplete={handleSpliceComplete}
+          initialCuts={autoEditCuts}
         />
       )}
     </div>
