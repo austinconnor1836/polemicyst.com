@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { VideoCard } from '@/components/ui/video-card';
 import { Loader2, Download, Share2, Sparkles, Monitor } from 'lucide-react';
 import { LayoutPreview } from './LayoutPreview';
-import { PublishModal } from '@/components/PublishModal';
+import { VideoPublishModal } from '@/components/VideoPublishModal';
 import {
   supportsClientRender,
   renderCompositionClient,
@@ -101,8 +101,10 @@ export function RenderControls({
 }: RenderControlsProps) {
   const [rendering, setRendering] = useState(compositionStatus === 'rendering');
   const [publishTarget, setPublishTarget] = useState<{
+    outputId: string;
     s3Url: string;
     layout: string;
+    hasS3Key: boolean;
     transcript?: string | null;
   } | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
@@ -666,8 +668,10 @@ export function RenderControls({
                           className="h-7 gap-1 text-xs"
                           onClick={() =>
                             setPublishTarget({
+                              outputId: output.id,
                               s3Url: output.s3Url!,
                               layout: output.layout,
+                              hasS3Key: !output.s3Url!.startsWith('blob:'),
                               transcript: output.transcript,
                             })
                           }
@@ -722,20 +726,32 @@ export function RenderControls({
         })}
       </div>
 
-      <PublishModal
+      <VideoPublishModal
         open={!!publishTarget}
         onOpenChange={(open) => {
           if (!open) setPublishTarget(null);
         }}
-        mediaUrl={publishTarget?.s3Url}
-        mediaLabel={publishTarget?.layout}
+        compositionId={compositionId}
+        compositionTitle={compositionTitle}
+        outputs={
+          publishTarget
+            ? [
+                {
+                  id: publishTarget.outputId,
+                  layout: publishTarget.layout,
+                  s3Url: publishTarget.s3Url,
+                  hasS3Key: publishTarget.hasS3Key,
+                },
+              ]
+            : []
+        }
+        trackLabels={trackLabels}
         generationContext={{
           title: compositionTitle,
           trackLabels,
           layouts: publishTarget ? [publishTarget.layout] : [],
           transcript: publishTarget?.transcript || undefined,
         }}
-        preGeneratedContent={publishTarget ? preGenDescriptions[publishTarget.layout] : undefined}
       />
     </div>
   );

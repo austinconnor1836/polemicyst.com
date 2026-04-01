@@ -17,7 +17,7 @@ import { RenderControls } from '../_components/RenderControls';
 import { ThumbnailPanel } from '../_components/ThumbnailPanel';
 import { TrimModal } from '../_components/TrimModal';
 import { EditOutputModal } from '../_components/EditOutputModal';
-import { PublishModal } from '@/components/PublishModal';
+import { VideoPublishModal } from '@/components/VideoPublishModal';
 import { supportsClientRender } from '@/lib/client-render';
 import { saveBlobToCache, loadBlobsFromCache } from '@/lib/client-render/blob-cache';
 import toast from 'react-hot-toast';
@@ -836,7 +836,7 @@ export default function CompositionEditorPage() {
                   Edit
                 </Button>
               )}
-              {completedOutputs.length > 1 && (
+              {completedOutputs.length > 0 && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -844,7 +844,7 @@ export default function CompositionEditorPage() {
                   onClick={() => setPublishAllOpen(true)}
                 >
                   <Share2 className="h-3 w-3" />
-                  Publish All
+                  Publish
                 </Button>
               )}
             </div>
@@ -926,14 +926,19 @@ export default function CompositionEditorPage() {
         </CardContent>
       </Card>
 
-      {/* Publish all modal */}
-      <PublishModal
+      {/* Publish video modal */}
+      <VideoPublishModal
         open={publishAllOpen}
         onOpenChange={setPublishAllOpen}
-        mediaItems={completedOutputs.map((o) => ({
-          url: o.s3Url!,
-          label: o.layout,
+        compositionId={compositionId}
+        compositionTitle={composition.title}
+        outputs={completedOutputs.map((o) => ({
+          id: o.id,
+          layout: o.layout,
+          s3Url: o.s3Url!,
+          hasS3Key: !o.s3Url!.startsWith('blob:'),
         }))}
+        trackLabels={composition.tracks.map((t) => t.label || '').filter(Boolean)}
         generationContext={{
           title: composition.title,
           trackLabels: composition.tracks.map((t) => t.label || '').filter(Boolean),
