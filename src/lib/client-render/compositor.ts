@@ -6,6 +6,7 @@ import {
   type Layout,
   type ClientTrackInfo,
   type DecodedFrame,
+  type CaptionOptions,
   MOBILE_CANVAS_W,
   MOBILE_CANVAS_H,
   LANDSCAPE_CANVAS_W,
@@ -138,13 +139,17 @@ export function findActiveTrack(
  * @param refFrame - The decoded reference frame (null if no ref active)
  * @param layout - 'mobile' or 'landscape'
  * @param refTrack - Info about the active reference track (for layout decisions)
+ * @param outputTimeS - Current output time in seconds (for caption lookup)
+ * @param captions - Optional caption segments to overlay
  */
 export function compositeFrame(
   canvas: OffscreenCanvas,
   creatorFrame: DecodedFrame,
   refFrame: DecodedFrame | null,
   layout: Layout,
-  refTrack: ClientTrackInfo | null
+  refTrack: ClientTrackInfo | null,
+  outputTimeS?: number,
+  captions?: CaptionOptions
 ): void {
   const ctx = canvas.getContext('2d')!;
   const canvasW = canvas.width;
@@ -158,6 +163,9 @@ export function compositeFrame(
   if (!refFrame || !refTrack) {
     // No reference active — full-frame creator
     drawCover(ctx, creatorFrame, 0, 0, canvasW, canvasH);
+    if (captions && outputTimeS !== undefined) {
+      drawCaptions(ctx, captions, outputTimeS, canvasW, canvasH);
+    }
     return;
   }
 
@@ -228,4 +236,89 @@ export function compositeFrame(
       drawCover(ctx, creatorFrame, pipX, pipY, PIP_W, PIP_H);
     }
   }
+
+  // Draw captions on top of all video layers
+  if (captions && outputTimeS !== undefined) {
+    drawCaptions(ctx, captions, outputTimeS, canvasW, canvasH);
+  }
+}
+
+/**
+ * Word-wrap text to fit within maxWidth, splitting on word boundaries.
+ */
+function wrapText(
+  ctx: OffscreenCanvasRenderingContext2D,
+  text: string,
+  maxWidth: number
+): string[] {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+  return lines.length > 0 ? lines : [''];
+}
+
+/**
+ * Draw captions onto the composited frame.
+ * Matches server-side ASS style: white text, black outline, bottom-center, 80px margin.
+ */
+function drawCaptions(
+  ctx: OffscreenCanvasRenderingContext2D,
+  captions: CaptionOptions,
+  outputTimeS: number,
+  canvasW: number,
+  canvasH: number
+): void {
+  // Find active segment(s)
+  const active = captions.segments.filter((s) => s.startS <= outputTimeS && outputTimeS < s.endS);
+
+  if (active.length === 0) return;
+
+  const fontSize = captions.fontSizePx ?? 36;
+  const marginBottom = 80; // matches ASS MarginV=80
+  const marginH = 20; // matches ASS MarginL/R=20
+  const maxTextWidth = canvasW - marginH * 2;
+  const lineHeight = fontSize * 1.3;
+
+  ctx.save();
+  ctx.font = `bold ${fontSize}px "Noto Sans", "DejaVu Sans", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+
+  // Collect all lines from active segments
+  const allLines: string[] = [];
+  for (const seg of active) {
+    const lines = wrapText(ctx, seg.text, maxTextWidth);
+    allLines.push(...lines);
+  }
+
+  // Draw lines stacking upward from the bottom position
+  const baseY = canvasH - marginBottom;
+  const centerX = canvasW / 2;
+
+  for (let i = allLines.length - 1; i >= 0; i--) {
+    const y = baseY - (allLines.length - 1 - i) * lineHeight;
+
+    // Black outline (stroke) — lineWidth=6 matches ASS Outline=3 (radius)
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 6;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(allLines[i], centerX, y);
+
+    // White fill
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(allLines[i], centerX, y);
+  }
+
+  ctx.restore();
 }

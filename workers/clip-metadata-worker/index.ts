@@ -26,7 +26,18 @@ import type {
 } from '@shared/queues';
 import { queueGenericTranscriptionJob } from '@shared/queues';
 import { renderComposition } from '@shared/util/reactionCompose';
-import { transcribeFromS3Url } from '@shared/lib/transcription';
+import { transcribeFromS3Url, transcribeLocalFile } from '@shared/lib/transcription';
+import { downloadFeedVideoToTemp } from '@shared/util/download';
+import {
+  detectSilenceFFmpeg,
+  analyzeForAutoEdit,
+  type TranscriptSegment,
+} from '@shared/util/auto-edit-analyzer';
+import {
+  mergeAutoEditSettings,
+  getAggressivenessConfig,
+  type AutoEditSettings,
+} from '@shared/auto-edit';
 
 console.log('[clip-metadata-worker] Starting with static reactionCompose import...');
 const redisConnection = getRedisConnection();
@@ -986,6 +997,108 @@ new Worker<GenericTranscriptionJob>(
 
     console.log(`📝 [generic-transcription] ${targetModel}:${targetId}`);
 
+    // For Composition: download once, transcribe locally, then run auto-edit on same file
+    if (targetModel === 'Composition') {
+      let tempPath: string | null = null;
+      try {
+        tempPath = await downloadFeedVideoToTemp(s3Url);
+        const result = await transcribeLocalFile(tempPath);
+
+        await prisma.composition.update({
+          where: { id: targetId },
+          data: {
+            creatorTranscript: result.transcript,
+            creatorTranscriptJson: result.segments as any,
+          },
+        });
+
+        console.log(
+          `✅ [generic-transcription] Saved transcript for Composition:${targetId} (${result.transcript.length} chars)`
+        );
+
+        // Eager auto-edit: run silencedetect + analysis on the same downloaded file
+        try {
+          const comp = await prisma.composition.findUnique({
+            where: { id: targetId },
+            select: { creatorDurationS: true, userId: true, cuts: true },
+          });
+
+          if (comp?.creatorDurationS && comp.userId) {
+            const rule = await prisma.automationRule.findUnique({
+              where: { userId: comp.userId },
+              select: { autoEditSettings: true },
+            });
+
+            const settings = mergeAutoEditSettings(
+              rule?.autoEditSettings as Partial<AutoEditSettings> | null
+            );
+            const aggrConfig = getAggressivenessConfig(settings.aggressiveness);
+
+            const silenceRegions = await detectSilenceFFmpeg(
+              tempPath,
+              aggrConfig.silenceThresholdDb,
+              aggrConfig.minSilenceDurationS
+            );
+
+            console.log(
+              `[generic-transcription] silencedetect found ${silenceRegions.length} regions for Composition:${targetId}`
+            );
+
+            const segments = result.segments as unknown as TranscriptSegment[];
+            const autoEditResult = analyzeForAutoEdit(
+              segments,
+              settings,
+              comp.creatorDurationS,
+              silenceRegions
+            );
+
+            const updateData: Record<string, any> = {
+              silenceRegions: silenceRegions as any,
+              autoEditResult: autoEditResult as any,
+            };
+
+            // Auto-apply cuts only if no manual cuts exist
+            if (!comp.cuts && autoEditResult.cuts.length > 0) {
+              updateData.cuts = autoEditResult.cuts.map((c) => ({
+                id: c.id,
+                startS: c.startS,
+                endS: c.endS,
+              }));
+            }
+
+            await prisma.composition.update({
+              where: { id: targetId },
+              data: updateData,
+            });
+
+            console.log(
+              `[generic-transcription] Auto-edit: ${autoEditResult.summary.totalCuts} cuts ` +
+                `(${autoEditResult.summary.totalRemovedS}s removed) for Composition:${targetId}`
+            );
+          }
+        } catch (autoEditErr) {
+          console.warn(
+            `[generic-transcription] Auto-edit failed for Composition:${targetId} (non-fatal):`,
+            autoEditErr instanceof Error ? autoEditErr.message : autoEditErr
+          );
+        }
+      } catch (err) {
+        console.error(
+          `❌ [generic-transcription] Failed for Composition:${targetId}:`,
+          err instanceof Error ? err.message : err
+        );
+      } finally {
+        if (tempPath) {
+          const fs = await import('fs');
+          try {
+            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+          } catch {}
+        }
+      }
+      return;
+    }
+
+    // Non-Composition targets: use original download+transcribe+cleanup flow
     try {
       const result = await transcribeFromS3Url(s3Url);
 
@@ -1008,15 +1121,6 @@ new Worker<GenericTranscriptionJob>(
             },
           });
           break;
-        case 'Composition':
-          await prisma.composition.update({
-            where: { id: targetId },
-            data: {
-              creatorTranscript: result.transcript,
-              creatorTranscriptJson: result.segments as any,
-            },
-          });
-          break;
       }
 
       console.log(
@@ -1027,7 +1131,6 @@ new Worker<GenericTranscriptionJob>(
         `❌ [generic-transcription] Failed for ${targetModel}:${targetId}:`,
         err instanceof Error ? err.message : err
       );
-      // Non-fatal — don't rethrow so the job doesn't retry
     }
   },
   { connection: redisConnection as any }
@@ -1107,3 +1210,7 @@ new Worker<ThumbnailGenerationJob>(
   },
   { connection: redisConnection as any }
 );
+
+// --- HTTP Server for direct transcription requests ---
+import { startHttpServer } from './http-server';
+startHttpServer();

@@ -652,6 +652,8 @@ model Composition {
   creatorTranscript      String?  @db.Text
   creatorTranscriptJson  Json?
   cuts                    Json?    // Array<{ id: string; startS: number; endS: number }> — applied globally to all tracks
+  silenceRegions          Json?    // Array<{ startS: number; endS: number }> — cached FFmpeg silencedetect output
+  autoEditResult          Json?    // { cuts: AutoEditCut[]; summary: AutoEditSummary } — cached auto-edit analysis
   thumbnailCutoutPosition String  @default("right") // left | right
   thumbnailCutoutSize     String  @default("large")  // small | medium | large
   createdAt           DateTime @default(now())
