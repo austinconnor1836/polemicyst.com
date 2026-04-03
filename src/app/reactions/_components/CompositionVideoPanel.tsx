@@ -1,47 +1,54 @@
 'use client';
 
-import { useRef } from 'react';
 import { VideoCard } from '@/components/ui/video-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Trash2, Loader2 } from 'lucide-react';
 
-interface CreatorVideoPanelProps {
-  s3Url: string;
-  durationS?: number;
-  onTimeUpdate?: (currentTime: number) => void;
+interface CompositionVideoPanelProps {
+  src: string;
+  label: string;
+  badge?: React.ReactNode;
+  sublabel?: React.ReactNode;
   onClick?: () => void;
-  deletingCreator?: boolean;
   onDelete?: () => void;
+  deleting?: boolean;
+  disabled?: boolean;
+  videoRef?: React.Ref<HTMLVideoElement>;
+  onTimeUpdate?: (currentTime: number) => void;
+  extraOverlay?: React.ReactNode;
 }
 
-function formatDuration(s: number): string {
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${String(sec).padStart(2, '0')}`;
-}
-
-export function CreatorVideoPanel({
-  s3Url,
-  durationS,
-  onTimeUpdate,
+export function CompositionVideoPanel({
+  src,
+  label,
+  badge,
+  sublabel,
   onClick,
-  deletingCreator,
   onDelete,
-}: CreatorVideoPanelProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
+  deleting,
+  disabled,
+  videoRef,
+  onTimeUpdate,
+  extraOverlay,
+}: CompositionVideoPanelProps) {
   return (
     <VideoCard
       size="md"
-      src={s3Url}
-      label="Creator Video"
+      src={src}
+      label={label}
       badge={
-        <Badge variant="secondary" className="text-[11px]">
-          Commentary
-        </Badge>
+        badge ? (
+          typeof badge === 'string' ? (
+            <Badge variant="secondary" className="text-[11px] shrink-0">
+              {badge}
+            </Badge>
+          ) : (
+            badge
+          )
+        ) : undefined
       }
-      sublabel={durationS != null ? formatDuration(durationS) : undefined}
+      sublabel={sublabel}
       videoRef={videoRef}
       onTimeUpdate={onTimeUpdate}
       onClick={onClick}
@@ -56,13 +63,13 @@ export function CreatorVideoPanel({
                 e.stopPropagation();
                 onDelete();
               }}
-              disabled={deletingCreator}
-              title="Remove creator video"
+              disabled={disabled || deleting}
+              title="Remove"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           )}
-          {deletingCreator && (
+          {deleting && (
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-background/80 backdrop-blur-sm dark:bg-black/60">
               <div className="flex items-center gap-2 text-sm font-medium text-foreground dark:text-white">
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -70,6 +77,7 @@ export function CreatorVideoPanel({
               </div>
             </div>
           )}
+          {extraOverlay}
         </>
       }
     />

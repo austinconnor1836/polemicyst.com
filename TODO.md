@@ -310,3 +310,26 @@ These improve retention and reduce churn once users are paying.
   - Use the user's estimate to set an adaptive threshold: if the user says ~5 pauses, pick roughly the top 5 most prominent silent gaps rather than every gap that crosses an arbitrary dB threshold. The ranking should consider gap duration, surrounding audio energy, and position in the video to space removals somewhat evenly.
   - Apply the removals and re-render the video with the dead space cut out.
   - Show the user a before/after timeline or summary of what was removed so they can approve or adjust.
+- **Auto-detected quote/excerpt graphics** — When a creator reads or cites a quote, excerpt, or passage in their reaction video, automatically detect it and overlay a styled graphic in the rendered output while the quote is being spoken. The system should intelligently identify quoted material (distinct from the creator's own commentary) using transcript analysis and LLM inference. Implementation approach:
+  - **Detection**: Analyze the creator's transcript to identify segments where the speaker is reading/citing external text vs. giving their own commentary. Use cues like: explicit attribution ("the article says…", "and I quote…", "according to…"), shifts in speech cadence or tone, and context from reference track transcripts (if the same text appears in both, it's likely a quote from the reference).
+  - **LLM-powered extraction**: Send transcript segments to the scoring LLM (Gemini/Ollama via existing `ScoringProvider`) with a prompt that returns structured JSON: `{ quotes: [{ text, attribution?, startS, endS, confidence }] }`. The LLM determines what's being quoted, who said it (if attributable), and the exact time range.
+  - **Graphic styles**: Offer multiple visual templates the user can choose from (or auto-select based on content style):
+    - **Pull quote**: Large quotation marks with centered text on a semi-transparent dark overlay
+    - **Lower third**: Text bar across the bottom third with attribution line below
+    - **Side panel**: Quote text in a styled panel on one side of the frame (opposite the creator)
+    - **Typewriter**: Text animates in word-by-word as the creator reads it
+    - **Highlight card**: Rounded card with accent border, quote text, and source attribution
+  - **Rendering integration**: In both client-side (`client-render`) and server-side (FFmpeg) render paths, composite the quote graphic onto frames during the detected time range. For client-side, draw on the canvas alongside captions. For server-side, generate overlay images/filters in the FFmpeg filter graph.
+  - **User controls**: Add a toggle in composition settings ("Show quote graphics") and a style picker. Allow manual override — user can add/remove/edit detected quotes before rendering.
+  - **Reference-aware**: When the composition includes reference tracks with transcripts, cross-reference to improve detection accuracy. If the creator repeats text from the reference, it's almost certainly a quote.
+- **AI-generated thumbnail backgrounds** — Give users a choice between the current approach (extracting video frames as the background image) and an AI-generated custom thumbnail background. The creator cutout overlay remains unchanged in both modes — this only affects the background layer. Implementation approach:
+  - **Mode selector**: In the Thumbnail Builder panel, add a toggle or tab: "Video Frame" (current behavior) vs. "AI Generated". Default to video frame for backwards compatibility.
+  - **Intelligent design generation**: When AI mode is selected, analyze the composition's content (title, track labels, transcript keywords, detected content style) to generate a visually compelling background. The system should produce backgrounds that follow YouTube/social thumbnail best practices: high contrast, bold colors, minimal text clutter, and complementary to the creator cutout.
+  - **Multiple style options**: Generate 3-4 candidate backgrounds for the user to choose from, each with a different visual approach:
+    - **Gradient + accents**: Dynamic gradient background with subtle graphic elements (arrows, shapes, highlights) that draw attention
+    - **Contextual scene**: Abstract or stylized representation related to the video's topic (e.g., political imagery for politics content, gaming elements for gaming content)
+    - **Bold typography**: Large, impactful text/keywords from the video overlaid on a clean background (separate from the creator cutout)
+    - **Collage/montage**: Key frames from the reference video(s) arranged as a blurred or stylized collage behind the creator
+  - **Generation approach**: Use an image generation API (e.g., DALL-E, Stable Diffusion) or a canvas-based programmatic generator for simpler styles. For cost control, start with the programmatic approach (canvas drawing with gradients, shapes, and typography) and add AI image generation as an optional upgrade.
+  - **Compositing**: The generated background replaces only the background layer in the existing thumbnail pipeline. The creator cutout (face detection → background removal → positioning) remains exactly as-is and is composited on top.
+  - **Persistence**: Save the selected background mode and generated image URL/data alongside the composition's thumbnail settings so it persists across sessions.
