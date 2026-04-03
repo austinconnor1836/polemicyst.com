@@ -639,7 +639,7 @@ model Composition {
   title            String
   mode             String   @default("pre-synced") // pre-synced | timeline
   status           String   @default("draft") // draft | rendering | completed | failed
-  audioMode        String   @default("creator") // creator | reference | both
+  audioMode        String   @default("both") // creator | reference | both
   creatorVolume    Float    @default(1.0)
   referenceVolume  Float    @default(1.0)
   creatorS3Key     String?

@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
         userId: user.id,
         title: title || generateTitle(),
         mode: mode || 'pre-synced',
-        audioMode: audioMode || 'creator',
+        audioMode: audioMode || 'both',
         creatorVolume: creatorVolume ?? 1.0,
         referenceVolume: referenceVolume ?? 1.0,
         creatorS3Key: creatorS3Key || null,
