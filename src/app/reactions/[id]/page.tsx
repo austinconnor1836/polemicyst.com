@@ -15,7 +15,7 @@ import { TimelineEditor } from '../_components/TimelineEditor';
 import { RenderControls } from '../_components/RenderControls';
 import { ThumbnailPanel } from '../_components/ThumbnailPanel';
 import { TrimModal } from '../_components/TrimModal';
-import { EditOutputModal } from '../_components/EditOutputModal';
+import { EditOutputModal, type CompositionCut } from '../_components/EditOutputModal';
 import { VideoPublishModal } from '@/components/VideoPublishModal';
 import { supportsClientRender } from '@/lib/client-render';
 import {
