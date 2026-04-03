@@ -1,7 +1,7 @@
-const fetch = require('node-fetch');
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { randomUUID } from 'crypto';
 
@@ -76,11 +76,12 @@ export async function downloadFeedVideoToTemp(s3Url: string): Promise<string> {
         ]);
       }
     } else {
-      const videoRes = await fetch(s3Url);
+      const videoRes = await globalThis.fetch(s3Url);
       if (!videoRes.ok || !videoRes.body) {
         throw new Error('Failed to fetch video stream from S3');
       }
-      await pipeline(videoRes.body, fs.createWriteStream(tempFilePath));
+      const nodeStream = Readable.fromWeb(videoRes.body as import('stream/web').ReadableStream);
+      await pipeline(nodeStream, fs.createWriteStream(tempFilePath));
     }
 
     console.info('✅ Download complete.');

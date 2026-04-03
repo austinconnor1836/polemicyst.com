@@ -32,12 +32,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         creatorDurationS: true,
         creatorS3Url: true,
         userId: true,
+        silenceRegions: true,
       },
     });
 
     if (!composition) return notFound('Composition not found');
 
-    if (!composition.creatorTranscriptJson || !composition.creatorDurationS) {
+    if (!composition.creatorTranscriptJson) {
       return badRequest(
         'Creator video transcript not available. Upload a creator video and wait for transcription to complete.'
       );
@@ -69,10 +70,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return badRequest('Transcript is empty or invalid');
     }
 
-    // FFmpeg silencedetect — download creator video and analyze waveform
+    // Derive duration from transcript when DB value is missing (client-render mode)
+    const creatorDurationS =
+      composition.creatorDurationS && composition.creatorDurationS > 0
+        ? composition.creatorDurationS
+        : (segments[segments.length - 1]?.end ?? 0);
+
+    if (!creatorDurationS) {
+      return badRequest('Cannot determine creator video duration');
+    }
+
+    // FFmpeg silencedetect — use cached regions when available, otherwise download + detect
     let ffmpegSilenceCuts: Array<{ startS: number; endS: number }> | undefined;
 
-    if (composition.creatorS3Url) {
+    const cachedRegions = composition.silenceRegions as Array<{
+      startS: number;
+      endS: number;
+    }> | null;
+
+    if (cachedRegions && Array.isArray(cachedRegions) && cachedRegions.length > 0) {
+      ffmpegSilenceCuts = cachedRegions;
+      console.log(
+        `[auto-edit] Using ${cachedRegions.length} cached silence regions (instant re-analysis)`
+      );
+    } else if (composition.creatorS3Url) {
       try {
         tempPath = await downloadFeedVideoToTemp(composition.creatorS3Url);
         ffmpegSilenceCuts = await detectSilenceFFmpeg(
@@ -85,36 +106,38 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             `(threshold=${aggressivenessConfig.silenceThresholdDb}dB, ` +
             `minDuration=${aggressivenessConfig.minSilenceDurationS}s)`
         );
+
+        // Cache the regions for next time
+        await prisma.composition.update({
+          where: { id: composition.id },
+          data: { silenceRegions: ffmpegSilenceCuts as any },
+        });
       } catch (err) {
         console.warn(
           '[auto-edit] FFmpeg silencedetect failed, skipping audio-level detection:',
           err
         );
-        // Continue without FFmpeg cuts — bad take detection still runs
       }
     }
 
     // Run analysis (FFmpeg silence cuts + transcript-based bad take detection)
-    const result = analyzeForAutoEdit(
-      segments,
-      settings,
-      composition.creatorDurationS,
-      ffmpegSilenceCuts
-    );
+    const result = analyzeForAutoEdit(segments, settings, creatorDurationS, ffmpegSilenceCuts);
 
-    // Optionally persist cuts to the composition
+    // Cache the auto-edit result and optionally persist cuts
+    const updateData: Record<string, any> = {
+      autoEditResult: result as any,
+    };
     if (body.apply && result.cuts.length > 0) {
-      await prisma.composition.update({
-        where: { id: composition.id },
-        data: {
-          cuts: result.cuts.map((c) => ({
-            id: c.id,
-            startS: c.startS,
-            endS: c.endS,
-          })),
-        },
-      });
+      updateData.cuts = result.cuts.map((c) => ({
+        id: c.id,
+        startS: c.startS,
+        endS: c.endS,
+      }));
     }
+    await prisma.composition.update({
+      where: { id: composition.id },
+      data: updateData,
+    });
 
     return ok(result);
   } catch (err) {

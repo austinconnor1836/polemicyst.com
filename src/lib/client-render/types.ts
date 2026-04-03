@@ -19,6 +19,18 @@ export interface ClientTrackInfo {
   sortOrder: number;
 }
 
+/** A pre-computed caption segment in output timeline coordinates. */
+export interface CaptionSegment {
+  startS: number;
+  endS: number;
+  text: string;
+}
+
+export interface CaptionOptions {
+  segments: CaptionSegment[];
+  fontSizePx?: number; // Default: 36 (medium)
+}
+
 export interface ClientRenderOptions {
   layout: Layout;
   creatorFile: File;
@@ -31,6 +43,7 @@ export interface ClientRenderOptions {
   audioMode: AudioMode;
   creatorVolume: number;
   referenceVolume: number;
+  captions?: CaptionOptions;
 }
 
 export type RenderPhase =

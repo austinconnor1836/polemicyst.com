@@ -14,6 +14,7 @@ import {
   type RenderProgress,
   type ClientTrackInfo,
 } from '@/lib/client-render';
+import type { CaptionSegment } from '@/lib/client-render/types';
 import toast from 'react-hot-toast';
 
 interface Output {
@@ -36,6 +37,8 @@ interface CompositionData {
   creatorHeight?: number | null;
   creatorTrimStartS: number;
   creatorTrimEndS?: number | null;
+  creatorTranscriptJson?: Array<{ start: number; end: number; text: string }> | null;
+  cuts?: Array<{ id: string; startS: number; endS: number }> | null;
   tracks: Array<{
     id: string;
     durationS: number;
@@ -46,6 +49,7 @@ interface CompositionData {
     trimEndS: number | null;
     sortOrder: number;
     hasAudio: boolean;
+    transcriptJson?: Array<{ start: number; end: number; text: string }> | null;
   }>;
 }
 
@@ -71,6 +75,9 @@ interface RenderControlsProps {
   clientOutputBlobs: Map<string, Blob>;
   clientOutputUrls: Map<string, string>;
   onBlobReady: (layout: string, blob: Blob, url: string) => void;
+  captionsEnabled?: boolean;
+  captionFontSizePx?: number;
+  autoEditing?: boolean;
 }
 
 const LAYOUT_LABELS: Record<string, string> = {
@@ -98,6 +105,9 @@ export function RenderControls({
   clientOutputBlobs,
   clientOutputUrls,
   onBlobReady,
+  captionsEnabled,
+  captionFontSizePx,
+  autoEditing,
 }: RenderControlsProps) {
   const [rendering, setRendering] = useState(compositionStatus === 'rendering');
   const [publishTarget, setPublishTarget] = useState<{
@@ -263,7 +273,7 @@ export function RenderControls({
         });
       }
 
-      return {
+      const opts: ClientRenderOptions = {
         layout,
         creatorFile,
         creatorDurationS: composition.creatorDurationS ?? 0,
@@ -276,8 +286,70 @@ export function RenderControls({
         creatorVolume: composition.creatorVolume,
         referenceVolume: composition.referenceVolume,
       };
+
+      // Build caption segments if captions are enabled
+      if (captionsEnabled) {
+        const creatorTrimOffset = composition.creatorTrimStartS;
+        // Use Infinity when duration unknown (0 or null) — the renderer determines
+        // actual duration from demuxed data. This ensures no segments are filtered out.
+        const creatorTrimEnd =
+          composition.creatorTrimEndS ?? (composition.creatorDurationS || Infinity);
+        const outputDurationS = creatorTrimEnd - creatorTrimOffset;
+        const segments: CaptionSegment[] = [];
+        const audioMode = composition.audioMode;
+
+        // Creator segments
+        if (
+          (audioMode === 'creator' || audioMode === 'both') &&
+          composition.creatorTranscriptJson
+        ) {
+          for (const seg of composition.creatorTranscriptJson) {
+            const start = seg.start - creatorTrimOffset;
+            const end = seg.end - creatorTrimOffset;
+            if (end > 0 && start < outputDurationS) {
+              segments.push({
+                startS: Math.max(0, start),
+                endS: Math.min(outputDurationS, end),
+                text: seg.text,
+              });
+            }
+          }
+        }
+
+        // Track segments
+        if (audioMode === 'reference' || audioMode === 'both') {
+          for (const track of composition.tracks) {
+            if (!track.transcriptJson) continue;
+            for (const seg of track.transcriptJson) {
+              const start = seg.start - track.trimStartS + track.startAtS;
+              const end = seg.end - track.trimStartS + track.startAtS;
+              if (end > 0 && start < outputDurationS) {
+                segments.push({
+                  startS: Math.max(0, start),
+                  endS: Math.min(outputDurationS, end),
+                  text: seg.text,
+                });
+              }
+            }
+          }
+        }
+
+        // Note: Do NOT adjust caption timestamps for cuts here. The client renderer
+        // outputs the full trimmed timeline (no cut skipping). Cuts are applied
+        // post-render via spliceMP4, which operates on the encoded video. Captions
+        // are baked into frames at their original (trim-adjusted) timestamps.
+        if (segments.length > 0) {
+          segments.sort((a, b) => a.startS - b.startS);
+          opts.captions = {
+            segments,
+            fontSizePx: captionFontSizePx,
+          };
+        }
+      }
+
+      return opts;
     },
-    [creatorFile, refFiles, composition]
+    [creatorFile, refFiles, composition, captionsEnabled, captionFontSizePx]
   );
 
   /** Client-side render: render all layouts in parallel */
@@ -696,9 +768,21 @@ export function RenderControls({
                   )}
                 </>
               }
+              overlay={
+                autoEditing && !isActive ? (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-background/80 backdrop-blur-sm dark:bg-black/60">
+                    <div className="flex flex-col items-center gap-1.5">
+                      <Loader2 className="h-6 w-6 animate-spin text-foreground dark:text-white" />
+                      <span className="text-sm font-medium text-foreground dark:text-white">
+                        Auto-editing…
+                      </span>
+                    </div>
+                  </div>
+                ) : undefined
+              }
               className="max-w-none"
             >
-              {isActive ? (
+              {isActive && !autoEditing ? (
                 <div className="flex h-full flex-col items-center justify-center gap-1.5">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   {clientRenderProgress.has(layout) && (
