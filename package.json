@@ -4,6 +4,7 @@
     "@shared": "dist/shared"
   },
   "scripts": {
+    "predev": "docker compose up db redis -d --wait 2>/dev/null || echo 'Warning: Could not start db/redis containers'",
     "dev": "next dev --experimental-https --hostname 0.0.0.0",
     "dev:clip-worker": "tsx watch workers/clip-metadata-worker/index.ts",
     "dev:download-worker": "tsx watch workers/video-download-worker/index.ts",
