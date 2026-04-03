@@ -89,6 +89,7 @@ export function ThumbnailPanel({
 
   // Loading / saving state
   const [initialLoad, setInitialLoad] = useState(true);
+  const [initialFetchDone, setInitialFetchDone] = useState(false);
   const [generating, setGeneratingRaw] = useState(false);
   const [saving, setSaving] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
@@ -162,7 +163,11 @@ export function ThumbnailPanel({
   // (handles page refresh while worker is still running)
   useEffect(() => {
     fetchAssets().then((data) => {
-      if (
+      setInitialFetchDone(true);
+      if (data && (data.refs.length > 0 || data.cuts.length > 0)) {
+        // Assets already exist on server — skip local extraction
+        localExtractedRef.current = true;
+      } else if (
         compositionStatus === 'completed' &&
         data &&
         data.refs.length === 0 &&
@@ -177,6 +182,8 @@ export function ThumbnailPanel({
   // Extract frames from local files → upload to server for moondream + rembg processing
   const localExtractedRef = useRef(false);
   useEffect(() => {
+    // Wait until initial fetch resolves so we know whether assets already exist on the server
+    if (!initialFetchDone) return;
     // Only trigger once, when we have local files and rendering just completed
     if (localExtractedRef.current) return;
     if (!skipAutoGenerate) return;
@@ -243,7 +250,15 @@ export function ThumbnailPanel({
         setGenerating(false);
       }
     })();
-  }, [skipAutoGenerate, compositionStatus, compositionId, creatorFile, refFiles, setGenerating]);
+  }, [
+    initialFetchDone,
+    skipAutoGenerate,
+    compositionStatus,
+    compositionId,
+    creatorFile,
+    refFiles,
+    setGenerating,
+  ]);
 
   // Clear when render starts; poll when render completes (server-side only)
   useEffect(() => {
