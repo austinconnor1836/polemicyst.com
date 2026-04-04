@@ -612,6 +612,7 @@ new Worker<ReactionComposeJob>(
         height: number | null;
         hasAudio: boolean;
         sortOrder: number;
+        sourceCrop?: { w: number; h: number; x: number; y: number } | null;
       }> = [];
 
       for (const track of composition.tracks) {
@@ -634,6 +635,15 @@ new Worker<ReactionComposeJob>(
         );
         tempFiles.push(trackPath);
 
+        // Detect embedded portrait content in landscape references
+        const { detectSourceAspectRatio } = await import('../../shared/util/cropDetect');
+        const cropResult = await detectSourceAspectRatio(trackPath, track.width, track.height);
+        if (cropResult.crop) {
+          console.log(
+            `🔍 Detected ${cropResult.sourceAspectRatio} source in reference "${track.label || track.id}"`
+          );
+        }
+
         trackInfos.push({
           localPath: trackPath,
           startAtS: track.startAtS,
@@ -644,6 +654,7 @@ new Worker<ReactionComposeJob>(
           height: track.height,
           hasAudio: track.hasAudio,
           sortOrder: track.sortOrder,
+          sourceCrop: cropResult.crop,
         });
       }
 

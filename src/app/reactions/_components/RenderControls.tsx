@@ -50,6 +50,7 @@ interface CompositionData {
     sortOrder: number;
     hasAudio: boolean;
     transcriptJson?: Array<{ start: number; end: number; text: string }> | null;
+    sourceCrop?: { w: number; h: number; x: number; y: number } | null;
   }>;
 }
 
@@ -277,6 +278,7 @@ export function RenderControls({
           height: track.height ?? 1080,
           hasAudio: track.hasAudio,
           sortOrder: track.sortOrder,
+          sourceCrop: track.sourceCrop,
         });
       }
 

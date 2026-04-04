@@ -17,6 +17,7 @@ import { TrimModal } from '../_components/TrimModal';
 import { EditOutputModal, type CompositionCut } from '../_components/EditOutputModal';
 import { VideoPublishModal } from '@/components/VideoPublishModal';
 import { supportsClientRender } from '@/lib/client-render';
+import { detectCropFromVideo } from '@/lib/client-render/detect-crop';
 import {
   saveBlobToCache,
   loadBlobsFromCache,
@@ -44,6 +45,7 @@ interface Track {
   sortOrder: number;
   hasAudio: boolean;
   transcriptJson?: Array<{ start: number; end: number; text: string }> | null;
+  sourceCrop?: { w: number; h: number; x: number; y: number } | null;
 }
 
 interface Output {
@@ -334,11 +336,12 @@ export default function CompositionEditorPage() {
       console.log('[page] Restored creator file from IndexedDB');
     });
 
-    // Restore reference files
-    loadRefFilesFromCache(compositionId).then((cached) => {
+    // Restore reference files (with crop detection for landscape tracks)
+    loadRefFilesFromCache(compositionId).then(async (cached) => {
       if (cached.size === 0) return;
       const newRefFiles = new Map<string, File>();
       const newTracks: Track[] = [];
+      const cropPromises: Promise<void>[] = [];
       cached.forEach((entry) => {
         const file = new File([entry.blob], entry.name, {
           type: entry.type,
@@ -346,7 +349,7 @@ export default function CompositionEditorPage() {
         });
         const blobUrl = URL.createObjectURL(entry.blob);
         newRefFiles.set(entry.trackId, file);
-        newTracks.push({
+        const track: Track = {
           id: entry.trackId,
           label: entry.label,
           s3Key: '',
@@ -359,8 +362,27 @@ export default function CompositionEditorPage() {
           trimEndS: null,
           sortOrder: 0,
           hasAudio: true,
-        });
+        };
+        newTracks.push(track);
+        // Run crop detection on landscape tracks
+        if (entry.width > entry.height) {
+          cropPromises.push(
+            (async () => {
+              const video = document.createElement('video');
+              video.preload = 'auto';
+              video.muted = true;
+              video.src = blobUrl;
+              const crop = await detectCropFromVideo(video, entry.width, entry.height);
+              if (crop) {
+                track.sourceCrop = crop;
+                console.log(`[page] Detected crop for restored ref ${entry.trackId}:`, crop);
+              }
+            })()
+          );
+        }
       });
+      // Wait for all crop detections to finish before adding tracks
+      await Promise.all(cropPromises);
       setRefFiles((prev) => {
         const merged = new Map(prev);
         newRefFiles.forEach((f, id) => merged.set(id, f));
@@ -649,9 +671,8 @@ export default function CompositionEditorPage() {
         height: data.height,
       });
       if (useClientRender) {
-        // Client-render mode: create a local track immediately instead of uploading
+        // Client-render mode: detect crop first, then create the track with sourceCrop set
         setRefUploadStatus('complete');
-        // Generate a temporary track ID and add to composition locally
         const tempId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         setRefFiles((prev) => new Map(prev).set(tempId, data.file));
         // Persist to IndexedDB so file survives page refresh (fire-and-forget)
@@ -661,24 +682,40 @@ export default function CompositionEditorPage() {
           width: data.width,
           height: data.height,
         });
-        setComposition((prev) => {
-          if (!prev) return prev;
-          const newTrack: Track = {
-            id: tempId,
-            label: data.filename,
-            s3Key: '',
-            s3Url: data.blobUrl,
-            durationS: data.durationS,
-            width: data.width,
-            height: data.height,
-            startAtS: 0,
-            trimStartS: 0,
-            trimEndS: null,
-            sortOrder: prev.tracks.length,
-            hasAudio: true, // assume true; no server probe in local mode
-          };
-          return { ...prev, tracks: [...prev.tracks, newTrack] };
-        });
+
+        // Detect embedded portrait content BEFORE creating the track
+        const detectAndAddTrack = async () => {
+          let sourceCrop: { w: number; h: number; x: number; y: number } | null = null;
+          if (data.width > data.height) {
+            const video = document.createElement('video');
+            video.preload = 'auto';
+            video.muted = true;
+            video.src = data.blobUrl;
+            sourceCrop = await detectCropFromVideo(video, data.width, data.height);
+            console.log('[page] Crop detection result for ref track:', sourceCrop);
+          }
+          setComposition((prev) => {
+            if (!prev) return prev;
+            const newTrack: Track = {
+              id: tempId,
+              label: data.filename,
+              s3Key: '',
+              s3Url: data.blobUrl,
+              durationS: data.durationS,
+              width: data.width,
+              height: data.height,
+              startAtS: 0,
+              trimStartS: 0,
+              trimEndS: null,
+              sortOrder: prev.tracks.length,
+              hasAudio: true, // assume true; no server probe in local mode
+              sourceCrop: sourceCrop ?? undefined,
+            };
+            return { ...prev, tracks: [...prev.tracks, newTrack] };
+          });
+        };
+        detectAndAddTrack();
+
         // Clean up pending ref state
         setPendingRefBlobUrl(null);
         setPendingRefMeta(null);
@@ -1400,10 +1437,10 @@ export default function CompositionEditorPage() {
             }
             uploadProgress={Math.max(creatorUploadProgress ?? 0, refUploadProgress ?? 0)}
             hasPortraitRef={composition.tracks.some(
-              (t) => t.width != null && t.height != null && t.height > t.width
+              (t) => t.sourceCrop || (t.width != null && t.height != null && t.height > t.width)
             )}
             hasLandscapeRef={composition.tracks.some(
-              (t) => t.width == null || t.height == null || t.width >= t.height
+              (t) => !t.sourceCrop && (t.width == null || t.height == null || t.width >= t.height)
             )}
             autoLayouts={detectOutputLayouts()}
             onStatusChange={handleStatusChange}

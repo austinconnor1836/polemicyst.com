@@ -38,6 +38,9 @@ export interface TrackInfo {
   height: number | null;
   hasAudio: boolean;
   sortOrder: number;
+  /** When set, the track is a landscape video with embedded portrait content.
+   *  The crop rect extracts the portrait region before scaling. */
+  sourceCrop?: { w: number; h: number; x: number; y: number } | null;
 }
 
 export interface CutInfo {
@@ -174,10 +177,22 @@ const MOBILE_CREATOR_H = 405;
  * Returns true if the reference track has portrait aspect ratio (taller than wide).
  */
 function isPortrait(track: TrackInfo): boolean {
+  // If cropdetect found embedded portrait content, treat as portrait
+  if (track.sourceCrop) {
+    return true;
+  }
   if (track.width && track.height) {
     return track.height > track.width;
   }
   return false; // Default to landscape if dimensions unknown
+}
+
+/** Effective width/height for layout calculations, accounting for sourceCrop. */
+function effectiveDimensions(track: TrackInfo): { w: number; h: number } {
+  if (track.sourceCrop) {
+    return { w: track.sourceCrop.w, h: track.sourceCrop.h };
+  }
+  return { w: track.width ?? 1920, h: track.height ?? 1080 };
 }
 
 /**
@@ -242,7 +257,8 @@ export function buildFilterComplex(opts: ComposeOptions): {
       if (!isPortrait(track)) return;
       const dur = effectiveDuration(track);
       if (dur <= 0) return;
-      const refScaledW = Math.round((track.width! * canvasH) / track.height!);
+      const dims = effectiveDimensions(track);
+      const refScaledW = Math.round((dims.w * canvasH) / dims.h);
       const creatorFillW = canvasW - refScaledW;
       if (creatorFillW > 0) {
         filters.push(
@@ -270,6 +286,10 @@ export function buildFilterComplex(opts: ComposeOptions): {
     const refStart = track.startAtS;
     const enableExpr = `gte(t,${refStart.toFixed(3)})`;
     const trimFilter = `trim=start=${track.trimStartS.toFixed(3)}:end=${(track.trimEndS ?? track.durationS).toFixed(3)},setpts=PTS-STARTPTS`;
+    // When sourceCrop is set, extract the portrait content region before scaling
+    const cropFilter = track.sourceCrop
+      ? `crop=${track.sourceCrop.w}:${track.sourceCrop.h}:${track.sourceCrop.x}:${track.sourceCrop.y},`
+      : '';
 
     if (isMobile) {
       // Mobile: reference scaled to full width (720), aspect ratio preserved.
@@ -279,11 +299,13 @@ export function buildFilterComplex(opts: ComposeOptions): {
       if (refIsPortrait) {
         // Portrait reference — fill entire frame, creator overlaid at bottom
         filters.push(
-          `[${inputIdx}:v]${trimFilter},scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1[ref${i}]`
+          `[${inputIdx}:v]${trimFilter},${cropFilter}scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1[ref${i}]`
         );
       } else {
         // Landscape reference — scale to full width, keep aspect ratio
-        filters.push(`[${inputIdx}:v]${trimFilter},scale=${canvasW}:-2,setsar=1[ref${i}]`);
+        filters.push(
+          `[${inputIdx}:v]${trimFilter},${cropFilter}scale=${canvasW}:-2,setsar=1[ref${i}]`
+        );
       }
 
       if (refIsPortrait) {
@@ -307,7 +329,7 @@ export function buildFilterComplex(opts: ComposeOptions): {
         // Create blurred background: scale ref to cover full canvas, blur heavily
         const blurLabel = `refblur${i}`;
         filters.push(
-          `[${inputIdx}:v]${trimFilter},scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1,boxblur=20:20[${blurLabel}]`
+          `[${inputIdx}:v]${trimFilter},${cropFilter}scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1,boxblur=20:20[${blurLabel}]`
         );
 
         // Overlay blurred background over current canvas (hides creator_full base)
@@ -317,10 +339,8 @@ export function buildFilterComplex(opts: ComposeOptions): {
         );
         prevLabel = labelBlur;
 
-        const refH =
-          track.width && track.height
-            ? Math.round((canvasW * track.height) / track.width)
-            : Math.round((canvasW * 9) / 16); // fallback 16:9
+        const dims = effectiveDimensions(track);
+        const refH = Math.round((canvasW * dims.h) / dims.w);
         const availableH = canvasH - MOBILE_CREATOR_H;
         const refY = Math.round((availableH - refH) / 2);
 
@@ -341,12 +361,13 @@ export function buildFilterComplex(opts: ComposeOptions): {
       // Landscape + portrait reference:
       // Reference scaled to full height, flush-right
       // Creator fills remaining left space
-      const refScaledW = Math.round((track.width! * canvasH) / track.height!);
+      const dims = effectiveDimensions(track);
+      const refScaledW = Math.round((dims.w * canvasH) / dims.h);
       const creatorFillW = canvasW - refScaledW;
       const refX = canvasW - refScaledW;
 
       filters.push(
-        `[${inputIdx}:v]${trimFilter},scale=${refScaledW}:${canvasH}:force_original_aspect_ratio=increase,crop=${refScaledW}:${canvasH},setsar=1[ref${i}]`
+        `[${inputIdx}:v]${trimFilter},${cropFilter}scale=${refScaledW}:${canvasH}:force_original_aspect_ratio=increase,crop=${refScaledW}:${canvasH},setsar=1[ref${i}]`
       );
 
       // Step 1: overlay left-fill creator
@@ -368,7 +389,7 @@ export function buildFilterComplex(opts: ComposeOptions): {
       // Landscape + landscape reference:
       // Reference fills entire frame, creator PIP in bottom-right corner
       filters.push(
-        `[${inputIdx}:v]${trimFilter},scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1[ref${i}]`
+        `[${inputIdx}:v]${trimFilter},${cropFilter}scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1[ref${i}]`
       );
 
       // Step 1: overlay full-frame reference (eof_action=repeat freezes last frame)
