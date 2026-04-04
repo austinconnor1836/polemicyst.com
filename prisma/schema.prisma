@@ -656,6 +656,7 @@ model Composition {
   autoEditResult          Json?    // { cuts: AutoEditCut[]; summary: AutoEditSummary } — cached auto-edit analysis
   thumbnailCutoutPosition String  @default("right") // left | right
   thumbnailCutoutSize     String  @default("large")  // small | medium | large
+  thumbnailBgMode         String  @default("frame") // "frame" | "ai"
   createdAt           DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -735,6 +736,7 @@ model ThumbnailAsset {
   s3Url           String
   frameTimestampS Float
   visionScore     Float?
+  styleVariant    String?     // null for reference/cutout; "cinematic" | "vivid" | "gradient" | "warm" for ai_background
   createdAt       DateTime    @default(now())
 
   @@index([compositionId, type])

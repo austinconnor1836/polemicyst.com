@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     const body = await req.json();
-    const { referenceAssetId, cutoutAssetId, position, size } = body;
+    const { referenceAssetId, cutoutAssetId, position, size, bgMode } = body;
 
     if (!referenceAssetId || !cutoutAssetId) {
       return NextResponse.json(
@@ -42,10 +42,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const pos: Position = VALID_POSITIONS.includes(position) ? position : 'right';
     const sz: Size = VALID_SIZES.includes(size) ? size : 'large';
 
-    // Fetch both assets
+    // Fetch both assets (background can be 'reference' or 'ai_background')
     const [refAsset, cutoutAsset] = await Promise.all([
       prisma.thumbnailAsset.findFirst({
-        where: { id: referenceAssetId, compositionId: id, type: 'reference' },
+        where: {
+          id: referenceAssetId,
+          compositionId: id,
+          type: { in: ['reference', 'ai_background'] },
+        },
       }),
       prisma.thumbnailAsset.findFirst({
         where: { id: cutoutAssetId, compositionId: id, type: 'cutout' },
@@ -93,6 +97,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const s3Url = `https://${bucket}.s3.${region}.amazonaws.com/${s3Key}`;
 
+    // Validate bgMode
+    const validBgModes = ['frame', 'ai'] as const;
+    const bg = validBgModes.includes(bgMode) ? bgMode : undefined;
+
     // Update composition settings + upsert the selected thumbnail
     await prisma.$transaction([
       prisma.composition.update({
@@ -100,6 +108,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         data: {
           thumbnailCutoutPosition: pos,
           thumbnailCutoutSize: sz,
+          ...(bg && { thumbnailBgMode: bg }),
         },
       }),
       prisma.compositionThumbnail.updateMany({

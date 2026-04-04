@@ -1252,3 +1252,448 @@ export async function compositeThumbnailSharp(
 
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// AI Background Generation
+// ---------------------------------------------------------------------------
+
+export type ThumbnailStyleVariant = 'cinematic' | 'vivid' | 'gradient' | 'warm';
+const ALL_STYLES: ThumbnailStyleVariant[] = ['cinematic', 'vivid', 'gradient', 'warm'];
+
+interface CropRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Detect the video player region inside a screen-recording frame.
+ *
+ * Two-pass edge detection:
+ *
+ * **Pass 1 — vertical border**: find the strongest *interior* column edge
+ * (mean brightness difference × consistency). This is the right edge of the
+ * video player; the left edge defaults to the frame edge (YouTube players
+ * typically sit flush-left on the page).
+ *
+ * **Pass 2 — horizontal borders**: within the player's column range (0 to
+ * right-edge), find the two strongest row edges — one above and one below 40%
+ * of the frame height. Computing row edges only within the player columns
+ * avoids diluting the signal with the sidebar.
+ *
+ * Falls back to the full frame when no strong interior column edge exists
+ * (i.e. the frame is already clean video content, not a screen recording).
+ */
+async function identifyBestRegion(
+  frameBuffer: Buffer,
+  imgWidth: number,
+  imgHeight: number
+): Promise<CropRegion> {
+  const sharp = require('sharp');
+  const TARGET_AR = 16 / 9;
+
+  // Analyse at 128-wide for speed while retaining enough detail for borders
+  const AW = 128;
+  const scaleX = imgWidth / AW;
+  const AH = Math.round(imgHeight / scaleX);
+  const scaleY = imgHeight / AH;
+  const PX_THRESH = 15; // per-pixel edge must exceed this to count as "strong"
+
+  try {
+    const { data: px } = await sharp(frameBuffer)
+      .resize(AW, AH, { fit: 'fill' })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const L = (x: number, y: number): number => {
+      const i = (y * AW + x) * 3;
+      return (px[i] + px[i + 1] + px[i + 2]) / 3;
+    };
+
+    // ----------------------------------------------------------------
+    // PASS 1 — find strongest interior column edge (right player border)
+    // ----------------------------------------------------------------
+    const COL_MARGIN = Math.max(3, Math.round(AW * 0.03));
+    let rightCol = -1;
+    let rightColScore = 0;
+
+    for (let x = COL_MARGIN; x < AW - COL_MARGIN; x++) {
+      let sum = 0;
+      let strong = 0;
+      for (let y = 0; y < AH; y++) {
+        const e = Math.abs(L(x, y) - L(x - 1, y));
+        sum += e;
+        if (e > PX_THRESH) strong++;
+      }
+      const combined = (sum / AH) * (strong / AH);
+      if (combined > rightColScore) {
+        rightColScore = combined;
+        rightCol = x;
+      }
+    }
+
+    // If no meaningful interior column edge → frame is clean video, no crop
+    if (rightCol < 0 || rightColScore < 3) {
+      console.log(
+        `[thumbnailGenerator] No interior column edge found (best=${rightColScore.toFixed(1)}), using full frame`
+      );
+      return { x: 0, y: 0, width: imgWidth, height: imgHeight };
+    }
+
+    // Left border defaults to frame edge
+    const leftCol = 0;
+    const colRange = rightCol - leftCol;
+
+    console.log(
+      `[thumbnailGenerator] Pass 1 — right border: col ${rightCol} ` +
+        `(x=${Math.round(rightCol * scaleX)}, ${((rightCol / AW) * 100).toFixed(0)}%) score=${rightColScore.toFixed(1)}`
+    );
+
+    // ----------------------------------------------------------------
+    // PASS 2 — within cols 0..rightCol, find top & bottom row borders
+    // ----------------------------------------------------------------
+    const ROW_MARGIN = 2;
+    interface RowEdgeResult {
+      y: number;
+      combined: number;
+    }
+    const rowResults: RowEdgeResult[] = [];
+
+    for (let y = ROW_MARGIN; y < AH - ROW_MARGIN; y++) {
+      let sum = 0;
+      let strong = 0;
+      for (let x = leftCol; x < rightCol; x++) {
+        const e = Math.abs(L(x, y) - L(x, y - 1));
+        sum += e;
+        if (e > PX_THRESH) strong++;
+      }
+      const combined = (sum / colRange) * (strong / colRange);
+      rowResults.push({ y, combined });
+    }
+
+    rowResults.sort((a, b) => b.combined - a.combined);
+
+    const midRow = Math.round(AH * 0.4);
+    const topRow = rowResults.find((r) => r.y < midRow);
+    const botRow = rowResults.find((r) => r.y > midRow);
+
+    if (!topRow || !botRow) {
+      console.log('[thumbnailGenerator] Could not find top/bottom borders, using full frame');
+      return { x: 0, y: 0, width: imgWidth, height: imgHeight };
+    }
+
+    console.log(
+      `[thumbnailGenerator] Pass 2 — top: row ${topRow.y} (y=${Math.round(topRow.y * scaleY)}) ` +
+        `score=${topRow.combined.toFixed(1)}, ` +
+        `bottom: row ${botRow.y} (y=${Math.round(botRow.y * scaleY)}) ` +
+        `score=${botRow.combined.toFixed(1)}`
+    );
+
+    // ----------------------------------------------------------------
+    // PASS 3 — tighten left/right to actual content using brightness
+    // variance. Uniform dark background (black bars, page margin) has
+    // near-zero std dev; real video content has high std dev.
+    // ----------------------------------------------------------------
+    const nRows = botRow.y - topRow.y + 1;
+    const FRAME_MARGIN = 3; // skip first/last cols (frame-edge artefacts)
+    const colStdDev: number[] = [];
+    for (let x = leftCol; x < rightCol; x++) {
+      let sum = 0;
+      for (let y = topRow.y; y <= botRow.y; y++) sum += L(x, y);
+      const mean = sum / nRows;
+      let sqSum = 0;
+      for (let y = topRow.y; y <= botRow.y; y++) sqSum += (L(x, y) - mean) ** 2;
+      colStdDev.push(Math.sqrt(sqSum / nRows));
+    }
+
+    // Content threshold: columns with std dev > 5 have real variation
+    const STD_THRESH = 5;
+    let contentLeft = leftCol;
+    let contentRight = rightCol - 1;
+    for (let i = FRAME_MARGIN; i < colStdDev.length; i++) {
+      if (colStdDev[i] > STD_THRESH) {
+        contentLeft = leftCol + i;
+        break;
+      }
+    }
+    for (let i = colStdDev.length - 1 - FRAME_MARGIN; i >= 0; i--) {
+      if (colStdDev[i] > STD_THRESH) {
+        contentRight = leftCol + i;
+        break;
+      }
+    }
+
+    console.log(
+      `[thumbnailGenerator] Pass 3 — content cols: ${contentLeft}–${contentRight} ` +
+        `(x=${Math.round(contentLeft * scaleX)}–${Math.round(contentRight * scaleX)})`
+    );
+
+    // Map to original pixel coordinates (tight content region)
+    let contentX = Math.round(contentLeft * scaleX);
+    let contentY = Math.round(topRow.y * scaleY);
+    let contentW = Math.round((contentRight - contentLeft + 1) * scaleX);
+    let contentH = Math.round((botRow.y - topRow.y) * scaleY);
+
+    // Add 10% bottom padding to capture captions near the player border
+    const bottomPad = Math.round(contentH * 0.1);
+    contentH = Math.min(contentH + bottomPad, imgHeight - contentY);
+
+    console.log(
+      `[thumbnailGenerator] Content region: ${contentX},${contentY} ${contentW}x${contentH}`
+    );
+
+    // Return the tight content crop — applyThumbnailStyle handles
+    // aspect-ratio mismatch by compositing sharp content over a blurred fill.
+    const pct = (((contentW * contentH) / (imgWidth * imgHeight)) * 100).toFixed(0);
+    console.log(
+      `[thumbnailGenerator] Final crop: ${contentX},${contentY} ${contentW}x${contentH} ` +
+        `ar=${(contentW / contentH).toFixed(2)} (${pct}% of ${imgWidth}x${imgHeight})`
+    );
+
+    // If the final region covers >85% of the frame, no meaningful crop
+    if (contentW * contentH > imgWidth * imgHeight * 0.85) {
+      console.log('[thumbnailGenerator] Content fills >85%, using full frame');
+      return { x: 0, y: 0, width: imgWidth, height: imgHeight };
+    }
+    // <5% → detection failed
+    if (contentW * contentH < imgWidth * imgHeight * 0.05) {
+      console.log('[thumbnailGenerator] Detected region <5%, using full frame');
+      return { x: 0, y: 0, width: imgWidth, height: imgHeight };
+    }
+
+    return { x: contentX, y: contentY, width: contentW, height: contentH };
+  } catch (err) {
+    console.warn(
+      '[thumbnailGenerator] identifyBestRegion failed:',
+      err instanceof Error ? err.message : err
+    );
+    return { x: 0, y: 0, width: imgWidth, height: imgHeight };
+  }
+}
+
+/** Small random jitter around a base value: base ± range */
+function jitter(base: number, range: number): number {
+  return base + (Math.random() * 2 - 1) * range;
+}
+
+/**
+ * Apply a visual enhancement style to a cropped buffer, producing a 1280×720 PNG.
+ * Uses lanczos3 kernel for high-quality upscaling and applies a sharpening pass
+ * after resize to restore detail lost during interpolation.
+ *
+ * Style parameters include randomised jitter so that regenerating the same source
+ * frame produces visually distinct results each time.
+ */
+async function applyThumbnailStyle(
+  croppedBuffer: Buffer,
+  style: ThumbnailStyleVariant
+): Promise<Buffer> {
+  const sharp = require('sharp');
+  const W = THUMBNAIL_WIDTH;
+  const H = THUMBNAIL_HEIGHT;
+
+  // Build the base image: blurred fill background + sharp content centered on top.
+  // This preserves the full content (including captions) regardless of aspect ratio.
+  const meta = await sharp(croppedBuffer).metadata();
+  const srcW = meta.width || W;
+  const srcH = meta.height || H;
+  const srcAR = srcW / srcH;
+  const targetAR = W / H;
+
+  let baseBuffer: Buffer;
+  if (Math.abs(srcAR - targetAR) < 0.05) {
+    // AR close enough — multi-step upscale for quality
+    let upscaled = croppedBuffer;
+    let curW = srcW;
+    let curH = srcH;
+    while (curW * 2 <= W && curH * 2 <= H) {
+      curW *= 2;
+      curH *= 2;
+      upscaled = await sharp(upscaled)
+        .resize(curW, curH, { kernel: 'lanczos3' })
+        .sharpen({ sigma: 0.6, m1: 1.0, m2: 0.3 })
+        .png()
+        .toBuffer();
+    }
+    baseBuffer = await sharp(upscaled)
+      .resize(W, H, { fit: 'cover', kernel: 'lanczos3' })
+      .sharpen({ sigma: 1.0, m1: 1.5, m2: 0.7 })
+      .png()
+      .toBuffer();
+  } else {
+    // AR mismatch — create blurred fill, then composite sharp content centered
+    const blurBg = await sharp(croppedBuffer)
+      .resize(W, H, { fit: 'cover', kernel: 'lanczos3' })
+      .blur(25)
+      .modulate({ brightness: 0.6 })
+      .png()
+      .toBuffer();
+
+    // Multi-step upscale for better quality on low-res sources.
+    // Upscaling in 2x increments with sharpening at each step produces
+    // much crisper results than a single large jump.
+    const targetH = H; // fit to height
+    const targetW = Math.round(srcW * (H / srcH));
+    let upscaled = croppedBuffer;
+    let curW = srcW;
+    let curH = srcH;
+    while (curH * 2 <= targetH) {
+      curW *= 2;
+      curH *= 2;
+      upscaled = await sharp(upscaled)
+        .resize(curW, curH, { kernel: 'lanczos3' })
+        .sharpen({ sigma: 0.6, m1: 1.0, m2: 0.3 })
+        .png()
+        .toBuffer();
+    }
+    // Final step to exact target size
+    const contentFit = await sharp(upscaled)
+      .resize(targetW, targetH, { kernel: 'lanczos3' })
+      .sharpen({ sigma: 1.0, m1: 1.5, m2: 0.7 })
+      .png()
+      .toBuffer();
+
+    const fitMeta = await sharp(contentFit).metadata();
+    const fitW = fitMeta.width || W;
+    const fitH = fitMeta.height || H;
+    const left = Math.round((W - fitW) / 2);
+    const top = Math.round((H - fitH) / 2);
+
+    baseBuffer = await sharp(blurBg)
+      .composite([{ input: contentFit, left, top }])
+      .png()
+      .toBuffer();
+  }
+
+  let pipeline = sharp(baseBuffer);
+
+  switch (style) {
+    case 'cinematic': {
+      const blur = jitter(1.8, 0.6); // 1.2 – 2.4
+      const brightness = jitter(1.05, 0.05);
+      const saturation = jitter(1.1, 0.15);
+      const gamma = jitter(1.1, 0.1);
+      const vignetteOpacity = jitter(0.6, 0.15).toFixed(2);
+
+      pipeline = pipeline
+        .blur(Math.max(0.3, blur))
+        .modulate({ brightness, saturation })
+        .gamma(Math.max(0.8, gamma));
+
+      const base = await pipeline.png().toBuffer();
+
+      const vignetteSvg = Buffer.from(
+        `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="v" cx="50%" cy="50%" r="70%">
+              <stop offset="50%" stop-color="black" stop-opacity="0"/>
+              <stop offset="100%" stop-color="black" stop-opacity="${vignetteOpacity}"/>
+            </radialGradient>
+          </defs>
+          <rect width="${W}" height="${H}" fill="url(#v)"/>
+        </svg>`
+      );
+
+      return sharp(base)
+        .composite([{ input: vignetteSvg, blend: 'over' }])
+        .png()
+        .toBuffer();
+    }
+
+    case 'vivid': {
+      const brightness = jitter(1.1, 0.08);
+      const saturation = jitter(1.5, 0.2);
+      const sharpenSigma = jitter(1.5, 0.5);
+      const gamma = jitter(1.3, 0.15);
+
+      return pipeline
+        .modulate({ brightness, saturation })
+        .sharpen({ sigma: Math.max(0.5, sharpenSigma) })
+        .gamma(Math.max(0.8, gamma))
+        .png()
+        .toBuffer();
+    }
+
+    case 'gradient': {
+      const saturation = jitter(1.2, 0.15);
+      const topOpacity = jitter(0.4, 0.15).toFixed(2);
+      const bottomOpacity = jitter(0.5, 0.15).toFixed(2);
+
+      const base = await pipeline.modulate({ saturation }).png().toBuffer();
+
+      const gradientSvg = Buffer.from(
+        `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="black" stop-opacity="${topOpacity}"/>
+              <stop offset="40%" stop-color="black" stop-opacity="0"/>
+              <stop offset="60%" stop-color="black" stop-opacity="0"/>
+              <stop offset="100%" stop-color="black" stop-opacity="${bottomOpacity}"/>
+            </linearGradient>
+          </defs>
+          <rect width="${W}" height="${H}" fill="url(#g)"/>
+        </svg>`
+      );
+
+      return sharp(base)
+        .composite([{ input: gradientSvg, blend: 'over' }])
+        .png()
+        .toBuffer();
+    }
+
+    case 'warm': {
+      const brightness = jitter(1.05, 0.05);
+      const saturation = jitter(1.3, 0.15);
+      const redBoost = jitter(1.1, 0.08);
+      const blueShift = jitter(0.85, 0.08);
+
+      return pipeline
+        .modulate({ brightness, saturation })
+        .recomb([
+          [redBoost, 0.05, 0.0],
+          [0.0, 1.0, 0.0],
+          [0.0, 0.0, blueShift],
+        ])
+        .png()
+        .toBuffer();
+    }
+
+    default:
+      return pipeline.png().toBuffer();
+  }
+}
+
+/**
+ * Generate 4 AI-enhanced background variants from a reference frame buffer.
+ * Uses Moondream for intelligent region selection, then Sharp for style processing.
+ */
+export async function generateAiBackgrounds(
+  referenceFrameBuffer: Buffer
+): Promise<Array<{ buffer: Buffer; style: ThumbnailStyleVariant }>> {
+  const sharp = require('sharp');
+
+  // Get source image dimensions
+  const meta = await sharp(referenceFrameBuffer).metadata();
+  const imgW = meta.width || THUMBNAIL_WIDTH;
+  const imgH = meta.height || THUMBNAIL_HEIGHT;
+
+  // Identify best crop region via Moondream (or fallback center crop)
+  const region = await identifyBestRegion(referenceFrameBuffer, imgW, imgH);
+
+  // Crop the region
+  const croppedBuffer = await sharp(referenceFrameBuffer)
+    .extract({ left: region.x, top: region.y, width: region.width, height: region.height })
+    .toBuffer();
+
+  // Apply all 4 styles in parallel
+  const results = await Promise.all(
+    ALL_STYLES.map(async (style) => ({
+      buffer: await applyThumbnailStyle(croppedBuffer, style),
+      style,
+    }))
+  );
+
+  return results;
+}
