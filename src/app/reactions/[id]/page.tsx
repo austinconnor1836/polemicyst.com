@@ -1526,7 +1526,22 @@ export default function CompositionEditorPage() {
           title: composition.title,
           trackLabels: composition.tracks.map((t) => t.label || '').filter(Boolean),
           layouts: completedOutputs.map((o) => o.layout),
-          transcript: completedOutputs.find((o) => o.transcript)?.transcript || undefined,
+          transcript: (() => {
+            const parts: string[] = [];
+            if (composition.creatorTranscriptJson) {
+              parts.push(
+                composition.creatorTranscriptJson.map((s: { text: string }) => s.text).join(' ')
+              );
+            }
+            for (const t of composition.tracks) {
+              if (t.transcriptJson) {
+                parts.push(
+                  (t.transcriptJson as Array<{ text: string }>).map((s) => s.text).join(' ')
+                );
+              }
+            }
+            return parts.join('\n\n') || undefined;
+          })(),
         }}
         onRequestUpload={handleRequestUpload}
         uploadingLayout={uploadingLayout}
