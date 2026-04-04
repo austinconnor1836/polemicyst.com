@@ -80,6 +80,8 @@ interface RenderControlsProps {
   autoEditing?: boolean;
   transcribing?: boolean;
   onWaitForTranscripts?: () => Promise<any>;
+  /** Ref exposing the upload function so the parent can trigger S3 uploads externally. */
+  uploadOutputRef?: React.MutableRefObject<((layout: string) => Promise<void>) | null>;
 }
 
 const LAYOUT_LABELS: Record<string, string> = {
@@ -112,6 +114,7 @@ export function RenderControls({
   autoEditing,
   transcribing,
   onWaitForTranscripts,
+  uploadOutputRef,
 }: RenderControlsProps) {
   const [rendering, setRendering] = useState(compositionStatus === 'rendering');
   const [publishTarget, setPublishTarget] = useState<{
@@ -534,6 +537,16 @@ export function RenderControls({
     [clientOutputBlobs, compositionId]
   );
 
+  // Expose upload function to parent via ref
+  useEffect(() => {
+    if (uploadOutputRef) {
+      uploadOutputRef.current = handleUploadOutput;
+    }
+    return () => {
+      if (uploadOutputRef) uploadOutputRef.current = null;
+    };
+  }, [uploadOutputRef, handleUploadOutput]);
+
   const handleRender = async () => {
     if (!hasCreator || !hasTracks) return;
 
@@ -859,6 +872,8 @@ export function RenderControls({
           layouts: publishTarget ? [publishTarget.layout] : [],
           transcript: publishTarget?.transcript || undefined,
         }}
+        onRequestUpload={handleUploadOutput}
+        uploadingLayout={uploadingOutput}
       />
     </div>
   );

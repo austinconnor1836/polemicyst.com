@@ -39,7 +39,8 @@ async function publishToYouTube(
   userId: string,
   s3Key: string,
   title: string,
-  description: string
+  description: string,
+  thumbnailS3Key?: string
 ): Promise<PlatformResult> {
   try {
     const account = await prisma.account.findFirst({
@@ -67,6 +68,22 @@ async function publishToYouTube(
     });
 
     const youtubeId = uploadRes.data.id;
+
+    // Set custom thumbnail if available
+    if (thumbnailS3Key && youtubeId) {
+      try {
+        const thumbBuf = await getS3Buffer(thumbnailS3Key);
+        const { Readable } = await import('stream');
+        await youtube.thumbnails.set({
+          videoId: youtubeId,
+          media: { mimeType: 'image/png', body: Readable.from(thumbBuf) },
+        });
+      } catch (thumbErr: any) {
+        console.warn('[composition-publish] YouTube thumbnail set failed:', thumbErr.message);
+        // Non-fatal — video is already uploaded
+      }
+    }
+
     return {
       platform: 'youtube',
       success: true,
@@ -423,6 +440,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'No output with S3 key found' }, { status: 400 });
   }
 
+  // Query the selected composite thumbnail for YouTube custom thumbnail
+  const thumbnail = await prisma.compositionThumbnail.findFirst({
+    where: { compositionId: id, selected: true },
+    select: { s3Key: true },
+  });
+
   const videoPlatforms = validPlatforms.filter((p) => VALID_VIDEO_PLATFORMS.includes(p));
   const textOnlyPlatforms = validPlatforms.filter(
     (p) => !VALID_VIDEO_PLATFORMS.includes(p) && VALID_TEXT_PLATFORMS.includes(p)
@@ -437,7 +460,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const videoPromises = videoPlatforms.map((platform) => {
     switch (platform) {
       case 'youtube':
-        return publishToYouTube(user.id, targetOutput.s3Key!, publishTitle, publishDesc);
+        return publishToYouTube(
+          user.id,
+          targetOutput.s3Key!,
+          publishTitle,
+          publishDesc,
+          thumbnail?.s3Key ?? undefined
+        );
       case 'facebook':
         return publishToFacebook(user.id, targetOutput.s3Key!, publishDesc);
       case 'instagram':

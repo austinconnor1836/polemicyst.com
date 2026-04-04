@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -52,6 +52,10 @@ export interface VideoPublishModalProps {
     layouts?: string[];
     transcript?: string;
   };
+  /** Called to trigger S3 upload for a local-only output. */
+  onRequestUpload?: (layout: string) => void;
+  /** Layout currently being uploaded to S3 (shows progress in the modal). */
+  uploadingLayout?: string | null;
 }
 
 type Phase = 'compose' | 'publishing' | 'results';
@@ -64,6 +68,8 @@ export function VideoPublishModal({
   outputs,
   trackLabels,
   generationContext,
+  onRequestUpload,
+  uploadingLayout,
 }: VideoPublishModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -136,6 +142,22 @@ export function VideoPublishModal({
       cancelled = true;
     };
   }, [open, compositionId]);
+
+  // Auto-trigger S3 upload for the selected output when modal opens
+  const uploadTriggeredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open) {
+      uploadTriggeredRef.current = null;
+      return;
+    }
+    if (!onRequestUpload || !selectedOutputId) return;
+    const output = outputs.find((o) => o.id === selectedOutputId);
+    if (!output || output.hasS3Key) return;
+    // Avoid re-triggering for the same output
+    if (uploadTriggeredRef.current === output.layout) return;
+    uploadTriggeredRef.current = output.layout;
+    onRequestUpload(output.layout);
+  }, [open, selectedOutputId, outputs, onRequestUpload]);
 
   const togglePlatform = useCallback((platform: string) => {
     setSelectedPlatforms((prev) => {
@@ -339,11 +361,17 @@ export function VideoPublishModal({
                 </div>
               )}
 
-              {/* Cloud upload warning */}
+              {/* Cloud upload status */}
               {needsCloudUpload && (
-                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-                  Video platforms require the render to be uploaded to cloud first. Use the
-                  &quot;Upload&quot; button on the output card before publishing.
+                <div className="rounded-md border border-blue-300 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-200">
+                  {uploadingLayout ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Uploading render to cloud… Configure your post while it uploads.
+                    </span>
+                  ) : (
+                    'Waiting to upload render to cloud…'
+                  )}
                 </div>
               )}
 

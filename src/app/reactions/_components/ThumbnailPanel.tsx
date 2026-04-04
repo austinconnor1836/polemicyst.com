@@ -44,6 +44,8 @@ interface ThumbnailPanelProps {
   creatorFile?: File | null;
   /** Local reference video files for client-side frame extraction */
   refFiles?: Map<string, File>;
+  /** Called whenever the composite thumbnail URL changes — lets parent track the active thumbnail. */
+  onCompositeUrlChange?: (url: string | null) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -79,6 +81,7 @@ export function ThumbnailPanel({
   skipAutoGenerate,
   creatorFile,
   refFiles,
+  onCompositeUrlChange,
 }: ThumbnailPanelProps) {
   // Asset state
   const [referenceFrames, setReferenceFrames] = useState<ThumbnailAsset[]>([]);
@@ -109,6 +112,11 @@ export function ThumbnailPanel({
     },
     [onGeneratingChange]
   );
+
+  // Notify parent whenever compositeUrl changes
+  useEffect(() => {
+    onCompositeUrlChange?.(compositeUrl);
+  }, [compositeUrl, onCompositeUrlChange]);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {

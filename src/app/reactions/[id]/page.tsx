@@ -134,7 +134,10 @@ export default function CompositionEditorPage() {
   const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null);
   const [publishAllOpen, setPublishAllOpen] = useState(false);
   const [thumbnailGenerating, setThumbnailGenerating] = useState(false);
+  const [thumbnailCompositeUrl, setThumbnailCompositeUrl] = useState<string | null>(null);
   const thumbnailRegenerateRef = useRef<(() => void) | null>(null);
+  const uploadOutputRef = useRef<((layout: string) => Promise<void>) | null>(null);
+  const [uploadingLayout, setUploadingLayout] = useState<string | null>(null);
   const [editOutputOpen, setEditOutputOpen] = useState(false);
   const [autoEditing, setAutoEditing] = useState(false);
   const [autoEditCuts, setAutoEditCuts] = useState<CompositionCut[] | undefined>(undefined);
@@ -994,6 +997,21 @@ export default function CompositionEditorPage() {
     return null;
   }, [compositionId]);
 
+  const handleRequestUpload = useCallback(
+    async (layout: string) => {
+      if (!uploadOutputRef.current) return;
+      setUploadingLayout(layout);
+      try {
+        await uploadOutputRef.current(layout);
+        // Re-fetch so the modal sees updated hasS3Key
+        await fetchComposition();
+      } finally {
+        setUploadingLayout(null);
+      }
+    },
+    [fetchComposition]
+  );
+
   if (loading) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8">
@@ -1367,17 +1385,6 @@ export default function CompositionEditorPage() {
                   Edit
                 </Button>
               )}
-              {completedOutputs.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 gap-1 text-xs"
-                  onClick={() => setPublishAllOpen(true)}
-                >
-                  <Share2 className="h-3 w-3" />
-                  Publish
-                </Button>
-              )}
             </div>
           </div>
         </CardHeader>
@@ -1414,6 +1421,7 @@ export default function CompositionEditorPage() {
             autoEditing={autoEditing}
             transcribing={transcribing}
             onWaitForTranscripts={waitForTranscripts}
+            uploadOutputRef={uploadOutputRef}
           />
         </CardContent>
       </Card>
@@ -1458,9 +1466,48 @@ export default function CompositionEditorPage() {
             skipAutoGenerate={composition.outputs?.some((o) => o.s3Url?.startsWith('blob:'))}
             creatorFile={creatorFile}
             refFiles={refFiles}
+            onCompositeUrlChange={setThumbnailCompositeUrl}
           />
         </CardContent>
       </Card>
+
+      {/* Publish */}
+      {completedOutputs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="space-y-1">
+              <CardTitle>Publish</CardTitle>
+              <CardDescription>Share your reaction to connected platforms.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-start gap-6">
+              {thumbnailCompositeUrl && (
+                <div className="space-y-1.5 shrink-0">
+                  <p className="text-sm font-medium">Thumbnail</p>
+                  <img
+                    src={thumbnailCompositeUrl}
+                    alt="Composite thumbnail"
+                    className="w-48 rounded-md border"
+                  />
+                  <p className="text-[11px] text-muted-foreground">Used as YouTube thumbnail</p>
+                </div>
+              )}
+              <div className="flex-1 space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {thumbnailCompositeUrl
+                    ? 'Publish your rendered video with the current thumbnail to your connected accounts.'
+                    : 'Publish your rendered video to your connected accounts.'}
+                </p>
+                <Button onClick={() => setPublishAllOpen(true)}>
+                  <Share2 className="h-4 w-4" />
+                  Publish
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Publish video modal */}
       <VideoPublishModal
@@ -1481,6 +1528,8 @@ export default function CompositionEditorPage() {
           layouts: completedOutputs.map((o) => o.layout),
           transcript: completedOutputs.find((o) => o.transcript)?.transcript || undefined,
         }}
+        onRequestUpload={handleRequestUpload}
+        uploadingLayout={uploadingLayout}
       />
 
       {/* Trim modal */}
