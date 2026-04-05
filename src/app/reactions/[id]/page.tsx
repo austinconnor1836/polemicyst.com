@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Loader2, RefreshCw, Scissors, Share2, Wand2, X } from 'lucide-react';
+import { ArrowLeft, Crop, Loader2, RefreshCw, Scissors, Share2, Wand2, X } from 'lucide-react';
 import { ModeSelector } from '../_components/ModeSelector';
 import { VideoUploader, type UploadStatus } from '../_components/VideoUploader';
 import { CompositionVideoPanel } from '../_components/CompositionVideoPanel';
@@ -14,6 +14,7 @@ import { TimelineEditor } from '../_components/TimelineEditor';
 import { RenderControls } from '../_components/RenderControls';
 import { ThumbnailPanel } from '../_components/ThumbnailPanel';
 import { TrimModal } from '../_components/TrimModal';
+import { CropAdjustModal } from '../_components/CropAdjustModal';
 import { EditOutputModal, type CompositionCut } from '../_components/EditOutputModal';
 import { VideoPublishModal } from '@/components/VideoPublishModal';
 import { supportsClientRender } from '@/lib/client-render';
@@ -27,6 +28,7 @@ import {
   saveRefFileToCache,
   loadRefFilesFromCache,
   clearRefFileCache,
+  updateRefFileCropInCache,
 } from '@/lib/client-render/blob-cache';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -152,6 +154,12 @@ export default function CompositionEditorPage() {
     trimEndS: number | null;
     title: string;
   } | null>(null);
+
+  // Crop adjustment state
+  const [autoDetectedCrops, setAutoDetectedCrops] = useState<
+    Map<string, { w: number; h: number; x: number; y: number }>
+  >(new Map());
+  const [cropAdjustTarget, setCropAdjustTarget] = useState<string | null>(null);
 
   // Background upload state — creator video
   const [creatorBlobUrl, setCreatorBlobUrl] = useState<string | null>(null);
@@ -336,11 +344,12 @@ export default function CompositionEditorPage() {
       console.log('[page] Restored creator file from IndexedDB');
     });
 
-    // Restore reference files (with crop detection for landscape tracks)
+    // Restore reference files (use cached crop if available, else re-detect)
     loadRefFilesFromCache(compositionId).then(async (cached) => {
       if (cached.size === 0) return;
       const newRefFiles = new Map<string, File>();
       const newTracks: Track[] = [];
+      const detectedCrops = new Map<string, { w: number; h: number; x: number; y: number }>();
       const cropPromises: Promise<void>[] = [];
       cached.forEach((entry) => {
         const file = new File([entry.blob], entry.name, {
@@ -364,8 +373,13 @@ export default function CompositionEditorPage() {
           hasAudio: true,
         };
         newTracks.push(track);
-        // Run crop detection on landscape tracks
-        if (entry.width > entry.height) {
+
+        // Use cached sourceCrop if available; otherwise re-detect for landscape tracks
+        if (entry.sourceCrop) {
+          track.sourceCrop = entry.sourceCrop;
+          detectedCrops.set(entry.trackId, entry.sourceCrop);
+          console.log(`[page] Restored cached crop for ref ${entry.trackId}:`, entry.sourceCrop);
+        } else if (entry.width > entry.height) {
           cropPromises.push(
             (async () => {
               const video = document.createElement('video');
@@ -375,6 +389,7 @@ export default function CompositionEditorPage() {
               const crop = await detectCropFromVideo(video, entry.width, entry.height);
               if (crop) {
                 track.sourceCrop = crop;
+                detectedCrops.set(entry.trackId, crop);
                 console.log(`[page] Detected crop for restored ref ${entry.trackId}:`, crop);
               }
             })()
@@ -383,6 +398,14 @@ export default function CompositionEditorPage() {
       });
       // Wait for all crop detections to finish before adding tracks
       await Promise.all(cropPromises);
+      // Store all detected/restored crops for "Reset to Auto"
+      if (detectedCrops.size > 0) {
+        setAutoDetectedCrops((prev) => {
+          const next = new Map(prev);
+          detectedCrops.forEach((c, id) => next.set(id, c));
+          return next;
+        });
+      }
       setRefFiles((prev) => {
         const merged = new Map(prev);
         newRefFiles.forEach((f, id) => merged.set(id, f));
@@ -693,6 +716,10 @@ export default function CompositionEditorPage() {
             video.src = data.blobUrl;
             sourceCrop = await detectCropFromVideo(video, data.width, data.height);
             console.log('[page] Crop detection result for ref track:', sourceCrop);
+            // Store auto-detected crop so "Reset to Auto" works after manual edits
+            if (sourceCrop) {
+              setAutoDetectedCrops((prev) => new Map(prev).set(tempId, sourceCrop!));
+            }
           }
           setComposition((prev) => {
             if (!prev) return prev;
@@ -849,6 +876,24 @@ export default function CompositionEditorPage() {
       setTrimTarget(null);
     },
     [trimTarget, save, handleUpdateTrack]
+  );
+
+  // Callback when CropAdjustModal saves
+  const handleCropSave = useCallback(
+    (trackId: string, crop: { w: number; h: number; x: number; y: number } | null) => {
+      setComposition((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          tracks: prev.tracks.map((t) =>
+            t.id === trackId ? { ...t, sourceCrop: crop ?? undefined } : t
+          ),
+        };
+      });
+      // Persist to IndexedDB cache
+      updateRefFileCropInCache(compositionId, trackId, crop);
+    },
+    [compositionId]
   );
 
   // Callback when RenderControls produces a new blob
@@ -1285,12 +1330,33 @@ export default function CompositionEditorPage() {
                     })
                   }
                   extraOverlay={
-                    trackTranscribing ? (
-                      <div className="absolute left-1.5 top-1.5 z-10 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white backdrop-blur">
-                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                        Transcribing
-                      </div>
-                    ) : undefined
+                    <>
+                      {trackTranscribing && (
+                        <div className="absolute left-1.5 top-1.5 z-10 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white backdrop-blur">
+                          <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                          Transcribing
+                        </div>
+                      )}
+                      {refFiles.has(track.id) && (
+                        <Button
+                          variant="secondary"
+                          size="icon"
+                          className="absolute left-1.5 top-1.5 h-7 w-7 rounded-full bg-white/85 text-gray-900 opacity-0 backdrop-blur transition-opacity hover:bg-white group-hover:opacity-100 dark:bg-zinc-900/80 dark:text-zinc-100 dark:hover:bg-zinc-900"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCropAdjustTarget(track.id);
+                          }}
+                          title="Adjust crop"
+                        >
+                          <Crop className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {track.sourceCrop && (
+                        <Badge className="absolute left-1.5 bottom-1.5 bg-blue-500/80 text-white text-[10px] backdrop-blur">
+                          Cropped
+                        </Badge>
+                      )}
+                    </>
                   }
                 />
               );
@@ -1469,11 +1535,7 @@ export default function CompositionEditorPage() {
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <CardTitle>Thumbnail Builder</CardTitle>
-              <CardDescription>
-                {isRendering
-                  ? 'Thumbnails will be generated after render completes.'
-                  : 'Choose a background, cutout, position, and size.'}
-              </CardDescription>
+              <CardDescription>Choose a background, cutout, position, and size.</CardDescription>
             </div>
             <Button
               variant="outline"
@@ -1599,6 +1661,31 @@ export default function CompositionEditorPage() {
           title={trimTarget.title}
         />
       )}
+
+      {/* Crop adjust modal */}
+      {cropAdjustTarget &&
+        (() => {
+          const track = composition.tracks.find((t) => t.id === cropAdjustTarget);
+          const file = refFiles.get(cropAdjustTarget);
+          if (!track || !file) return null;
+          return (
+            <CropAdjustModal
+              open={true}
+              onOpenChange={(open) => {
+                if (!open) setCropAdjustTarget(null);
+              }}
+              videoFile={file}
+              videoWidth={track.width ?? 1920}
+              videoHeight={track.height ?? 1080}
+              currentCrop={track.sourceCrop ?? null}
+              autoCrop={autoDetectedCrops.get(cropAdjustTarget) ?? null}
+              onSave={(crop) => {
+                handleCropSave(cropAdjustTarget, crop);
+                setCropAdjustTarget(null);
+              }}
+            />
+          );
+        })()}
 
       {/* Edit output modal */}
       {completedOutputs.length > 0 && (

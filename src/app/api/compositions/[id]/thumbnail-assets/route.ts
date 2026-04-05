@@ -18,6 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         thumbnailCutoutPosition: true,
         thumbnailCutoutSize: true,
         thumbnailBgMode: true,
+        thumbnailBgCrop: true,
       },
     });
     if (!composition) {
@@ -47,6 +48,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         position: composition.thumbnailCutoutPosition,
         size: composition.thumbnailCutoutSize,
         bgMode: composition.thumbnailBgMode,
+        bgCrop: composition.thumbnailBgCrop ? JSON.parse(composition.thumbnailBgCrop) : null,
       },
       compositeUrl: selectedThumb?.s3Url ?? null,
     });

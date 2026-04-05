@@ -657,6 +657,7 @@ model Composition {
   thumbnailCutoutPosition String  @default("right") // left | right
   thumbnailCutoutSize     String  @default("large")  // small | medium | large
   thumbnailBgMode         String  @default("frame") // "frame" | "ai"
+  thumbnailBgCrop         String?               // JSON: {x,y,w,h} crop rect for thumbnail background
   createdAt           DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

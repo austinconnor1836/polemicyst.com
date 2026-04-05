@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { Check, Download, Loader2, RefreshCw, Wand2 } from 'lucide-react';
+import { Check, Crop, Download, Loader2, RefreshCw, Wand2 } from 'lucide-react';
+import { ThumbnailCropModal } from './ThumbnailCropModal';
 import toast from 'react-hot-toast';
 import { extractFrames } from '@/lib/client-render/extract-frames';
 
@@ -34,11 +35,7 @@ interface ThumbnailPanelProps {
   onGeneratingChange?: (generating: boolean) => void;
   /** Ref that the parent can call to trigger regeneration from an external button. */
   regenerateRef?: React.MutableRefObject<(() => void) | null>;
-  /**
-   * When true, suppress automatic polling on rendering→completed transition.
-   * Used when outputs are client-rendered (local blobs, not yet on S3) —
-   * thumbnail generation requires S3 files for server-side processing.
-   */
+  /** @deprecated No longer used — thumbnails no longer regenerate on re-render. */
   skipAutoGenerate?: boolean;
   /** Local creator video file for client-side frame extraction */
   creatorFile?: File | null;
@@ -69,6 +66,70 @@ function AssetSkeletonGrid({ count = 6 }: { count?: number }) {
 }
 
 // ---------------------------------------------------------------------------
+// Cropped background preview — draws only the crop rect, scaled to fill
+// ---------------------------------------------------------------------------
+
+function CroppedBgPreview({
+  imageUrl,
+  crop,
+}: {
+  imageUrl: string;
+  crop: { x: number; y: number; w: number; h: number };
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let cancelled = false;
+
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled || !canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Match canvas pixel size to display size
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.round(rect.width * (window.devicePixelRatio || 1));
+      canvas.height = Math.round(rect.height * (window.devicePixelRatio || 1));
+
+      // Draw the cropped region centered with padding (not stretched) to match 16:9
+      const TARGET_AR = 16 / 9;
+      const cropAR = crop.w / crop.h;
+
+      // Fill with dark background for padding areas
+      ctx.fillStyle = '#111';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      let drawW: number, drawH: number, drawX: number, drawY: number;
+      if (cropAR > TARGET_AR) {
+        // Crop is wider than 16:9 → fit to width, pad top/bottom
+        drawW = canvas.width;
+        drawH = (canvas.width / crop.w) * crop.h;
+        drawX = 0;
+        drawY = (canvas.height - drawH) / 2;
+      } else {
+        // Crop is taller than 16:9 → fit to height, pad left/right
+        drawH = canvas.height;
+        drawW = (canvas.height / crop.h) * crop.w;
+        drawX = (canvas.width - drawW) / 2;
+        drawY = 0;
+      }
+
+      ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, drawX, drawY, drawW, drawH);
+    };
+    img.src = imageUrl;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl, crop]);
+
+  return <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-hidden="true" />;
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -94,6 +155,8 @@ export function ThumbnailPanel({
   const [bgMode, setBgMode] = useState<BgMode>('frame');
   const [generatingAi, setGeneratingAi] = useState(false);
   const [compositeUrl, setCompositeUrl] = useState<string | null>(null);
+  const [bgCrop, setBgCrop] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
 
   // Loading / saving state
   const [initialLoad, setInitialLoad] = useState(true);
@@ -148,6 +211,9 @@ export function ThumbnailPanel({
         if (data.settings.bgMode === 'ai' || data.settings.bgMode === 'frame') {
           setBgMode(data.settings.bgMode);
         }
+        if (data.settings.bgCrop) {
+          setBgCrop(data.settings.bgCrop);
+        }
       }
       if (data.compositeUrl) {
         setCompositeUrl(data.compositeUrl);
@@ -197,15 +263,14 @@ export function ThumbnailPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Extract frames from local files → upload to server for moondream + rembg processing
+  // Extract frames from local files → upload to server for moondream + rembg processing.
+  // Starts as soon as local files are available (doesn't wait for render to complete).
   const localExtractedRef = useRef(false);
   useEffect(() => {
     // Wait until initial fetch resolves so we know whether assets already exist on the server
     if (!initialFetchDone) return;
-    // Only trigger once, when we have local files and rendering just completed
+    // Only trigger once
     if (localExtractedRef.current) return;
-    if (!skipAutoGenerate) return;
-    if (compositionStatus !== 'completed') return;
 
     const refFile = refFiles?.values().next().value as File | undefined;
     if (!creatorFile && !refFile) return;
@@ -268,38 +333,13 @@ export function ThumbnailPanel({
         setGenerating(false);
       }
     })();
-  }, [
-    initialFetchDone,
-    skipAutoGenerate,
-    compositionStatus,
-    compositionId,
-    creatorFile,
-    refFiles,
-    setGenerating,
-  ]);
+  }, [initialFetchDone, compositionId, creatorFile, refFiles, setGenerating]);
 
-  // Clear when render starts; poll when render completes (server-side only)
+  // Track status for other effects but do NOT clear/regenerate thumbnails on re-render.
+  // Thumbnails are independent of the video render and persist across re-renders.
   useEffect(() => {
-    if (compositionStatus === 'rendering' && prevStatusRef.current !== 'rendering') {
-      setReferenceFrames([]);
-      setCutouts([]);
-      setAiBackgrounds([]);
-      setCompositeUrl(null);
-      setSelectedRefId(null);
-      setSelectedCutoutId(null);
-      setBgMode('frame');
-      localExtractedRef.current = false; // Allow re-extraction on next render
-      // Only auto-poll if NOT a client-side render (which hasn't uploaded to S3 yet)
-      if (!skipAutoGenerate) {
-        setGenerating(true);
-      }
-    } else if (prevStatusRef.current === 'rendering' && compositionStatus === 'completed') {
-      if (!skipAutoGenerate) {
-        setGenerating(true);
-      }
-    }
     prevStatusRef.current = compositionStatus;
-  }, [compositionStatus, setGenerating, skipAutoGenerate]);
+  }, [compositionStatus]);
 
   // Poll while generating
   useEffect(() => {
@@ -327,6 +367,15 @@ export function ThumbnailPanel({
     return stopPolling;
   }, [generating, fetchAssets, stopPolling, setGenerating]);
 
+  // Reset bgCrop when selected reference frame changes
+  const prevRefIdRef = useRef(selectedRefId);
+  useEffect(() => {
+    if (prevRefIdRef.current !== null && selectedRefId !== prevRefIdRef.current) {
+      setBgCrop(null);
+    }
+    prevRefIdRef.current = selectedRefId;
+  }, [selectedRefId]);
+
   // ---------------------------------------------------------------------------
   // Debounced save — fires 800ms after any selection/setting change
   // ---------------------------------------------------------------------------
@@ -341,6 +390,7 @@ export function ThumbnailPanel({
         position,
         size,
         bgMode,
+        bgCrop: bgCrop ?? undefined,
       };
       let res = await fetch(`/api/compositions/${compositionId}/thumbnails/composite`, {
         method: 'POST',
@@ -367,7 +417,7 @@ export function ThumbnailPanel({
     } finally {
       setSaving(false);
     }
-  }, [compositionId, selectedRefId, selectedCutoutId, position, size, bgMode]);
+  }, [compositionId, selectedRefId, selectedCutoutId, position, size, bgMode, bgCrop]);
 
   // Trigger debounced save when selections change
   const isInitialMount = useRef(true);
@@ -388,7 +438,7 @@ export function ThumbnailPanel({
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [selectedRefId, selectedCutoutId, position, size, doComposite]);
+  }, [selectedRefId, selectedCutoutId, position, size, bgCrop, doComposite]);
 
   // ---------------------------------------------------------------------------
   // Regenerate handler
@@ -403,6 +453,7 @@ export function ThumbnailPanel({
     setSelectedRefId(null);
     setSelectedCutoutId(null);
     setBgMode('frame');
+    setBgCrop(null);
 
     // When local files are available (client-side render), re-extract frames
     // and upload via generate-from-frames instead of using the server-side regenerate endpoint.
@@ -595,13 +646,16 @@ export function ThumbnailPanel({
             className="relative mx-auto aspect-video w-full overflow-hidden rounded-lg border bg-muted"
             style={{ maxWidth: 640 }}
           >
-            {selectedRef && (
+            {selectedRef && !bgCrop && (
               <img
                 src={selectedRef.s3Url}
                 alt="Reference frame background"
                 className="absolute inset-0 h-full w-full object-cover"
                 draggable={false}
               />
+            )}
+            {selectedRef && bgCrop && (
+              <CroppedBgPreview imageUrl={selectedRef.s3Url} crop={bgCrop} />
             )}
             {selectedCutout && (
               <img
@@ -680,6 +734,25 @@ export function ThumbnailPanel({
                   </button>
                 )}
               </div>
+            </div>
+
+            {/* Crop background button */}
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1 text-xs"
+                onClick={() => setCropModalOpen(true)}
+                disabled={!selectedRef || bgMode === 'ai'}
+              >
+                <Crop className="h-3 w-3" />
+                Crop BG
+              </Button>
+              {bgCrop && bgMode === 'frame' && (
+                <span className="rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">
+                  Cropped
+                </span>
+              )}
             </div>
 
             {/* Position toggle */}
@@ -889,6 +962,19 @@ export function ThumbnailPanel({
                 Download Thumbnail
               </Button>
             </div>
+          )}
+          {/* Crop modal */}
+          {selectedRef && bgMode === 'frame' && (
+            <ThumbnailCropModal
+              open={cropModalOpen}
+              onOpenChange={setCropModalOpen}
+              imageUrl={selectedRef.s3Url}
+              currentCrop={bgCrop}
+              onSave={(newCrop) => {
+                setBgCrop(newCrop);
+                setCropModalOpen(false);
+              }}
+            />
           )}
         </>
       )}

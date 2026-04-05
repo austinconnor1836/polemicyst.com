@@ -528,7 +528,26 @@ async function scoreAndSelectFrames(
 
   // Sort by combined score descending
   finalScored.sort((a, b) => b.visionScore - a.visionScore);
-  return finalScored.slice(0, topN);
+
+  // Backfill with evenly-spaced non-face frames if not enough face frames
+  const selected = finalScored.slice(0, topN);
+  if (selected.length < topN) {
+    const usedPaths = new Set(selected.map((s) => s.framePath));
+    const remaining = candidates.filter((c) => !usedPaths.has(c.framePath));
+    if (remaining.length > 0) {
+      const needed = topN - selected.length;
+      const step = Math.max(1, Math.floor(remaining.length / needed));
+      for (let i = 0; i < needed && i * step < remaining.length; i++) {
+        const c = remaining[Math.min(i * step, remaining.length - 1)];
+        selected.push({ framePath: c.framePath, timestampS: c.timestampS, visionScore: 0 });
+      }
+    }
+    console.log(
+      `[thumbnailGenerator] Backfilled ${selected.length - finalScored.slice(0, topN).length} non-face frames to reach ${selected.length} total`
+    );
+  }
+
+  return selected;
 }
 
 /**
