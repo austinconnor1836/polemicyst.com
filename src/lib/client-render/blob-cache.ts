@@ -34,6 +34,7 @@ export interface CachedRefFile {
   durationS: number;
   width: number;
   height: number;
+  sourceCrop?: { w: number; h: number; x: number; y: number } | null;
 }
 
 function openDB(): Promise<IDBDatabase> {
@@ -252,7 +253,13 @@ export async function saveRefFileToCache(
   compositionId: string,
   trackId: string,
   file: File,
-  meta: { label: string; durationS: number; width: number; height: number }
+  meta: {
+    label: string;
+    durationS: number;
+    width: number;
+    height: number;
+    sourceCrop?: { w: number; h: number; x: number; y: number } | null;
+  }
 ): Promise<void> {
   try {
     const db = await openDB();
@@ -267,6 +274,7 @@ export async function saveRefFileToCache(
       durationS: meta.durationS,
       width: meta.width,
       height: meta.height,
+      sourceCrop: meta.sourceCrop ?? undefined,
     };
     tx.objectStore(STORE_REF).put(entry, `${compositionId}:${trackId}`);
     await new Promise<void>((resolve, reject) => {
@@ -337,5 +345,35 @@ export async function clearRefFileCache(compositionId: string, trackId: string):
     db.close();
   } catch (err) {
     console.warn('[blob-cache] Failed to clear ref file:', err);
+  }
+}
+
+/** Update just the sourceCrop field on an existing cached reference file. */
+export async function updateRefFileCropInCache(
+  compositionId: string,
+  trackId: string,
+  sourceCrop: { w: number; h: number; x: number; y: number } | null
+): Promise<void> {
+  try {
+    const db = await openDB();
+    const key = `${compositionId}:${trackId}`;
+    const tx = db.transaction(STORE_REF, 'readwrite');
+    const store = tx.objectStore(STORE_REF);
+    const existing = await new Promise<CachedRefFile | null>((resolve) => {
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror = () => resolve(null);
+    });
+    if (existing) {
+      existing.sourceCrop = sourceCrop;
+      store.put(existing, key);
+    }
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch (err) {
+    console.warn('[blob-cache] Failed to update ref file crop:', err);
   }
 }

@@ -534,7 +534,7 @@ export function VideoUploader({
   return (
     <div
       className={cn(
-        'relative flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors',
+        'relative flex min-h-[11rem] flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors',
         dragOver
           ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
           : 'border-border hover:border-muted-foreground/50',

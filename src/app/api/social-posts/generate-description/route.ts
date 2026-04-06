@@ -46,6 +46,14 @@ export async function POST(req: NextRequest) {
     '- Return ONLY the post text, nothing else',
   ].join('\n');
 
+  console.log('[generate-description] context:', {
+    title,
+    trackLabels,
+    layouts,
+    transcriptLength: transcript?.length ?? 0,
+    transcriptPreview: transcript?.slice(0, 200) ?? '(none)',
+  });
+
   const configuredBaseUrl = process.env.OLLAMA_BASE_URL;
   const model = process.env.OLLAMA_MODEL || 'llama3';
   let baseUrl = configuredBaseUrl || 'http://127.0.0.1:11434';

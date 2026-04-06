@@ -17,6 +17,9 @@ export interface ClientTrackInfo {
   height: number;
   hasAudio: boolean;
   sortOrder: number;
+  /** When set, the track is a landscape video with embedded portrait content.
+   *  The crop rect extracts the portrait region before scaling. */
+  sourceCrop?: { w: number; h: number; x: number; y: number } | null;
 }
 
 /** A pre-computed caption segment in output timeline coordinates. */
