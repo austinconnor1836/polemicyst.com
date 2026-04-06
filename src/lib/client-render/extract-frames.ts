@@ -14,10 +14,14 @@ export interface ExtractedFrame {
  * Extract evenly-spaced frames from a video file.
  * @param file - The source video File
  * @param count - Number of frames to extract (default 6)
- * @param width - Output frame width (default 640, maintains aspect ratio)
+ * @param width - Output frame width (default 1280 to match thumbnail resolution, maintains aspect ratio)
  * @returns Array of extracted frames with blob URLs and timestamps
  */
-export async function extractFrames(file: File, count = 6, width = 640): Promise<ExtractedFrame[]> {
+export async function extractFrames(
+  file: File,
+  count = 6,
+  width = 1280
+): Promise<ExtractedFrame[]> {
   const blobUrl = URL.createObjectURL(file);
 
   try {
@@ -61,10 +65,17 @@ export async function extractFrames(file: File, count = 6, width = 640): Promise
     const frames: ExtractedFrame[] = [];
 
     for (const ts of timestamps) {
-      // Seek to timestamp
+      // Seek to timestamp and wait for a fully decoded frame
       video.currentTime = ts;
       await new Promise<void>((resolve) => {
-        video.onseeked = () => resolve();
+        video.onseeked = () => {
+          // requestVideoFrameCallback ensures a fully decoded frame is ready for drawing
+          if ('requestVideoFrameCallback' in video) {
+            (video as any).requestVideoFrameCallback(() => resolve());
+          } else {
+            resolve();
+          }
+        };
         // Fallback timeout in case onseeked never fires
         setTimeout(resolve, 3000);
       });
@@ -77,7 +88,7 @@ export async function extractFrames(file: File, count = 6, width = 640): Promise
         canvas.toBlob(
           (b) => (b ? resolve(b) : reject(new Error('Canvas toBlob failed'))),
           'image/jpeg',
-          0.85
+          0.92
         );
       });
 

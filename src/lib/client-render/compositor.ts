@@ -35,13 +35,25 @@ export function createCompositorConfig(layout: Layout): CompositorConfig {
   };
 }
 
-function isPortrait(track: { width: number; height: number }): boolean {
+function isPortrait(track: ClientTrackInfo): boolean {
+  if (track.sourceCrop) return true;
   return track.height > track.width;
+}
+
+/** Effective width/height for layout calculations, accounting for sourceCrop. */
+function effectiveDimensions(track: ClientTrackInfo): { w: number; h: number } {
+  if (track.sourceCrop) {
+    return { w: track.sourceCrop.w, h: track.sourceCrop.h };
+  }
+  return { w: track.width, h: track.height };
 }
 
 /**
  * Draw a scaled-and-cropped "cover" fill of a decoded frame into a region.
  * Equivalent to FFmpeg scale=W:H:force_original_aspect_ratio=increase,crop=W:H
+ *
+ * When `sourceCrop` is provided, only the cropped region of the frame is used
+ * as the source (extracts embedded portrait content from a pillarboxed frame).
  */
 function drawCover(
   ctx: OffscreenCanvasRenderingContext2D,
@@ -49,17 +61,21 @@ function drawCover(
   dx: number,
   dy: number,
   dw: number,
-  dh: number
+  dh: number,
+  sourceCrop?: { w: number; h: number; x: number; y: number } | null
 ): void {
-  const fw = frame.displayWidth;
-  const fh = frame.displayHeight;
+  // If sourceCrop is set, treat the crop region as the effective frame
+  const baseX = sourceCrop?.x ?? 0;
+  const baseY = sourceCrop?.y ?? 0;
+  const fw = sourceCrop?.w ?? frame.displayWidth;
+  const fh = sourceCrop?.h ?? frame.displayHeight;
 
-  // Compute source rect for "cover" fit
+  // Compute source rect for "cover" fit within the (possibly cropped) region
   const scale = Math.max(dw / fw, dh / fh);
   const sw = dw / scale;
   const sh = dh / scale;
-  const sx = (fw - sw) / 2;
-  const sy = (fh - sh) / 2;
+  const sx = baseX + (fw - sw) / 2;
+  const sy = baseY + (fh - sh) / 2;
 
   ctx.drawImage(frame.source, sx, sy, sw, sh, dx, dy, dw, dh);
 }
@@ -171,11 +187,13 @@ export function compositeFrame(
 
   const refIsPortrait = isPortrait(refTrack);
 
+  const refCrop = refTrack.sourceCrop;
+
   if (isMobile) {
     if (refIsPortrait) {
       // Mobile + portrait ref:
       // Reference fills full frame, creator overlaid at bottom (720x405)
-      drawCover(ctx, refFrame, 0, 0, canvasW, canvasH);
+      drawCover(ctx, refFrame, 0, 0, canvasW, canvasH, refCrop);
       drawCover(
         ctx,
         creatorFrame,
@@ -190,15 +208,19 @@ export function compositeFrame(
       drawBlurredBackground(ctx, refFrame, 0, 0, canvasW, canvasH);
 
       // Sharp reference centered in the space above creator
-      const refH =
-        Math.round((canvasW * refTrack.height) / refTrack.width) || Math.round((canvasW * 9) / 16);
+      const dims = effectiveDimensions(refTrack);
+      const refH = Math.round((canvasW * dims.h) / dims.w);
       const availableH = canvasH - MOBILE_CREATOR_H;
       const refY = Math.max(0, Math.round((availableH - refH) / 2));
 
-      // Draw sharp ref, scaled to full width
-      const scale = canvasW / refFrame.displayWidth;
-      const scaledH = Math.round(refFrame.displayHeight * scale);
-      ctx.drawImage(refFrame.source, 0, refY, canvasW, scaledH);
+      // Draw sharp ref, scaled to full width (using crop region if available)
+      if (refCrop) {
+        drawCover(ctx, refFrame, 0, refY, canvasW, refH, refCrop);
+      } else {
+        const scale = canvasW / refFrame.displayWidth;
+        const scaledH = Math.round(refFrame.displayHeight * scale);
+        ctx.drawImage(refFrame.source, 0, refY, canvasW, scaledH);
+      }
 
       // Creator at bottom
       drawCover(
@@ -215,7 +237,8 @@ export function compositeFrame(
     if (refIsPortrait) {
       // Landscape + portrait ref:
       // Reference flush-right full-height, creator fills remaining left
-      const refScaledW = Math.round((refTrack.width * canvasH) / refTrack.height);
+      const dims = effectiveDimensions(refTrack);
+      const refScaledW = Math.round((dims.w * canvasH) / dims.h);
       const creatorFillW = canvasW - refScaledW;
       const refX = canvasW - refScaledW;
 
@@ -225,11 +248,11 @@ export function compositeFrame(
       }
 
       // Reference flush-right full-height
-      drawCover(ctx, refFrame, refX, 0, refScaledW, canvasH);
+      drawCover(ctx, refFrame, refX, 0, refScaledW, canvasH, refCrop);
     } else {
       // Landscape + landscape ref:
       // Reference fills entire frame, creator PIP at bottom-right
-      drawCover(ctx, refFrame, 0, 0, canvasW, canvasH);
+      drawCover(ctx, refFrame, 0, 0, canvasW, canvasH, refCrop);
 
       const pipX = canvasW - PIP_W;
       const pipY = canvasH - PIP_H;

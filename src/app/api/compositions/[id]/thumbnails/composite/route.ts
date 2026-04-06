@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
 import { compositeThumbnailSharp } from '@shared/util/thumbnailGenerator';
+import sharp from 'sharp';
 import { S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { randomUUID } from 'crypto';
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     const body = await req.json();
-    const { referenceAssetId, cutoutAssetId, position, size } = body;
+    const { referenceAssetId, cutoutAssetId, position, size, bgMode, bgCrop } = body;
 
     if (!referenceAssetId || !cutoutAssetId) {
       return NextResponse.json(
@@ -42,10 +43,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const pos: Position = VALID_POSITIONS.includes(position) ? position : 'right';
     const sz: Size = VALID_SIZES.includes(size) ? size : 'large';
 
-    // Fetch both assets
+    // Fetch both assets (background can be 'reference' or 'ai_background')
     const [refAsset, cutoutAsset] = await Promise.all([
       prisma.thumbnailAsset.findFirst({
-        where: { id: referenceAssetId, compositionId: id, type: 'reference' },
+        where: {
+          id: referenceAssetId,
+          compositionId: id,
+          type: { in: ['reference', 'ai_background'] },
+        },
       }),
       prisma.thumbnailAsset.findFirst({
         where: { id: cutoutAssetId, compositionId: id, type: 'cutout' },
@@ -66,10 +71,68 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Failed to download assets from S3' }, { status: 500 });
     }
 
-    const [refBuf, cutoutBuf] = await Promise.all([
+    const [rawRefBuf, cutoutBuf] = await Promise.all([
       refRes.arrayBuffer().then((ab) => Buffer.from(ab)),
       cutoutRes.arrayBuffer().then((ab) => Buffer.from(ab)),
     ]);
+
+    // Apply background crop if specified — pad non-16:9 crops with edge colors
+    let refBuf: Buffer = rawRefBuf;
+    if (bgCrop && bgCrop.w > 0 && bgCrop.h > 0) {
+      const cropW = Math.round(bgCrop.w);
+      const cropH = Math.round(bgCrop.h);
+
+      // Extract the selected region
+      const cropped = await sharp(rawRefBuf)
+        .extract({
+          left: Math.round(bgCrop.x),
+          top: Math.round(bgCrop.y),
+          width: cropW,
+          height: cropH,
+        })
+        .toBuffer();
+
+      const TARGET_AR = 16 / 9;
+      const cropAR = cropW / cropH;
+
+      if (Math.abs(cropAR - TARGET_AR) > 0.01) {
+        // Need padding — sample dominant edge color via sharp stats on a 1px border strip
+        let padTop = 0,
+          padBottom = 0,
+          padLeft = 0,
+          padRight = 0;
+
+        if (cropAR > TARGET_AR) {
+          // Wider than 16:9 → pad top/bottom
+          const targetH = Math.round(cropW / TARGET_AR);
+          const totalPad = targetH - cropH;
+          padTop = Math.round(totalPad / 2);
+          padBottom = totalPad - padTop;
+        } else {
+          // Taller than 16:9 → pad left/right
+          const targetW = Math.round(cropH * TARGET_AR);
+          const totalPad = targetW - cropW;
+          padLeft = Math.round(totalPad / 2);
+          padRight = totalPad - padLeft;
+        }
+
+        // Sample the dominant color from the edges of the cropped image
+        const { dominant } = await sharp(cropped).stats();
+        const bgColor = { r: dominant.r, g: dominant.g, b: dominant.b, alpha: 255 };
+
+        refBuf = await sharp(cropped)
+          .extend({
+            top: padTop,
+            bottom: padBottom,
+            left: padLeft,
+            right: padRight,
+            background: bgColor,
+          })
+          .toBuffer();
+      } else {
+        refBuf = cropped;
+      }
+    }
 
     // Composite with sharp
     const composited = await compositeThumbnailSharp(refBuf, cutoutBuf, pos, sz);
@@ -93,6 +156,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const s3Url = `https://${bucket}.s3.${region}.amazonaws.com/${s3Key}`;
 
+    // Validate bgMode
+    const validBgModes = ['frame', 'ai'] as const;
+    const bg = validBgModes.includes(bgMode) ? bgMode : undefined;
+
     // Update composition settings + upsert the selected thumbnail
     await prisma.$transaction([
       prisma.composition.update({
@@ -100,6 +167,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         data: {
           thumbnailCutoutPosition: pos,
           thumbnailCutoutSize: sz,
+          ...(bg && { thumbnailBgMode: bg }),
+          thumbnailBgCrop: bgCrop ? JSON.stringify(bgCrop) : null,
         },
       }),
       prisma.compositionThumbnail.updateMany({

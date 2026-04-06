@@ -6,18 +6,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Loader2, RefreshCw, Scissors, Share2, Wand2, X } from 'lucide-react';
+import { ArrowLeft, Crop, Loader2, RefreshCw, Scissors, Share2, Wand2, X } from 'lucide-react';
 import { ModeSelector } from '../_components/ModeSelector';
 import { VideoUploader, type UploadStatus } from '../_components/VideoUploader';
-import { CreatorVideoPanel } from '../_components/CreatorVideoPanel';
-import { ReferenceTrackPanel } from '../_components/ReferenceTrackPanel';
+import { CompositionVideoPanel } from '../_components/CompositionVideoPanel';
 import { TimelineEditor } from '../_components/TimelineEditor';
 import { RenderControls } from '../_components/RenderControls';
 import { ThumbnailPanel } from '../_components/ThumbnailPanel';
 import { TrimModal } from '../_components/TrimModal';
+import { CropAdjustModal } from '../_components/CropAdjustModal';
 import { EditOutputModal, type CompositionCut } from '../_components/EditOutputModal';
 import { VideoPublishModal } from '@/components/VideoPublishModal';
 import { supportsClientRender } from '@/lib/client-render';
+import { detectCropFromVideo } from '@/lib/client-render/detect-crop';
 import {
   saveBlobToCache,
   loadBlobsFromCache,
@@ -27,6 +28,7 @@ import {
   saveRefFileToCache,
   loadRefFilesFromCache,
   clearRefFileCache,
+  updateRefFileCropInCache,
 } from '@/lib/client-render/blob-cache';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -45,6 +47,7 @@ interface Track {
   sortOrder: number;
   hasAudio: boolean;
   transcriptJson?: Array<{ start: number; end: number; text: string }> | null;
+  sourceCrop?: { w: number; h: number; x: number; y: number } | null;
 }
 
 interface Output {
@@ -135,7 +138,10 @@ export default function CompositionEditorPage() {
   const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null);
   const [publishAllOpen, setPublishAllOpen] = useState(false);
   const [thumbnailGenerating, setThumbnailGenerating] = useState(false);
+  const [thumbnailCompositeUrl, setThumbnailCompositeUrl] = useState<string | null>(null);
   const thumbnailRegenerateRef = useRef<(() => void) | null>(null);
+  const uploadOutputRef = useRef<((layout: string) => Promise<void>) | null>(null);
+  const [uploadingLayout, setUploadingLayout] = useState<string | null>(null);
   const [editOutputOpen, setEditOutputOpen] = useState(false);
   const [autoEditing, setAutoEditing] = useState(false);
   const [autoEditCuts, setAutoEditCuts] = useState<CompositionCut[] | undefined>(undefined);
@@ -148,6 +154,12 @@ export default function CompositionEditorPage() {
     trimEndS: number | null;
     title: string;
   } | null>(null);
+
+  // Crop adjustment state
+  const [autoDetectedCrops, setAutoDetectedCrops] = useState<
+    Map<string, { w: number; h: number; x: number; y: number }>
+  >(new Map());
+  const [cropAdjustTarget, setCropAdjustTarget] = useState<string | null>(null);
 
   // Background upload state — creator video
   const [creatorBlobUrl, setCreatorBlobUrl] = useState<string | null>(null);
@@ -201,7 +213,26 @@ export default function CompositionEditorPage() {
         throw new Error('Failed to load');
       }
       const data = await res.json();
-      setComposition(data);
+      setComposition((prev) => {
+        if (!prev) return data;
+        // Preserve client-rendered blob URLs and local tracks across refetches
+        const localTracks = prev.tracks.filter((t) => t.id.startsWith('local_'));
+        const mergedOutputs = (data.outputs || []).map((o: Output) => {
+          const prevOutput = prev.outputs.find((po) => po.layout === o.layout);
+          if (!o.s3Url && prevOutput?.s3Url?.startsWith('blob:')) {
+            return { ...o, s3Url: prevOutput.s3Url, status: prevOutput.status };
+          }
+          return o;
+        });
+        return {
+          ...data,
+          tracks: [...(data.tracks || []), ...localTracks],
+          outputs: mergedOutputs.length > 0 ? mergedOutputs : prev.outputs,
+          creatorDurationS: data.creatorDurationS ?? prev.creatorDurationS,
+          creatorWidth: data.creatorWidth ?? prev.creatorWidth,
+          creatorHeight: data.creatorHeight ?? prev.creatorHeight,
+        };
+      });
     } catch (err) {
       toast.error('Failed to load composition');
     } finally {
@@ -313,11 +344,13 @@ export default function CompositionEditorPage() {
       console.log('[page] Restored creator file from IndexedDB');
     });
 
-    // Restore reference files
-    loadRefFilesFromCache(compositionId).then((cached) => {
+    // Restore reference files (use cached crop if available, else re-detect)
+    loadRefFilesFromCache(compositionId).then(async (cached) => {
       if (cached.size === 0) return;
       const newRefFiles = new Map<string, File>();
       const newTracks: Track[] = [];
+      const detectedCrops = new Map<string, { w: number; h: number; x: number; y: number }>();
+      const cropPromises: Promise<void>[] = [];
       cached.forEach((entry) => {
         const file = new File([entry.blob], entry.name, {
           type: entry.type,
@@ -325,7 +358,7 @@ export default function CompositionEditorPage() {
         });
         const blobUrl = URL.createObjectURL(entry.blob);
         newRefFiles.set(entry.trackId, file);
-        newTracks.push({
+        const track: Track = {
           id: entry.trackId,
           label: entry.label,
           s3Key: '',
@@ -338,8 +371,41 @@ export default function CompositionEditorPage() {
           trimEndS: null,
           sortOrder: 0,
           hasAudio: true,
-        });
+        };
+        newTracks.push(track);
+
+        // Use cached sourceCrop if available; otherwise re-detect for landscape tracks
+        if (entry.sourceCrop) {
+          track.sourceCrop = entry.sourceCrop;
+          detectedCrops.set(entry.trackId, entry.sourceCrop);
+          console.log(`[page] Restored cached crop for ref ${entry.trackId}:`, entry.sourceCrop);
+        } else if (entry.width > entry.height) {
+          cropPromises.push(
+            (async () => {
+              const video = document.createElement('video');
+              video.preload = 'auto';
+              video.muted = true;
+              video.src = blobUrl;
+              const crop = await detectCropFromVideo(video, entry.width, entry.height);
+              if (crop) {
+                track.sourceCrop = crop;
+                detectedCrops.set(entry.trackId, crop);
+                console.log(`[page] Detected crop for restored ref ${entry.trackId}:`, crop);
+              }
+            })()
+          );
+        }
       });
+      // Wait for all crop detections to finish before adding tracks
+      await Promise.all(cropPromises);
+      // Store all detected/restored crops for "Reset to Auto"
+      if (detectedCrops.size > 0) {
+        setAutoDetectedCrops((prev) => {
+          const next = new Map(prev);
+          detectedCrops.forEach((c, id) => next.set(id, c));
+          return next;
+        });
+      }
       setRefFiles((prev) => {
         const merged = new Map(prev);
         newRefFiles.forEach((f, id) => merged.set(id, f));
@@ -359,10 +425,13 @@ export default function CompositionEditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composition, useClientRender, compositionId]);
 
-  // Transcript polling: poll for transcript + auto-edit results when creator video exists but transcript is missing
+  // Transcript polling: poll for transcript + auto-edit results when creator or tracks are missing transcripts
+  const tracksNeedTranscript = composition?.tracks.some(
+    (t) => !t.id.startsWith('local_') && t.s3Url && !t.transcriptJson
+  );
   useEffect(() => {
-    // Only poll when there's a creator video but no transcript yet
-    const needsPoll = composition?.creatorS3Url && !composition.creatorTranscriptJson && !loading;
+    const creatorNeedsPoll = composition?.creatorS3Url && !composition.creatorTranscriptJson;
+    const needsPoll = (creatorNeedsPoll || tracksNeedTranscript) && !loading;
     if (!needsPoll) return;
 
     const interval = setInterval(async () => {
@@ -370,13 +439,29 @@ export default function CompositionEditorPage() {
         const res = await fetch(`/api/compositions/${compositionId}`);
         if (!res.ok) return;
         const data = await res.json();
-        if (data.creatorTranscriptJson) {
+
+        const creatorDone = !data.creatorS3Url || data.creatorTranscriptJson;
+        const tracksDone = !(data.tracks || []).some(
+          (t: Track) => !t.id.startsWith('local_') && t.s3Url && !t.transcriptJson
+        );
+
+        if (creatorDone || tracksDone) {
+          // At least one side finished — update state
           setComposition((prev) => {
             if (!prev) return data;
             const localTracks = prev.tracks.filter((t) => t.id.startsWith('local_'));
+            // Preserve client-rendered blob URLs that the API doesn't know about
+            const mergedOutputs = (data.outputs || []).map((o: Output) => {
+              const prevOutput = prev.outputs.find((po) => po.layout === o.layout);
+              if (!o.s3Url && prevOutput?.s3Url?.startsWith('blob:')) {
+                return { ...o, s3Url: prevOutput.s3Url, status: prevOutput.status };
+              }
+              return o;
+            });
             return {
               ...data,
               tracks: [...(data.tracks || []), ...localTracks],
+              outputs: mergedOutputs.length > 0 ? mergedOutputs : prev.outputs,
               creatorDurationS: data.creatorDurationS ?? prev.creatorDurationS,
               creatorWidth: data.creatorWidth ?? prev.creatorWidth,
               creatorHeight: data.creatorHeight ?? prev.creatorHeight,
@@ -392,7 +477,10 @@ export default function CompositionEditorPage() {
             );
           }
 
-          clearInterval(interval);
+          // Stop polling once everything is done
+          if (creatorDone && tracksDone) {
+            clearInterval(interval);
+          }
         }
       } catch {
         // Ignore polling errors
@@ -400,7 +488,13 @@ export default function CompositionEditorPage() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [compositionId, composition?.creatorS3Url, composition?.creatorTranscriptJson, loading]);
+  }, [
+    compositionId,
+    composition?.creatorS3Url,
+    composition?.creatorTranscriptJson,
+    tracksNeedTranscript,
+    loading,
+  ]);
 
   const save = useCallback(
     async (updates: Partial<Composition>) => {
@@ -418,9 +512,18 @@ export default function CompositionEditorPage() {
         setComposition((prev) => {
           if (!prev) return data;
           const localTracks = prev.tracks.filter((t) => t.id.startsWith('local_'));
+          // Preserve client-rendered blob URLs that the API doesn't know about
+          const mergedOutputs = (data.outputs || []).map((o: Output) => {
+            const prevOutput = prev.outputs.find((po) => po.layout === o.layout);
+            if (!o.s3Url && prevOutput?.s3Url?.startsWith('blob:')) {
+              return { ...o, s3Url: prevOutput.s3Url, status: prevOutput.status };
+            }
+            return o;
+          });
           return {
             ...data,
             tracks: [...(data.tracks || []), ...localTracks],
+            outputs: mergedOutputs.length > 0 ? mergedOutputs : prev.outputs,
             creatorDurationS: data.creatorDurationS ?? prev.creatorDurationS,
             creatorWidth: data.creatorWidth ?? prev.creatorWidth,
             creatorHeight: data.creatorHeight ?? prev.creatorHeight,
@@ -564,7 +667,7 @@ export default function CompositionEditorPage() {
         creatorWidth: creatorLocalMeta?.width ?? null,
         creatorHeight: creatorLocalMeta?.height ?? null,
       } as any);
-      // Revoke blob URL and switch to CreatorVideoPanel
+      // Revoke blob URL and switch to CompositionVideoPanel
       if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
       setCreatorBlobUrl(null);
       setCreatorUploadStatus('idle');
@@ -591,9 +694,8 @@ export default function CompositionEditorPage() {
         height: data.height,
       });
       if (useClientRender) {
-        // Client-render mode: create a local track immediately instead of uploading
+        // Client-render mode: detect crop first, then create the track with sourceCrop set
         setRefUploadStatus('complete');
-        // Generate a temporary track ID and add to composition locally
         const tempId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         setRefFiles((prev) => new Map(prev).set(tempId, data.file));
         // Persist to IndexedDB so file survives page refresh (fire-and-forget)
@@ -603,24 +705,44 @@ export default function CompositionEditorPage() {
           width: data.width,
           height: data.height,
         });
-        setComposition((prev) => {
-          if (!prev) return prev;
-          const newTrack: Track = {
-            id: tempId,
-            label: data.filename,
-            s3Key: '',
-            s3Url: data.blobUrl,
-            durationS: data.durationS,
-            width: data.width,
-            height: data.height,
-            startAtS: 0,
-            trimStartS: 0,
-            trimEndS: null,
-            sortOrder: prev.tracks.length,
-            hasAudio: true, // assume true; no server probe in local mode
-          };
-          return { ...prev, tracks: [...prev.tracks, newTrack] };
-        });
+
+        // Detect embedded portrait content BEFORE creating the track
+        const detectAndAddTrack = async () => {
+          let sourceCrop: { w: number; h: number; x: number; y: number } | null = null;
+          if (data.width > data.height) {
+            const video = document.createElement('video');
+            video.preload = 'auto';
+            video.muted = true;
+            video.src = data.blobUrl;
+            sourceCrop = await detectCropFromVideo(video, data.width, data.height);
+            console.log('[page] Crop detection result for ref track:', sourceCrop);
+            // Store auto-detected crop so "Reset to Auto" works after manual edits
+            if (sourceCrop) {
+              setAutoDetectedCrops((prev) => new Map(prev).set(tempId, sourceCrop!));
+            }
+          }
+          setComposition((prev) => {
+            if (!prev) return prev;
+            const newTrack: Track = {
+              id: tempId,
+              label: data.filename,
+              s3Key: '',
+              s3Url: data.blobUrl,
+              durationS: data.durationS,
+              width: data.width,
+              height: data.height,
+              startAtS: 0,
+              trimStartS: 0,
+              trimEndS: null,
+              sortOrder: prev.tracks.length,
+              hasAudio: true, // assume true; no server probe in local mode
+              sourceCrop: sourceCrop ?? undefined,
+            };
+            return { ...prev, tracks: [...prev.tracks, newTrack] };
+          });
+        };
+        detectAndAddTrack();
+
         // Clean up pending ref state
         setPendingRefBlobUrl(null);
         setPendingRefMeta(null);
@@ -638,6 +760,9 @@ export default function CompositionEditorPage() {
     async (data: { s3Key: string; s3Url: string }) => {
       setRefUploadStatus('complete');
       setAddingTrack(true);
+      // Clear blob preview immediately to prevent duplicate card flash
+      if (pendingRefBlobUrl) URL.revokeObjectURL(pendingRefBlobUrl);
+      setPendingRefBlobUrl(null);
       try {
         const probe = await probeVideo(data.s3Key);
         const res = await fetch(`/api/compositions/${compositionId}/tracks`, {
@@ -659,8 +784,6 @@ export default function CompositionEditorPage() {
       } catch (err) {
         toast.error('Failed to add track');
       } finally {
-        if (pendingRefBlobUrl) URL.revokeObjectURL(pendingRefBlobUrl);
-        setPendingRefBlobUrl(null);
         setPendingRefMeta(null);
         setRefUploadStatus('idle');
         setAddingTrack(false);
@@ -753,6 +876,24 @@ export default function CompositionEditorPage() {
       setTrimTarget(null);
     },
     [trimTarget, save, handleUpdateTrack]
+  );
+
+  // Callback when CropAdjustModal saves
+  const handleCropSave = useCallback(
+    (trackId: string, crop: { w: number; h: number; x: number; y: number } | null) => {
+      setComposition((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          tracks: prev.tracks.map((t) =>
+            t.id === trackId ? { ...t, sourceCrop: crop ?? undefined } : t
+          ),
+        };
+      });
+      // Persist to IndexedDB cache
+      updateRefFileCropInCache(compositionId, trackId, crop);
+    },
+    [compositionId]
   );
 
   // Callback when RenderControls produces a new blob
@@ -886,6 +1027,73 @@ export default function CompositionEditorPage() {
   // Effective creator duration — local metadata as fallback (client-render may not persist to DB)
   const creatorDurationS = composition?.creatorDurationS ?? creatorLocalMeta?.durationS ?? 0;
 
+  // Whether any transcription is still in progress (creator or tracks)
+  const transcribing =
+    !!(composition?.creatorS3Url && !composition.creatorTranscriptJson) || !!tracksNeedTranscript;
+
+  // Wait for all transcripts to complete — polls the API until ready (3min timeout)
+  const waitForTranscripts = useCallback(async (): Promise<Composition | null> => {
+    const maxWaitMs = 3 * 60 * 1000;
+    const pollIntervalMs = 3000;
+    const deadline = Date.now() + maxWaitMs;
+
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(`/api/compositions/${compositionId}`);
+        if (!res.ok) break;
+        const data = await res.json();
+
+        const creatorDone = !data.creatorS3Url || data.creatorTranscriptJson;
+        const tracksDone = !(data.tracks || []).some(
+          (t: Track) => !t.id.startsWith('local_') && t.s3Url && !t.transcriptJson
+        );
+
+        if (creatorDone && tracksDone) {
+          // Merge into state, preserving client-rendered blob URLs
+          setComposition((prev) => {
+            if (!prev) return data;
+            const localTracks = prev.tracks.filter((t) => t.id.startsWith('local_'));
+            const mergedOutputs = (data.outputs || []).map((o: Output) => {
+              const prevOutput = prev.outputs.find((po) => po.layout === o.layout);
+              if (!o.s3Url && prevOutput?.s3Url?.startsWith('blob:')) {
+                return { ...o, s3Url: prevOutput.s3Url, status: prevOutput.status };
+              }
+              return o;
+            });
+            return {
+              ...data,
+              tracks: [...(data.tracks || []), ...localTracks],
+              outputs: mergedOutputs.length > 0 ? mergedOutputs : prev.outputs,
+              creatorDurationS: data.creatorDurationS ?? prev.creatorDurationS,
+              creatorWidth: data.creatorWidth ?? prev.creatorWidth,
+              creatorHeight: data.creatorHeight ?? prev.creatorHeight,
+            };
+          });
+          return data;
+        }
+      } catch {
+        // ignore poll errors
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+    return null;
+  }, [compositionId]);
+
+  const handleRequestUpload = useCallback(
+    async (layout: string) => {
+      if (!uploadOutputRef.current) return;
+      setUploadingLayout(layout);
+      try {
+        await uploadOutputRef.current(layout);
+        // Re-fetch so the modal sees updated hasS3Key
+        await fetchComposition();
+      } finally {
+        setUploadingLayout(null);
+      }
+    },
+    [fetchComposition]
+  );
+
   if (loading) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8">
@@ -949,130 +1157,133 @@ export default function CompositionEditorPage() {
           <CardDescription>Your commentary footage</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {composition.creatorS3Url && !creatorBlobUrl ? (
-              <CreatorVideoPanel
-                s3Url={composition.creatorS3Url}
-                durationS={composition.creatorDurationS ?? undefined}
-                onTimeUpdate={setCurrentTime}
-                onClick={
-                  composition.creatorDurationS
-                    ? () =>
-                        setTrimTarget({
-                          type: 'creator',
-                          src: composition.creatorS3Url!,
-                          durationS: composition.creatorDurationS!,
-                          trimStartS: composition.creatorTrimStartS,
-                          trimEndS: composition.creatorTrimEndS ?? null,
-                          title: 'Trim Creator Video',
-                        })
-                    : undefined
-                }
-                deletingCreator={deletingCreator}
-                onDelete={async () => {
-                  if (!confirm('Delete this creator video?')) return;
-                  setDeletingCreator(true);
-                  try {
-                    await save({
-                      creatorS3Key: null,
-                      creatorS3Url: null,
-                      creatorDurationS: null,
-                      creatorWidth: null,
-                      creatorHeight: null,
-                      creatorTrimStartS: 0,
-                      creatorTrimEndS: null,
-                    } as any);
-                    toast.success('Creator video removed');
-                  } catch {
-                    toast.error('Failed to remove creator video');
-                  } finally {
-                    setDeletingCreator(false);
-                  }
-                }}
-              />
-            ) : (
-              <div className="space-y-2">
-                <VideoUploader
-                  label={
-                    useClientRender ? 'Add your commentary video' : 'Upload your commentary video'
-                  }
-                  blobUrl={creatorBlobUrl}
-                  uploadStatus={creatorUploadStatus}
-                  uploadProgress={creatorUploadProgress}
-                  uploadSpeed={creatorUploadSpeed}
-                  localOnly={useClientRender}
-                  onFileSelected={handleCreatorFileSelected}
-                  onUploadComplete={handleCreatorUploadComplete}
-                  onUploadProgress={(p, s) => {
-                    setCreatorUploadProgress(p);
-                    setCreatorUploadSpeed(s);
-                  }}
-                  onUploadError={(msg) => {
-                    setCreatorUploadStatus('error');
-                    toast.error(msg);
-                  }}
-                  onRemove={
-                    creatorBlobUrl
-                      ? () => {
-                          if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
-                          setCreatorBlobUrl(null);
-                          setCreatorFile(null);
-                          setCreatorLocalMeta(null);
-                          setCreatorUploadStatus('idle');
-                          setTranscriptionStatus('idle');
-                          clearCreatorFileCache(compositionId);
-                          setComposition((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  creatorDurationS: null,
-                                  creatorWidth: null,
-                                  creatorHeight: null,
-                                }
-                              : prev
-                          );
-                        }
-                      : undefined
-                  }
-                  keyPrefix={`compositions/${compositionId}/raw`}
-                />
-                {/* Trim available during upload */}
-                {creatorBlobUrl && creatorLocalMeta && creatorLocalMeta.durationS > 0 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1 text-xs"
-                    onClick={() =>
-                      setTrimTarget({
-                        type: 'creator',
-                        src: creatorBlobUrl,
-                        durationS: creatorLocalMeta.durationS,
-                        trimStartS: composition.creatorTrimStartS,
-                        trimEndS: composition.creatorTrimEndS ?? null,
-                        title: 'Trim Creator Video',
-                      })
+          {(() => {
+            // Creator video source: S3 URL or local blob
+            const creatorSrc = composition.creatorS3Url || creatorBlobUrl;
+            const creatorDur = creatorDurationS;
+            const hasCreatorVideo = !!creatorSrc;
+            // When creator exists via blob (client-render), the uploader would show
+            // the blob preview instead of the dropzone. We suppress that by not passing
+            // blobUrl when the creator is already shown as a CompositionVideoPanel.
+            const uploaderBlobUrl = hasCreatorVideo ? null : creatorBlobUrl;
+
+            return (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {/* Show creator video panel when a creator video exists */}
+                {hasCreatorVideo && (
+                  <CompositionVideoPanel
+                    src={creatorSrc!}
+                    label="Creator Video"
+                    badge="Commentary"
+                    sublabel={
+                      creatorDur > 0
+                        ? `${Math.floor(creatorDur / 60)}:${String(Math.floor(creatorDur % 60)).padStart(2, '0')}`
+                        : undefined
                     }
-                  >
-                    <Scissors className="h-3 w-3" />
-                    Trim
-                  </Button>
+                    onTimeUpdate={setCurrentTime}
+                    onClick={
+                      creatorDur > 0
+                        ? () =>
+                            setTrimTarget({
+                              type: 'creator',
+                              src: creatorSrc!,
+                              durationS: creatorDur,
+                              trimStartS: composition.creatorTrimStartS,
+                              trimEndS: composition.creatorTrimEndS ?? null,
+                              title: 'Trim Creator Video',
+                            })
+                        : undefined
+                    }
+                    deleting={deletingCreator}
+                    onDelete={async () => {
+                      if (!confirm('Delete this creator video?')) return;
+                      setDeletingCreator(true);
+                      try {
+                        if (composition.creatorS3Url) {
+                          await save({
+                            creatorS3Key: null,
+                            creatorS3Url: null,
+                            creatorDurationS: null,
+                            creatorWidth: null,
+                            creatorHeight: null,
+                            creatorTrimStartS: 0,
+                            creatorTrimEndS: null,
+                          } as any);
+                        }
+                        // Also clear local blob state
+                        if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
+                        setCreatorBlobUrl(null);
+                        setCreatorFile(null);
+                        setCreatorLocalMeta(null);
+                        setCreatorUploadStatus('idle');
+                        setTranscriptionStatus('idle');
+                        clearCreatorFileCache(compositionId);
+                        setComposition((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                creatorDurationS: null,
+                                creatorWidth: null,
+                                creatorHeight: null,
+                              }
+                            : prev
+                        );
+                        toast.success('Creator video removed');
+                      } catch {
+                        toast.error('Failed to remove creator video');
+                      } finally {
+                        setDeletingCreator(false);
+                      }
+                    }}
+                  />
                 )}
-                {/* Transcription status for client-render mode */}
-                {useClientRender && transcriptionStatus === 'transcribing' && (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Transcribing...
-                  </div>
-                )}
-                {useClientRender && transcriptionStatus === 'complete' && (
-                  <div className="text-xs text-green-600 dark:text-green-400">Transcript ready</div>
-                )}
-                {useClientRender && transcriptionStatus === 'error' && (
-                  <div className="text-xs text-destructive">Transcription failed</div>
-                )}
+
+                {/* Dropzone to add or replace creator video */}
+                <div className="space-y-2">
+                  <VideoUploader
+                    label={
+                      hasCreatorVideo
+                        ? 'Replace commentary video'
+                        : useClientRender
+                          ? 'Add your commentary video'
+                          : 'Upload your commentary video'
+                    }
+                    blobUrl={uploaderBlobUrl}
+                    uploadStatus={hasCreatorVideo ? 'idle' : creatorUploadStatus}
+                    uploadProgress={creatorUploadProgress}
+                    uploadSpeed={creatorUploadSpeed}
+                    localOnly={useClientRender}
+                    onFileSelected={handleCreatorFileSelected}
+                    onUploadComplete={handleCreatorUploadComplete}
+                    onUploadProgress={(p, s) => {
+                      setCreatorUploadProgress(p);
+                      setCreatorUploadSpeed(s);
+                    }}
+                    onUploadError={(msg) => {
+                      setCreatorUploadStatus('error');
+                      toast.error(msg);
+                    }}
+                    keyPrefix={`compositions/${compositionId}/raw`}
+                  />
+                  {/* Transcription status for client-render mode */}
+                  {useClientRender && transcriptionStatus === 'transcribing' && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Transcribing...
+                    </div>
+                  )}
+                  {useClientRender && transcriptionStatus === 'complete' && (
+                    <div className="text-xs text-green-600 dark:text-green-400">
+                      Transcript ready
+                    </div>
+                  )}
+                  {useClientRender && transcriptionStatus === 'error' && (
+                    <div className="text-xs text-destructive">Transcription failed</div>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
+            );
+          })()}
         </CardContent>
       </Card>
 
@@ -1093,29 +1304,63 @@ export default function CompositionEditorPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {composition.tracks.map((track, i) => (
-              <ReferenceTrackPanel
-                key={track.id}
-                track={track}
-                index={i}
-                mode={composition.mode as 'pre-synced' | 'timeline'}
-                onUpdate={handleUpdateTrack}
-                onRemove={handleRemoveTrack}
-                deleting={deletingTrackId === track.id}
-                disabled={isRendering}
-                onClick={() =>
-                  setTrimTarget({
-                    type: 'reference',
-                    trackId: track.id,
-                    src: track.s3Url,
-                    durationS: track.durationS,
-                    trimStartS: track.trimStartS,
-                    trimEndS: track.trimEndS,
-                    title: `Trim ${track.label || `Reference ${i + 1}`}`,
-                  })
-                }
-              />
-            ))}
+            {composition.tracks.map((track, i) => {
+              const effectiveDuration = (track.trimEndS ?? track.durationS) - track.trimStartS;
+              const trackTranscribing =
+                !track.id.startsWith('local_') && track.s3Url && !track.transcriptJson;
+              return (
+                <CompositionVideoPanel
+                  key={track.id}
+                  src={track.s3Url}
+                  label={track.label || `Reference ${i + 1}`}
+                  badge={`${effectiveDuration.toFixed(1)}s`}
+                  sublabel={!track.hasAudio ? 'No audio' : undefined}
+                  deleting={deletingTrackId === track.id}
+                  disabled={isRendering}
+                  onDelete={() => handleRemoveTrack(track.id)}
+                  onClick={() =>
+                    setTrimTarget({
+                      type: 'reference',
+                      trackId: track.id,
+                      src: track.s3Url,
+                      durationS: track.durationS,
+                      trimStartS: track.trimStartS,
+                      trimEndS: track.trimEndS,
+                      title: `Trim ${track.label || `Reference ${i + 1}`}`,
+                    })
+                  }
+                  extraOverlay={
+                    <>
+                      {trackTranscribing && (
+                        <div className="absolute left-1.5 top-1.5 z-10 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white backdrop-blur">
+                          <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                          Transcribing
+                        </div>
+                      )}
+                      {refFiles.has(track.id) && (
+                        <Button
+                          variant="secondary"
+                          size="icon"
+                          className="absolute left-1.5 top-1.5 h-7 w-7 rounded-full bg-white/85 text-gray-900 opacity-0 backdrop-blur transition-opacity hover:bg-white group-hover:opacity-100 dark:bg-zinc-900/80 dark:text-zinc-100 dark:hover:bg-zinc-900"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCropAdjustTarget(track.id);
+                          }}
+                          title="Adjust crop"
+                        >
+                          <Crop className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {track.sourceCrop && (
+                        <Badge className="absolute left-1.5 bottom-1.5 bg-blue-500/80 text-white text-[10px] backdrop-blur">
+                          Cropped
+                        </Badge>
+                      )}
+                    </>
+                  }
+                />
+              );
+            })}
 
             {composition.tracks.length < 10 && (
               <VideoUploader
@@ -1171,7 +1416,8 @@ export default function CompositionEditorPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CardTitle>Output</CardTitle>
-              {composition.creatorS3Url && !composition.creatorTranscriptJson && (
+              {((composition.creatorS3Url && !composition.creatorTranscriptJson) ||
+                tracksNeedTranscript) && (
                 <Badge
                   variant="outline"
                   className="gap-1 text-xs font-normal text-muted-foreground"
@@ -1242,17 +1488,6 @@ export default function CompositionEditorPage() {
                   Edit
                 </Button>
               )}
-              {completedOutputs.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 gap-1 text-xs"
-                  onClick={() => setPublishAllOpen(true)}
-                >
-                  <Share2 className="h-3 w-3" />
-                  Publish
-                </Button>
-              )}
             </div>
           </div>
         </CardHeader>
@@ -1268,10 +1503,10 @@ export default function CompositionEditorPage() {
             }
             uploadProgress={Math.max(creatorUploadProgress ?? 0, refUploadProgress ?? 0)}
             hasPortraitRef={composition.tracks.some(
-              (t) => t.width != null && t.height != null && t.height > t.width
+              (t) => t.sourceCrop || (t.width != null && t.height != null && t.height > t.width)
             )}
             hasLandscapeRef={composition.tracks.some(
-              (t) => t.width == null || t.height == null || t.width >= t.height
+              (t) => !t.sourceCrop && (t.width == null || t.height == null || t.width >= t.height)
             )}
             autoLayouts={detectOutputLayouts()}
             onStatusChange={handleStatusChange}
@@ -1287,6 +1522,9 @@ export default function CompositionEditorPage() {
             captionsEnabled={captionsEnabled}
             captionFontSizePx={captionFontSizePx}
             autoEditing={autoEditing}
+            transcribing={transcribing}
+            onWaitForTranscripts={waitForTranscripts}
+            uploadOutputRef={uploadOutputRef}
           />
         </CardContent>
       </Card>
@@ -1297,11 +1535,7 @@ export default function CompositionEditorPage() {
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <CardTitle>Thumbnail Builder</CardTitle>
-              <CardDescription>
-                {isRendering
-                  ? 'Thumbnails will be generated after render completes.'
-                  : 'Choose a background, cutout, position, and size.'}
-              </CardDescription>
+              <CardDescription>Choose a background, cutout, position, and size.</CardDescription>
             </div>
             <Button
               variant="outline"
@@ -1331,9 +1565,48 @@ export default function CompositionEditorPage() {
             skipAutoGenerate={composition.outputs?.some((o) => o.s3Url?.startsWith('blob:'))}
             creatorFile={creatorFile}
             refFiles={refFiles}
+            onCompositeUrlChange={setThumbnailCompositeUrl}
           />
         </CardContent>
       </Card>
+
+      {/* Publish */}
+      {completedOutputs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="space-y-1">
+              <CardTitle>Publish</CardTitle>
+              <CardDescription>Share your reaction to connected platforms.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-start gap-6">
+              {thumbnailCompositeUrl && (
+                <div className="space-y-1.5 shrink-0">
+                  <p className="text-sm font-medium">Thumbnail</p>
+                  <img
+                    src={thumbnailCompositeUrl}
+                    alt="Composite thumbnail"
+                    className="w-48 rounded-md border"
+                  />
+                  <p className="text-[11px] text-muted-foreground">Used as YouTube thumbnail</p>
+                </div>
+              )}
+              <div className="flex-1 space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {thumbnailCompositeUrl
+                    ? 'Publish your rendered video with the current thumbnail to your connected accounts.'
+                    : 'Publish your rendered video to your connected accounts.'}
+                </p>
+                <Button onClick={() => setPublishAllOpen(true)}>
+                  <Share2 className="h-4 w-4" />
+                  Publish
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Publish video modal */}
       <VideoPublishModal
@@ -1352,8 +1625,25 @@ export default function CompositionEditorPage() {
           title: composition.title,
           trackLabels: composition.tracks.map((t) => t.label || '').filter(Boolean),
           layouts: completedOutputs.map((o) => o.layout),
-          transcript: completedOutputs.find((o) => o.transcript)?.transcript || undefined,
+          transcript: (() => {
+            const parts: string[] = [];
+            if (composition.creatorTranscriptJson) {
+              parts.push(
+                composition.creatorTranscriptJson.map((s: { text: string }) => s.text).join(' ')
+              );
+            }
+            for (const t of composition.tracks) {
+              if (t.transcriptJson) {
+                parts.push(
+                  (t.transcriptJson as Array<{ text: string }>).map((s) => s.text).join(' ')
+                );
+              }
+            }
+            return parts.join('\n\n') || undefined;
+          })(),
         }}
+        onRequestUpload={handleRequestUpload}
+        uploadingLayout={uploadingLayout}
       />
 
       {/* Trim modal */}
@@ -1371,6 +1661,31 @@ export default function CompositionEditorPage() {
           title={trimTarget.title}
         />
       )}
+
+      {/* Crop adjust modal */}
+      {cropAdjustTarget &&
+        (() => {
+          const track = composition.tracks.find((t) => t.id === cropAdjustTarget);
+          const file = refFiles.get(cropAdjustTarget);
+          if (!track || !file) return null;
+          return (
+            <CropAdjustModal
+              open={true}
+              onOpenChange={(open) => {
+                if (!open) setCropAdjustTarget(null);
+              }}
+              videoFile={file}
+              videoWidth={track.width ?? 1920}
+              videoHeight={track.height ?? 1080}
+              currentCrop={track.sourceCrop ?? null}
+              autoCrop={autoDetectedCrops.get(cropAdjustTarget) ?? null}
+              onSave={(crop) => {
+                handleCropSave(cropAdjustTarget, crop);
+                setCropAdjustTarget(null);
+              }}
+            />
+          );
+        })()}
 
       {/* Edit output modal */}
       {completedOutputs.length > 0 && (

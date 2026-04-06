@@ -17,6 +17,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         id: true,
         thumbnailCutoutPosition: true,
         thumbnailCutoutSize: true,
+        thumbnailBgMode: true,
+        thumbnailBgCrop: true,
       },
     });
     if (!composition) {
@@ -30,6 +32,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const referenceFrames = assets.filter((a) => a.type === 'reference');
     const cutouts = assets.filter((a) => a.type === 'cutout');
+    const aiBackgrounds = assets.filter((a) => a.type === 'ai_background');
 
     // Get current selected composite thumbnail URL
     const selectedThumb = await prisma.compositionThumbnail.findFirst({
@@ -40,9 +43,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({
       referenceFrames,
       cutouts,
+      aiBackgrounds,
       settings: {
         position: composition.thumbnailCutoutPosition,
         size: composition.thumbnailCutoutSize,
+        bgMode: composition.thumbnailBgMode,
+        bgCrop: composition.thumbnailBgCrop ? JSON.parse(composition.thumbnailBgCrop) : null,
       },
       compositeUrl: selectedThumb?.s3Url ?? null,
     });

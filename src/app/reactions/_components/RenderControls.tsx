@@ -50,6 +50,7 @@ interface CompositionData {
     sortOrder: number;
     hasAudio: boolean;
     transcriptJson?: Array<{ start: number; end: number; text: string }> | null;
+    sourceCrop?: { w: number; h: number; x: number; y: number } | null;
   }>;
 }
 
@@ -78,6 +79,10 @@ interface RenderControlsProps {
   captionsEnabled?: boolean;
   captionFontSizePx?: number;
   autoEditing?: boolean;
+  transcribing?: boolean;
+  onWaitForTranscripts?: () => Promise<any>;
+  /** Ref exposing the upload function so the parent can trigger S3 uploads externally. */
+  uploadOutputRef?: React.MutableRefObject<((layout: string) => Promise<void>) | null>;
 }
 
 const LAYOUT_LABELS: Record<string, string> = {
@@ -108,6 +113,9 @@ export function RenderControls({
   captionsEnabled,
   captionFontSizePx,
   autoEditing,
+  transcribing,
+  onWaitForTranscripts,
+  uploadOutputRef,
 }: RenderControlsProps) {
   const [rendering, setRendering] = useState(compositionStatus === 'rendering');
   const [publishTarget, setPublishTarget] = useState<{
@@ -270,6 +278,7 @@ export function RenderControls({
           height: track.height ?? 1080,
           hasAudio: track.hasAudio,
           sortOrder: track.sortOrder,
+          sourceCrop: track.sourceCrop,
         });
       }
 
@@ -360,6 +369,15 @@ export function RenderControls({
     setRendering(true);
     setClientRenderProgress(new Map());
 
+    // Wait for transcripts if captions enabled and transcription is in progress
+    if (captionsEnabled && transcribing && onWaitForTranscripts) {
+      toast('Waiting for transcription to finish…', { icon: '⏳' });
+      const fresh = await onWaitForTranscripts();
+      if (!fresh) {
+        toast.error('Transcription timed out — rendering without captions');
+      }
+    }
+
     // Create placeholder outputs — show "rendering" cards immediately
     const outputsByLayout: Record<string, Output> = {};
     for (const layout of autoLayouts) {
@@ -434,6 +452,9 @@ export function RenderControls({
     onStatusChange,
     buildClientRenderOptions,
     onBlobReady,
+    captionsEnabled,
+    transcribing,
+    onWaitForTranscripts,
   ]);
 
   /** Upload a client-rendered blob to S3 and save to the composition */
@@ -517,6 +538,16 @@ export function RenderControls({
     },
     [clientOutputBlobs, compositionId]
   );
+
+  // Expose upload function to parent via ref
+  useEffect(() => {
+    if (uploadOutputRef) {
+      uploadOutputRef.current = handleUploadOutput;
+    }
+    return () => {
+      if (uploadOutputRef) uploadOutputRef.current = null;
+    };
+  }, [uploadOutputRef, handleUploadOutput]);
 
   const handleRender = async () => {
     if (!hasCreator || !hasTracks) return;
@@ -633,6 +664,13 @@ export function RenderControls({
           {renderButtonLabel}
         </Button>
       </div>
+
+      {/* Transcription hint */}
+      {transcribing && !rendering && (
+        <p className="text-xs text-muted-foreground">
+          Transcription in progress — captions will be included once ready.
+        </p>
+      )}
 
       {/* Client render progress bar (aggregate) */}
       {rendering && clientRenderProgress.size > 0 && (
@@ -836,6 +874,8 @@ export function RenderControls({
           layouts: publishTarget ? [publishTarget.layout] : [],
           transcript: publishTarget?.transcript || undefined,
         }}
+        onRequestUpload={handleUploadOutput}
+        uploadingLayout={uploadingOutput}
       />
     </div>
   );

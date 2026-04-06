@@ -639,7 +639,7 @@ model Composition {
   title            String
   mode             String   @default("pre-synced") // pre-synced | timeline
   status           String   @default("draft") // draft | rendering | completed | failed
-  audioMode        String   @default("creator") // creator | reference | both
+  audioMode        String   @default("both") // creator | reference | both
   creatorVolume    Float    @default(1.0)
   referenceVolume  Float    @default(1.0)
   creatorS3Key     String?
@@ -656,6 +656,8 @@ model Composition {
   autoEditResult          Json?    // { cuts: AutoEditCut[]; summary: AutoEditSummary } — cached auto-edit analysis
   thumbnailCutoutPosition String  @default("right") // left | right
   thumbnailCutoutSize     String  @default("large")  // small | medium | large
+  thumbnailBgMode         String  @default("frame") // "frame" | "ai"
+  thumbnailBgCrop         String?               // JSON: {x,y,w,h} crop rect for thumbnail background
   createdAt           DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -735,6 +737,7 @@ model ThumbnailAsset {
   s3Url           String
   frameTimestampS Float
   visionScore     Float?
+  styleVariant    String?     // null for reference/cutout; "cinematic" | "vivid" | "gradient" | "warm" for ai_background
   createdAt       DateTime    @default(now())
 
   @@index([compositionId, type])
