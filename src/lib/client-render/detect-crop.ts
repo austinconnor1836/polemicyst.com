@@ -253,7 +253,7 @@ function motionEdgeAnalysis(
 // ---------------------------------------------------------------------------
 
 function edgeOnlyAnalysis(frame: Uint8Array, width: number, height: number): ClientCropRect | null {
-  const { vertPeaks } = computeEdges(frame, width, height);
+  const { vertPeaks, horizPeaks } = computeEdges(frame, width, height);
 
   console.log(
     '[detectCropFromVideo] Edge-only: found',
@@ -264,9 +264,10 @@ function edgeOnlyAnalysis(frame: Uint8Array, width: number, height: number): Cli
 
   if (vertPeaks.length < 2) return null;
 
-  // Try all pairs of vertical edges; find the pair whose width/height ratio
-  // is closest to 9/16 (0.5625) and both edges are strong
-  const target = 9 / 16;
+  // Try all pairs of vertical edges that form a portrait-shaped region.
+  // Prioritize edge strength (video player borders are the strongest edges).
+  // Ratio is used as a filter, not the primary score — the actual player may
+  // not be exactly 9:16 due to browser chrome, margins, etc.
   let bestPair: { left: number; right: number; score: number } | null = null;
 
   for (let i = 0; i < vertPeaks.length; i++) {
@@ -277,14 +278,14 @@ function edgeOnlyAnalysis(frame: Uint8Array, width: number, height: number): Cli
       if (regionW < width * 0.15) continue;
 
       const ratio = regionW / height;
-      if (ratio < 0.35 || ratio > 0.75) continue;
+      if (ratio < 0.3 || ratio > 0.75) continue;
 
-      // Score: closeness to 9:16 ratio, weighted by edge strength
-      const ratioDist = Math.abs(ratio - target);
-      const strengthScore =
-        (vertPeaks[i].strength + vertPeaks[j].strength) /
-        Math.max(1, ...vertPeaks.map((p) => p.strength));
-      const score = strengthScore / (1 + ratioDist * 10);
+      // Score: primarily edge strength, with a small bonus for 9:16 closeness
+      const minStrength = Math.min(vertPeaks[i].strength, vertPeaks[j].strength);
+      const avgStrength = (vertPeaks[i].strength + vertPeaks[j].strength) / 2;
+      const ratioDist = Math.abs(ratio - 9 / 16);
+      // Edge strength dominates; ratio closeness is a tiebreaker
+      const score = minStrength * 0.6 + avgStrength * 0.4 - ratioDist * 2;
 
       if (!bestPair || score > bestPair.score) {
         bestPair = { left, right, score };
@@ -306,16 +307,66 @@ function edgeOnlyAnalysis(frame: Uint8Array, width: number, height: number): Cli
     score: bestPair.score.toFixed(3),
   });
 
-  // Use frame center as vertical center (since we can't detect motion bounds)
-  const centerY = Math.round(height / 2);
-  return buildCrop9x16(
-    regionW,
-    bestPair.left,
-    centerY - height / 2,
-    centerY + height / 2,
-    width,
-    height
+  // --- Refine top/bottom using horizontal edges within the detected columns ---
+  // Compute horizontal edge strength restricted to just the detected column range
+  const restrictedRowEdge = new Float32Array(height);
+  for (let y = 1; y < height; y++) {
+    let sum = 0;
+    for (let x = bestPair.left; x < bestPair.right; x++) {
+      sum += Math.abs(frame[y * width + x] - frame[(y - 1) * width + x]);
+    }
+    restrictedRowEdge[y] = sum / regionW;
+  }
+  const restrictedHorizPeaks = findEdgePeaks(restrictedRowEdge, 10, 5.0);
+
+  // Look for strong horizontal edge in top 15% (address bar / browser chrome)
+  let topCrop = 0;
+  let bestTopStrength = 0;
+  for (const p of restrictedHorizPeaks) {
+    if (p.pos < height * 0.15 && p.strength > bestTopStrength) {
+      bestTopStrength = p.strength;
+      topCrop = p.pos;
+    }
+  }
+
+  // Look for strong horizontal edge in bottom 15% (taskbar / bottom UI)
+  let bottomCrop = height;
+  let bestBottomStrength = 0;
+  for (const p of restrictedHorizPeaks) {
+    if (p.pos > height * 0.85 && p.strength > bestBottomStrength) {
+      bestBottomStrength = p.strength;
+      bottomCrop = p.pos;
+    }
+  }
+
+  console.log('[detectCropFromVideo] Edge-only: horizontal refinement', {
+    topCrop,
+    topStrength: bestTopStrength.toFixed(1),
+    bottomCrop,
+    bottomStrength: bestBottomStrength.toFixed(1),
+    horizPeaks: restrictedHorizPeaks
+      .filter((p) => p.pos < height * 0.15 || p.pos > height * 0.85)
+      .map((p) => `y=${p.pos} str=${p.strength.toFixed(1)}`)
+      .join(', '),
+  });
+
+  // Build crop using refined bounds
+  const availableH = bottomCrop - topCrop;
+  const targetH = roundEven(regionW * (16 / 9));
+  const cropH = Math.min(targetH, roundEven(availableH));
+  const centerY = Math.round((topCrop + bottomCrop) / 2);
+  const cropY = clamp(centerY - Math.round(cropH / 2), topCrop, bottomCrop - cropH);
+  const cropX = clamp(bestPair.left, 0, width - roundEven(regionW));
+  const crop = {
+    w: roundEven(regionW),
+    h: cropH,
+    x: roundEven(cropX),
+    y: cropY,
+  };
+  console.log(
+    `[detectCropFromVideo] Detected 9:16 content: crop=${crop.w}:${crop.h}:${crop.x}:${crop.y}`
   );
+  return crop;
 }
 
 // ---------------------------------------------------------------------------

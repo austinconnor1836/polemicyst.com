@@ -272,15 +272,56 @@ async function motionEdgeDetect(
   );
 
   // Portrait content: width relative to frame height is ~9:16 (0.5625)
-  // Accept 0.35–0.75 to handle varying amounts of chrome/padding
-  if (widthToFrameRatio >= 0.35 && widthToFrameRatio <= 0.75) {
-    // Fit a 9:16 crop. Use the detected width, compute matching height.
+  // Accept 0.3–0.75 to handle varying amounts of chrome/padding
+  if (widthToFrameRatio >= 0.3 && widthToFrameRatio <= 0.75) {
+    // Refine top/bottom using horizontal edges restricted to detected columns
+    const restrictedRowEdge = new Float32Array(height);
+    for (let y = 1; y < height; y++) {
+      let sum = 0;
+      for (let x = leftEdge; x < rightEdge; x++) {
+        sum += Math.abs(midFrame[y * width + x] - midFrame[(y - 1) * width + x]);
+      }
+      restrictedRowEdge[y] = sum / regionW;
+    }
+    const restrictedHorizPeaks = findEdgePeaks(restrictedRowEdge, 10, 5.0);
+
+    // Look for strong horizontal edge in top 15% (address bar / browser chrome)
+    let topCrop = 0;
+    let bestTopCropStr = 0;
+    for (const peak of restrictedHorizPeaks) {
+      if (peak.pos < height * 0.15 && peak.strength > bestTopCropStr) {
+        bestTopCropStr = peak.strength;
+        topCrop = peak.pos;
+      }
+    }
+
+    // Look for strong horizontal edge in bottom 15% (taskbar / bottom UI)
+    let bottomCrop = height;
+    let bestBottomCropStr = 0;
+    for (const peak of restrictedHorizPeaks) {
+      if (peak.pos > height * 0.85 && peak.strength > bestBottomCropStr) {
+        bestBottomCropStr = peak.strength;
+        bottomCrop = peak.pos;
+      }
+    }
+
+    console.log(
+      `[cropDetect] Horizontal refinement: topCrop=${topCrop} (str=${bestTopCropStr.toFixed(1)}), bottomCrop=${bottomCrop} (str=${bestBottomCropStr.toFixed(1)})`
+    );
+
+    // Fit a 9:16 crop within the refined vertical bounds
+    const availableH = bottomCrop - topCrop;
     const targetH = roundEven(regionW * (16 / 9));
-    // Center vertically on the motion region, clamped to frame
-    const centerY = Math.round((motionY1 + motionY2) / 2);
-    const cropY = clamp(centerY - Math.round(targetH / 2), 0, height - targetH);
+    const cropH = Math.min(targetH, roundEven(availableH));
+    const centerY = Math.round((topCrop + bottomCrop) / 2);
+    const cropY = clamp(centerY - Math.round(cropH / 2), topCrop, bottomCrop - cropH);
     const cropX = clamp(leftEdge, 0, width - regionW);
-    const crop: CropRect = { w: roundEven(regionW), h: targetH, x: roundEven(cropX), y: cropY };
+    const crop: CropRect = {
+      w: roundEven(regionW),
+      h: cropH,
+      x: roundEven(cropX),
+      y: cropY,
+    };
 
     console.log(
       `[cropDetect] Detected 9:16 source via motion+edge: crop=${crop.w}:${crop.h}:${crop.x}:${crop.y}`
