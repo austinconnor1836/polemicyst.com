@@ -14,7 +14,18 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { VideoCard } from '@/components/ui/video-card';
-import { Loader2, CheckCircle2, XCircle, ExternalLink, Sparkles, Video, Type } from 'lucide-react';
+import {
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  ExternalLink,
+  Sparkles,
+  Video,
+  Type,
+  Settings,
+  Save,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
 interface PlatformInfo {
@@ -59,6 +70,16 @@ export interface VideoPublishModalProps {
 }
 
 type Phase = 'compose' | 'publishing' | 'results';
+type DescMode = 'generate' | 'template';
+
+const PLATFORM_LABELS: Record<string, string> = {
+  youtube: 'YouTube',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  twitter: 'X / Twitter',
+  bluesky: 'Bluesky',
+  threads: 'Threads',
+};
 
 export function VideoPublishModal({
   open,
@@ -80,19 +101,28 @@ export function VideoPublishModal({
   const [results, setResults] = useState<PublishResult[]>([]);
   const [loadingPlatforms, setLoadingPlatforms] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [descMode, setDescMode] = useState<DescMode>('generate');
+  const [generatedDescription, setGeneratedDescription] = useState('');
+  // Per-platform template descriptions (keyed by platform name)
+  const [templates, setTemplates] = useState<Record<string, string>>({});
+  const [activeTemplatePlatform, setActiveTemplatePlatform] = useState<string | null>(null);
+  const [templateEditorOpen, setTemplateEditorOpen] = useState(false);
+  const [editingTemplates, setEditingTemplates] = useState<Record<string, string>>({});
+  const [savingTemplates, setSavingTemplates] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setPhase('compose');
     setResults([]);
     setTitle(compositionTitle || '');
+    setActiveTemplatePlatform(null);
 
     // Pick default output — prefer mobile
     const mobileOutput = outputs.find((o) => o.layout === 'mobile');
     setSelectedOutputId(mobileOutput?.id || outputs[0]?.id || '');
 
-    // Auto-generate description
-    if (generationContext) {
+    // Auto-generate description (only in generate mode)
+    if (generationContext && descMode === 'generate') {
       setGenerating(true);
       fetch('/api/social-posts/generate-description', {
         method: 'POST',
@@ -105,10 +135,29 @@ export function VideoPublishModal({
         }),
       })
         .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-        .then((data) => setDescription(data.description || ''))
-        .catch(() => setDescription(''))
+        .then((data) => {
+          const desc = data.description || '';
+          setDescription(desc);
+          setGeneratedDescription(desc);
+        })
+        .catch(() => {
+          setDescription('');
+          setGeneratedDescription('');
+        })
         .finally(() => setGenerating(false));
     }
+
+    // Fetch saved templates
+    fetch('/api/templates')
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        setTemplates({
+          youtube: data.youtubeTemplate || '',
+          facebook: data.facebookTemplate || '',
+          instagram: data.instagramTemplate || '',
+        });
+      })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -183,7 +232,9 @@ export function VideoPublishModal({
       });
       if (res.ok) {
         const data = await res.json();
-        setDescription(data.description || '');
+        const desc = data.description || '';
+        setDescription(desc);
+        setGeneratedDescription(desc);
       } else {
         toast.error('Failed to generate description');
       }
@@ -193,6 +244,49 @@ export function VideoPublishModal({
       setGenerating(false);
     }
   }, [generationContext]);
+
+  const switchTemplatePlatform = useCallback(
+    (platform: string) => {
+      setActiveTemplatePlatform(platform);
+      setDescription(templates[platform] || '');
+    },
+    [templates]
+  );
+
+  const openTemplateEditor = useCallback(() => {
+    // Sync current textarea edits before opening
+    const synced = { ...templates };
+    if (activeTemplatePlatform) synced[activeTemplatePlatform] = description;
+    setEditingTemplates(synced);
+    setTemplateEditorOpen(true);
+  }, [templates, activeTemplatePlatform, description]);
+
+  const saveTemplateEdits = useCallback(async () => {
+    setSavingTemplates(true);
+    try {
+      const res = await fetch('/api/templates', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          youtubeTemplate: editingTemplates.youtube || '',
+          facebookTemplate: editingTemplates.facebook || '',
+          instagramTemplate: editingTemplates.instagram || '',
+        }),
+      });
+      if (!res.ok) throw new Error();
+      setTemplates({ ...editingTemplates });
+      // Refresh textarea if viewing a platform that changed
+      if (activeTemplatePlatform) {
+        setDescription(editingTemplates[activeTemplatePlatform] || '');
+      }
+      setTemplateEditorOpen(false);
+      toast.success('Templates saved');
+    } catch {
+      toast.error('Failed to save templates');
+    } finally {
+      setSavingTemplates(false);
+    }
+  }, [editingTemplates, activeTemplatePlatform]);
 
   const connectedSelected = platforms.filter(
     (p) => p.connected && selectedPlatforms.has(p.platform)
@@ -217,6 +311,21 @@ export function VideoPublishModal({
       }))
     );
 
+    // In template mode, save edits to current platform before building final map
+    const finalTemplates = { ...templates };
+    if (descMode === 'template' && activeTemplatePlatform) {
+      finalTemplates[activeTemplatePlatform] = description.trim();
+    }
+
+    // Build per-platform descriptions when in template mode
+    let descriptions: Record<string, string> | undefined;
+    if (descMode === 'template') {
+      descriptions = {};
+      for (const p of connectedSelected) {
+        descriptions[p.platform] = (finalTemplates[p.platform] || '').trim();
+      }
+    }
+
     try {
       const res = await fetch(`/api/compositions/${compositionId}/publish`, {
         method: 'POST',
@@ -225,6 +334,7 @@ export function VideoPublishModal({
           platforms: connectedSelected.map((p) => p.platform),
           title: title.trim() || compositionTitle || 'Reaction Video',
           description: description.trim(),
+          ...(descriptions && { descriptions }),
           outputId: selectedOutputId || undefined,
         }),
       });
@@ -263,6 +373,8 @@ export function VideoPublishModal({
     landscape: '16:9 Landscape',
   };
 
+  const isGenerating = generating && descMode === 'generate';
+
   return (
     <Dialog open={open} onOpenChange={phase === 'publishing' ? undefined : onOpenChange}>
       <DialogContent className="max-w-lg overflow-hidden">
@@ -286,19 +398,120 @@ export function VideoPublishModal({
                 />
               </div>
 
-              {/* Description */}
+              {/* Description mode toggle + content */}
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Description</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Description</label>
+                  <div className="flex rounded-md border">
+                    <button
+                      type="button"
+                      className={cn(
+                        'flex items-center gap-1 px-2.5 py-1 text-xs transition-colors',
+                        descMode === 'generate'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'hover:bg-muted'
+                      )}
+                      onClick={() => {
+                        // Save current template edits before switching
+                        if (descMode === 'template' && activeTemplatePlatform) {
+                          setTemplates((prev) => ({
+                            ...prev,
+                            [activeTemplatePlatform]: description,
+                          }));
+                        }
+                        setDescMode('generate');
+                        setDescription(generatedDescription);
+                      }}
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      Generate
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        'px-2.5 py-1 text-xs transition-colors',
+                        descMode === 'template'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'hover:bg-muted'
+                      )}
+                      onClick={() => {
+                        // Save current generated description before switching
+                        if (descMode === 'generate') {
+                          setGeneratedDescription(description);
+                        }
+                        setDescMode('template');
+                        setGenerating(false);
+                        // Default to youtube, or first connected platform
+                        const defaultPlatform =
+                          connectedSelected.find((p) => p.platform === 'youtube')?.platform ||
+                          connectedSelected[0]?.platform ||
+                          null;
+                        if (defaultPlatform) {
+                          setActiveTemplatePlatform(defaultPlatform);
+                          setDescription(templates[defaultPlatform] || '');
+                        }
+                      }}
+                    >
+                      Template
+                    </button>
+                  </div>
+                </div>
+
+                {/* Template mode: platform pills */}
+                {descMode === 'template' && connectedSelected.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1">
+                    {connectedSelected.map((p) => (
+                      <button
+                        key={p.platform}
+                        type="button"
+                        onClick={() => {
+                          // Save current edits before switching
+                          if (activeTemplatePlatform) {
+                            setTemplates((prev) => ({
+                              ...prev,
+                              [activeTemplatePlatform]: description,
+                            }));
+                          }
+                          switchTemplatePlatform(p.platform);
+                        }}
+                        className={cn(
+                          'rounded-full border px-2.5 py-1 text-xs transition-colors',
+                          activeTemplatePlatform === p.platform
+                            ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300'
+                            : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                        )}
+                      >
+                        {PLATFORM_LABELS[p.platform] || p.displayName}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={openTemplateEditor}
+                      className="rounded-full border border-border p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      title="Edit default templates"
+                    >
+                      <Settings className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Description textarea */}
                 <div className="relative">
                   <Textarea
-                    value={generating ? '' : description}
+                    value={isGenerating ? '' : description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder={generating ? 'Generating description...' : 'Video description...'}
-                    rows={3}
-                    disabled={generating}
-                    className={generating ? 'opacity-50' : ''}
+                    placeholder={
+                      isGenerating
+                        ? ' '
+                        : descMode === 'template' && activeTemplatePlatform
+                          ? `${PLATFORM_LABELS[activeTemplatePlatform] || activeTemplatePlatform} description...`
+                          : 'Video description...'
+                    }
+                    rows={4}
+                    disabled={isGenerating}
+                    className={isGenerating ? 'opacity-50' : ''}
                   />
-                  {generating && (
+                  {isGenerating && (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Sparkles className="h-4 w-4 animate-pulse" />
@@ -306,13 +519,13 @@ export function VideoPublishModal({
                       </div>
                     </div>
                   )}
-                  {!generating && generationContext && (
+                  {!isGenerating && generationContext && (
                     <Button
                       variant="ghost"
                       size="icon"
                       className="absolute right-1.5 top-1.5 h-7 w-7 text-muted-foreground hover:text-foreground"
                       onClick={handleGenerate}
-                      title="Regenerate description"
+                      title="Generate description with AI"
                     >
                       <Sparkles className="h-4 w-4" />
                     </Button>
@@ -484,6 +697,46 @@ export function VideoPublishModal({
           {phase === 'results' && <Button onClick={() => onOpenChange(false)}>Done</Button>}
         </DialogFooter>
       </DialogContent>
+
+      {/* Template editor dialog */}
+      <Dialog open={templateEditorOpen} onOpenChange={setTemplateEditorOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Default Templates</DialogTitle>
+            <DialogDescription className="sr-only">
+              Configure default description templates for each platform
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {(['youtube', 'facebook', 'instagram'] as const).map((platform) => (
+              <div key={platform} className="space-y-1.5">
+                <label className="text-sm font-medium">{PLATFORM_LABELS[platform]}</label>
+                <Textarea
+                  value={editingTemplates[platform] || ''}
+                  onChange={(e) =>
+                    setEditingTemplates((prev) => ({ ...prev, [platform]: e.target.value }))
+                  }
+                  placeholder={`Default ${PLATFORM_LABELS[platform]} description...`}
+                  rows={3}
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="pt-4 gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setTemplateEditorOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={saveTemplateEdits} disabled={savingTemplates}>
+              {savingTemplates ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

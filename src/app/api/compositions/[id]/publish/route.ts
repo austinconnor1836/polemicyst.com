@@ -392,6 +392,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     platforms?: string[];
     title?: string;
     description?: string;
+    descriptions?: Record<string, string>;
     outputId?: string;
   };
   try {
@@ -400,13 +401,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { platforms, title, description } = body;
+  const { platforms, title, description, descriptions } = body;
   if (!Array.isArray(platforms) || platforms.length === 0) {
     return NextResponse.json({ error: 'At least one platform is required' }, { status: 400 });
   }
-  if (!description || typeof description !== 'string' || description.trim().length === 0) {
+  // Need at least a base description or per-platform descriptions
+  const hasBaseDesc =
+    description && typeof description === 'string' && description.trim().length > 0;
+  const hasPerPlatform = descriptions && typeof descriptions === 'object';
+  if (!hasBaseDesc && !hasPerPlatform) {
     return NextResponse.json({ error: 'description is required' }, { status: 400 });
   }
+
+  /** Look up the description for a given platform, falling back to the base description. */
+  const getDescription = (platform: string): string => {
+    if (hasPerPlatform && descriptions[platform]?.trim()) return descriptions[platform].trim();
+    return (description || '').trim();
+  };
 
   const validPlatforms = platforms.filter((p) => ALL_PLATFORMS.includes(p));
   if (validPlatforms.length === 0) {
@@ -452,27 +463,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   );
 
   const publishTitle = title || composition.title || 'Reaction Video';
-  const publishDesc = description.trim();
 
   const results: PlatformResult[] = [];
 
   // Publish video platforms in parallel
   const videoPromises = videoPlatforms.map((platform) => {
+    const desc = getDescription(platform);
     switch (platform) {
       case 'youtube':
         return publishToYouTube(
           user.id,
           targetOutput.s3Key!,
           publishTitle,
-          publishDesc,
+          desc,
           thumbnail?.s3Key ?? undefined
         );
       case 'facebook':
-        return publishToFacebook(user.id, targetOutput.s3Key!, publishDesc);
+        return publishToFacebook(user.id, targetOutput.s3Key!, desc);
       case 'instagram':
-        return publishToInstagram(user.id, targetOutput.s3Key!, publishDesc);
+        return publishToInstagram(user.id, targetOutput.s3Key!, desc);
       case 'twitter':
-        return publishToTwitter(user.id, targetOutput.s3Key!, publishDesc);
+        return publishToTwitter(user.id, targetOutput.s3Key!, desc);
       default:
         return Promise.resolve({
           platform,
@@ -483,11 +494,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   });
 
   const textPromises = textOnlyPlatforms.map((platform) => {
+    const desc = getDescription(platform);
     switch (platform) {
       case 'bluesky':
-        return publishToBluesky(user.id, publishDesc);
+        return publishToBluesky(user.id, desc);
       case 'threads':
-        return publishToThreads(user.id, publishDesc);
+        return publishToThreads(user.id, desc);
       default:
         return Promise.resolve({
           platform,
