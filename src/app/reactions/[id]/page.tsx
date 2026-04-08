@@ -12,6 +12,7 @@ import { VideoUploader, type UploadStatus } from '../_components/VideoUploader';
 import { CompositionVideoPanel } from '../_components/CompositionVideoPanel';
 import { TimelineEditor } from '../_components/TimelineEditor';
 import { RenderControls } from '../_components/RenderControls';
+import { QuoteGraphicsPanel } from '../_components/QuoteGraphicsPanel';
 import { ThumbnailPanel } from '../_components/ThumbnailPanel';
 import { TrimModal } from '../_components/TrimModal';
 import { CropAdjustModal } from '../_components/CropAdjustModal';
@@ -88,6 +89,15 @@ interface Composition {
   cuts?: CompositionCut[] | null;
   silenceRegions?: Array<{ startS: number; endS: number }> | null;
   autoEditResult?: { cuts: any[]; summary: AutoEditSummary } | null;
+  detectedQuotes?: Array<{
+    text: string;
+    attribution: string | null;
+    startS: number;
+    endS: number;
+    confidence: number;
+  }> | null;
+  quoteGraphicStyle?: string | null;
+  quoteGraphicsEnabled?: boolean;
   tracks: Track[];
   outputs: Output[];
 }
@@ -1491,7 +1501,26 @@ export default function CompositionEditorPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <QuoteGraphicsPanel
+            compositionId={compositionId}
+            hasTranscript={!!composition.creatorTranscriptJson}
+            quotes={composition.detectedQuotes || []}
+            enabled={composition.quoteGraphicsEnabled || false}
+            style={composition.quoteGraphicStyle || 'pull-quote'}
+            onUpdate={(quotes, enabled, style) => {
+              setComposition((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      detectedQuotes: quotes,
+                      quoteGraphicsEnabled: enabled,
+                      quoteGraphicStyle: style,
+                    }
+                  : prev
+              );
+            }}
+          />
           <RenderControls
             compositionId={compositionId}
             compositionStatus={composition.status}

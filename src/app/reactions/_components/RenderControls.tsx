@@ -14,7 +14,7 @@ import {
   type RenderProgress,
   type ClientTrackInfo,
 } from '@/lib/client-render';
-import type { CaptionSegment } from '@/lib/client-render/types';
+import type { CaptionSegment, QuoteOverlaySegment } from '@/lib/client-render/types';
 import toast from 'react-hot-toast';
 
 interface Output {
@@ -39,6 +39,15 @@ interface CompositionData {
   creatorTrimEndS?: number | null;
   creatorTranscriptJson?: Array<{ start: number; end: number; text: string }> | null;
   cuts?: Array<{ id: string; startS: number; endS: number }> | null;
+  detectedQuotes?: Array<{
+    text: string;
+    attribution: string | null;
+    startS: number;
+    endS: number;
+    confidence: number;
+  }> | null;
+  quoteGraphicStyle?: string | null;
+  quoteGraphicsEnabled?: boolean;
   tracks: Array<{
     id: string;
     durationS: number;
@@ -353,6 +362,28 @@ export function RenderControls({
             segments,
             fontSizePx: captionFontSizePx,
           };
+        }
+      }
+
+      // Build quote overlays if enabled
+      if (
+        composition.quoteGraphicsEnabled &&
+        composition.detectedQuotes &&
+        composition.detectedQuotes.length > 0
+      ) {
+        const creatorTrimOffset = composition.creatorTrimStartS;
+        const quoteSegments: QuoteOverlaySegment[] = composition.detectedQuotes
+          .map((q) => ({
+            text: q.text,
+            attribution: q.attribution,
+            startS: q.startS - creatorTrimOffset,
+            endS: q.endS - creatorTrimOffset,
+            style: (composition.quoteGraphicStyle || 'pull-quote') as QuoteOverlaySegment['style'],
+          }))
+          .filter((q) => q.endS > 0);
+
+        if (quoteSegments.length > 0) {
+          opts.quoteOverlays = { quotes: quoteSegments };
         }
       }
 

@@ -737,6 +737,50 @@ new Worker<ReactionComposeJob>(
         ? (composition.cuts as any[]).map((c: any) => ({ startS: c.startS, endS: c.endS }))
         : [];
 
+      // 4b. Quote overlay generation (if enabled)
+      const quoteOverlaysByLayout: Record<string, import('@shared/util/reactionCompose').QuoteOverlayInfo[]> = {};
+      if (composition.quoteGraphicsEnabled && composition.detectedQuotes) {
+        try {
+          const quotes = composition.detectedQuotes as any[];
+          if (quotes.length > 0) {
+            const { generateAllQuoteGraphics, cleanupQuoteGraphics } = await import('../../shared/util/quoteGraphics');
+            const quoteStyle = (composition.quoteGraphicStyle as any) || 'pull-quote';
+            const trimOffset = composition.creatorTrimStartS || 0;
+
+            for (const layout of layouts) {
+              const isMobile = layout === 'mobile';
+              const canvasW = isMobile ? 720 : 1280;
+              const canvasH = isMobile ? 1280 : 720;
+
+              const adjustedQuotes = quotes.map((q: any) => ({
+                ...q,
+                startS: q.startS - trimOffset,
+                endS: q.endS - trimOffset,
+              })).filter((q: any) => q.endS > 0);
+
+              const overlays = await generateAllQuoteGraphics(adjustedQuotes, quoteStyle, canvasW, canvasH);
+              quoteOverlaysByLayout[layout] = overlays.map((ov) => ({
+                imagePath: ov.imagePath,
+                startS: ov.quote.startS,
+                endS: ov.quote.endS,
+              }));
+
+              // Track temp files for cleanup
+              for (const ov of overlays) {
+                tempFiles.push(ov.imagePath);
+              }
+            }
+
+            console.log(`📖 Generated quote overlays for ${quotes.length} detected quotes`);
+          }
+        } catch (quoteErr) {
+          console.warn(
+            '⚠️ Quote overlay generation failed (non-fatal):',
+            quoteErr instanceof Error ? quoteErr.message : quoteErr
+          );
+        }
+      }
+
       // 5. Render each layout
 
       for (const layout of layouts) {
@@ -768,6 +812,7 @@ new Worker<ReactionComposeJob>(
                   referenceVolume: composition.referenceVolume,
                   captions: captionOpts,
                   cuts: compositionCuts.length > 0 ? compositionCuts : undefined,
+                  quoteOverlays: quoteOverlaysByLayout[layout],
                 },
                 s3Key
               ),
@@ -1091,6 +1136,57 @@ new Worker<GenericTranscriptionJob>(
           console.warn(
             `[generic-transcription] Auto-edit failed for Composition:${targetId} (non-fatal):`,
             autoEditErr instanceof Error ? autoEditErr.message : autoEditErr
+          );
+        }
+
+        // Eager quote detection: analyze transcript for cited/quoted material
+        try {
+          const comp2 = await prisma.composition.findUnique({
+            where: { id: targetId },
+            select: { quoteGraphicsEnabled: true, userId: true },
+          });
+
+          // Check user's automation rule for quote graphics preference
+          const rule2 = comp2?.userId
+            ? await prisma.automationRule.findUnique({
+                where: { userId: comp2.userId },
+                select: { quoteGraphicsEnabled: true, quoteGraphicStyle: true },
+              })
+            : null;
+
+          const shouldDetect = comp2?.quoteGraphicsEnabled || rule2?.quoteGraphicsEnabled;
+
+          if (shouldDetect && result.segments.length > 0) {
+            const { detectQuotes } = await import('../../shared/lib/quote-detection');
+            const quoteResult = await detectQuotes(
+              result.segments as any[]
+            );
+
+            if (quoteResult.quotes.length > 0) {
+              const quoteUpdateData: Record<string, any> = {
+                detectedQuotes: quoteResult.quotes as any,
+              };
+
+              // Apply user's default quote style if composition doesn't have one
+              if (!comp2?.quoteGraphicsEnabled && rule2?.quoteGraphicStyle) {
+                quoteUpdateData.quoteGraphicStyle = rule2.quoteGraphicStyle;
+                quoteUpdateData.quoteGraphicsEnabled = true;
+              }
+
+              await prisma.composition.update({
+                where: { id: targetId },
+                data: quoteUpdateData,
+              });
+
+              console.log(
+                `[generic-transcription] Quote detection: found ${quoteResult.quotes.length} quotes for Composition:${targetId}`
+              );
+            }
+          }
+        } catch (quoteErr) {
+          console.warn(
+            `[generic-transcription] Quote detection failed for Composition:${targetId} (non-fatal):`,
+            quoteErr instanceof Error ? quoteErr.message : quoteErr
           );
         }
       } catch (err) {
