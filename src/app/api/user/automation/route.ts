@@ -5,6 +5,13 @@ import { DEFAULT_VIRALITY_SETTINGS, type ViralitySettingsValue } from '@shared/v
 
 const VALID_ASPECT_RATIOS = ['9:16', '16:9', '1:1', '4:5'];
 const VALID_CAPTION_STYLES = ['default', 'bold', 'minimal', 'none'];
+const VALID_QUOTE_STYLES = [
+  'pull-quote',
+  'lower-third',
+  'highlight-card',
+  'side-panel',
+  'typewriter',
+];
 
 export async function GET(req: NextRequest) {
   const user = await getAuthenticatedUser(req);
@@ -27,6 +34,8 @@ export async function GET(req: NextRequest) {
       cropTemplateId: null,
       autoPublish: false,
       publishPlatforms: [],
+      quoteGraphicsEnabled: false,
+      quoteGraphicStyle: 'pull-quote',
     });
   }
 
@@ -40,6 +49,8 @@ export async function GET(req: NextRequest) {
     cropTemplateId: rule.cropTemplateId,
     autoPublish: rule.autoPublish,
     publishPlatforms: rule.publishPlatforms ?? [],
+    quoteGraphicsEnabled: rule.quoteGraphicsEnabled,
+    quoteGraphicStyle: rule.quoteGraphicStyle,
   });
 }
 
@@ -87,6 +98,15 @@ export async function PUT(req: NextRequest) {
       ? (body.viralitySettings as Partial<ViralitySettingsValue>)
       : undefined;
 
+  const quoteGraphicsEnabled =
+    typeof body.quoteGraphicsEnabled === 'boolean' ? body.quoteGraphicsEnabled : undefined;
+
+  const quoteGraphicStyle =
+    typeof body.quoteGraphicStyle === 'string' &&
+    VALID_QUOTE_STYLES.includes(body.quoteGraphicStyle)
+      ? body.quoteGraphicStyle
+      : undefined;
+
   const data: Record<string, unknown> = {};
   if (enabled !== undefined) data.enabled = enabled;
   if (autoGenerateClips !== undefined) data.autoGenerateClips = autoGenerateClips;
@@ -97,6 +117,8 @@ export async function PUT(req: NextRequest) {
   if (autoPublish !== undefined) data.autoPublish = autoPublish;
   if (publishPlatforms !== undefined) data.publishPlatforms = publishPlatforms;
   if (viralitySettings !== undefined) data.viralitySettings = viralitySettings;
+  if (quoteGraphicsEnabled !== undefined) data.quoteGraphicsEnabled = quoteGraphicsEnabled;
+  if (quoteGraphicStyle !== undefined) data.quoteGraphicStyle = quoteGraphicStyle;
 
   const rule = await prisma.automationRule.upsert({
     where: { userId: user.id },
@@ -117,5 +139,7 @@ export async function PUT(req: NextRequest) {
     cropTemplateId: rule.cropTemplateId,
     autoPublish: rule.autoPublish,
     publishPlatforms: rule.publishPlatforms ?? [],
+    quoteGraphicsEnabled: rule.quoteGraphicsEnabled,
+    quoteGraphicStyle: rule.quoteGraphicStyle,
   });
 }

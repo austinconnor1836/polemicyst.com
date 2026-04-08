@@ -31,7 +31,7 @@ import {
   type AutoEditSettings,
   type Aggressiveness,
 } from '@shared/auto-edit';
-import { Zap, Captions, Crop, Send, Share2, Loader2, Save, Info, Wand2 } from 'lucide-react';
+import { Zap, Captions, Crop, Send, Share2, Loader2, Save, Info, Wand2, Quote } from 'lucide-react';
 
 type AutomationState = {
   enabled: boolean;
@@ -44,6 +44,8 @@ type AutomationState = {
   autoPublish: boolean;
   publishPlatforms: string[];
   autoEditSettings: AutoEditSettings;
+  quoteGraphicsEnabled: boolean;
+  quoteGraphicStyle: string;
 };
 
 const INITIAL_STATE: AutomationState = {
@@ -57,6 +59,8 @@ const INITIAL_STATE: AutomationState = {
   autoPublish: false,
   publishPlatforms: [],
   autoEditSettings: DEFAULT_AUTO_EDIT_SETTINGS,
+  quoteGraphicsEnabled: false,
+  quoteGraphicStyle: 'pull-quote',
 };
 
 type SocialPlatformInfo = {
@@ -103,6 +107,8 @@ export default function AutomationSettingsPage() {
           autoPublish: data.autoPublish ?? false,
           publishPlatforms: data.publishPlatforms ?? [],
           autoEditSettings: mergeAutoEditSettings(data.autoEditSettings),
+          quoteGraphicsEnabled: data.quoteGraphicsEnabled ?? false,
+          quoteGraphicStyle: data.quoteGraphicStyle ?? 'pull-quote',
         };
         setState(merged);
         setServerState(merged);
@@ -171,6 +177,8 @@ export default function AutomationSettingsPage() {
         autoPublish: data.autoPublish,
         publishPlatforms: data.publishPlatforms ?? [],
         autoEditSettings: mergeAutoEditSettings(data.autoEditSettings),
+        quoteGraphicsEnabled: data.quoteGraphicsEnabled ?? false,
+        quoteGraphicStyle: data.quoteGraphicStyle ?? 'pull-quote',
       };
       setState(saved);
       setServerState(saved);
@@ -352,6 +360,65 @@ export default function AutomationSettingsPage() {
                 </Select>
                 <p className="text-xs text-muted">
                   Controls the visual style of burned-in captions on generated clips.
+                </p>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+
+        {/* Quote Graphics */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary glass:bg-white/10 glass:text-white">
+                  <Quote className="h-4 w-4" />
+                </div>
+                <div>
+                  <CardTitle>Quote Graphics</CardTitle>
+                  <CardDescription>
+                    Auto-detect and overlay cited excerpts in reaction videos
+                  </CardDescription>
+                </div>
+              </div>
+              <Switch
+                checked={state.quoteGraphicsEnabled}
+                onCheckedChange={(checked) =>
+                  setState((p) => ({ ...p, quoteGraphicsEnabled: !!checked }))
+                }
+              />
+            </div>
+          </CardHeader>
+          {state.quoteGraphicsEnabled && (
+            <CardContent>
+              <div className="space-y-2">
+                <Label>Graphic style</Label>
+                <Select
+                  value={state.quoteGraphicStyle}
+                  onValueChange={(v) => setState((p) => ({ ...p, quoteGraphicStyle: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a style" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pull-quote">
+                      Pull Quote — large quotation marks with centered text
+                    </SelectItem>
+                    <SelectItem value="lower-third">
+                      Lower Third — text bar across the bottom
+                    </SelectItem>
+                    <SelectItem value="highlight-card">
+                      Highlight Card — rounded card with accent border
+                    </SelectItem>
+                    <SelectItem value="side-panel">
+                      Side Panel — styled panel on one side
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted">
+                  When you read or cite a quote in your reaction video, a styled graphic of the
+                  excerpt will automatically appear on screen. The system uses AI to detect when
+                  you&apos;re quoting external material.
                 </p>
               </div>
             </CardContent>

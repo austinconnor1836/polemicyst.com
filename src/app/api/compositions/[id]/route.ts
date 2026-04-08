@@ -79,12 +79,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data.autoEditResult = null;
       data.creatorTranscript = null;
       data.creatorTranscriptJson = null;
+      data.detectedQuotes = null;
     } else if (data.creatorS3Url && data.creatorS3Url !== existing.creatorS3Url) {
       // New creator video — clear stale cached analysis
       data.silenceRegions = null;
       data.autoEditResult = null;
       data.creatorTranscript = null;
       data.creatorTranscriptJson = null;
+      data.detectedQuotes = null;
       if (data.cuts === undefined) data.cuts = null;
     }
 

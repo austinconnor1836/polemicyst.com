@@ -7,6 +7,7 @@ import {
   type ClientTrackInfo,
   type DecodedFrame,
   type CaptionOptions,
+  type QuoteOverlayOptions,
   MOBILE_CANVAS_W,
   MOBILE_CANVAS_H,
   LANDSCAPE_CANVAS_W,
@@ -165,7 +166,8 @@ export function compositeFrame(
   layout: Layout,
   refTrack: ClientTrackInfo | null,
   outputTimeS?: number,
-  captions?: CaptionOptions
+  captions?: CaptionOptions,
+  quoteOverlays?: QuoteOverlayOptions
 ): void {
   const ctx = canvas.getContext('2d')!;
   const canvasW = canvas.width;
@@ -181,6 +183,9 @@ export function compositeFrame(
     drawCover(ctx, creatorFrame, 0, 0, canvasW, canvasH);
     if (captions && outputTimeS !== undefined) {
       drawCaptions(ctx, captions, outputTimeS, canvasW, canvasH);
+    }
+    if (quoteOverlays && outputTimeS !== undefined) {
+      drawQuoteOverlay(ctx, quoteOverlays, outputTimeS, canvasW, canvasH);
     }
     return;
   }
@@ -264,6 +269,11 @@ export function compositeFrame(
   if (captions && outputTimeS !== undefined) {
     drawCaptions(ctx, captions, outputTimeS, canvasW, canvasH);
   }
+
+  // Draw quote overlays on top of everything
+  if (quoteOverlays && outputTimeS !== undefined) {
+    drawQuoteOverlay(ctx, quoteOverlays, outputTimeS, canvasW, canvasH);
+  }
 }
 
 /**
@@ -344,4 +354,236 @@ function drawCaptions(
   }
 
   ctx.restore();
+}
+
+/**
+ * Draw a quote overlay graphic onto the composited frame.
+ * This is the client-side equivalent of the server-side Puppeteer-rendered PNG overlays.
+ */
+function drawQuoteOverlay(
+  ctx: OffscreenCanvasRenderingContext2D,
+  quoteOverlays: QuoteOverlayOptions,
+  outputTimeS: number,
+  canvasW: number,
+  canvasH: number
+): void {
+  const active = quoteOverlays.quotes.filter(
+    (q) => outputTimeS >= q.startS && outputTimeS <= q.endS
+  );
+
+  if (active.length === 0) return;
+
+  const quote = active[0];
+
+  // Fade in/out: 0.3s fade in, 0.5s fade out
+  let alpha = 1;
+  const fadeInEnd = quote.startS + 0.3;
+  const fadeOutStart = Math.max(quote.startS, quote.endS - 0.5);
+  if (outputTimeS < fadeInEnd) {
+    alpha = (outputTimeS - quote.startS) / 0.3;
+  } else if (outputTimeS > fadeOutStart) {
+    alpha = (quote.endS - outputTimeS) / 0.5;
+  }
+  alpha = Math.max(0, Math.min(1, alpha));
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  const style = quote.style || 'pull-quote';
+
+  switch (style) {
+    case 'lower-third':
+      drawLowerThirdQuote(ctx, quote.text, quote.attribution, canvasW, canvasH);
+      break;
+    case 'highlight-card':
+      drawHighlightCardQuote(ctx, quote.text, quote.attribution, canvasW, canvasH);
+      break;
+    case 'pull-quote':
+    default:
+      drawPullQuote(ctx, quote.text, quote.attribution, canvasW, canvasH);
+      break;
+  }
+
+  ctx.restore();
+}
+
+function drawPullQuote(
+  ctx: OffscreenCanvasRenderingContext2D,
+  text: string,
+  attribution: string | null,
+  canvasW: number,
+  canvasH: number
+): void {
+  const padding = 32;
+  const maxWidth = Math.round(canvasW * 0.85);
+  const cardX = Math.round((canvasW - maxWidth) / 2);
+  const fontSize = Math.max(18, Math.min(28, Math.round(canvasW / 30)));
+
+  ctx.font = `italic ${fontSize}px Georgia, "Times New Roman", serif`;
+  const lines = wrapText(ctx, text, maxWidth - padding * 2 - 10);
+
+  const lineHeight = fontSize * 1.5;
+  const quoteMarkHeight = 50;
+  const attrHeight = attribution ? fontSize + 20 : 0;
+  const cardHeight = padding * 2 + quoteMarkHeight + lines.length * lineHeight + attrHeight;
+  const cardY = Math.round((canvasH - cardHeight) / 2);
+
+  // Card background
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
+  roundRect(ctx, cardX, cardY, maxWidth, cardHeight, 16);
+  ctx.fill();
+
+  // Gold accent border
+  ctx.fillStyle = '#e2b714';
+  ctx.fillRect(cardX, cardY + 8, 5, cardHeight - 16);
+
+  // Quote mark
+  ctx.font = '64px Georgia, serif';
+  ctx.fillStyle = '#e2b714';
+  ctx.fillText('\u201C', cardX + padding, cardY + padding + 40);
+
+  // Quote text
+  ctx.font = `italic ${fontSize}px Georgia, "Times New Roman", serif`;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  const textStartY = cardY + padding + quoteMarkHeight;
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], cardX + padding + 10, textStartY + i * lineHeight);
+  }
+
+  // Attribution
+  if (attribution) {
+    const attrFontSize = Math.max(14, Math.min(20, Math.round(canvasW / 42)));
+    ctx.font = `600 ${attrFontSize}px -apple-system, "Segoe UI", sans-serif`;
+    ctx.fillStyle = '#e2b714';
+    ctx.textAlign = 'right';
+    ctx.fillText(
+      `\u2014 ${attribution}`,
+      cardX + maxWidth - padding,
+      textStartY + lines.length * lineHeight + 8
+    );
+  }
+}
+
+function drawLowerThirdQuote(
+  ctx: OffscreenCanvasRenderingContext2D,
+  text: string,
+  attribution: string | null,
+  canvasW: number,
+  canvasH: number
+): void {
+  const padding = 28;
+  const fontSize = Math.max(16, Math.min(24, Math.round(canvasW / 36)));
+
+  ctx.font = `italic ${fontSize}px -apple-system, "Segoe UI", sans-serif`;
+  const lines = wrapText(ctx, `\u201C${text}\u201D`, canvasW - padding * 2);
+
+  const lineHeight = fontSize * 1.45;
+  const attrHeight = attribution ? fontSize + 12 : 0;
+  const barHeight = padding * 2 + lines.length * lineHeight + attrHeight;
+  const barY = canvasH - barHeight;
+
+  // Gradient background
+  const gradient = ctx.createLinearGradient(0, barY, 0, canvasH);
+  gradient.addColorStop(0, 'rgba(0, 0, 0, 0.70)');
+  gradient.addColorStop(1, 'rgba(0, 0, 0, 0.90)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, barY, canvasW, barHeight);
+
+  // Text
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `italic ${fontSize}px -apple-system, "Segoe UI", sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], padding, barY + padding + i * lineHeight);
+  }
+
+  // Attribution
+  if (attribution) {
+    const attrFontSize = Math.max(12, Math.min(16, Math.round(canvasW / 52)));
+    ctx.font = `500 ${attrFontSize}px -apple-system, "Segoe UI", sans-serif`;
+    ctx.fillStyle = '#9ca3af';
+    ctx.fillText(
+      attribution.toUpperCase(),
+      padding,
+      barY + padding + lines.length * lineHeight + 4
+    );
+  }
+}
+
+function drawHighlightCardQuote(
+  ctx: OffscreenCanvasRenderingContext2D,
+  text: string,
+  attribution: string | null,
+  canvasW: number,
+  canvasH: number
+): void {
+  const padding = 36;
+  const maxWidth = Math.round(canvasW * 0.85);
+  const cardX = Math.round((canvasW - maxWidth) / 2);
+  const fontSize = Math.max(17, Math.min(26, Math.round(canvasW / 32)));
+
+  ctx.font = `${fontSize}px -apple-system, "Segoe UI", sans-serif`;
+  const lines = wrapText(ctx, `\u201C${text}\u201D`, maxWidth - padding * 2);
+
+  const lineHeight = fontSize * 1.5;
+  const labelHeight = 30;
+  const attrHeight = attribution ? fontSize + 16 : 0;
+  const cardHeight = padding * 2 + labelHeight + lines.length * lineHeight + attrHeight;
+  const cardY = Math.round((canvasH - cardHeight) / 2);
+
+  // Card background with border
+  ctx.fillStyle = 'rgba(15, 15, 20, 0.88)';
+  roundRect(ctx, cardX, cardY, maxWidth, cardHeight, 20);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(226, 183, 20, 0.6)';
+  ctx.lineWidth = 2;
+  roundRect(ctx, cardX, cardY, maxWidth, cardHeight, 20);
+  ctx.stroke();
+
+  // Label
+  ctx.font = `700 ${Math.max(10, Math.min(14, Math.round(canvasW / 60)))}px -apple-system, "Segoe UI", sans-serif`;
+  ctx.fillStyle = '#e2b714';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('\u{1F4D6} EXCERPT', cardX + padding, cardY + padding);
+
+  // Text
+  ctx.font = `${fontSize}px -apple-system, "Segoe UI", sans-serif`;
+  ctx.fillStyle = '#ffffff';
+  const textStartY = cardY + padding + labelHeight;
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], cardX + padding, textStartY + i * lineHeight);
+  }
+
+  // Attribution
+  if (attribution) {
+    const attrFontSize = Math.max(12, Math.min(18, Math.round(canvasW / 48)));
+    ctx.font = `500 ${attrFontSize}px -apple-system, "Segoe UI", sans-serif`;
+    ctx.fillStyle = '#9ca3af';
+    ctx.fillText(attribution, cardX + padding, textStartY + lines.length * lineHeight + 8);
+  }
+}
+
+function roundRect(
+  ctx: OffscreenCanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+): void {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
