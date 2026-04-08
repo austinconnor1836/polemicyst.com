@@ -289,6 +289,19 @@ Switch to the private model when:
 
 ## Change log
 
+### 2026-04-08
+
+- **Auto-detected quote/excerpt graphics** — when a creator reads or cites a quote in their reaction video, the system automatically detects it and overlays a styled graphic in the rendered output.
+- New `shared/lib/quote-detection.ts` — LLM-powered transcript analysis (Gemini/Ollama) identifies cited passages using attribution cues, language register shifts, and explicit quotation markers. Returns structured `DetectedQuote[]` with text, attribution, time range, and confidence.
+- New `shared/util/quoteGraphics.ts` — generates styled PNG overlays via Puppeteer HTML-to-PNG rendering. Four visual styles: **pull-quote** (large quotation marks, gold accent), **lower-third** (gradient bar at bottom), **highlight-card** (rounded card with accent border), **side-panel** (panel on one side).
+- FFmpeg integration: quote overlay PNGs are added as timed `-loop 1 -i` inputs with `overlay` filters using `enable='between(t,start,end)'` expressions. Works in both `reactionCompose.ts` (compositions) and `ffmpegUtils.ts` (clips).
+- Client-side Canvas integration: `compositor.ts` draws quote overlays directly on the OffscreenCanvas with native canvas 2D API, matching the server-side visual styles. Includes fade in/out animations.
+- New Prisma fields: `detectedQuotes`, `quoteGraphicStyle`, `quoteGraphicsEnabled` on `Composition`; `quoteGraphicsEnabled`, `quoteGraphicStyle` on `AutomationRule`.
+- New API: `POST/GET/PUT /api/compositions/:id/detect-quotes` — trigger LLM detection, fetch results, update settings/quotes.
+- New `QuoteGraphicsPanel` component — reaction editor UI with detect button, style picker, and per-quote management (view, remove).
+- New "Quote Graphics" card in automation settings — global enable toggle and default style selector.
+- Worker integration: `generic-transcription` worker auto-detects quotes after transcription when enabled; `reaction-compose` worker generates layout-specific PNG overlays before rendering.
+
 ### 2026-03-26
 
 - **Architecture evaluation and cleanup** — full clean architecture conformance audit documented in `docs/ARCHITECTURE_EVALUATION.md`.
