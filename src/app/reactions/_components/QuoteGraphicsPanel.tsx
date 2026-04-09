@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Check, Loader2, Pencil, Plus, Quote, Sparkles, X } from 'lucide-react';
+import { Check, ExternalLink, Loader2, Pencil, Plus, Quote, Sparkles, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface DetectedQuote {
@@ -23,6 +23,7 @@ interface DetectedQuote {
   startS: number;
   endS: number;
   confidence: number;
+  sourceUrl?: string | null;
 }
 
 interface QuoteGraphicsPanelProps {
@@ -66,7 +67,10 @@ export function QuoteGraphicsPanel({
     attribution: string;
     startS: string;
     endS: string;
+    sourceUrl: string;
   } | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [screenshotLoading, setScreenshotLoading] = useState(false);
 
   async function handleDetectQuotes() {
     setDetecting(true);
@@ -125,12 +129,50 @@ export function QuoteGraphicsPanel({
       attribution: q.attribution || '',
       startS: formatTime(q.startS),
       endS: formatTime(q.endS),
+      sourceUrl: q.sourceUrl || '',
     });
+    setScreenshotPreview(null);
   }
 
   function cancelEditing() {
     setEditingIndex(null);
     setEditDraft(null);
+    setScreenshotPreview(null);
+  }
+
+  async function handlePreviewScreenshot() {
+    if (!editDraft?.sourceUrl || !editDraft.text) return;
+    setScreenshotLoading(true);
+    setScreenshotPreview(null);
+    try {
+      const res = await fetch(`/api/compositions/${compositionId}/quote-screenshot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceUrl: editDraft.sourceUrl,
+          quoteText: editDraft.text,
+          attribution: editDraft.attribution || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed' }));
+        toast.error(err.error || 'Screenshot failed');
+        return;
+      }
+      const data = await res.json();
+      setScreenshotPreview(data.preview);
+      if (data.textFound) {
+        toast.success('Quote found and highlighted on the page');
+      } else {
+        toast('Page captured, but exact quote text was not found', {
+          icon: '⚠️',
+        });
+      }
+    } catch {
+      toast.error('Screenshot request failed');
+    } finally {
+      setScreenshotLoading(false);
+    }
   }
 
   function saveEditing() {
@@ -154,6 +196,7 @@ export function QuoteGraphicsPanel({
       attribution: editDraft.attribution.trim() || null,
       startS,
       endS,
+      sourceUrl: editDraft.sourceUrl.trim() || null,
     };
 
     onUpdate(updated, enabled, style);
@@ -274,6 +317,53 @@ export function QuoteGraphicsPanel({
                         className="text-sm h-8"
                       />
                     </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted">Source URL (optional)</Label>
+                      <Input
+                        value={editDraft.sourceUrl}
+                        onChange={(e) =>
+                          setEditDraft((d) => (d ? { ...d, sourceUrl: e.target.value } : d))
+                        }
+                        placeholder="https://example.com/article"
+                        className="text-sm h-8"
+                        type="url"
+                      />
+                      {editDraft.sourceUrl && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs gap-1 w-full"
+                          onClick={handlePreviewScreenshot}
+                          disabled={screenshotLoading || !editDraft.text}
+                        >
+                          {screenshotLoading ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <ExternalLink className="h-3 w-3" />
+                          )}
+                          {screenshotLoading ? 'Capturing…' : 'Preview Screenshot'}
+                        </Button>
+                      )}
+                      {!editDraft.sourceUrl && (
+                        <p className="text-[11px] text-muted leading-tight">
+                          Paste the article link to screenshot the actual page with the quote
+                          highlighted.
+                        </p>
+                      )}
+                    </div>
+                    {screenshotPreview && (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted">Preview</Label>
+                        <div className="relative overflow-hidden rounded-lg border border-border">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={screenshotPreview}
+                            alt="Quote screenshot preview"
+                            className="w-full h-auto max-h-48 object-contain bg-black"
+                          />
+                        </div>
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <div className="flex-1 space-y-1.5">
                         <Label className="text-xs text-muted">Start (m:ss)</Label>
@@ -331,6 +421,21 @@ export function QuoteGraphicsPanel({
                             <>
                               <span>·</span>
                               <span className="truncate">{q.attribution}</span>
+                            </>
+                          )}
+                          {q.sourceUrl && (
+                            <>
+                              <span>·</span>
+                              <a
+                                href={q.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-primary hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                Source
+                              </a>
                             </>
                           )}
                           <span>·</span>

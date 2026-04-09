@@ -45,6 +45,7 @@ interface CompositionData {
     startS: number;
     endS: number;
     confidence: number;
+    sourceUrl?: string | null;
   }> | null;
   quoteGraphicStyle?: string | null;
   quoteGraphicsEnabled?: boolean;
