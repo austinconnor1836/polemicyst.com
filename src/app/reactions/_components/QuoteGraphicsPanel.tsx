@@ -26,9 +26,16 @@ interface DetectedQuote {
   sourceUrl?: string | null;
 }
 
+interface TranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
 interface QuoteGraphicsPanelProps {
   compositionId: string;
   hasTranscript: boolean;
+  transcriptSegments?: TranscriptSegment[] | null;
   quotes: DetectedQuote[];
   enabled: boolean;
   style: string;
@@ -52,9 +59,73 @@ function parseTime(str: string): number | null {
   return isNaN(n) ? null : n;
 }
 
+/**
+ * Fuzzy-match quote text against transcript segments to find the time range
+ * where the quote is spoken. Uses normalized substring matching.
+ */
+function matchQuoteToTranscript(
+  quoteText: string,
+  segments: TranscriptSegment[]
+): { startS: number; endS: number } | null {
+  if (!quoteText || segments.length === 0) return null;
+
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/['']/g, "'")
+      .replace(/[""]/g, '"')
+      .replace(/[^\w\s'"-]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const quoteNorm = normalize(quoteText);
+  if (quoteNorm.length < 10) return null;
+
+  // Build a continuous text with segment boundaries mapped
+  const entries: { segIdx: number; charStart: number }[] = [];
+  let fullText = '';
+  for (let i = 0; i < segments.length; i++) {
+    entries.push({ segIdx: i, charStart: fullText.length });
+    fullText += (i > 0 ? ' ' : '') + normalize(segments[i].text);
+  }
+
+  // Try exact match first, then progressively shorter prefixes
+  const attempts = [
+    quoteNorm,
+    quoteNorm.slice(0, Math.floor(quoteNorm.length * 0.7)),
+    quoteNorm.slice(0, Math.floor(quoteNorm.length * 0.5)),
+  ].filter((t) => t.length >= 10);
+
+  for (const attempt of attempts) {
+    const idx = fullText.indexOf(attempt);
+    if (idx === -1) continue;
+
+    const matchEnd = idx + attempt.length;
+
+    // Find the first and last segment that overlap
+    let startSeg = -1;
+    let endSeg = -1;
+    for (let i = 0; i < entries.length; i++) {
+      const charEnd = i < entries.length - 1 ? entries[i + 1].charStart : fullText.length;
+      if (charEnd > idx && startSeg === -1) startSeg = i;
+      if (entries[i].charStart < matchEnd) endSeg = i;
+    }
+
+    if (startSeg >= 0 && endSeg >= 0) {
+      return {
+        startS: segments[startSeg].start,
+        endS: segments[endSeg].end,
+      };
+    }
+  }
+
+  return null;
+}
+
 export function QuoteGraphicsPanel({
   compositionId,
   hasTranscript,
+  transcriptSegments,
   quotes,
   enabled,
   style,
@@ -71,6 +142,24 @@ export function QuoteGraphicsPanel({
   } | null>(null);
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
   const [screenshotLoading, setScreenshotLoading] = useState(false);
+  const [timingAutoMatched, setTimingAutoMatched] = useState(false);
+  const matchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function tryAutoMatchTiming(text: string) {
+    if (!transcriptSegments || transcriptSegments.length === 0) return;
+    if (matchTimeoutRef.current) clearTimeout(matchTimeoutRef.current);
+    matchTimeoutRef.current = setTimeout(() => {
+      const match = matchQuoteToTranscript(text, transcriptSegments);
+      if (match) {
+        setEditDraft((d) =>
+          d ? { ...d, startS: formatTime(match.startS), endS: formatTime(match.endS) } : d
+        );
+        setTimingAutoMatched(true);
+      } else {
+        setTimingAutoMatched(false);
+      }
+    }, 400);
+  }
 
   async function handleDetectQuotes() {
     setDetecting(true);
@@ -132,12 +221,14 @@ export function QuoteGraphicsPanel({
       sourceUrl: q.sourceUrl || '',
     });
     setScreenshotPreview(null);
+    setTimingAutoMatched(false);
   }
 
   function cancelEditing() {
     setEditingIndex(null);
     setEditDraft(null);
     setScreenshotPreview(null);
+    setTimingAutoMatched(false);
   }
 
   async function handlePreviewScreenshot() {
@@ -297,9 +388,11 @@ export function QuoteGraphicsPanel({
                       <Label className="text-xs text-muted">Quote text</Label>
                       <Textarea
                         value={editDraft.text}
-                        onChange={(e) =>
-                          setEditDraft((d) => (d ? { ...d, text: e.target.value } : d))
-                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditDraft((d) => (d ? { ...d, text: val } : d));
+                          tryAutoMatchTiming(val);
+                        }}
                         placeholder="Enter the quote text…"
                         rows={3}
                         className="text-sm resize-none"
@@ -364,25 +457,32 @@ export function QuoteGraphicsPanel({
                         </div>
                       </div>
                     )}
-                    <div className="flex gap-2">
-                      <div className="flex-1 space-y-1.5">
-                        <Label className="text-xs text-muted">Start (m:ss)</Label>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-muted">Timing</Label>
+                        {timingAutoMatched && (
+                          <span className="text-[11px] text-primary font-medium">
+                            ✓ matched from transcript
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
                         <Input
                           value={editDraft.startS}
-                          onChange={(e) =>
-                            setEditDraft((d) => (d ? { ...d, startS: e.target.value } : d))
-                          }
+                          onChange={(e) => {
+                            setEditDraft((d) => (d ? { ...d, startS: e.target.value } : d));
+                            setTimingAutoMatched(false);
+                          }}
                           placeholder="0:05"
                           className="text-sm h-8 font-mono"
                         />
-                      </div>
-                      <div className="flex-1 space-y-1.5">
-                        <Label className="text-xs text-muted">End (m:ss)</Label>
+                        <span className="flex items-center text-xs text-muted">–</span>
                         <Input
                           value={editDraft.endS}
-                          onChange={(e) =>
-                            setEditDraft((d) => (d ? { ...d, endS: e.target.value } : d))
-                          }
+                          onChange={(e) => {
+                            setEditDraft((d) => (d ? { ...d, endS: e.target.value } : d));
+                            setTimingAutoMatched(false);
+                          }}
                           placeholder="0:15"
                           className="text-sm h-8 font-mono"
                         />

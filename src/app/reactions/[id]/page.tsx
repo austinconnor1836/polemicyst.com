@@ -1506,6 +1506,7 @@ export default function CompositionEditorPage() {
           <QuoteGraphicsPanel
             compositionId={compositionId}
             hasTranscript={!!composition.creatorTranscriptJson}
+            transcriptSegments={composition.creatorTranscriptJson}
             quotes={composition.detectedQuotes || []}
             enabled={composition.quoteGraphicsEnabled || false}
             style={composition.quoteGraphicStyle || 'pull-quote'}
