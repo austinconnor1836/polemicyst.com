@@ -160,12 +160,9 @@ export async function screenshotQuoteFromUrl(
         range.setStart(found.node, Math.max(0, found.offset));
         range.setEnd(found.node, Math.min((found.node.textContent || '').length, found.offset + searchText.length));
 
-        var rect = range.getBoundingClientRect();
-        var scrollY = window.scrollY + rect.top - window.innerHeight * 0.3;
-        window.scrollTo({ top: Math.max(0, scrollY), behavior: 'instant' });
-
         var mark = document.createElement('mark');
-        mark.style.cssText = 'background: linear-gradient(135deg, rgba(226, 183, 20, 0.35), rgba(226, 183, 20, 0.25)); border-left: 4px solid #e2b714; padding: 4px 8px; border-radius: 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone;';
+        mark.setAttribute('data-quote-highlight', 'true');
+        mark.style.cssText = 'background: rgba(226, 183, 20, 0.45); border-left: 5px solid #e2b714; padding: 6px 10px; border-radius: 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone; box-shadow: 0 0 0 3px rgba(226, 183, 20, 0.2); outline: 2px solid rgba(226, 183, 20, 0.5); outline-offset: 2px;';
         try {
           range.surroundContents(mark);
         } catch(e) {
@@ -173,7 +170,8 @@ export async function screenshotQuoteFromUrl(
           for (var i = 0; i < rects.length; i++) {
             var r = rects[i];
             var overlay = document.createElement('div');
-            overlay.style.cssText = 'position:absolute;top:' + (r.top + window.scrollY) + 'px;left:' + r.left + 'px;width:' + r.width + 'px;height:' + r.height + 'px;background:rgba(226,183,20,0.3);pointer-events:none;z-index:99999;' + (i === 0 ? 'border-left:4px solid #e2b714;' : '');
+            if (i === 0) overlay.setAttribute('data-quote-highlight', 'true');
+            overlay.style.cssText = 'position:absolute;top:' + (r.top + window.scrollY - 4) + 'px;left:' + (r.left - 4) + 'px;width:' + (r.width + 8) + 'px;height:' + (r.height + 8) + 'px;background:rgba(226,183,20,0.4);border:2px solid #e2b714;border-radius:4px;pointer-events:none;z-index:99999;' + (i === 0 ? 'border-left:5px solid #e2b714;' : '');
             document.body.appendChild(overlay);
           }
         }
@@ -183,18 +181,36 @@ export async function screenshotQuoteFromUrl(
 
     if (textFound) {
       console.log('[quoteScreenshot] Quote text found and highlighted');
+      await new Promise((r) => setTimeout(r, 200));
+      // Scroll to the highlighted element using Puppeteer's locator
+      const highlightEl = await page.$('[data-quote-highlight]');
+      if (highlightEl) {
+        await highlightEl.scrollIntoView();
+        await new Promise((r) => setTimeout(r, 300));
+        // Re-center: scroll up a bit so the highlight isn't at the very top
+        await page.evaluate(`
+          (function() {
+            var el = document.querySelector('[data-quote-highlight]');
+            if (!el) return;
+            var rect = el.getBoundingClientRect();
+            var targetY = window.scrollY + rect.top - (window.innerHeight * 0.3);
+            window.scrollTo(0, Math.max(0, targetY));
+          })()
+        `);
+        await new Promise((r) => setTimeout(r, 300));
+      }
     } else {
       console.warn('[quoteScreenshot] Quote text not found — taking page screenshot as-is');
     }
 
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 200));
 
     // Add a subtle attribution bar at the bottom
     if (attribution) {
       const escapedAttr = JSON.stringify(attribution);
-      const barHeight = Math.round(height * 0.04);
-      const barMinHeight = 28;
-      const fontSize = Math.max(11, Math.round(height * 0.014));
+      const barHeight = Math.round(height * 0.05);
+      const barMinHeight = 36;
+      const fontSize = Math.max(13, Math.round(height * 0.018));
       await page.evaluate(`
         (function() {
           var bar = document.createElement('div');
@@ -205,10 +221,10 @@ export async function screenshotQuoteFromUrl(
       `);
     }
 
-    // Take the screenshot
+    // Take the screenshot (viewport capture — respects scroll position)
     const screenshotBuffer = await page.screenshot({
       type: 'png',
-      clip: { x: 0, y: 0, width, height },
+      fullPage: false,
     });
 
     const imagePath = path.join(
