@@ -17,6 +17,14 @@ import {
 import { Check, ExternalLink, Loader2, Pencil, Plus, Quote, Sparkles, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+type QuoteDisplayMode =
+  | 'auto'
+  | 'screenshot'
+  | 'pull-quote'
+  | 'lower-third'
+  | 'highlight-card'
+  | 'side-panel';
+
 interface DetectedQuote {
   text: string;
   attribution: string | null;
@@ -24,6 +32,7 @@ interface DetectedQuote {
   endS: number;
   confidence: number;
   sourceUrl?: string | null;
+  displayMode?: QuoteDisplayMode | null;
 }
 
 interface TranscriptSegment {
@@ -139,6 +148,7 @@ export function QuoteGraphicsPanel({
     startS: string;
     endS: string;
     sourceUrl: string;
+    displayMode: QuoteDisplayMode;
   } | null>(null);
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
   const [screenshotLoading, setScreenshotLoading] = useState(false);
@@ -219,6 +229,7 @@ export function QuoteGraphicsPanel({
       startS: formatTime(q.startS),
       endS: formatTime(q.endS),
       sourceUrl: q.sourceUrl || '',
+      displayMode: q.displayMode || 'auto',
     });
     setScreenshotPreview(null);
     setTimingAutoMatched(false);
@@ -288,6 +299,7 @@ export function QuoteGraphicsPanel({
       startS,
       endS,
       sourceUrl: editDraft.sourceUrl.trim() || null,
+      displayMode: editDraft.displayMode,
     };
 
     onUpdate(updated, enabled, style);
@@ -444,6 +456,41 @@ export function QuoteGraphicsPanel({
                         </p>
                       )}
                     </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted">Display format</Label>
+                      <Select
+                        value={editDraft.displayMode}
+                        onValueChange={(v) =>
+                          setEditDraft((d) =>
+                            d ? { ...d, displayMode: v as QuoteDisplayMode } : d
+                          )
+                        }
+                      >
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">
+                            Auto{editDraft.sourceUrl ? ' (screenshot)' : ' (graphic)'}
+                          </SelectItem>
+                          {editDraft.sourceUrl && (
+                            <SelectItem value="screenshot">
+                              Screenshot — capture the source page
+                            </SelectItem>
+                          )}
+                          <SelectItem value="pull-quote">
+                            Pull Quote — centered card with quote marks
+                          </SelectItem>
+                          <SelectItem value="lower-third">
+                            Lower Third — text bar at bottom
+                          </SelectItem>
+                          <SelectItem value="highlight-card">
+                            Highlight Card — accent border card
+                          </SelectItem>
+                          <SelectItem value="side-panel">Side Panel — panel on one side</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                     {screenshotPreview && (
                       <div className="space-y-1.5">
                         <Label className="text-xs text-muted">Preview</Label>
@@ -536,6 +583,16 @@ export function QuoteGraphicsPanel({
                                 <ExternalLink className="h-3 w-3" />
                                 Source
                               </a>
+                            </>
+                          )}
+                          {q.displayMode && q.displayMode !== 'auto' && (
+                            <>
+                              <span>·</span>
+                              <span className="capitalize">
+                                {q.displayMode === 'screenshot'
+                                  ? '📷'
+                                  : q.displayMode.replace('-', ' ')}
+                              </span>
                             </>
                           )}
                           <span>·</span>

@@ -8,6 +8,20 @@
 
 const fetch = require('node-fetch');
 
+/**
+ * How a quote overlay is rendered in the video.
+ * - 'screenshot': navigate to sourceUrl and capture the page (requires sourceUrl)
+ * - 'pull-quote' / 'lower-third' / 'highlight-card' / 'side-panel': generated text graphic
+ * - 'auto': uses screenshot if sourceUrl present, otherwise falls back to composition style
+ */
+export type QuoteDisplayMode =
+  | 'auto'
+  | 'screenshot'
+  | 'pull-quote'
+  | 'lower-third'
+  | 'highlight-card'
+  | 'side-panel';
+
 export interface DetectedQuote {
   /** The quoted text as spoken by the creator */
   text: string;
@@ -21,6 +35,8 @@ export interface DetectedQuote {
   confidence: number;
   /** URL to the source article/webpage (user-provided) */
   sourceUrl?: string | null;
+  /** How this quote should be rendered — defaults to 'auto' */
+  displayMode?: QuoteDisplayMode | null;
 }
 
 export interface TranscriptSegment {
