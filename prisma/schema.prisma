@@ -338,7 +338,9 @@ model AutomationRule {
   cropTemplateId   String?
   autoPublish      Boolean  @default(false)
   publishPlatforms Json?
-  autoEditSettings Json?
+  autoEditSettings     Json?
+  quoteGraphicsEnabled Boolean  @default(false)
+  quoteGraphicStyle    String   @default("pull-quote") // pull-quote | lower-third | highlight-card | side-panel | typewriter
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -654,6 +656,9 @@ model Composition {
   cuts                    Json?    // Array<{ id: string; startS: number; endS: number }> — applied globally to all tracks
   silenceRegions          Json?    // Array<{ startS: number; endS: number }> — cached FFmpeg silencedetect output
   autoEditResult          Json?    // { cuts: AutoEditCut[]; summary: AutoEditSummary } — cached auto-edit analysis
+  detectedQuotes          Json?    // Array<DetectedQuote> — LLM-detected cited/quoted passages
+  quoteGraphicStyle       String?  // pull-quote | lower-third | highlight-card | side-panel | typewriter
+  quoteGraphicsEnabled    Boolean  @default(false)
   thumbnailCutoutPosition String  @default("right") // left | right
   thumbnailCutoutSize     String  @default("large")  // small | medium | large
   thumbnailBgMode         String  @default("frame") // "frame" | "ai"

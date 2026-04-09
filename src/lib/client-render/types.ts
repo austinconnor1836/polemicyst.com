@@ -34,6 +34,19 @@ export interface CaptionOptions {
   fontSizePx?: number; // Default: 36 (medium)
 }
 
+/** A detected quote to overlay on the video during rendering. */
+export interface QuoteOverlaySegment {
+  text: string;
+  attribution: string | null;
+  startS: number;
+  endS: number;
+  style: 'pull-quote' | 'lower-third' | 'highlight-card' | 'side-panel' | 'typewriter';
+}
+
+export interface QuoteOverlayOptions {
+  quotes: QuoteOverlaySegment[];
+}
+
 export interface ClientRenderOptions {
   layout: Layout;
   creatorFile: File;
@@ -47,6 +60,7 @@ export interface ClientRenderOptions {
   creatorVolume: number;
   referenceVolume: number;
   captions?: CaptionOptions;
+  quoteOverlays?: QuoteOverlayOptions;
 }
 
 export type RenderPhase =
