@@ -1,0 +1,383 @@
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Check, Loader2, Pencil, Plus, Quote, Sparkles, X } from 'lucide-react';
+import toast from 'react-hot-toast';
+
+interface DetectedQuote {
+  text: string;
+  attribution: string | null;
+  startS: number;
+  endS: number;
+  confidence: number;
+}
+
+interface QuoteGraphicsPanelProps {
+  compositionId: string;
+  hasTranscript: boolean;
+  quotes: DetectedQuote[];
+  enabled: boolean;
+  style: string;
+  onUpdate: (quotes: DetectedQuote[], enabled: boolean, style: string) => void;
+}
+
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function parseTime(str: string): number | null {
+  const parts = str.split(':');
+  if (parts.length === 2) {
+    const m = parseInt(parts[0], 10);
+    const s = parseFloat(parts[1]);
+    if (!isNaN(m) && !isNaN(s)) return m * 60 + s;
+  }
+  const n = parseFloat(str);
+  return isNaN(n) ? null : n;
+}
+
+export function QuoteGraphicsPanel({
+  compositionId,
+  hasTranscript,
+  quotes,
+  enabled,
+  style,
+  onUpdate,
+}: QuoteGraphicsPanelProps) {
+  const [detecting, setDetecting] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState<{
+    text: string;
+    attribution: string;
+    startS: string;
+    endS: string;
+  } | null>(null);
+
+  async function handleDetectQuotes() {
+    setDetecting(true);
+    try {
+      const res = await fetch(`/api/compositions/${compositionId}/detect-quotes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ style }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Detection failed' }));
+        toast.error(err.error || 'Quote detection failed');
+        return;
+      }
+
+      const data = await res.json();
+      onUpdate(data.quotes || [], true, data.style || style);
+      toast.success(
+        data.quotes?.length
+          ? `Found ${data.quotes.length} quoted excerpt${data.quotes.length !== 1 ? 's' : ''}`
+          : 'No quoted excerpts detected in this video'
+      );
+    } catch {
+      toast.error('Something went wrong');
+    } finally {
+      setDetecting(false);
+    }
+  }
+
+  function handleRemoveQuote(index: number) {
+    const updated = quotes.filter((_, i) => i !== index);
+    onUpdate(updated, enabled, style);
+    updateServer({ quotes: updated });
+    if (editingIndex === index) {
+      setEditingIndex(null);
+      setEditDraft(null);
+    }
+  }
+
+  function handleToggle(checked: boolean) {
+    onUpdate(quotes, checked, style);
+    updateServer({ enabled: checked });
+  }
+
+  function handleStyleChange(newStyle: string) {
+    onUpdate(quotes, enabled, newStyle);
+    updateServer({ style: newStyle });
+  }
+
+  function startEditing(index: number) {
+    const q = quotes[index];
+    setEditingIndex(index);
+    setEditDraft({
+      text: q.text,
+      attribution: q.attribution || '',
+      startS: formatTime(q.startS),
+      endS: formatTime(q.endS),
+    });
+  }
+
+  function cancelEditing() {
+    setEditingIndex(null);
+    setEditDraft(null);
+  }
+
+  function saveEditing() {
+    if (editingIndex === null || !editDraft) return;
+
+    const startS = parseTime(editDraft.startS);
+    const endS = parseTime(editDraft.endS);
+    if (startS === null || endS === null || endS <= startS) {
+      toast.error('Invalid time range');
+      return;
+    }
+    if (!editDraft.text.trim()) {
+      toast.error('Quote text cannot be empty');
+      return;
+    }
+
+    const updated = [...quotes];
+    updated[editingIndex] = {
+      ...updated[editingIndex],
+      text: editDraft.text.trim(),
+      attribution: editDraft.attribution.trim() || null,
+      startS,
+      endS,
+    };
+
+    onUpdate(updated, enabled, style);
+    updateServer({ quotes: updated });
+    setEditingIndex(null);
+    setEditDraft(null);
+    toast.success('Quote updated');
+  }
+
+  function handleAddQuote() {
+    const newQuote: DetectedQuote = {
+      text: '',
+      attribution: null,
+      startS: 0,
+      endS: 10,
+      confidence: 1,
+    };
+    const updated = [...quotes, newQuote];
+    onUpdate(updated, enabled, style);
+    startEditing(updated.length - 1);
+  }
+
+  async function updateServer(data: {
+    quotes?: DetectedQuote[];
+    enabled?: boolean;
+    style?: string;
+  }) {
+    try {
+      await fetch(`/api/compositions/${compositionId}/detect-quotes`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Quote className="h-4 w-4 text-muted" />
+          <Label className="text-sm font-medium">Quote Graphics</Label>
+          {quotes.length > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              {quotes.length} detected
+            </Badge>
+          )}
+        </div>
+        <Switch checked={enabled} onCheckedChange={handleToggle} />
+      </div>
+
+      {enabled && (
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <Select value={style} onValueChange={handleStyleChange}>
+              <SelectTrigger className="flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pull-quote">Pull Quote</SelectItem>
+                <SelectItem value="lower-third">Lower Third</SelectItem>
+                <SelectItem value="highlight-card">Highlight Card</SelectItem>
+                <SelectItem value="side-panel">Side Panel</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleDetectQuotes}
+              disabled={detecting || !hasTranscript}
+            >
+              {detecting ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              {quotes.length > 0 ? 'Re-detect' : 'Detect'}
+            </Button>
+          </div>
+
+          {!hasTranscript && (
+            <p className="text-xs text-muted">
+              Waiting for transcript — quote detection requires a completed transcript.
+            </p>
+          )}
+
+          {quotes.length > 0 && (
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {quotes.map((q, i) =>
+                editingIndex === i && editDraft ? (
+                  <div
+                    key={i}
+                    className="rounded-lg border-2 border-primary bg-surface/50 p-3 text-sm space-y-2.5 glass:bg-white/[0.06] glass:border-white/20"
+                  >
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted">Quote text</Label>
+                      <Textarea
+                        value={editDraft.text}
+                        onChange={(e) =>
+                          setEditDraft((d) => (d ? { ...d, text: e.target.value } : d))
+                        }
+                        placeholder="Enter the quote text…"
+                        rows={3}
+                        className="text-sm resize-none"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted">Attribution (optional)</Label>
+                      <Input
+                        value={editDraft.attribution}
+                        onChange={(e) =>
+                          setEditDraft((d) => (d ? { ...d, attribution: e.target.value } : d))
+                        }
+                        placeholder="e.g. Jonathan Winer, Clinton State Dept."
+                        className="text-sm h-8"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="flex-1 space-y-1.5">
+                        <Label className="text-xs text-muted">Start (m:ss)</Label>
+                        <Input
+                          value={editDraft.startS}
+                          onChange={(e) =>
+                            setEditDraft((d) => (d ? { ...d, startS: e.target.value } : d))
+                          }
+                          placeholder="0:05"
+                          className="text-sm h-8 font-mono"
+                        />
+                      </div>
+                      <div className="flex-1 space-y-1.5">
+                        <Label className="text-xs text-muted">End (m:ss)</Label>
+                        <Input
+                          value={editDraft.endS}
+                          onChange={(e) =>
+                            setEditDraft((d) => (d ? { ...d, endS: e.target.value } : d))
+                          }
+                          placeholder="0:15"
+                          className="text-sm h-8 font-mono"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs"
+                        onClick={cancelEditing}
+                      >
+                        Cancel
+                      </Button>
+                      <Button size="sm" className="h-7 text-xs gap-1" onClick={saveEditing}>
+                        <Check className="h-3 w-3" />
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    key={i}
+                    className="group relative rounded-lg border border-border bg-surface/50 p-3 text-sm glass:bg-white/[0.04] glass:border-white/10"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground line-clamp-2">
+                          &ldquo;{q.text}&rdquo;
+                        </p>
+                        <div className="mt-1 flex items-center gap-2 text-xs text-muted">
+                          <span>
+                            {formatTime(q.startS)} – {formatTime(q.endS)}
+                          </span>
+                          {q.attribution && (
+                            <>
+                              <span>·</span>
+                              <span className="truncate">{q.attribution}</span>
+                            </>
+                          )}
+                          <span>·</span>
+                          <span>{Math.round(q.confidence * 100)}%</span>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button
+                          onClick={() => startEditing(i)}
+                          className="rounded p-1 text-muted hover:bg-primary/10 hover:text-primary"
+                          title="Edit quote"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleRemoveQuote(i)}
+                          className="rounded p-1 text-muted hover:bg-destructive/10 hover:text-destructive"
+                          title="Remove quote"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          )}
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 w-full gap-1 text-xs"
+            onClick={handleAddQuote}
+          >
+            <Plus className="h-3 w-3" />
+            Add Quote Manually
+          </Button>
+
+          {quotes.length === 0 && hasTranscript && (
+            <p className="text-xs text-muted">
+              Click &ldquo;Detect&rdquo; to auto-find quoted passages, or add one manually. Edit the
+              text to customize what appears in the graphic overlay.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

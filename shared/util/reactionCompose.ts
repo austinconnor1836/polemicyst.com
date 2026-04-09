@@ -140,6 +140,15 @@ export interface ComposeCaptionOptions {
   }>;
 }
 
+export interface QuoteOverlayInfo {
+  /** Path to the PNG overlay image */
+  imagePath: string;
+  /** Start time in the output timeline (seconds) */
+  startS: number;
+  /** End time in the output timeline (seconds) */
+  endS: number;
+}
+
 export interface ComposeOptions {
   layout: Layout;
   creatorPath: string;
@@ -153,6 +162,8 @@ export interface ComposeOptions {
   captions?: ComposeCaptionOptions;
   /** Cuts to apply (output-timeline coordinates). Applied globally to all tracks. */
   cuts?: Array<{ startS: number; endS: number }>;
+  /** Pre-generated quote graphic overlays to composite during rendering */
+  quoteOverlays?: QuoteOverlayInfo[];
 }
 
 /**
@@ -881,6 +892,41 @@ export async function renderComposition(
     }
   }
 
+  // --- Quote graphic overlays ---
+  const quoteInputs: string[] = [];
+  if (opts.quoteOverlays && opts.quoteOverlays.length > 0) {
+    const baseInputCount = 1 + opts.tracks.length; // creator + ref tracks
+    let currentLabel = outputMap[0].replace(/[\[\]]/g, '');
+
+    for (let qi = 0; qi < opts.quoteOverlays.length; qi++) {
+      const qo = opts.quoteOverlays[qi];
+      const inputIdx = baseInputCount + qi;
+      quoteInputs.push(qo.imagePath);
+
+      const fadeInStart = qo.startS;
+      const fadeOutStart = Math.max(qo.startS, qo.endS - 0.5);
+      const enableExpr = `between(t,${fadeInStart.toFixed(3)},${qo.endS.toFixed(3)})`;
+
+      const alphaExpr =
+        `if(lt(t,${(fadeInStart + 0.3).toFixed(3)}),` +
+        `(t-${fadeInStart.toFixed(3)})/0.3,` +
+        `if(gt(t,${fadeOutStart.toFixed(3)}),` +
+        `(${qo.endS.toFixed(3)}-t)/0.5,1))`;
+
+      const nextLabel = `qoverlay${qi}`;
+      filterComplex +=
+        `;\n[${inputIdx}:v]format=rgba,colorchannelmixer=aa=${alphaExpr.length > 100 ? '1' : '1'}[qimg${qi}]` +
+        `;\n[${currentLabel}][qimg${qi}]overlay=x=0:y=0:enable='${enableExpr}':format=auto[${nextLabel}]`;
+      currentLabel = nextLabel;
+    }
+
+    outputMap[0] = `[${currentLabel}]`;
+
+    console.log(
+      `[renderComposition] Quote overlays: ${opts.quoteOverlays.length} graphics added to filter graph`
+    );
+  }
+
   console.log(`[renderComposition] layout=${opts.layout} filter_complex:\n${filterComplex}`);
   console.log(`[renderComposition] outputMap: ${JSON.stringify(outputMap)}`);
 
@@ -893,6 +939,11 @@ export async function renderComposition(
   // Inputs: reference tracks
   for (const track of opts.tracks) {
     ffmpegArgs.push('-i', track.localPath);
+  }
+
+  // Inputs: quote overlay images (each as a looping image input)
+  for (const qImgPath of quoteInputs) {
+    ffmpegArgs.push('-loop', '1', '-i', qImgPath);
   }
 
   // Filter complex
