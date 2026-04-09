@@ -332,7 +332,31 @@ export async function generateQuoteGraphic(
 
 /**
  * Generate PNG overlays for all detected quotes.
+ *
+ * When a quote has a `sourceUrl`, navigates to the page and screenshots the
+ * actual article with the passage highlighted. Falls back to generated text
+ * graphics when no URL is provided or the screenshot fails.
  */
+/**
+ * Resolve the effective display mode for a quote.
+ * - 'auto': screenshot if sourceUrl present, else use composition default style
+ * - 'screenshot': force screenshot (requires sourceUrl)
+ * - graphic style name: force that graphic style
+ */
+function resolveDisplayMode(
+  quote: DetectedQuote,
+  defaultStyle: QuoteGraphicStyle
+): 'screenshot' | QuoteGraphicStyle {
+  const mode = quote.displayMode || 'auto';
+  if (mode === 'auto') {
+    return quote.sourceUrl ? 'screenshot' : defaultStyle;
+  }
+  if (mode === 'screenshot') {
+    return quote.sourceUrl ? 'screenshot' : defaultStyle;
+  }
+  return mode as QuoteGraphicStyle;
+}
+
 export async function generateAllQuoteGraphics(
   quotes: DetectedQuote[],
   style: QuoteGraphicStyle,
@@ -343,9 +367,42 @@ export async function generateAllQuoteGraphics(
 
   for (const quote of quotes) {
     try {
+      const effectiveMode = resolveDisplayMode(quote, style);
+
+      if (effectiveMode === 'screenshot' && quote.sourceUrl) {
+        try {
+          const { screenshotQuoteFromUrl } = await import('./quoteScreenshot');
+          const result = await screenshotQuoteFromUrl({
+            sourceUrl: quote.sourceUrl,
+            quoteText: quote.text,
+            width: canvasWidth,
+            height: canvasHeight,
+            attribution: quote.attribution,
+          });
+          overlays.push({
+            quote,
+            style: effectiveMode as QuoteGraphicStyle,
+            imagePath: result.imagePath,
+            width: result.width,
+            height: result.height,
+          });
+          console.log(
+            `[quoteGraphics] Screenshot from ${quote.sourceUrl} ` +
+              `(text ${result.textFound ? 'found' : 'not found'})`
+          );
+          continue;
+        } catch (screenshotErr) {
+          console.warn(
+            `[quoteGraphics] Screenshot failed for ${quote.sourceUrl}, falling back to graphic:`,
+            screenshotErr instanceof Error ? screenshotErr.message : screenshotErr
+          );
+        }
+      }
+
+      const graphicStyle = effectiveMode === 'screenshot' ? style : effectiveMode;
       const overlay = await generateQuoteGraphic({
         quote,
-        style,
+        style: graphicStyle,
         canvasWidth,
         canvasHeight,
       });
