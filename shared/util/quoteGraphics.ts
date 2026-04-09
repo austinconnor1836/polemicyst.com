@@ -332,6 +332,10 @@ export async function generateQuoteGraphic(
 
 /**
  * Generate PNG overlays for all detected quotes.
+ *
+ * When a quote has a `sourceUrl`, navigates to the page and screenshots the
+ * actual article with the passage highlighted. Falls back to generated text
+ * graphics when no URL is provided or the screenshot fails.
  */
 export async function generateAllQuoteGraphics(
   quotes: DetectedQuote[],
@@ -343,6 +347,37 @@ export async function generateAllQuoteGraphics(
 
   for (const quote of quotes) {
     try {
+      // Prefer screenshot from source URL when available
+      if (quote.sourceUrl) {
+        try {
+          const { screenshotQuoteFromUrl } = await import('./quoteScreenshot');
+          const result = await screenshotQuoteFromUrl({
+            sourceUrl: quote.sourceUrl,
+            quoteText: quote.text,
+            width: canvasWidth,
+            height: canvasHeight,
+            attribution: quote.attribution,
+          });
+          overlays.push({
+            quote,
+            style,
+            imagePath: result.imagePath,
+            width: result.width,
+            height: result.height,
+          });
+          console.log(
+            `[quoteGraphics] Screenshot from ${quote.sourceUrl} ` +
+              `(text ${result.textFound ? 'found' : 'not found'})`
+          );
+          continue;
+        } catch (screenshotErr) {
+          console.warn(
+            `[quoteGraphics] Screenshot failed for ${quote.sourceUrl}, falling back to graphic:`,
+            screenshotErr instanceof Error ? screenshotErr.message : screenshotErr
+          );
+        }
+      }
+
       const overlay = await generateQuoteGraphic({
         quote,
         style,

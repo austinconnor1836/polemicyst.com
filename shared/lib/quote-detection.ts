@@ -19,6 +19,8 @@ export interface DetectedQuote {
   endS: number;
   /** LLM confidence 0..1 */
   confidence: number;
+  /** URL to the source article/webpage (user-provided) */
+  sourceUrl?: string | null;
 }
 
 export interface TranscriptSegment {
