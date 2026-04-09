@@ -95,6 +95,8 @@ interface Composition {
     startS: number;
     endS: number;
     confidence: number;
+    sourceUrl?: string | null;
+    displayMode?: string | null;
   }> | null;
   quoteGraphicStyle?: string | null;
   quoteGraphicsEnabled?: boolean;
@@ -1505,7 +1507,8 @@ export default function CompositionEditorPage() {
           <QuoteGraphicsPanel
             compositionId={compositionId}
             hasTranscript={!!composition.creatorTranscriptJson}
-            quotes={composition.detectedQuotes || []}
+            transcriptSegments={composition.creatorTranscriptJson}
+            quotes={(composition.detectedQuotes || []) as any[]}
             enabled={composition.quoteGraphicsEnabled || false}
             style={composition.quoteGraphicStyle || 'pull-quote'}
             onUpdate={(quotes, enabled, style) => {
