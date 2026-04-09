@@ -82,142 +82,104 @@ export async function screenshotQuoteFromUrl(
       timeout: 20_000,
     });
 
-    await page.evaluate(() => document.fonts?.ready);
+    await page.evaluate('document.fonts?.ready');
 
     // Dismiss common cookie/popup overlays
     await page
-      .evaluate(() => {
-        const selectors = [
-          '[class*="cookie"] button',
-          '[class*="consent"] button',
-          '[id*="cookie"] button',
-          '[class*="popup"] [class*="close"]',
-          '[class*="modal"] [class*="close"]',
-          '[class*="overlay"] [class*="close"]',
-          'button[aria-label="Close"]',
-          'button[aria-label="Accept"]',
-          'button[aria-label="Accept all"]',
-        ];
-        for (const sel of selectors) {
-          const btn = document.querySelector(sel) as HTMLElement;
-          if (btn) {
-            btn.click();
-            break;
+      .evaluate(
+        `(function() {
+          var selectors = [
+            '[class*="cookie"] button',
+            '[class*="consent"] button',
+            '[id*="cookie"] button',
+            '[class*="popup"] [class*="close"]',
+            '[class*="modal"] [class*="close"]',
+            '[class*="overlay"] [class*="close"]',
+            'button[aria-label="Close"]',
+            'button[aria-label="Accept"]',
+            'button[aria-label="Accept all"]'
+          ];
+          for (var i = 0; i < selectors.length; i++) {
+            var btn = document.querySelector(selectors[i]);
+            if (btn) { btn.click(); break; }
           }
-        }
-      })
+        })()`
+      )
       .catch(() => {});
 
     await new Promise((r) => setTimeout(r, 500));
 
-    // Search for the quoted text on the page and highlight it
-    const textFound = await page.evaluate(
-      (searchText: string) => {
-        function findTextNode(
-          root: Node,
-          text: string
-        ): { node: Text; offset: number } | null {
-          const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-          let accumulated = '';
-          const nodes: { node: Text; start: number }[] = [];
+    // Search for the quoted text on the page and highlight it.
+    // The script is injected as a raw string to avoid tsx/esbuild transformations
+    // that add __name decorators which break inside page.evaluate.
+    const escapedQuoteText = JSON.stringify(quoteText);
+    const textFound = await page.evaluate(`
+      (function() {
+        var searchText = ${escapedQuoteText};
 
-          let current: Text | null;
-          while ((current = walker.nextNode() as Text | null)) {
-            const parent = current.parentElement;
+        function findTextNode(root, text) {
+          var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+          var accumulated = '';
+          var nodes = [];
+          var current;
+          while ((current = walker.nextNode())) {
+            var parent = current.parentElement;
             if (parent) {
-              const style = window.getComputedStyle(parent);
+              var style = window.getComputedStyle(parent);
               if (style.display === 'none' || style.visibility === 'hidden') continue;
             }
             nodes.push({ node: current, start: accumulated.length });
             accumulated += current.textContent || '';
           }
-
-          const normalized = accumulated
-            .replace(/\s+/g, ' ')
-            .toLowerCase();
-          const searchNorm = text.replace(/\s+/g, ' ').toLowerCase();
-
-          const idx = normalized.indexOf(searchNorm);
+          var normalized = accumulated.replace(/\\s+/g, ' ').toLowerCase();
+          var searchNorm = text.replace(/\\s+/g, ' ').toLowerCase();
+          var idx = normalized.indexOf(searchNorm);
           if (idx === -1) return null;
-
-          for (const entry of nodes) {
-            const nodeEnd = entry.start + (entry.node.textContent || '').length;
-            if (nodeEnd > idx) {
-              return { node: entry.node, offset: idx - entry.start };
-            }
+          for (var i = 0; i < nodes.length; i++) {
+            var nodeEnd = nodes[i].start + (nodes[i].node.textContent || '').length;
+            if (nodeEnd > idx) return { node: nodes[i].node, offset: idx - nodes[i].start };
           }
           return null;
         }
 
-        // Try progressively shorter substrings (articles may have slight text differences)
-        const attempts = [
+        var attempts = [
           searchText,
           searchText.slice(0, Math.floor(searchText.length * 0.8)),
           searchText.slice(0, Math.floor(searchText.length * 0.6)),
-          searchText.split(/[.!?]/)[0],
-        ].filter((t) => t.length > 20);
+          searchText.split(/[.!?]/)[0]
+        ].filter(function(t) { return t.length > 20; });
 
-        let found: { node: Text; offset: number } | null = null;
-        for (const attempt of attempts) {
-          found = findTextNode(document.body, attempt);
+        var found = null;
+        for (var a = 0; a < attempts.length; a++) {
+          found = findTextNode(document.body, attempts[a]);
           if (found) break;
         }
-
         if (!found) return false;
 
-        // Scroll the found text into view (centered)
-        const range = document.createRange();
+        var range = document.createRange();
         range.setStart(found.node, Math.max(0, found.offset));
-        range.setEnd(
-          found.node,
-          Math.min(
-            (found.node.textContent || '').length,
-            found.offset + searchText.length
-          )
-        );
+        range.setEnd(found.node, Math.min((found.node.textContent || '').length, found.offset + searchText.length));
 
-        const rect = range.getBoundingClientRect();
-        const scrollY = window.scrollY + rect.top - window.innerHeight * 0.3;
+        var rect = range.getBoundingClientRect();
+        var scrollY = window.scrollY + rect.top - window.innerHeight * 0.3;
         window.scrollTo({ top: Math.max(0, scrollY), behavior: 'instant' });
 
-        // Highlight the text with a styled overlay
-        const mark = document.createElement('mark');
-        mark.style.cssText = `
-          background: linear-gradient(135deg, rgba(226, 183, 20, 0.35), rgba(226, 183, 20, 0.25));
-          border-left: 4px solid #e2b714;
-          padding: 4px 8px;
-          border-radius: 4px;
-          box-decoration-break: clone;
-          -webkit-box-decoration-break: clone;
-        `;
-
+        var mark = document.createElement('mark');
+        mark.style.cssText = 'background: linear-gradient(135deg, rgba(226, 183, 20, 0.35), rgba(226, 183, 20, 0.25)); border-left: 4px solid #e2b714; padding: 4px 8px; border-radius: 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone;';
         try {
           range.surroundContents(mark);
-        } catch {
-          // If surroundContents fails (spans multiple elements), use an overlay approach
-          const rects = range.getClientRects();
-          for (let i = 0; i < rects.length; i++) {
-            const r = rects[i];
-            const overlay = document.createElement('div');
-            overlay.style.cssText = `
-              position: absolute;
-              top: ${r.top + window.scrollY}px;
-              left: ${r.left}px;
-              width: ${r.width}px;
-              height: ${r.height}px;
-              background: rgba(226, 183, 20, 0.3);
-              border-left: ${i === 0 ? '4px solid #e2b714' : 'none'};
-              pointer-events: none;
-              z-index: 99999;
-            `;
+        } catch(e) {
+          var rects = range.getClientRects();
+          for (var i = 0; i < rects.length; i++) {
+            var r = rects[i];
+            var overlay = document.createElement('div');
+            overlay.style.cssText = 'position:absolute;top:' + (r.top + window.scrollY) + 'px;left:' + r.left + 'px;width:' + r.width + 'px;height:' + r.height + 'px;background:rgba(226,183,20,0.3);pointer-events:none;z-index:99999;' + (i === 0 ? 'border-left:4px solid #e2b714;' : '');
             document.body.appendChild(overlay);
           }
         }
-
         return true;
-      },
-      quoteText
-    );
+      })()
+    `) as boolean;
 
     if (textFound) {
       console.log('[quoteScreenshot] Quote text found and highlighted');
@@ -229,31 +191,18 @@ export async function screenshotQuoteFromUrl(
 
     // Add a subtle attribution bar at the bottom
     if (attribution) {
-      await page.evaluate(
-        (attr: string, h: number) => {
-          const bar = document.createElement('div');
-          bar.style.cssText = `
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: ${Math.round(h * 0.04)}px;
-            min-height: 28px;
-            background: rgba(0, 0, 0, 0.85);
-            color: #e2b714;
-            font: 600 ${Math.max(11, Math.round(h * 0.014))}px -apple-system, "Segoe UI", sans-serif;
-            display: flex;
-            align-items: center;
-            padding: 0 16px;
-            z-index: 999999;
-            letter-spacing: 0.3px;
-          `;
-          bar.textContent = `📖 SOURCE: ${attr}`;
+      const escapedAttr = JSON.stringify(attribution);
+      const barHeight = Math.round(height * 0.04);
+      const barMinHeight = 28;
+      const fontSize = Math.max(11, Math.round(height * 0.014));
+      await page.evaluate(`
+        (function() {
+          var bar = document.createElement('div');
+          bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;height:${barHeight}px;min-height:${barMinHeight}px;background:rgba(0,0,0,0.85);color:#e2b714;font:600 ${fontSize}px -apple-system,Segoe UI,sans-serif;display:flex;align-items:center;padding:0 16px;z-index:999999;letter-spacing:0.3px;';
+          bar.textContent = '\\u{1F4D6} SOURCE: ' + ${escapedAttr};
           document.body.appendChild(bar);
-        },
-        attribution,
-        height
-      );
+        })()
+      `);
     }
 
     // Take the screenshot
