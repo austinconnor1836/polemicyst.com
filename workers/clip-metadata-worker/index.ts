@@ -1171,10 +1171,11 @@ new Worker<GenericTranscriptionJob>(
             // Combine creator segments with reference track transcripts
             // Quotes often appear in reference tracks (the video being reacted to)
             const allSegments = [...(result.segments as any[])];
-            const refTracks = await prisma.compositionTrack.findMany({
-              where: { compositionId: targetId, transcriptJson: { not: null } },
+            const allRefTracks = await prisma.compositionTrack.findMany({
+              where: { compositionId: targetId },
               select: { transcriptJson: true },
             });
+            const refTracks = allRefTracks.filter((t) => t.transcriptJson !== null);
             for (const track of refTracks) {
               if (Array.isArray(track.transcriptJson)) {
                 allSegments.push(...(track.transcriptJson as any[]));

@@ -913,6 +913,52 @@ export default function CompositionEditorPage() {
     [compositionId]
   );
 
+  const handleRemoveCreator = useCallback(async () => {
+    setDeletingCreator(true);
+    if (!confirm('Remove this creator video?')) {
+      setDeletingCreator(false);
+      return;
+    }
+    try {
+      if (composition?.creatorS3Url) {
+        await save({
+          creatorS3Key: null,
+          creatorS3Url: null,
+          creatorDurationS: null,
+          creatorWidth: null,
+          creatorHeight: null,
+          creatorTrimStartS: 0,
+          creatorTrimEndS: null,
+        } as any);
+      }
+      const blobUrl = creatorBlobUrlRef.current;
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      setCreatorBlobUrl(null);
+      setCreatorFile(null);
+      setCreatorLocalMeta(null);
+      setCreatorUploadStatus('idle');
+      setTranscriptionStatus('idle');
+      clearCreatorFileCache(compositionId);
+      setComposition((prev) =>
+        prev
+          ? {
+              ...prev,
+              creatorS3Key: null,
+              creatorS3Url: null,
+              creatorDurationS: null,
+              creatorWidth: null,
+              creatorHeight: null,
+            }
+          : prev
+      );
+      toast.success('Creator video removed');
+    } catch {
+      toast.error('Failed to remove creator video');
+    } finally {
+      setDeletingCreator(false);
+    }
+  }, [compositionId, composition?.creatorS3Url, save]);
+
   const handleTrackMove = useCallback(
     (trackId: string, startAtS: number) => {
       handleUpdateTrack(trackId, { startAtS });
@@ -1221,150 +1267,79 @@ export default function CompositionEditorPage() {
           <CardDescription>Your commentary footage</CardDescription>
         </CardHeader>
         <CardContent>
-          {(() => {
-            // Creator video source: S3 URL or local blob
-            const creatorSrc = composition.creatorS3Url || creatorBlobUrl;
-            const creatorDur = creatorDurationS;
-            const hasCreatorVideo = !!creatorSrc;
-            const isCreatorUploading = creatorUploadStatus === 'uploading';
-            // Always show CompositionVideoPanel when S3 URL exists (already uploaded).
-            // Only let VideoUploader take over during the initial upload (no S3 URL yet).
-            const showCreatorPanel =
-              hasCreatorVideo && (!isCreatorUploading || !!composition.creatorS3Url);
-            const uploaderBlobUrl = showCreatorPanel ? null : creatorBlobUrl;
-            const creatorTranscribing =
-              !!composition.creatorS3Url && !composition.creatorTranscriptJson;
-
-            return (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {/* Show creator video panel when uploaded (not during active upload) */}
-                {showCreatorPanel && (
-                  <CompositionVideoPanel
-                    src={creatorSrc!}
-                    label="Creator Video"
-                    badge="Commentary"
-                    sublabel={
-                      creatorDur > 0
-                        ? `${Math.floor(creatorDur / 60)}:${String(Math.floor(creatorDur % 60)).padStart(2, '0')}`
-                        : undefined
-                    }
-                    onTimeUpdate={handlePlayheadUpdate}
-                    onClick={
-                      creatorDur > 0
-                        ? () =>
-                            setTrimTarget({
-                              type: 'creator',
-                              src: creatorSrc!,
-                              durationS: creatorDur,
-                              trimStartS: composition.creatorTrimStartS,
-                              trimEndS: composition.creatorTrimEndS ?? null,
-                              title: 'Trim Creator Video',
-                            })
-                        : undefined
-                    }
-                    extraOverlay={
-                      creatorTranscribing ? (
-                        <div className="absolute left-1.5 top-1.5 z-10 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white backdrop-blur">
-                          <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                          Transcribing
-                        </div>
-                      ) : undefined
-                    }
-                    deleting={deletingCreator}
-                    onDelete={async () => {
-                      if (!confirm('Delete this creator video?')) return;
-                      setDeletingCreator(true);
-                      try {
-                        if (composition.creatorS3Url) {
-                          await save({
-                            creatorS3Key: null,
-                            creatorS3Url: null,
-                            creatorDurationS: null,
-                            creatorWidth: null,
-                            creatorHeight: null,
-                            creatorTrimStartS: 0,
-                            creatorTrimEndS: null,
-                          } as any);
-                        }
-                        // Also clear local blob state
-                        if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
-                        setCreatorBlobUrl(null);
-                        setCreatorFile(null);
-                        setCreatorLocalMeta(null);
-                        setCreatorUploadStatus('idle');
-                        setTranscriptionStatus('idle');
-                        clearCreatorFileCache(compositionId);
-                        setComposition((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                creatorDurationS: null,
-                                creatorWidth: null,
-                                creatorHeight: null,
-                              }
-                            : prev
-                        );
-                        toast.success('Creator video removed');
-                      } catch {
-                        toast.error('Failed to remove creator video');
-                      } finally {
-                        setDeletingCreator(false);
-                      }
-                    }}
-                  />
-                )}
-
-                {/* Dropzone to add or replace creator video */}
-                <div className="space-y-2">
-                  <VideoUploader
-                    label={
-                      showCreatorPanel ? 'Replace commentary video' : 'Upload your commentary video'
-                    }
-                    blobUrl={uploaderBlobUrl}
-                    uploadStatus={showCreatorPanel ? 'idle' : creatorUploadStatus}
-                    uploadProgress={creatorUploadProgress}
-                    uploadSpeed={creatorUploadSpeed}
-                    initialFile={restoredCreatorFile}
-                    onFileSelected={handleCreatorFileSelected}
-                    onUploadComplete={handleCreatorUploadComplete}
-                    onUploadProgress={(p, s) => {
-                      setCreatorUploadProgress(p);
-                      setCreatorUploadSpeed(s);
-                    }}
-                    onUploadError={(msg) => {
-                      setCreatorUploadStatus('error');
-                      toast.error(msg);
-                    }}
-                    onRemove={() => {
-                      if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
-                      setCreatorBlobUrl(null);
-                      setCreatorFile(null);
-                      setCreatorLocalMeta(null);
-                      setCreatorUploadStatus('idle');
-                      setCreatorUploadProgress(null);
-                      clearCreatorFileCache(compositionId);
-                    }}
-                    keyPrefix={`compositions/${compositionId}/raw`}
-                  />
-                  {/* Transcription status for client-render mode */}
-                  {useClientRender && transcriptionStatus === 'transcribing' && (
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Transcribing...
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Creator video panel (same pattern as reference tracks) */}
+            {composition.creatorS3Url && (
+              <CompositionVideoPanel
+                src={composition.creatorS3Url}
+                label="Creator Video"
+                badge={
+                  creatorDurationS > 0
+                    ? `${Math.floor(creatorDurationS / 60)}:${String(Math.floor(creatorDurationS % 60)).padStart(2, '0')}`
+                    : 'Commentary'
+                }
+                onTimeUpdate={handlePlayheadUpdate}
+                deleting={deletingCreator}
+                disabled={isRendering}
+                onDelete={() => handleRemoveCreator()}
+                onClick={() => {
+                  if (deletingCreator) return;
+                  if (creatorDurationS > 0) {
+                    setTrimTarget({
+                      type: 'creator',
+                      src: composition.creatorS3Url!,
+                      durationS: creatorDurationS,
+                      trimStartS: composition.creatorTrimStartS,
+                      trimEndS: composition.creatorTrimEndS ?? null,
+                      title: 'Trim Creator Video',
+                    });
+                  }
+                }}
+                extraOverlay={
+                  composition.creatorS3Url && !composition.creatorTranscriptJson ? (
+                    <div className="absolute left-1.5 top-1.5 z-10 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white backdrop-blur">
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                      Transcribing
                     </div>
-                  )}
-                  {useClientRender && transcriptionStatus === 'complete' && (
-                    <div className="text-xs text-green-600 dark:text-green-400">
-                      Transcript ready
-                    </div>
-                  )}
-                  {useClientRender && transcriptionStatus === 'error' && (
-                    <div className="text-xs text-destructive">Transcription failed</div>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
+                  ) : undefined
+                }
+              />
+            )}
+
+            {/* Upload dropzone (same pattern as reference track uploader) */}
+            <VideoUploader
+              label={
+                composition.creatorS3Url
+                  ? 'Replace commentary video'
+                  : 'Upload your commentary video'
+              }
+              blobUrl={composition.creatorS3Url ? null : creatorBlobUrl}
+              uploadStatus={composition.creatorS3Url ? 'idle' : creatorUploadStatus}
+              uploadProgress={creatorUploadProgress}
+              uploadSpeed={creatorUploadSpeed}
+              initialFile={restoredCreatorFile}
+              onFileSelected={handleCreatorFileSelected}
+              onUploadComplete={handleCreatorUploadComplete}
+              onUploadProgress={(p, s) => {
+                setCreatorUploadProgress(p);
+                setCreatorUploadSpeed(s);
+              }}
+              onUploadError={(msg) => {
+                setCreatorUploadStatus('error');
+                toast.error(msg);
+              }}
+              onRemove={() => {
+                if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
+                setCreatorBlobUrl(null);
+                setCreatorFile(null);
+                setCreatorLocalMeta(null);
+                setCreatorUploadStatus('idle');
+                setCreatorUploadProgress(null);
+                clearCreatorFileCache(compositionId);
+              }}
+              keyPrefix={`compositions/${compositionId}/raw`}
+            />
+          </div>
         </CardContent>
       </Card>
 
