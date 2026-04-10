@@ -419,6 +419,10 @@ public struct APIClient {
         try await post(path: "/api/compositions/\(compositionId)/tracks", body: body)
     }
 
+    public func updateTrack(compositionId: String, trackId: String, body: UpdateTrackRequest) async throws -> CompositionTrack {
+        try await patch(path: "/api/compositions/\(compositionId)/tracks/\(trackId)", body: body)
+    }
+
     public func deleteTrack(compositionId: String, trackId: String) async throws {
         try await delete(path: "/api/compositions/\(compositionId)/tracks/\(trackId)")
     }
@@ -439,6 +443,59 @@ public struct APIClient {
     public func probeVideo(s3Key: String) async throws -> ProbeResponse {
         struct Body: Encodable { let s3Key: String }
         return try await post(path: "/api/compositions/probe", body: Body(s3Key: s3Key))
+    }
+
+    // MARK: Auto-Edit
+
+    public func runAutoEdit(compositionId: String, body: AutoEditRequest) async throws -> AutoEditResponse {
+        try await post(path: "/api/compositions/\(compositionId)/auto-edit", body: body)
+    }
+
+    // MARK: Quote Graphics
+
+    public func detectQuotes(compositionId: String, body: DetectQuotesRequest) async throws -> DetectQuotesResponse {
+        try await post(path: "/api/compositions/\(compositionId)/detect-quotes", body: body)
+    }
+
+    public func fetchQuotes(compositionId: String) async throws -> QuotesStatusResponse {
+        try await get(path: "/api/compositions/\(compositionId)/detect-quotes")
+    }
+
+    public func updateQuotes(compositionId: String, body: UpdateQuotesRequest) async throws {
+        struct Updated: Codable { let updated: Bool }
+        let _: Updated = try await put(path: "/api/compositions/\(compositionId)/detect-quotes", body: body)
+    }
+
+    // MARK: Thumbnails
+
+    public func fetchThumbnails(compositionId: String) async throws -> [CompositionThumbnail] {
+        try await get(path: "/api/compositions/\(compositionId)/thumbnails")
+    }
+
+    public func selectThumbnail(compositionId: String, thumbnailId: String) async throws -> [CompositionThumbnail] {
+        try await patch(path: "/api/compositions/\(compositionId)/thumbnails", body: SelectThumbnailRequest(thumbnailId: thumbnailId))
+    }
+
+    public func regenerateThumbnails(compositionId: String) async throws -> RegenerateThumbnailsResponse {
+        struct EmptyBody: Encodable {}
+        return try await post(path: "/api/compositions/\(compositionId)/thumbnails/regenerate", body: EmptyBody())
+    }
+
+    // MARK: Publishing
+
+    public func fetchPublishPlatforms(compositionId: String) async throws -> PlatformsResponse {
+        try await get(path: "/api/compositions/\(compositionId)/publish/platforms")
+    }
+
+    public func publishComposition(compositionId: String, body: PublishRequest) async throws -> PublishResponse {
+        try await post(path: "/api/compositions/\(compositionId)/publish", body: body)
+    }
+
+    // MARK: Client-Complete (save spliced output)
+
+    public func saveClientOutput(compositionId: String, body: ClientCompleteRequest) async throws {
+        struct Saved: Codable { let status: String }
+        let _: Saved = try await post(path: "/api/compositions/\(compositionId)/render/client-complete", body: body)
     }
 
     // MARK: Version Check

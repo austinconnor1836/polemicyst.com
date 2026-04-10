@@ -143,7 +143,12 @@ export default function CompositionEditorPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [addingTrack, setAddingTrack] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
+  const playheadRef = useRef<HTMLDivElement>(null);
+  const handlePlayheadUpdate = useCallback((t: number) => {
+    if (playheadRef.current) {
+      playheadRef.current.style.left = `${t * 8}px`;
+    }
+  }, []);
   const [deletingCreator, setDeletingCreator] = useState(false);
   const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null);
   const [publishAllOpen, setPublishAllOpen] = useState(false);
@@ -181,6 +186,11 @@ export default function CompositionEditorPage() {
     width: number;
     height: number;
   } | null>(null);
+  // Refs for values needed by upload-complete callback (avoids stale closures)
+  const creatorLocalMetaRef = useRef(creatorLocalMeta);
+  creatorLocalMetaRef.current = creatorLocalMeta;
+  const creatorBlobUrlRef = useRef(creatorBlobUrl);
+  creatorBlobUrlRef.current = creatorBlobUrl;
 
   // Background upload state — reference track
   const [pendingRefBlobUrl, setPendingRefBlobUrl] = useState<string | null>(null);
@@ -194,9 +204,11 @@ export default function CompositionEditorPage() {
   const [refUploadProgress, setRefUploadProgress] = useState<number | null>(null);
   const [refUploadSpeed, setRefUploadSpeed] = useState<number | null>(null);
 
-  // Client-side rendering: store raw File objects for WebCodecs demuxer
+  // File objects for rendering / upload resume
   const useClientRender = supportsClientRender();
   const [creatorFile, setCreatorFile] = useState<File | null>(null);
+  // Files restored from IndexedDB cache — passed as initialFile to auto-resume uploads
+  const [restoredCreatorFile, setRestoredCreatorFile] = useState<File | null>(null);
   const [refFiles, setRefFiles] = useState<Map<string, File>>(new Map());
 
   // Client-rendered output blobs (lifted from RenderControls for EditOutputModal access)
@@ -234,10 +246,16 @@ export default function CompositionEditorPage() {
           }
           return o;
         });
+        // Preserve client-only outputs (blob URLs) that don't exist on the server yet
+        const serverLayouts = new Set((data.outputs || []).map((o: Output) => o.layout));
+        const clientOnlyOutputs = prev.outputs.filter(
+          (o) => !serverLayouts.has(o.layout) && o.s3Url?.startsWith('blob:')
+        );
+        const allOutputs = [...mergedOutputs, ...clientOnlyOutputs];
         return {
           ...data,
           tracks: [...(data.tracks || []), ...localTracks],
-          outputs: mergedOutputs.length > 0 ? mergedOutputs : prev.outputs,
+          outputs: allOutputs.length > 0 ? allOutputs : prev.outputs,
           creatorDurationS: data.creatorDurationS ?? prev.creatorDurationS,
           creatorWidth: data.creatorWidth ?? prev.creatorWidth,
           creatorHeight: data.creatorHeight ?? prev.creatorHeight,
@@ -320,41 +338,45 @@ export default function CompositionEditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composition, compositionId]);
 
-  // Restore cached source files (creator + reference) from IndexedDB on mount
+  // Restore cached source files (creator + reference) from IndexedDB on mount.
+  // If the upload was incomplete (no S3 key in DB), auto-resume via initialFile prop.
   const fileRestoreRanRef = useRef(false);
   useEffect(() => {
-    if (!composition || !useClientRender || fileRestoreRanRef.current) return;
+    if (!composition || fileRestoreRanRef.current) return;
     fileRestoreRanRef.current = true;
 
-    // Restore creator file
-    loadCreatorFileFromCache(compositionId).then((cached) => {
-      if (!cached) return;
-      const file = new File([cached.blob], cached.name, {
-        type: cached.type,
-        lastModified: cached.lastModified,
+    // Restore creator file — only if not already uploaded to S3
+    if (!composition.creatorS3Key) {
+      loadCreatorFileFromCache(compositionId).then((cached) => {
+        if (!cached) return;
+        const file = new File([cached.blob], cached.name, {
+          type: cached.type,
+          lastModified: cached.lastModified,
+        });
+        setCreatorFile(file);
+        setCreatorLocalMeta({
+          durationS: cached.durationS,
+          width: cached.width,
+          height: cached.height,
+        });
+        setComposition((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            creatorDurationS: cached.durationS,
+            creatorWidth: cached.width,
+            creatorHeight: cached.height,
+          };
+        });
+        // Pass to VideoUploader via initialFile to auto-resume the upload
+        setRestoredCreatorFile(file);
+        console.log('[page] Restored creator file from IndexedDB — resuming upload');
       });
-      const blobUrl = URL.createObjectURL(cached.blob);
-      setCreatorFile(file);
-      setCreatorBlobUrl(blobUrl);
-      setCreatorLocalMeta({
-        durationS: cached.durationS,
-        width: cached.width,
-        height: cached.height,
-      });
-      setCreatorUploadStatus('complete');
-      setComposition((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          creatorDurationS: cached.durationS,
-          creatorWidth: cached.width,
-          creatorHeight: cached.height,
-        };
-      });
-      console.log('[page] Restored creator file from IndexedDB');
-    });
+    }
 
-    // Restore reference files (use cached crop if available, else re-detect)
+    // Restore reference files — only needed for client-render mode (local-only files).
+    // In server-render mode, refs are uploaded to S3 and stored as DB tracks.
+    if (!useClientRender) return;
     loadRefFilesFromCache(compositionId).then(async (cached) => {
       if (cached.size === 0) return;
       const newRefFiles = new Map<string, File>();
@@ -456,9 +478,21 @@ export default function CompositionEditorPage() {
         );
 
         if (creatorDone || tracksDone) {
-          // At least one side finished — update state
+          // Only update state if transcript data actually changed — avoids
+          // unnecessary re-renders that cause video elements to flicker
           setComposition((prev) => {
             if (!prev) return data;
+            // Check if anything meaningful changed
+            const prevCreatorTranscript = prev.creatorTranscriptJson;
+            const newCreatorTranscript = data.creatorTranscriptJson;
+            const prevTrackTranscripts = prev.tracks.map((t) => t.transcriptJson);
+            const newTrackTranscripts = (data.tracks || []).map((t: Track) => t.transcriptJson);
+            const creatorChanged =
+              JSON.stringify(prevCreatorTranscript) !== JSON.stringify(newCreatorTranscript);
+            const tracksChanged =
+              JSON.stringify(prevTrackTranscripts) !== JSON.stringify(newTrackTranscripts);
+            if (!creatorChanged && !tracksChanged) return prev; // no-op, skip re-render
+
             const localTracks = prev.tracks.filter((t) => t.id.startsWith('local_'));
             // Preserve client-rendered blob URLs that the API doesn't know about
             const mergedOutputs = (data.outputs || []).map((o: Output) => {
@@ -468,10 +502,16 @@ export default function CompositionEditorPage() {
               }
               return o;
             });
+            // Preserve client-only outputs (blob URLs) not on the server yet
+            const serverLayouts = new Set((data.outputs || []).map((o: Output) => o.layout));
+            const clientOnlyOutputs = prev.outputs.filter(
+              (o) => !serverLayouts.has(o.layout) && o.s3Url?.startsWith('blob:')
+            );
+            const allOutputs = [...mergedOutputs, ...clientOnlyOutputs];
             return {
               ...data,
               tracks: [...(data.tracks || []), ...localTracks],
-              outputs: mergedOutputs.length > 0 ? mergedOutputs : prev.outputs,
+              outputs: allOutputs.length > 0 ? allOutputs : prev.outputs,
               creatorDurationS: data.creatorDurationS ?? prev.creatorDurationS,
               creatorWidth: data.creatorWidth ?? prev.creatorWidth,
               creatorHeight: data.creatorHeight ?? prev.creatorHeight,
@@ -667,22 +707,31 @@ export default function CompositionEditorPage() {
 
   const handleCreatorUploadComplete = useCallback(
     async (data: { s3Key: string; s3Url: string }) => {
-      setCreatorUploadStatus('complete');
-      // Use local WebCodecs metadata directly — skip server FFprobe for creator
-      // (saves 2-10s round trip; worker will re-probe if needed)
-      await save({
-        creatorS3Key: data.s3Key,
-        creatorS3Url: data.s3Url,
-        creatorDurationS: creatorLocalMeta?.durationS ?? null,
-        creatorWidth: creatorLocalMeta?.width ?? null,
-        creatorHeight: creatorLocalMeta?.height ?? null,
-      } as any);
-      // Revoke blob URL and switch to CompositionVideoPanel
-      if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
-      setCreatorBlobUrl(null);
-      setCreatorUploadStatus('idle');
+      // Read from refs to avoid stale closure — the upload runs in a closure
+      // captured before onFileSelected sets these values
+      const meta = creatorLocalMetaRef.current;
+      const blobUrl = creatorBlobUrlRef.current;
+      try {
+        await save({
+          creatorS3Key: data.s3Key,
+          creatorS3Url: data.s3Url,
+          creatorDurationS: meta?.durationS ?? null,
+          creatorWidth: meta?.width ?? null,
+          creatorHeight: meta?.height ?? null,
+        } as any);
+        // Clear blob URL now that S3 URL is saved to composition state
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+        setCreatorBlobUrl(null);
+        setCreatorUploadStatus('idle');
+        clearCreatorFileCache(compositionId);
+        toast.success('Video uploaded');
+      } catch {
+        // Save failed but S3 object exists — keep blob URL so video stays visible
+        setCreatorUploadStatus('error');
+        toast.error('Upload succeeded but failed to save — please try refreshing');
+      }
     },
-    [save, creatorLocalMeta, creatorBlobUrl]
+    [save, compositionId]
   );
 
   // --- Non-blocking reference track upload handlers ---
@@ -828,8 +877,13 @@ export default function CompositionEditorPage() {
 
   const handleRemoveTrack = useCallback(
     async (trackId: string) => {
-      if (!confirm('Remove this reference track?')) return;
+      // Set deletingTrackId before confirm to prevent the Card onClick
+      // from firing when the confirm dialog is dismissed
       setDeletingTrackId(trackId);
+      if (!confirm('Remove this reference track?')) {
+        setDeletingTrackId(null);
+        return;
+      }
       try {
         // Local tracks (client-render) don't exist on the server — just remove locally
         if (trackId.startsWith('local_')) {
@@ -1172,15 +1226,19 @@ export default function CompositionEditorPage() {
             const creatorSrc = composition.creatorS3Url || creatorBlobUrl;
             const creatorDur = creatorDurationS;
             const hasCreatorVideo = !!creatorSrc;
-            // When creator exists via blob (client-render), the uploader would show
-            // the blob preview instead of the dropzone. We suppress that by not passing
-            // blobUrl when the creator is already shown as a CompositionVideoPanel.
-            const uploaderBlobUrl = hasCreatorVideo ? null : creatorBlobUrl;
+            const isCreatorUploading = creatorUploadStatus === 'uploading';
+            // Always show CompositionVideoPanel when S3 URL exists (already uploaded).
+            // Only let VideoUploader take over during the initial upload (no S3 URL yet).
+            const showCreatorPanel =
+              hasCreatorVideo && (!isCreatorUploading || !!composition.creatorS3Url);
+            const uploaderBlobUrl = showCreatorPanel ? null : creatorBlobUrl;
+            const creatorTranscribing =
+              !!composition.creatorS3Url && !composition.creatorTranscriptJson;
 
             return (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {/* Show creator video panel when a creator video exists */}
-                {hasCreatorVideo && (
+                {/* Show creator video panel when uploaded (not during active upload) */}
+                {showCreatorPanel && (
                   <CompositionVideoPanel
                     src={creatorSrc!}
                     label="Creator Video"
@@ -1190,7 +1248,7 @@ export default function CompositionEditorPage() {
                         ? `${Math.floor(creatorDur / 60)}:${String(Math.floor(creatorDur % 60)).padStart(2, '0')}`
                         : undefined
                     }
-                    onTimeUpdate={setCurrentTime}
+                    onTimeUpdate={handlePlayheadUpdate}
                     onClick={
                       creatorDur > 0
                         ? () =>
@@ -1203,6 +1261,14 @@ export default function CompositionEditorPage() {
                               title: 'Trim Creator Video',
                             })
                         : undefined
+                    }
+                    extraOverlay={
+                      creatorTranscribing ? (
+                        <div className="absolute left-1.5 top-1.5 z-10 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white backdrop-blur">
+                          <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                          Transcribing
+                        </div>
+                      ) : undefined
                     }
                     deleting={deletingCreator}
                     onDelete={async () => {
@@ -1252,17 +1318,13 @@ export default function CompositionEditorPage() {
                 <div className="space-y-2">
                   <VideoUploader
                     label={
-                      hasCreatorVideo
-                        ? 'Replace commentary video'
-                        : useClientRender
-                          ? 'Add your commentary video'
-                          : 'Upload your commentary video'
+                      showCreatorPanel ? 'Replace commentary video' : 'Upload your commentary video'
                     }
                     blobUrl={uploaderBlobUrl}
-                    uploadStatus={hasCreatorVideo ? 'idle' : creatorUploadStatus}
+                    uploadStatus={showCreatorPanel ? 'idle' : creatorUploadStatus}
                     uploadProgress={creatorUploadProgress}
                     uploadSpeed={creatorUploadSpeed}
-                    localOnly={useClientRender}
+                    initialFile={restoredCreatorFile}
                     onFileSelected={handleCreatorFileSelected}
                     onUploadComplete={handleCreatorUploadComplete}
                     onUploadProgress={(p, s) => {
@@ -1272,6 +1334,15 @@ export default function CompositionEditorPage() {
                     onUploadError={(msg) => {
                       setCreatorUploadStatus('error');
                       toast.error(msg);
+                    }}
+                    onRemove={() => {
+                      if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
+                      setCreatorBlobUrl(null);
+                      setCreatorFile(null);
+                      setCreatorLocalMeta(null);
+                      setCreatorUploadStatus('idle');
+                      setCreatorUploadProgress(null);
+                      clearCreatorFileCache(compositionId);
                     }}
                     keyPrefix={`compositions/${compositionId}/raw`}
                   />
@@ -1328,7 +1399,9 @@ export default function CompositionEditorPage() {
                   deleting={deletingTrackId === track.id}
                   disabled={isRendering}
                   onDelete={() => handleRemoveTrack(track.id)}
-                  onClick={() =>
+                  onClick={() => {
+                    // Don't open trim if a delete is in progress
+                    if (deletingTrackId) return;
                     setTrimTarget({
                       type: 'reference',
                       trackId: track.id,
@@ -1337,8 +1410,8 @@ export default function CompositionEditorPage() {
                       trimStartS: track.trimStartS,
                       trimEndS: track.trimEndS,
                       title: `Trim ${track.label || `Reference ${i + 1}`}`,
-                    })
-                  }
+                    });
+                  }}
                   extraOverlay={
                     <>
                       {trackTranscribing && (
@@ -1379,7 +1452,6 @@ export default function CompositionEditorPage() {
                 uploadStatus={refUploadStatus}
                 uploadProgress={refUploadProgress}
                 uploadSpeed={refUploadSpeed}
-                localOnly={useClientRender}
                 onFileSelected={handleRefFileSelected}
                 onUploadComplete={handleRefUploadComplete}
                 onUploadProgress={(p, s) => {
@@ -1389,6 +1461,13 @@ export default function CompositionEditorPage() {
                 onUploadError={(msg) => {
                   setRefUploadStatus('error');
                   toast.error(msg);
+                }}
+                onRemove={() => {
+                  if (pendingRefBlobUrl) URL.revokeObjectURL(pendingRefBlobUrl);
+                  setPendingRefBlobUrl(null);
+                  setPendingRefMeta(null);
+                  setRefUploadStatus('idle');
+                  setRefUploadProgress(null);
                 }}
                 className={addingTrack ? 'pointer-events-none opacity-50' : ''}
                 keyPrefix={`compositions/${compositionId}/raw`}
@@ -1410,7 +1489,7 @@ export default function CompositionEditorPage() {
               <TimelineEditor
                 tracks={composition.tracks}
                 creatorDurationS={composition.creatorDurationS}
-                currentTime={currentTime}
+                playheadRef={playheadRef}
                 onTrackMove={handleTrackMove}
               />
             </CardContent>

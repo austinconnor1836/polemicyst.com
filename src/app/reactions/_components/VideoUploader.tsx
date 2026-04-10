@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { Upload, Loader2, X, RotateCcw, AlertCircle } from 'lucide-react';
+import { Upload, Loader2, Trash2, RotateCcw, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { VideoCard } from '@/components/ui/video-card';
@@ -42,10 +42,12 @@ interface VideoUploaderProps {
   keyPrefix?: string;
   /** If true, skip S3 upload — just provide local file for client-side rendering */
   localOnly?: boolean;
+  /** Pre-loaded file to auto-start uploading on mount (e.g. restored from IndexedDB after refresh) */
+  initialFile?: File | null;
 }
 
-const CHUNK_SIZE = 64 * 1024 * 1024; // 64MB chunks
-const CONCURRENCY = 5; // Keep moderate to allow parallel uploads to share browser connections
+const CHUNK_SIZE = 25 * 1024 * 1024; // 25MB chunks — balances parallelism with per-chunk overhead
+const CONCURRENCY = 6; // Browser HTTP/1.1 limit per origin; matches max simultaneous connections
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
 
@@ -63,9 +65,14 @@ function formatEta(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-/** localStorage key for persisting upload state */
+/** localStorage key for persisting upload state by S3 key */
 function storageKey(key: string): string {
   return `upload:${key}`;
+}
+
+/** Predictable key to find an in-progress upload across page refreshes */
+function resumeKey(keyPrefix: string, filename: string, fileSize: number): string {
+  return `upload-resume:${keyPrefix}:${filename}:${fileSize}`;
 }
 
 interface PersistedUpload {
@@ -77,17 +84,24 @@ interface PersistedUpload {
   completedParts: number[];
 }
 
-function persistUploadState(state: PersistedUpload) {
+function persistUploadState(state: PersistedUpload, prefix?: string) {
   try {
     localStorage.setItem(storageKey(state.key), JSON.stringify(state));
+    // Also store a resume lookup so we can find this upload after refresh
+    if (prefix) {
+      localStorage.setItem(resumeKey(prefix, state.filename, state.fileSize), state.key);
+    }
   } catch {
     // Non-fatal
   }
 }
 
-function clearUploadState(key: string) {
+function clearUploadState(key: string, prefix?: string, filename?: string, fileSize?: number) {
   try {
     localStorage.removeItem(storageKey(key));
+    if (prefix && filename && fileSize != null) {
+      localStorage.removeItem(resumeKey(prefix, filename, fileSize));
+    }
   } catch {
     // Non-fatal
   }
@@ -97,6 +111,21 @@ function loadUploadState(key: string): PersistedUpload | null {
   try {
     const raw = localStorage.getItem(storageKey(key));
     return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Find an existing upload for this file (by prefix + name + size) */
+function findExistingUpload(
+  prefix: string,
+  filename: string,
+  fileSize: number
+): PersistedUpload | null {
+  try {
+    const key = localStorage.getItem(resumeKey(prefix, filename, fileSize));
+    if (!key) return null;
+    return loadUploadState(key);
   } catch {
     return null;
   }
@@ -158,6 +187,7 @@ export function VideoUploader({
   className,
   keyPrefix,
   localOnly,
+  initialFile,
 }: VideoUploaderProps) {
   const [dragOver, setDragOver] = useState(false);
   const [internalProgress, setInternalProgress] = useState(0);
@@ -170,6 +200,13 @@ export function VideoUploader({
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<File | null>(null);
   const abortRef = useRef(false);
+  // Refs for callbacks so the running upload always calls the latest version
+  const onUploadCompleteRef = useRef(onUploadComplete);
+  onUploadCompleteRef.current = onUploadComplete;
+  const onUploadErrorRef = useRef(onUploadError);
+  onUploadErrorRef.current = onUploadError;
+  const onUploadProgressRef = useRef(onUploadProgress);
+  onUploadProgressRef.current = onUploadProgress;
 
   // Use external state if provided, otherwise internal
   const progress = uploadProgress ?? internalProgress;
@@ -186,36 +223,53 @@ export function VideoUploader({
       setErrorMessage(null);
 
       try {
-        // 1. Initiate multipart upload
-        const initRes = await fetch('/api/uploads/multipart/initiate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            filename: file.name,
-            contentType: file.type || 'video/mp4',
-            ...(keyPrefix ? { keyPrefix } : {}),
-          }),
-        });
-        if (!initRes.ok) throw new Error('Failed to initiate upload');
-        const { uploadId, key } = await initRes.json();
+        // 1. Check for an existing in-progress upload (resume after page refresh)
+        const existing = keyPrefix ? findExistingUpload(keyPrefix, file.name, file.size) : null;
+
+        let uploadId: string;
+        let key: string;
+
+        if (existing) {
+          // Resume the existing multipart upload
+          uploadId = existing.uploadId;
+          key = existing.key;
+          console.log(
+            `[upload] Resuming upload for ${file.name} (${existing.completedParts.length}/${existing.totalParts} parts done)`
+          );
+        } else {
+          // Initiate a new multipart upload
+          const initRes = await fetch('/api/uploads/multipart/initiate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: file.name,
+              contentType: file.type || 'video/mp4',
+              ...(keyPrefix ? { keyPrefix } : {}),
+            }),
+          });
+          if (!initRes.ok) throw new Error('Failed to initiate upload');
+          ({ uploadId, key } = await initRes.json());
+        }
 
         // 2. Fetch all presigned URLs in one batch
         const totalParts = Math.ceil(file.size / CHUNK_SIZE);
         const partNumbers = Array.from({ length: totalParts }, (_, i) => i + 1);
 
-        // Check for resumable state
-        const persisted = loadUploadState(key);
-        const completedSet = new Set<number>(persisted?.completedParts ?? []);
+        // Load completed parts from persisted state
+        const completedSet = new Set<number>(existing?.completedParts ?? []);
 
-        // Persist initial state
-        persistUploadState({
-          uploadId,
-          key,
-          filename: file.name,
-          fileSize: file.size,
-          totalParts,
-          completedParts: [...completedSet],
-        });
+        // Persist initial state (with resume lookup)
+        persistUploadState(
+          {
+            uploadId,
+            key,
+            filename: file.name,
+            fileSize: file.size,
+            totalParts,
+            completedParts: [...completedSet],
+          },
+          keyPrefix
+        );
 
         // If we have completed parts, verify with S3
         if (completedSet.size > 0) {
@@ -265,7 +319,16 @@ export function VideoUploader({
         }
         const startTime = Date.now();
 
-        const updateProgress = () => {
+        // Throttle progress updates to max 4/sec — XHR fires hundreds of
+        // progress events across concurrent uploads, each causing React re-renders
+        let lastProgressUpdate = 0;
+        const PROGRESS_THROTTLE_MS = 250;
+
+        const updateProgress = (force = false) => {
+          const now = Date.now();
+          if (!force && now - lastProgressUpdate < PROGRESS_THROTTLE_MS) return;
+          lastProgressUpdate = now;
+
           let totalLoaded = 0;
           for (const loaded of chunkLoaded.values()) {
             totalLoaded += loaded;
@@ -273,15 +336,14 @@ export function VideoUploader({
           const pct = Math.min(100, Math.round((totalLoaded / file.size) * 100));
           setInternalProgress(pct);
 
-          const elapsed = (Date.now() - startTime) / 1000;
+          const elapsed = (now - startTime) / 1000;
           if (elapsed > 0.5) {
             const bytesPerSec = totalLoaded / elapsed;
             setInternalSpeed(bytesPerSec);
             setInternalEta(bytesPerSec > 0 ? (file.size - totalLoaded) / bytesPerSec : 0);
           }
-          // Always report progress to parent so external state stays in sync
           const bytesPerSec = elapsed > 0.5 ? totalLoaded / elapsed : 0;
-          onUploadProgress?.(pct, bytesPerSec);
+          onUploadProgressRef.current?.(pct, bytesPerSec);
         };
 
         // Show initial progress for resumed uploads
@@ -303,18 +365,24 @@ export function VideoUploader({
           });
 
           chunkLoaded.set(partNumber, end - start);
-          updateProgress();
+          updateProgress(true);
 
           etags.push({ PartNumber: partNumber, ETag: etag });
           completedSet.add(partNumber);
-          persistUploadState({
-            uploadId,
-            key,
-            filename: file.name,
-            fileSize: file.size,
-            totalParts,
-            completedParts: [...completedSet],
-          });
+          // Persist every 5 chunks (or on the last one) to reduce localStorage overhead
+          if (completedSet.size % 5 === 0 || completedSet.size === totalParts) {
+            persistUploadState(
+              {
+                uploadId,
+                key,
+                filename: file.name,
+                fileSize: file.size,
+                totalParts,
+                completedParts: [...completedSet],
+              },
+              keyPrefix
+            );
+          }
         };
 
         while (queue.length > 0 || activeWorkers.size > 0) {
@@ -361,20 +429,21 @@ export function VideoUploader({
         if (!completeRes.ok) throw new Error('Failed to complete upload');
         const { s3Url: uploadedUrl } = await completeRes.json();
 
-        clearUploadState(key);
+        clearUploadState(key, keyPrefix, file.name, file.size);
         setInternalStatus('complete');
         setInternalProgress(100);
-        onUploadComplete({ s3Key: key, s3Url: uploadedUrl });
+        onUploadCompleteRef.current({ s3Key: key, s3Url: uploadedUrl });
       } catch (err) {
         if (abortRef.current) return;
         console.error('Upload failed:', err);
         const msg = err instanceof Error ? err.message : 'Upload failed';
         setErrorMessage(msg);
         setInternalStatus('error');
-        onUploadError?.(msg);
+        onUploadErrorRef.current?.(msg);
       }
     },
-    [keyPrefix, onUploadComplete, onUploadError, onUploadProgress]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [keyPrefix]
   );
 
   const handleFile = useCallback(
@@ -383,11 +452,13 @@ export function VideoUploader({
       setFilename(file.name);
       const blobUrl = URL.createObjectURL(file);
 
-      // Client-side probe for instant metadata
+      // Client-side probe for metadata — must complete BEFORE starting upload
+      // so onFileSelected fires before onUploadComplete (prevents race where
+      // upload finishes before probe and parent status gets stuck at 'uploading')
       const meta = await probeVideo(blobUrl);
       setDurationS(meta.durationS);
 
-      // Fire immediately so parent can show preview + enable editing
+      // Fire so parent can show preview + enable editing
       onFileSelected({
         blobUrl,
         file,
@@ -403,7 +474,6 @@ export function VideoUploader({
         setInternalStatus('complete');
         setInternalProgress(100);
       } else {
-        // Start upload in background
         startUpload(file);
       }
     },
@@ -438,6 +508,15 @@ export function VideoUploader({
     },
     [handleFile]
   );
+
+  // Auto-start upload for a pre-loaded file (e.g. restored from cache after page refresh)
+  const initialFileHandled = useRef(false);
+  useEffect(() => {
+    if (initialFile && !initialFileHandled.current) {
+      initialFileHandled.current = true;
+      handleFile(initialFile);
+    }
+  }, [initialFile, handleFile]);
 
   // Cleanup blob URLs on unmount
   useEffect(() => {
@@ -509,19 +588,24 @@ export function VideoUploader({
               </div>
             )}
 
-            {/* Remove button (hover-revealed) */}
-            {onRemove && status !== 'uploading' && (
+            {/* Remove / cancel button (hover-revealed, same UX as CompositionVideoPanel delete) */}
+            {onRemove && (
               <Button
                 variant="secondary"
                 size="icon"
                 className="absolute right-1.5 top-1.5 h-7 w-7 rounded-full bg-white/85 text-gray-900 opacity-0 backdrop-blur transition-opacity hover:bg-white group-hover:opacity-100 dark:bg-zinc-900/80 dark:text-zinc-100 dark:hover:bg-zinc-900"
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (
+                    !confirm(status === 'uploading' ? 'Cancel this upload?' : 'Remove this video?')
+                  )
+                    return;
+                  abortRef.current = true;
                   onRemove();
                 }}
-                title="Remove video"
+                title={status === 'uploading' ? 'Cancel upload' : 'Remove video'}
               >
-                <X className="h-3.5 w-3.5" />
+                <Trash2 className="h-3.5 w-3.5" />
               </Button>
             )}
           </>
