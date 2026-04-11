@@ -572,11 +572,12 @@ new Worker<ReactionComposeJob>(
       });
 
       // Split tracks by type
-      const creatorTracks = (composition?.tracks ?? []).filter(
-        (t) => (t.trackType ?? 'reference') === 'creator'
+      const allTracks = composition?.tracks ?? [];
+      const creatorTracks = allTracks.filter(
+        (t: any) => (t.trackType ?? 'reference') === 'creator'
       );
-      const refTracks = (composition?.tracks ?? []).filter(
-        (t) => (t.trackType ?? 'reference') === 'reference'
+      const refTracks = allTracks.filter(
+        (t: any) => (t.trackType ?? 'reference') === 'reference'
       );
 
       const hasCreator = !!composition?.creatorS3Url || creatorTracks.length > 0;
@@ -763,15 +764,15 @@ new Worker<ReactionComposeJob>(
             },
           });
 
-          const hasCreator = !!fresh?.creatorTranscriptJson;
-          const hasAllTracks = fresh?.tracks.every((t) => !!t.transcriptJson) ?? false;
+          const hasCreatorTranscript = !!fresh?.creatorTranscriptJson;
+          const hasAllTracks = fresh?.tracks.every((t: any) => !!t.transcriptJson) ?? false;
 
-          if (hasCreator && hasAllTracks) {
+          if (hasCreatorTranscript && hasAllTracks) {
             transcriptsReady = true;
             // Update composition reference with fresh transcript data
             composition.creatorTranscriptJson = fresh!.creatorTranscriptJson;
             for (const freshTrack of fresh!.tracks) {
-              const track = composition.tracks.find((t) => t.id === freshTrack.id);
+              const track = composition.tracks.find((t: any) => t.id === freshTrack.id);
               if (track) track.transcriptJson = freshTrack.transcriptJson;
             }
             break;
@@ -779,7 +780,7 @@ new Worker<ReactionComposeJob>(
 
           const elapsed = ((Date.now() - pollStart) / 1000).toFixed(0);
           console.log(
-            `⏳ Waiting for transcripts (${elapsed}s) — creator=${hasCreator}, tracks=${fresh?.tracks.map((t) => !!t.transcriptJson).join(',')}`
+            `⏳ Waiting for transcripts (${elapsed}s) — creator=${hasCreatorTranscript}, tracks=${fresh?.tracks.map((t: any) => !!t.transcriptJson).join(',')}`
           );
           await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
         }
@@ -792,7 +793,7 @@ new Worker<ReactionComposeJob>(
             font: vs.captionFont || 'DejaVu Sans',
             fontSize: vs.captionFontSize || 'medium',
             creatorSegments: (composition.creatorTranscriptJson as any[]) || [],
-            trackSegments: refTracks.map((t) => ({
+            trackSegments: refTracks.map((t: any) => ({
               segments: (t.transcriptJson as any[]) || [],
               startAtS: t.startAtS,
               trimStartS: t.trimStartS,
@@ -861,7 +862,7 @@ new Worker<ReactionComposeJob>(
       // 5. Compute effective creator duration for multi-track
       let effectiveCreatorDurationS = composition.creatorDurationS || 60;
       if (creatorTracks.length > 0) {
-        effectiveCreatorDurationS = creatorTracks.reduce((sum, ct) => {
+        effectiveCreatorDurationS = creatorTracks.reduce((sum: number, ct: any) => {
           const dur = (ct.trimEndS ?? ct.durationS) - ct.trimStartS;
           return sum + Math.max(0, dur);
         }, 0);
@@ -871,7 +872,7 @@ new Worker<ReactionComposeJob>(
 
       // 6. Render each layout
       for (const layout of layouts) {
-        const output = composition.outputs.find((o) => o.layout === layout);
+        const output = composition.outputs.find((o: any) => o.layout === layout);
         if (!output) continue;
 
         await prisma.compositionOutput.update({
@@ -956,8 +957,8 @@ new Worker<ReactionComposeJob>(
       const updatedOutputs = await prisma.compositionOutput.findMany({
         where: { compositionId },
       });
-      const allCompleted = updatedOutputs.every((o) => o.status === 'completed');
-      const anyFailed = updatedOutputs.some((o) => o.status === 'failed');
+      const allCompleted = updatedOutputs.every((o: any) => o.status === 'completed');
+      const anyFailed = updatedOutputs.some((o: any) => o.status === 'failed');
 
       await prisma.composition.update({
         where: { id: compositionId },
