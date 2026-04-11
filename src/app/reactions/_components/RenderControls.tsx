@@ -81,6 +81,7 @@ interface RenderControlsProps {
   uploadProgress?: number;
   // Client-side render props
   creatorFile?: File | null;
+  creatorFiles?: Map<string, File>;
   refFiles?: Map<string, File>;
   composition?: CompositionData | null;
   /** Externally managed blob state for client-rendered outputs */
@@ -116,6 +117,7 @@ export function RenderControls({
   uploadsInProgress,
   uploadProgress,
   creatorFile,
+  creatorFiles,
   refFiles,
   composition,
   clientOutputBlobs,
@@ -147,7 +149,8 @@ export function RenderControls({
   );
   const [uploadingOutput, setUploadingOutput] = useState<string | null>(null);
   const [uploadOutputProgress, setUploadOutputProgress] = useState(0);
-  const canClientRender = supportsClientRender() && !!creatorFile;
+  const canClientRender =
+    supportsClientRender() && (!!creatorFile || (creatorFiles && creatorFiles.size > 0));
   const clientRenderingRef = useRef(false);
 
   const onStatusChangeRef = useRef(onStatusChange);
@@ -271,11 +274,19 @@ export function RenderControls({
   /** Build ClientRenderOptions from composition state */
   const buildClientRenderOptions = useCallback(
     (layout: 'mobile' | 'landscape'): ClientRenderOptions | null => {
-      if (!creatorFile || !composition) return null;
+      // Determine the effective creator file (legacy single or first from multi-track)
+      const effectiveCreatorFile =
+        creatorFile ||
+        (creatorFiles && creatorFiles.size > 0 ? creatorFiles.values().next().value : null);
+      if (!effectiveCreatorFile || !composition) return null;
+
+      const refTracks = composition.tracks.filter(
+        (t) => ((t as any).trackType ?? 'reference') === 'reference'
+      );
 
       const tracks: ClientTrackInfo[] = [];
 
-      for (const track of composition.tracks) {
+      for (const track of refTracks) {
         const file = refFiles?.get(track.id);
         if (!file) continue;
 
@@ -295,7 +306,7 @@ export function RenderControls({
 
       const opts: ClientRenderOptions = {
         layout,
-        creatorFile,
+        creatorFile: effectiveCreatorFile,
         creatorDurationS: composition.creatorDurationS ?? 0,
         creatorTrimStartS: composition.creatorTrimStartS,
         creatorTrimEndS: composition.creatorTrimEndS ?? null,
@@ -310,15 +321,12 @@ export function RenderControls({
       // Build caption segments if captions are enabled
       if (captionsEnabled) {
         const creatorTrimOffset = composition.creatorTrimStartS;
-        // Use Infinity when duration unknown (0 or null) — the renderer determines
-        // actual duration from demuxed data. This ensures no segments are filtered out.
         const creatorTrimEnd =
           composition.creatorTrimEndS ?? (composition.creatorDurationS || Infinity);
         const outputDurationS = creatorTrimEnd - creatorTrimOffset;
         const segments: CaptionSegment[] = [];
         const audioMode = composition.audioMode;
 
-        // Creator segments
         if (
           (audioMode === 'creator' || audioMode === 'both') &&
           composition.creatorTranscriptJson
@@ -336,9 +344,8 @@ export function RenderControls({
           }
         }
 
-        // Track segments
         if (audioMode === 'reference' || audioMode === 'both') {
-          for (const track of composition.tracks) {
+          for (const track of refTracks) {
             if (!track.transcriptJson) continue;
             for (const seg of track.transcriptJson) {
               const start = seg.start - track.trimStartS + track.startAtS;
@@ -354,10 +361,6 @@ export function RenderControls({
           }
         }
 
-        // Note: Do NOT adjust caption timestamps for cuts here. The client renderer
-        // outputs the full trimmed timeline (no cut skipping). Cuts are applied
-        // post-render via spliceMP4, which operates on the encoded video. Captions
-        // are baked into frames at their original (trim-adjusted) timestamps.
         if (segments.length > 0) {
           segments.sort((a, b) => a.startS - b.startS);
           opts.captions = {
@@ -391,12 +394,13 @@ export function RenderControls({
 
       return opts;
     },
-    [creatorFile, refFiles, composition, captionsEnabled, captionFontSizePx]
+    [creatorFile, creatorFiles, refFiles, composition, captionsEnabled, captionFontSizePx]
   );
 
   /** Client-side render: render all layouts in parallel */
   const handleClientRender = useCallback(async () => {
-    if (!creatorFile || !composition) return;
+    const hasCreatorFile = !!creatorFile || (creatorFiles && creatorFiles.size > 0);
+    if (!hasCreatorFile || !composition) return;
 
     clientRenderingRef.current = true;
     setRendering(true);
@@ -480,6 +484,7 @@ export function RenderControls({
     onStatusChange(allSucceeded ? 'completed' : 'failed', finalOutputs);
   }, [
     creatorFile,
+    creatorFiles,
     composition,
     autoLayouts,
     onStatusChange,
