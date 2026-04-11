@@ -14,8 +14,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Check, Loader2, Pencil, Plus, Quote, Sparkles, X } from 'lucide-react';
+import { Check, ExternalLink, Loader2, Pencil, Plus, Quote, Sparkles, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+type QuoteDisplayMode =
+  | 'auto'
+  | 'screenshot'
+  | 'pull-quote'
+  | 'lower-third'
+  | 'highlight-card'
+  | 'side-panel';
 
 interface DetectedQuote {
   text: string;
@@ -23,11 +31,20 @@ interface DetectedQuote {
   startS: number;
   endS: number;
   confidence: number;
+  sourceUrl?: string | null;
+  displayMode?: QuoteDisplayMode | null;
+}
+
+interface TranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
 }
 
 interface QuoteGraphicsPanelProps {
   compositionId: string;
   hasTranscript: boolean;
+  transcriptSegments?: TranscriptSegment[] | null;
   quotes: DetectedQuote[];
   enabled: boolean;
   style: string;
@@ -51,9 +68,73 @@ function parseTime(str: string): number | null {
   return isNaN(n) ? null : n;
 }
 
+/**
+ * Fuzzy-match quote text against transcript segments to find the time range
+ * where the quote is spoken. Uses normalized substring matching.
+ */
+function matchQuoteToTranscript(
+  quoteText: string,
+  segments: TranscriptSegment[]
+): { startS: number; endS: number } | null {
+  if (!quoteText || segments.length === 0) return null;
+
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/['']/g, "'")
+      .replace(/[""]/g, '"')
+      .replace(/[^\w\s'"-]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const quoteNorm = normalize(quoteText);
+  if (quoteNorm.length < 10) return null;
+
+  // Build a continuous text with segment boundaries mapped
+  const entries: { segIdx: number; charStart: number }[] = [];
+  let fullText = '';
+  for (let i = 0; i < segments.length; i++) {
+    entries.push({ segIdx: i, charStart: fullText.length });
+    fullText += (i > 0 ? ' ' : '') + normalize(segments[i].text);
+  }
+
+  // Try exact match first, then progressively shorter prefixes
+  const attempts = [
+    quoteNorm,
+    quoteNorm.slice(0, Math.floor(quoteNorm.length * 0.7)),
+    quoteNorm.slice(0, Math.floor(quoteNorm.length * 0.5)),
+  ].filter((t) => t.length >= 10);
+
+  for (const attempt of attempts) {
+    const idx = fullText.indexOf(attempt);
+    if (idx === -1) continue;
+
+    const matchEnd = idx + attempt.length;
+
+    // Find the first and last segment that overlap
+    let startSeg = -1;
+    let endSeg = -1;
+    for (let i = 0; i < entries.length; i++) {
+      const charEnd = i < entries.length - 1 ? entries[i + 1].charStart : fullText.length;
+      if (charEnd > idx && startSeg === -1) startSeg = i;
+      if (entries[i].charStart < matchEnd) endSeg = i;
+    }
+
+    if (startSeg >= 0 && endSeg >= 0) {
+      return {
+        startS: segments[startSeg].start,
+        endS: segments[endSeg].end,
+      };
+    }
+  }
+
+  return null;
+}
+
 export function QuoteGraphicsPanel({
   compositionId,
   hasTranscript,
+  transcriptSegments,
   quotes,
   enabled,
   style,
@@ -66,7 +147,29 @@ export function QuoteGraphicsPanel({
     attribution: string;
     startS: string;
     endS: string;
+    sourceUrl: string;
+    displayMode: QuoteDisplayMode;
   } | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [screenshotLoading, setScreenshotLoading] = useState(false);
+  const [timingAutoMatched, setTimingAutoMatched] = useState(false);
+  const matchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function tryAutoMatchTiming(text: string) {
+    if (!transcriptSegments || transcriptSegments.length === 0) return;
+    if (matchTimeoutRef.current) clearTimeout(matchTimeoutRef.current);
+    matchTimeoutRef.current = setTimeout(() => {
+      const match = matchQuoteToTranscript(text, transcriptSegments);
+      if (match) {
+        setEditDraft((d) =>
+          d ? { ...d, startS: formatTime(match.startS), endS: formatTime(match.endS) } : d
+        );
+        setTimingAutoMatched(true);
+      } else {
+        setTimingAutoMatched(false);
+      }
+    }, 400);
+  }
 
   async function handleDetectQuotes() {
     setDetecting(true);
@@ -125,12 +228,53 @@ export function QuoteGraphicsPanel({
       attribution: q.attribution || '',
       startS: formatTime(q.startS),
       endS: formatTime(q.endS),
+      sourceUrl: q.sourceUrl || '',
+      displayMode: q.displayMode || 'auto',
     });
+    setScreenshotPreview(null);
+    setTimingAutoMatched(false);
   }
 
   function cancelEditing() {
     setEditingIndex(null);
     setEditDraft(null);
+    setScreenshotPreview(null);
+    setTimingAutoMatched(false);
+  }
+
+  async function handlePreviewScreenshot() {
+    if (!editDraft?.sourceUrl || !editDraft.text) return;
+    setScreenshotLoading(true);
+    setScreenshotPreview(null);
+    try {
+      const res = await fetch(`/api/compositions/${compositionId}/quote-screenshot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceUrl: editDraft.sourceUrl,
+          quoteText: editDraft.text,
+          attribution: editDraft.attribution || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed' }));
+        toast.error(err.error || 'Screenshot failed');
+        return;
+      }
+      const data = await res.json();
+      setScreenshotPreview(data.preview);
+      if (data.textFound) {
+        toast.success('Quote found and highlighted on the page');
+      } else {
+        toast('Page captured, but exact quote text was not found', {
+          icon: '⚠️',
+        });
+      }
+    } catch {
+      toast.error('Screenshot request failed');
+    } finally {
+      setScreenshotLoading(false);
+    }
   }
 
   function saveEditing() {
@@ -154,6 +298,8 @@ export function QuoteGraphicsPanel({
       attribution: editDraft.attribution.trim() || null,
       startS,
       endS,
+      sourceUrl: editDraft.sourceUrl.trim() || null,
+      displayMode: editDraft.displayMode,
     };
 
     onUpdate(updated, enabled, style);
@@ -254,9 +400,11 @@ export function QuoteGraphicsPanel({
                       <Label className="text-xs text-muted">Quote text</Label>
                       <Textarea
                         value={editDraft.text}
-                        onChange={(e) =>
-                          setEditDraft((d) => (d ? { ...d, text: e.target.value } : d))
-                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditDraft((d) => (d ? { ...d, text: val } : d));
+                          tryAutoMatchTiming(val);
+                        }}
                         placeholder="Enter the quote text…"
                         rows={3}
                         className="text-sm resize-none"
@@ -274,25 +422,114 @@ export function QuoteGraphicsPanel({
                         className="text-sm h-8"
                       />
                     </div>
-                    <div className="flex gap-2">
-                      <div className="flex-1 space-y-1.5">
-                        <Label className="text-xs text-muted">Start (m:ss)</Label>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted">Source URL (optional)</Label>
+                      <Input
+                        value={editDraft.sourceUrl}
+                        onChange={(e) =>
+                          setEditDraft((d) => (d ? { ...d, sourceUrl: e.target.value } : d))
+                        }
+                        placeholder="https://example.com/article"
+                        className="text-sm h-8"
+                        type="url"
+                      />
+                      {editDraft.sourceUrl && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs gap-1 w-full"
+                          onClick={handlePreviewScreenshot}
+                          disabled={screenshotLoading || !editDraft.text}
+                        >
+                          {screenshotLoading ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <ExternalLink className="h-3 w-3" />
+                          )}
+                          {screenshotLoading ? 'Capturing…' : 'Preview Screenshot'}
+                        </Button>
+                      )}
+                      {!editDraft.sourceUrl && (
+                        <p className="text-[11px] text-muted leading-tight">
+                          Paste the article link to screenshot the actual page with the quote
+                          highlighted.
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted">Display format</Label>
+                      <Select
+                        value={editDraft.displayMode}
+                        onValueChange={(v) =>
+                          setEditDraft((d) =>
+                            d ? { ...d, displayMode: v as QuoteDisplayMode } : d
+                          )
+                        }
+                      >
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">
+                            Auto{editDraft.sourceUrl ? ' (screenshot)' : ' (graphic)'}
+                          </SelectItem>
+                          {editDraft.sourceUrl && (
+                            <SelectItem value="screenshot">
+                              Screenshot — capture the source page
+                            </SelectItem>
+                          )}
+                          <SelectItem value="pull-quote">
+                            Pull Quote — centered card with quote marks
+                          </SelectItem>
+                          <SelectItem value="lower-third">
+                            Lower Third — text bar at bottom
+                          </SelectItem>
+                          <SelectItem value="highlight-card">
+                            Highlight Card — accent border card
+                          </SelectItem>
+                          <SelectItem value="side-panel">Side Panel — panel on one side</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {screenshotPreview && (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted">Preview</Label>
+                        <div className="relative overflow-hidden rounded-lg border border-border">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={screenshotPreview}
+                            alt="Quote screenshot preview"
+                            className="w-full h-auto max-h-48 object-contain bg-black"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-muted">Timing</Label>
+                        {timingAutoMatched && (
+                          <span className="text-[11px] text-primary font-medium">
+                            ✓ matched from transcript
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
                         <Input
                           value={editDraft.startS}
-                          onChange={(e) =>
-                            setEditDraft((d) => (d ? { ...d, startS: e.target.value } : d))
-                          }
+                          onChange={(e) => {
+                            setEditDraft((d) => (d ? { ...d, startS: e.target.value } : d));
+                            setTimingAutoMatched(false);
+                          }}
                           placeholder="0:05"
                           className="text-sm h-8 font-mono"
                         />
-                      </div>
-                      <div className="flex-1 space-y-1.5">
-                        <Label className="text-xs text-muted">End (m:ss)</Label>
+                        <span className="flex items-center text-xs text-muted">–</span>
                         <Input
                           value={editDraft.endS}
-                          onChange={(e) =>
-                            setEditDraft((d) => (d ? { ...d, endS: e.target.value } : d))
-                          }
+                          onChange={(e) => {
+                            setEditDraft((d) => (d ? { ...d, endS: e.target.value } : d));
+                            setTimingAutoMatched(false);
+                          }}
                           placeholder="0:15"
                           className="text-sm h-8 font-mono"
                         />
@@ -331,6 +568,31 @@ export function QuoteGraphicsPanel({
                             <>
                               <span>·</span>
                               <span className="truncate">{q.attribution}</span>
+                            </>
+                          )}
+                          {q.sourceUrl && (
+                            <>
+                              <span>·</span>
+                              <a
+                                href={q.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-primary hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                Source
+                              </a>
+                            </>
+                          )}
+                          {q.displayMode && q.displayMode !== 'auto' && (
+                            <>
+                              <span>·</span>
+                              <span className="capitalize">
+                                {q.displayMode === 'screenshot'
+                                  ? '📷'
+                                  : q.displayMode.replace('-', ' ')}
+                              </span>
                             </>
                           )}
                           <span>·</span>

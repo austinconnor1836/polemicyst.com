@@ -44,6 +44,8 @@ interface VideoUploaderProps {
   localOnly?: boolean;
   /** Pre-loaded file to auto-start uploading on mount (e.g. restored from IndexedDB after refresh) */
   initialFile?: File | null;
+  /** If true, allow selecting multiple files at once */
+  multiple?: boolean;
 }
 
 const CHUNK_SIZE = 25 * 1024 * 1024; // 25MB chunks — balances parallelism with per-chunk overhead
@@ -211,6 +213,7 @@ export function VideoUploader({
   keyPrefix,
   localOnly,
   initialFile,
+  multiple,
 }: VideoUploaderProps) {
   const [dragOver, setDragOver] = useState(false);
   const [internalProgress, setInternalProgress] = useState(0);
@@ -553,23 +556,35 @@ export function VideoUploader({
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragOver(false);
-      const file = e.dataTransfer.files[0];
-      if (file && file.type.startsWith('video/')) {
-        handleFile(file);
+      const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('video/'));
+      if (multiple) {
+        const sorted = [...files].sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0));
+        for (const file of sorted) {
+          handleFile(file);
+        }
+      } else {
+        const file = files[0];
+        if (file) handleFile(file);
       }
     },
-    [handleFile]
+    [handleFile, multiple]
   );
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        handleFile(file);
+      const files = Array.from(e.target.files || []);
+      if (multiple) {
+        const sorted = [...files].sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0));
+        for (const file of sorted) {
+          handleFile(file);
+        }
+      } else {
+        const file = files[0];
+        if (file) handleFile(file);
       }
       e.target.value = '';
     },
-    [handleFile]
+    [handleFile, multiple]
   );
 
   // Auto-start upload for a pre-loaded file (e.g. restored from cache after page refresh)
@@ -702,6 +717,7 @@ export function VideoUploader({
         ref={inputRef}
         type="file"
         accept="video/*"
+        multiple={multiple}
         onChange={handleFileChange}
         className="hidden"
       />
