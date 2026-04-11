@@ -62,6 +62,27 @@ Use the **dry run** checkbox to preview without making changes.
 
 Every commit **must** pass lint (`npm run lint`) and build (`npx next build`) before being created. Do not commit code that fails either step.
 
+## Prisma / database migrations — hard rules
+
+The Prisma client is cached on `globalThis` in `shared/lib/prisma.ts`. Violating these rules causes 500s from every API route that touches the affected model, with `P2022: column does not exist` errors — an easy failure mode to mistake for unrelated bugs.
+
+- **NEVER run `prisma db push`.** Every change to `prisma/schema.prisma` must ship with a matching migration file under `prisma/migrations/`. `db push` silently diverges dev databases from migration history and leaves deployed environments without the change. This has bitten us multiple times (quote graphics columns on `AutomationRule`/`Composition`, `CompositionTrack.trackType`).
+- **When you edit `prisma/schema.prisma`**, run:
+  ```
+  npx prisma migrate dev --name <short_description> --schema=prisma/schema.prisma
+  ```
+  This creates the migration file, applies it to the dev DB, and regenerates the client. Keep changes backwards-compatible where practical.
+- **When you pull or merge a branch that touched the schema**, run `npx prisma migrate dev --schema=prisma/schema.prisma` (no `--name`) immediately. This applies pending migrations and regenerates the client. Then restart the Next.js dev server so the cached client on `globalThis` is refreshed. Skipping this step produces silent 500s on any route that touches the changed model.
+- **If `prisma migrate dev` reports drift** (someone upstream used `db push`), do NOT run `migrate reset`. Instead:
+  1. Write a migration file by hand at `prisma/migrations/<timestamp>_<name>/migration.sql` using `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...` so it's idempotent on drifted DBs and still applies cleanly on fresh ones.
+  2. Mark it applied with `npx prisma migrate resolve --applied <migration_name>`.
+  3. Verify with `npx prisma migrate status` — should say "Database schema is up to date!".
+- **Docker workers** need an extra step after schema changes — the volume-mounted `prisma generate` from `docker-compose.dev.yml` only runs on container start, and `docker restart` does NOT re-run it:
+  ```
+  docker exec polemicystcom-clip-metadata-worker-1 npx prisma generate --schema=../../prisma/schema.prisma
+  docker compose -f docker-compose.yml -f docker-compose.dev.yml up clip-metadata-worker --force-recreate -d
+  ```
+
 ## Overview
 
 This file is the **canonical log** for structural changes to the viral clip generation system, especially anything related to **LLM scoring, prompts, model orchestration, and safety**.
@@ -82,38 +103,40 @@ Ports define **what** the business logic needs; adapters provide the **how**. Ne
 
 #### LLM Scoring (`shared/lib/scoring/`)
 
-| File | Role |
-|------|------|
-| `scoring-provider.ts` | **Port** — `ScoringProvider` interface + `createScoringProvider()` factory |
-| `gemini-adapter.ts` | **Adapter** — Gemini multimodal implementation |
-| `ollama-adapter.ts` | **Adapter** — Ollama (local LLM) implementation |
-| `viral-scoring.ts` | **Orchestrator** — heuristic prefilter → calls `ScoringProvider.scoreSegment()` → aggregates subscores |
+| File                  | Role                                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------ |
+| `scoring-provider.ts` | **Port** — `ScoringProvider` interface + `createScoringProvider()` factory                             |
+| `gemini-adapter.ts`   | **Adapter** — Gemini multimodal implementation                                                         |
+| `ollama-adapter.ts`   | **Adapter** — Ollama (local LLM) implementation                                                        |
+| `viral-scoring.ts`    | **Orchestrator** — heuristic prefilter → calls `ScoringProvider.scoreSegment()` → aggregates subscores |
 
 **Rules:**
+
 - To add a new LLM provider (e.g. fine-tuned model), create a new adapter class implementing `ScoringProvider` and register it in `createScoringProvider()`. Do not modify the orchestrator.
 - The orchestrator accepts an injected `scoringProvider` parameter for testing.
 - Provider-specific concerns (API keys, prompt formatting, media extraction) live **inside the adapter**, never in the orchestrator.
 
 #### Object Storage (`shared/lib/storage/`)
 
-| File | Role |
-|------|------|
+| File                  | Role                                   |
+| --------------------- | -------------------------------------- |
 | `storage-provider.ts` | **Port** — `StorageProvider` interface |
-| `s3-adapter.ts` | **Adapter** — AWS S3 via SDK v3 |
+| `s3-adapter.ts`       | **Adapter** — AWS S3 via SDK v3        |
 
 **Rules:**
+
 - `shared/lib/s3.ts` is a backward-compatible shim that delegates to `S3StorageAdapter`. Prefer importing the adapter directly for new code.
 - All S3 operations must use **SDK v3** (`@aws-sdk/client-s3`). Do not introduce `aws-sdk` v2 imports.
 - The `S3_BUCKET`, `S3_REGION`, and `S3_PREFIX` env vars are read from `storage-provider.ts`.
 
 #### Where ports/adapters are NOT used (and shouldn't be)
 
-| Concern | Why |
-|---------|-----|
-| Database (Prisma) | Single DB engine; repository files suffice |
-| Auth (NextAuth) | Framework-specific; wrapping adds no value |
+| Concern              | Why                                        |
+| -------------------- | ------------------------------------------ |
+| Database (Prisma)    | Single DB engine; repository files suffice |
+| Auth (NextAuth)      | Framework-specific; wrapping adds no value |
 | Queue (BullMQ/Redis) | Tight coupling is fine; unlikely to change |
-| FFmpeg | CLI tool, not a swappable service |
+| FFmpeg               | CLI tool, not a swappable service          |
 
 ### Authentication
 
@@ -131,12 +154,12 @@ All API routes must use `getAuthenticatedUser(req)` from `@shared/lib/auth-helpe
 
 Cost tracking, training data collection, and job logging all follow the same **"accumulate + flush, never block the pipeline"** pattern:
 
-| Concern | Accumulator | Flush target |
-|---------|------------|--------------|
-| Cost | `CostTracker` (`shared/lib/cost-tracking.ts`) | `CostEvent` table |
-| Training | `TrainingCollector` (`shared/lib/training-collector.ts`) | `TrainingExample` table |
+| Concern        | Accumulator                                                         | Flush target                 |
+| -------------- | ------------------------------------------------------------------- | ---------------------------- |
+| Cost           | `CostTracker` (`shared/lib/cost-tracking.ts`)                       | `CostEvent` table            |
+| Training       | `TrainingCollector` (`shared/lib/training-collector.ts`)            | `TrainingExample` table      |
 | Truth training | `TruthTrainingCollector` (`shared/lib/truth-training-collector.ts`) | `TruthTrainingExample` table |
-| Job logs | `logJob()` (`shared/lib/job-logger.ts`) | `JobLog` table |
+| Job logs       | `logJob()` (`shared/lib/job-logger.ts`)                             | `JobLog` table               |
 
 All are non-fatal — failures are logged but never crash the pipeline.
 
