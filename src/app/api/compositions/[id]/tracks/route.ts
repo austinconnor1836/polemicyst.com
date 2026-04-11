@@ -3,7 +3,8 @@ import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
 import { queueGenericTranscriptionJob } from '@shared/queues';
 
-const MAX_TRACKS = 10;
+const MAX_REFERENCE_TRACKS = 10;
+const MAX_CREATOR_TRACKS = 10;
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -22,13 +23,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Composition not found' }, { status: 404 });
     }
 
-    if (composition.tracks.length >= MAX_TRACKS) {
-      return NextResponse.json(
-        { error: `Maximum of ${MAX_TRACKS} reference tracks allowed` },
-        { status: 400 }
-      );
-    }
-
     const body = await req.json();
     const {
       label,
@@ -41,7 +35,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       trimStartS,
       trimEndS,
       hasAudio,
+      trackType,
     } = body;
+
+    const type = trackType === 'creator' ? 'creator' : 'reference';
+
+    const tracksOfType = composition.tracks.filter((t) => (t.trackType ?? 'reference') === type);
+    const maxTracks = type === 'creator' ? MAX_CREATOR_TRACKS : MAX_REFERENCE_TRACKS;
+    if (tracksOfType.length >= maxTracks) {
+      return NextResponse.json(
+        { error: `Maximum of ${maxTracks} ${type} tracks allowed` },
+        { status: 400 }
+      );
+    }
 
     if (!s3Key || !s3Url || durationS == null) {
       return NextResponse.json(
@@ -50,11 +56,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     }
 
-    const nextOrder = composition.tracks.length;
+    const nextOrder = tracksOfType.length;
 
     const track = await prisma.compositionTrack.create({
       data: {
         compositionId: id,
+        trackType: type,
         label: label || null,
         s3Key,
         s3Url,

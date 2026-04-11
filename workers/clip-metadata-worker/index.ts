@@ -571,7 +571,16 @@ new Worker<ReactionComposeJob>(
         },
       });
 
-      if (!composition || !composition.creatorS3Url) {
+      // Split tracks by type
+      const creatorTracks = (composition?.tracks ?? []).filter(
+        (t) => (t.trackType ?? 'reference') === 'creator'
+      );
+      const refTracks = (composition?.tracks ?? []).filter(
+        (t) => (t.trackType ?? 'reference') === 'reference'
+      );
+
+      const hasCreator = !!composition?.creatorS3Url || creatorTracks.length > 0;
+      if (!composition || !hasCreator) {
         console.error(`❌ Composition ${compositionId} not found or missing creator video`);
         await prisma.composition.update({
           where: { id: compositionId },
@@ -583,24 +592,92 @@ new Worker<ReactionComposeJob>(
       // 2. Download all inputs
       const { downloadFeedVideoToTemp } = await import('../../shared/util/download');
 
-      console.log('⬇️ Downloading creator video...');
-      const creatorPath = await costTracker.track(
-        'download',
-        () => downloadFeedVideoToTemp(composition.creatorS3Url!),
-        (resultPath) => {
-          let fileSizeBytes: number | undefined;
-          try {
-            const fsSync = require('fs');
-            fileSizeBytes = fsSync.statSync(resultPath).size;
-          } catch {}
-          return {
-            provider: 's3',
-            fileSizeBytes,
-            estimatedCostUsd: fileSizeBytes ? estimateS3Cost(fileSizeBytes) : 0,
-          };
+      let creatorPath: string;
+
+      if (creatorTracks.length > 0) {
+        // Multi-creator-track: download each creator track and concatenate with FFmpeg
+        console.log(`⬇️ Downloading ${creatorTracks.length} creator track(s)...`);
+        const creatorPaths: string[] = [];
+        for (const ct of creatorTracks) {
+          console.log(`⬇️ Downloading creator track: ${ct.label || ct.id}`);
+          const ctPath = await costTracker.track(
+            'download',
+            () => downloadFeedVideoToTemp(ct.s3Url),
+            (resultPath) => {
+              let fileSizeBytes: number | undefined;
+              try {
+                const fsSync = require('fs');
+                fileSizeBytes = fsSync.statSync(resultPath).size;
+              } catch {}
+              return {
+                provider: 's3',
+                fileSizeBytes,
+                estimatedCostUsd: fileSizeBytes ? estimateS3Cost(fileSizeBytes) : 0,
+              };
+            }
+          );
+          tempFiles.push(ctPath);
+          creatorPaths.push(ctPath);
         }
-      );
-      tempFiles.push(creatorPath);
+
+        if (creatorPaths.length === 1) {
+          creatorPath = creatorPaths[0];
+        } else {
+          // Concatenate creator tracks using FFmpeg concat demuxer
+          const fsSync = require('fs');
+          const pathModule = require('path');
+          const osModule = require('os');
+          const concatListPath = pathModule.join(
+            osModule.tmpdir(),
+            `concat_creator_${compositionId}_${Date.now()}.txt`
+          );
+          const concatOutputPath = pathModule.join(
+            osModule.tmpdir(),
+            `creator_combined_${compositionId}_${Date.now()}.mp4`
+          );
+          tempFiles.push(concatListPath, concatOutputPath);
+
+          // Write concat list file — each line: file '/path/to/file'
+          const concatContent = creatorPaths
+            .map((p: string) => `file '${p.replace(/'/g, "'\\''")}'`)
+            .join('\n');
+          fsSync.writeFileSync(concatListPath, concatContent);
+
+          console.log(`🔗 Concatenating ${creatorPaths.length} creator tracks...`);
+          const { execFileSync } = require('child_process');
+          execFileSync('ffmpeg', [
+            '-y',
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', concatListPath,
+            '-c', 'copy',
+            '-movflags', '+faststart',
+            concatOutputPath,
+          ], { stdio: 'pipe', timeout: 300_000 });
+          creatorPath = concatOutputPath;
+          console.log('✅ Creator tracks concatenated');
+        }
+      } else {
+        // Legacy single-creator path
+        console.log('⬇️ Downloading creator video...');
+        creatorPath = await costTracker.track(
+          'download',
+          () => downloadFeedVideoToTemp(composition.creatorS3Url!),
+          (resultPath) => {
+            let fileSizeBytes: number | undefined;
+            try {
+              const fsSync = require('fs');
+              fileSizeBytes = fsSync.statSync(resultPath).size;
+            } catch {}
+            return {
+              provider: 's3',
+              fileSizeBytes,
+              estimatedCostUsd: fileSizeBytes ? estimateS3Cost(fileSizeBytes) : 0,
+            };
+          }
+        );
+        tempFiles.push(creatorPath);
+      }
 
       const trackInfos: Array<{
         localPath: string;
@@ -615,7 +692,7 @@ new Worker<ReactionComposeJob>(
         sourceCrop?: { w: number; h: number; x: number; y: number } | null;
       }> = [];
 
-      for (const track of composition.tracks) {
+      for (const track of refTracks) {
         console.log(`⬇️ Downloading reference track: ${track.label || track.id}`);
         const trackPath = await costTracker.track(
           'download',
@@ -715,7 +792,7 @@ new Worker<ReactionComposeJob>(
             font: vs.captionFont || 'DejaVu Sans',
             fontSize: vs.captionFontSize || 'medium',
             creatorSegments: (composition.creatorTranscriptJson as any[]) || [],
-            trackSegments: composition.tracks.map((t) => ({
+            trackSegments: refTracks.map((t) => ({
               segments: (t.transcriptJson as any[]) || [],
               startAtS: t.startAtS,
               trimStartS: t.trimStartS,
@@ -781,8 +858,18 @@ new Worker<ReactionComposeJob>(
         }
       }
 
-      // 5. Render each layout
+      // 5. Compute effective creator duration for multi-track
+      let effectiveCreatorDurationS = composition.creatorDurationS || 60;
+      if (creatorTracks.length > 0) {
+        effectiveCreatorDurationS = creatorTracks.reduce((sum, ct) => {
+          const dur = (ct.trimEndS ?? ct.durationS) - ct.trimStartS;
+          return sum + Math.max(0, dur);
+        }, 0);
+        if (effectiveCreatorDurationS <= 0) effectiveCreatorDurationS = 60;
+        console.log(`📏 Effective creator duration from ${creatorTracks.length} tracks: ${effectiveCreatorDurationS.toFixed(1)}s`);
+      }
 
+      // 6. Render each layout
       for (const layout of layouts) {
         const output = composition.outputs.find((o) => o.layout === layout);
         if (!output) continue;
@@ -803,9 +890,9 @@ new Worker<ReactionComposeJob>(
                 {
                   layout: layout as 'mobile' | 'landscape',
                   creatorPath,
-                  creatorDurationS: composition.creatorDurationS || 60,
-                  creatorTrimStartS: composition.creatorTrimStartS,
-                  creatorTrimEndS: composition.creatorTrimEndS,
+                  creatorDurationS: effectiveCreatorDurationS,
+                  creatorTrimStartS: creatorTracks.length > 0 ? 0 : composition.creatorTrimStartS,
+                  creatorTrimEndS: creatorTracks.length > 0 ? null : composition.creatorTrimEndS,
                   tracks: trackInfos,
                   audioMode: composition.audioMode as 'creator' | 'reference' | 'both',
                   creatorVolume: composition.creatorVolume,
@@ -886,8 +973,9 @@ new Worker<ReactionComposeJob>(
       // 5. Auto-generate thumbnail assets (non-fatal)
       if (allCompleted) {
         try {
-          const referenceTrack = composition.tracks[0];
-          if (referenceTrack?.s3Url && composition.creatorS3Url) {
+          const referenceTrack = refTracks[0];
+          const creatorS3Url = composition.creatorS3Url || (creatorTracks[0]?.s3Url ?? null);
+          if (referenceTrack?.s3Url && creatorS3Url) {
             console.log('🖼️ Auto-generating thumbnail assets...');
             const { generateThumbnailAssets, compositeThumbnailSharp } =
               await import('../../shared/util/thumbnailGenerator');
@@ -895,9 +983,9 @@ new Worker<ReactionComposeJob>(
             const { referenceFrames, cutouts } = await generateThumbnailAssets({
               compositionId,
               referenceS3Url: referenceTrack.s3Url,
-              creatorS3Url: composition.creatorS3Url,
-              creatorTrimStartS: composition.creatorTrimStartS,
-              creatorDurationS: composition.creatorDurationS || undefined,
+              creatorS3Url,
+              creatorTrimStartS: creatorTracks.length > 0 ? 0 : composition.creatorTrimStartS,
+              creatorDurationS: effectiveCreatorDurationS,
             });
 
             if (referenceFrames.length > 0 || cutouts.length > 0) {
