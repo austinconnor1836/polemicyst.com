@@ -25,7 +25,14 @@ WORKDIR /app
 COPY ./workers/clip-metadata-worker/package*.json ./workers/clip-metadata-worker/
 COPY ./shared ./shared
 RUN rm -f ./shared/lib/auth.ts ./shared/lib/auth-helpers.ts && \
-    rm -rf ./shared/lib/publishing ./shared/util/youtube-api.ts
+    rm -f ./shared/lib/publishing/publish-service.ts \
+          ./shared/lib/publishing/substack-client.ts \
+          ./shared/lib/publishing/claude-client.ts \
+          ./shared/lib/publishing/markdown-to-prosemirror.ts \
+          ./shared/lib/publishing/validation.ts \
+          ./shared/lib/publishing/config-template.ts && \
+    rm -rf ./shared/lib/publishing/__tests__ && \
+    rm -f ./shared/util/youtube-api.ts
 
 WORKDIR /app/workers/clip-metadata-worker
 RUN npm install
