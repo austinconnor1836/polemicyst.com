@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, type RefObject } from 'react';
 import { cn } from '@/lib/utils';
 
 interface Track {
@@ -15,7 +15,7 @@ interface Track {
 interface TimelineEditorProps {
   tracks: Track[];
   creatorDurationS: number;
-  currentTime?: number;
+  playheadRef?: RefObject<HTMLDivElement | null>;
   onTrackMove: (trackId: string, startAtS: number) => void;
   className?: string;
 }
@@ -37,7 +37,7 @@ function formatTime(seconds: number): string {
 export function TimelineEditor({
   tracks,
   creatorDurationS,
-  currentTime,
+  playheadRef,
   onTrackMove,
   className,
 }: TimelineEditorProps) {
@@ -125,13 +125,12 @@ export function TimelineEditor({
             ))}
           </div>
 
-          {/* Playhead */}
-          {currentTime != null && (
-            <div
-              className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 pointer-events-none"
-              style={{ left: currentTime * PX_PER_SECOND }}
-            />
-          )}
+          {/* Playhead — positioned via ref from parent onTimeUpdate for zero re-renders */}
+          <div
+            ref={playheadRef as React.RefObject<HTMLDivElement>}
+            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 pointer-events-none"
+            style={{ left: 0 }}
+          />
 
           {/* Track lanes */}
           {tracks.map((track, i) => {

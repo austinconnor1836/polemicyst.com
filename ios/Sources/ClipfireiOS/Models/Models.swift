@@ -1086,6 +1086,7 @@ public struct Composition: Identifiable, Codable {
     public let creatorHeight: Int?
     public let creatorTrimStartS: Double
     public let creatorTrimEndS: Double?
+    public let creatorTranscript: String?
     public let tracks: [CompositionTrack]?
     public let outputs: [CompositionOutput]?
     public let createdAt: Date
@@ -1131,7 +1132,10 @@ public struct CreateCompositionRequest: Encodable {
 
 public struct UpdateCompositionRequest: Encodable {
     public let title: String?
+    public let mode: String?
     public let audioMode: String?
+    public let creatorVolume: Double?
+    public let referenceVolume: Double?
     public let creatorS3Key: String?
     public let creatorS3Url: String?
     public let creatorDurationS: Double?
@@ -1141,14 +1145,18 @@ public struct UpdateCompositionRequest: Encodable {
     public let creatorTrimEndS: Double?
 
     public init(
-        title: String? = nil, audioMode: String? = nil,
+        title: String? = nil, mode: String? = nil, audioMode: String? = nil,
+        creatorVolume: Double? = nil, referenceVolume: Double? = nil,
         creatorS3Key: String? = nil, creatorS3Url: String? = nil,
         creatorDurationS: Double? = nil, creatorWidth: Int? = nil,
         creatorHeight: Int? = nil, creatorTrimStartS: Double? = nil,
         creatorTrimEndS: Double? = nil
     ) {
         self.title = title
+        self.mode = mode
         self.audioMode = audioMode
+        self.creatorVolume = creatorVolume
+        self.referenceVolume = referenceVolume
         self.creatorS3Key = creatorS3Key
         self.creatorS3Url = creatorS3Url
         self.creatorDurationS = creatorDurationS
@@ -1181,6 +1189,26 @@ public struct CreateTrackRequest: Encodable {
     }
 }
 
+public struct UpdateTrackRequest: Encodable {
+    public let label: String?
+    public let startAtS: Double?
+    public let trimStartS: Double?
+    public let trimEndS: Double?
+    public let sortOrder: Int?
+
+    public init(
+        label: String? = nil, startAtS: Double? = nil,
+        trimStartS: Double? = nil, trimEndS: Double? = nil,
+        sortOrder: Int? = nil
+    ) {
+        self.label = label
+        self.startAtS = startAtS
+        self.trimStartS = trimStartS
+        self.trimEndS = trimEndS
+        self.sortOrder = sortOrder
+    }
+}
+
 public struct RenderRequest: Encodable {
     public let layouts: [String]?
     public init(layouts: [String]? = nil) { self.layouts = layouts }
@@ -1197,6 +1225,190 @@ public struct ProbeResponse: Codable {
     public let width: Int
     public let height: Int
     public let hasAudio: Bool
+}
+
+// MARK: - Thumbnails
+
+public struct CompositionThumbnail: Codable, Identifiable {
+    public let id: String
+    public let compositionId: String
+    public let s3Key: String?
+    public let s3Url: String?
+    public let hookText: String?
+    public let frameTimestampS: Double?
+    public let visionScore: Double?
+    public let selected: Bool
+    public let createdAt: Date?
+    public let updatedAt: Date?
+}
+
+public struct SelectThumbnailRequest: Encodable {
+    public let thumbnailId: String
+}
+
+public struct RegenerateThumbnailsResponse: Codable {
+    public let success: Bool
+    public let message: String
+}
+
+// MARK: - Publishing
+
+public struct PublishRequest: Encodable {
+    public let platforms: [String]
+    public let title: String?
+    public let description: String?
+    public let descriptions: [String: String]?
+    public let outputId: String?
+
+    public init(
+        platforms: [String], title: String? = nil,
+        description: String? = nil, descriptions: [String: String]? = nil,
+        outputId: String? = nil
+    ) {
+        self.platforms = platforms
+        self.title = title
+        self.description = description
+        self.descriptions = descriptions
+        self.outputId = outputId
+    }
+}
+
+public struct PublishResponse: Codable {
+    public let status: String // "completed" | "partial" | "failed"
+    public let results: [PlatformResult]
+}
+
+public struct PlatformResult: Codable, Identifiable {
+    public let platform: String
+    public let success: Bool
+    public let platformUrl: String?
+    public let error: String?
+
+    public var id: String { platform }
+}
+
+public struct PlatformsResponse: Codable {
+    public let platforms: [VideoPlatformInfo]
+    public let defaults: [String]?
+}
+
+public struct VideoPlatformInfo: Codable, Identifiable {
+    public let platform: String
+    public let displayName: String
+    public let connected: Bool
+    public let supportsVideo: Bool
+    public let supportsText: Bool
+
+    public var id: String { platform }
+}
+
+// MARK: - Client-Complete (save spliced output)
+
+public struct ClientCompleteRequest: Encodable {
+    public let layout: String
+    public let s3Key: String
+    public let s3Url: String
+    public let durationMs: Int?
+
+    public init(layout: String, s3Key: String, s3Url: String, durationMs: Int? = nil) {
+        self.layout = layout
+        self.s3Key = s3Key
+        self.s3Url = s3Url
+        self.durationMs = durationMs
+    }
+}
+
+// MARK: - Auto-Edit
+
+public struct AutoEditRequest: Encodable {
+    public let settings: AutoEditSettings?
+    public let apply: Bool?
+
+    public init(settings: AutoEditSettings? = nil, apply: Bool? = nil) {
+        self.settings = settings
+        self.apply = apply
+    }
+}
+
+public struct AutoEditSettings: Codable {
+    public let minSilenceToKeepS: Double?
+    public let badTakeDetection: Bool?
+    public let aggressiveness: String? // "conservative" | "balanced" | "aggressive"
+
+    public init(minSilenceToKeepS: Double? = nil, badTakeDetection: Bool? = nil, aggressiveness: String? = nil) {
+        self.minSilenceToKeepS = minSilenceToKeepS
+        self.badTakeDetection = badTakeDetection
+        self.aggressiveness = aggressiveness
+    }
+}
+
+public struct AutoEditResponse: Codable {
+    public let cuts: [AutoEditCut]
+    public let summary: AutoEditSummary
+}
+
+public struct AutoEditCut: Codable, Identifiable {
+    public let id: String
+    public let startS: Double
+    public let endS: Double
+    public let reason: String // "silence" | "bad_take"
+    public let detail: String
+}
+
+public struct AutoEditSummary: Codable {
+    public let silenceCuts: Int
+    public let badTakeCuts: Int
+    public let totalCuts: Int
+    public let totalRemovedS: Double
+    public let originalDurationS: Double
+    public let newDurationS: Double
+}
+
+// MARK: - Quote Graphics
+
+public struct DetectQuotesRequest: Encodable {
+    public let style: String?
+    public let provider: String?
+
+    public init(style: String? = nil, provider: String? = nil) {
+        self.style = style
+        self.provider = provider
+    }
+}
+
+public struct DetectQuotesResponse: Codable {
+    public let quotes: [DetectedQuote]
+    public let provider: String?
+    public let model: String?
+    public let style: String?
+}
+
+public struct DetectedQuote: Codable, Identifiable {
+    public let text: String
+    public let attribution: String?
+    public let startS: Double
+    public let endS: Double
+    public let confidence: Double
+
+    public var id: String { "\(startS)-\(endS)-\(text.prefix(20))" }
+}
+
+public struct QuotesStatusResponse: Codable {
+    public let quotes: [DetectedQuote]
+    public let style: String
+    public let enabled: Bool
+}
+
+public struct UpdateQuotesRequest: Encodable {
+    public let enabled: Bool?
+    public let style: String?
+    public let quotes: [DetectedQuote]?
+
+    public init(enabled: Bool? = nil, style: String? = nil, quotes: [DetectedQuote]? = nil) {
+        self.enabled = enabled
+        self.style = style
+        self.quotes = quotes
+    }
 }
 
 // MARK: - API Error

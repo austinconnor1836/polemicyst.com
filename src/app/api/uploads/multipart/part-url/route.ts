@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
       Key: key,
       UploadId: uploadId,
       PartNumber: partNumber,
-      Expires: 3600, // 1 hour — background uploads may be delayed by the OS
+      Expires: 43200, // 12 hours — long uploads on slow connections need headroom
     });
 
     const durationMs = Date.now() - startMs;

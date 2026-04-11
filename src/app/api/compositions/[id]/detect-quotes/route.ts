@@ -27,16 +27,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         creatorTranscriptJson: true,
         quoteGraphicStyle: true,
         quoteGraphicsEnabled: true,
+        tracks: { select: { transcriptJson: true } },
       },
     });
 
     if (!composition) return notFound('Composition not found');
 
-    if (!composition.creatorTranscriptJson) {
+    // Combine creator + reference track transcripts for detection
+    // Quotes often appear in reference tracks (the video being reacted to)
+    const allSegments: Array<{ start: number; end: number; text: string }> = [];
+    if (composition.creatorTranscriptJson && Array.isArray(composition.creatorTranscriptJson)) {
+      allSegments.push(...(composition.creatorTranscriptJson as any[]));
+    }
+    for (const track of composition.tracks) {
+      if (Array.isArray(track.transcriptJson)) {
+        allSegments.push(...(track.transcriptJson as any[]));
+      }
+    }
+
+    if (allSegments.length === 0) {
       return badRequest(
-        'Creator video transcript not available. Upload a creator video and wait for transcription to complete.'
+        'No transcripts available. Upload videos and wait for transcription to complete.'
       );
     }
+
+    // Sort chronologically
+    allSegments.sort((a, b) => a.start - b.start);
 
     let body: { style?: string; provider?: string } = {};
     try {
@@ -45,13 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // No body is fine
     }
 
-    const segments = composition.creatorTranscriptJson as Array<{
-      start: number;
-      end: number;
-      text: string;
-    }>;
-
-    const result = await detectQuotes(segments, body.provider);
+    const result = await detectQuotes(allSegments, body.provider);
 
     const updateData: Record<string, any> = {
       detectedQuotes: result.quotes as any,

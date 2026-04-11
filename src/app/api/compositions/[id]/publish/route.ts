@@ -4,6 +4,7 @@ import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { google } from 'googleapis';
 import axios from 'axios';
+import { Readable } from 'node:stream';
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
@@ -55,7 +56,6 @@ async function publishToYouTube(
     const youtube = google.youtube({ version: 'v3', auth });
 
     const buffer = await getS3Buffer(s3Key);
-    const { Readable } = await import('stream');
     const stream = Readable.from(buffer);
 
     const uploadRes = await youtube.videos.insert({
@@ -73,7 +73,6 @@ async function publishToYouTube(
     if (thumbnailS3Key && youtubeId) {
       try {
         const thumbBuf = await getS3Buffer(thumbnailS3Key);
-        const { Readable } = await import('stream');
         await youtube.thumbnails.set({
           videoId: youtubeId,
           media: { mimeType: 'image/png', body: Readable.from(thumbBuf) },

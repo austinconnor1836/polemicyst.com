@@ -250,10 +250,15 @@ export function buildFilterComplex(opts: ComposeOptions): {
   );
 
   if (isMobile) {
-    // Mobile: creator overlay at bottom of frame (reference fills full frame)
-    filters.push(
-      `[0:v]${creatorTrimFilter}scale=${MOBILE_CREATOR_W}:${MOBILE_CREATOR_H}:force_original_aspect_ratio=increase,crop=${MOBILE_CREATOR_W}:${MOBILE_CREATOR_H},setsar=1[creator_mobile]`
-    );
+    // Mobile: creator overlay at bottom of frame (only needed when at least one
+    // reference track covers the canvas — otherwise [creator_full] is the only
+    // creator layer and an unconnected [creator_mobile] crashes ffmpeg).
+    const hasActiveRef = tracks.some((t) => effectiveDuration(t) > 0);
+    if (hasActiveRef) {
+      filters.push(
+        `[0:v]${creatorTrimFilter}scale=${MOBILE_CREATOR_W}:${MOBILE_CREATOR_H}:force_original_aspect_ratio=increase,crop=${MOBILE_CREATOR_W}:${MOBILE_CREATOR_H},setsar=1[creator_mobile]`
+      );
+    }
   } else {
     // Landscape: PIP creator only if there's at least one landscape reference
     const hasLandscapeRef = tracks.some((t) => !isPortrait(t) && effectiveDuration(t) > 0);

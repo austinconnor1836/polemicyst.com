@@ -134,8 +134,22 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.AUTH_FACEBOOK_SECRET!,
       authorization: {
         params: {
-          scope:
-            'public_profile,email,pages_show_list,pages_manage_posts,instagram_basic,instagram_content_publish,publish_video',
+          // Facebook Graph API scopes for publishing videos to Pages + Reels.
+          // Note: `publish_video` is deprecated and has been merged into
+          // `pages_manage_posts`. `pages_manage_posts` and `instagram_content_publish`
+          // are Advanced Access tier — they work for App Admins/Developers/Testers
+          // during development, and require Meta App Review for production use.
+          // Add yourself as a Tester in the Meta App Dashboard → Roles to
+          // authorize them without going through review.
+          scope: [
+            'public_profile',
+            'email',
+            'pages_show_list',
+            'pages_read_engagement',
+            'pages_manage_posts',
+            'instagram_basic',
+            'instagram_content_publish',
+          ].join(','),
         },
       },
     }),

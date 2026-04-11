@@ -63,7 +63,7 @@ services:
       [
         'sh',
         '-c',
-        'npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
+        'which chromium || (apt-get update -qq && apt-get install -y -qq chromium chromium-sandbox fonts-noto-color-emoji); npm install && npx prisma generate --schema=../../prisma/schema.prisma && npm run dev',
       ]
 
   transcription-worker:

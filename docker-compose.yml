@@ -57,6 +57,7 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/clips-genie
       - OLLAMA_BASE_URL=http://ollama:11434
       - NODE_ENV=production
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
     env_file:
       - .env
     depends_on:

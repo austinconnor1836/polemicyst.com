@@ -566,7 +566,9 @@ new Worker<ReactionComposeJob>(
       const composition = await prisma.composition.findUnique({
         where: { id: compositionId },
         include: {
-          tracks: { orderBy: { sortOrder: 'asc' } },
+          // createdAt is the tiebreaker for tracks that ended up with the same
+          // sortOrder due to a concurrent-insert race. Keeps order deterministic.
+          tracks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
           outputs: true,
         },
       });
@@ -576,9 +578,7 @@ new Worker<ReactionComposeJob>(
       const creatorTracks = allTracks.filter(
         (t: any) => (t.trackType ?? 'reference') === 'creator'
       );
-      const refTracks = allTracks.filter(
-        (t: any) => (t.trackType ?? 'reference') === 'reference'
-      );
+      const refTracks = allTracks.filter((t: any) => (t.trackType ?? 'reference') === 'reference');
 
       const hasCreator = !!composition?.creatorS3Url || creatorTracks.length > 0;
       if (!composition || !hasCreator) {
@@ -646,15 +646,24 @@ new Worker<ReactionComposeJob>(
 
           console.log(`🔗 Concatenating ${creatorPaths.length} creator tracks...`);
           const { execFileSync } = require('child_process');
-          execFileSync('ffmpeg', [
-            '-y',
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', concatListPath,
-            '-c', 'copy',
-            '-movflags', '+faststart',
-            concatOutputPath,
-          ], { stdio: 'pipe', timeout: 300_000 });
+          execFileSync(
+            'ffmpeg',
+            [
+              '-y',
+              '-f',
+              'concat',
+              '-safe',
+              '0',
+              '-i',
+              concatListPath,
+              '-c',
+              'copy',
+              '-movflags',
+              '+faststart',
+              concatOutputPath,
+            ],
+            { stdio: 'pipe', timeout: 300_000 }
+          );
           creatorPath = concatOutputPath;
           console.log('✅ Creator tracks concatenated');
         }
@@ -816,12 +825,16 @@ new Worker<ReactionComposeJob>(
         : [];
 
       // 4b. Quote overlay generation (if enabled)
-      const quoteOverlaysByLayout: Record<string, import('@shared/util/reactionCompose').QuoteOverlayInfo[]> = {};
+      const quoteOverlaysByLayout: Record<
+        string,
+        import('@shared/util/reactionCompose').QuoteOverlayInfo[]
+      > = {};
       if (composition.quoteGraphicsEnabled && composition.detectedQuotes) {
         try {
           const quotes = composition.detectedQuotes as any[];
           if (quotes.length > 0) {
-            const { generateAllQuoteGraphics, cleanupQuoteGraphics } = await import('../../shared/util/quoteGraphics');
+            const { generateAllQuoteGraphics, cleanupQuoteGraphics } =
+              await import('../../shared/util/quoteGraphics');
             const quoteStyle = (composition.quoteGraphicStyle as any) || 'pull-quote';
             const trimOffset = composition.creatorTrimStartS || 0;
 
@@ -830,13 +843,20 @@ new Worker<ReactionComposeJob>(
               const canvasW = isMobile ? 720 : 1280;
               const canvasH = isMobile ? 1280 : 720;
 
-              const adjustedQuotes = quotes.map((q: any) => ({
-                ...q,
-                startS: q.startS - trimOffset,
-                endS: q.endS - trimOffset,
-              })).filter((q: any) => q.endS > 0);
+              const adjustedQuotes = quotes
+                .map((q: any) => ({
+                  ...q,
+                  startS: q.startS - trimOffset,
+                  endS: q.endS - trimOffset,
+                }))
+                .filter((q: any) => q.endS > 0);
 
-              const overlays = await generateAllQuoteGraphics(adjustedQuotes, quoteStyle, canvasW, canvasH);
+              const overlays = await generateAllQuoteGraphics(
+                adjustedQuotes,
+                quoteStyle,
+                canvasW,
+                canvasH
+              );
               quoteOverlaysByLayout[layout] = overlays.map((ov) => ({
                 imagePath: ov.imagePath,
                 startS: ov.quote.startS,
@@ -867,7 +887,9 @@ new Worker<ReactionComposeJob>(
           return sum + Math.max(0, dur);
         }, 0);
         if (effectiveCreatorDurationS <= 0) effectiveCreatorDurationS = 60;
-        console.log(`📏 Effective creator duration from ${creatorTracks.length} tracks: ${effectiveCreatorDurationS.toFixed(1)}s`);
+        console.log(
+          `📏 Effective creator duration from ${creatorTracks.length} tracks: ${effectiveCreatorDurationS.toFixed(1)}s`
+        );
       }
 
       // 6. Render each layout
@@ -1228,7 +1250,7 @@ new Worker<GenericTranscriptionJob>(
           );
         }
 
-        // Eager quote detection: analyze transcript for cited/quoted material
+        // Eager quote detection: analyze creator + reference track transcripts
         try {
           const comp2 = await prisma.composition.findUnique({
             where: { id: targetId },
@@ -1246,10 +1268,24 @@ new Worker<GenericTranscriptionJob>(
           const shouldDetect = comp2?.quoteGraphicsEnabled || rule2?.quoteGraphicsEnabled;
 
           if (shouldDetect && result.segments.length > 0) {
+            // Combine creator segments with reference track transcripts
+            // Quotes often appear in reference tracks (the video being reacted to)
+            const allSegments = [...(result.segments as any[])];
+            const allRefTracks = await prisma.compositionTrack.findMany({
+              where: { compositionId: targetId },
+              select: { transcriptJson: true },
+            });
+            const refTracks = allRefTracks.filter((t) => t.transcriptJson !== null);
+            for (const track of refTracks) {
+              if (Array.isArray(track.transcriptJson)) {
+                allSegments.push(...(track.transcriptJson as any[]));
+              }
+            }
+            // Sort by start time so the LLM sees chronological order
+            allSegments.sort((a: any, b: any) => (a.start ?? 0) - (b.start ?? 0));
+
             const { detectQuotes } = await import('../../shared/lib/quote-detection');
-            const quoteResult = await detectQuotes(
-              result.segments as any[]
-            );
+            const quoteResult = await detectQuotes(allSegments);
 
             if (quoteResult.quotes.length > 0) {
               const quoteUpdateData: Record<string, any> = {
@@ -1269,6 +1305,10 @@ new Worker<GenericTranscriptionJob>(
 
               console.log(
                 `[generic-transcription] Quote detection: found ${quoteResult.quotes.length} quotes for Composition:${targetId}`
+              );
+            } else {
+              console.log(
+                `[generic-transcription] Quote detection: no quotes found for Composition:${targetId} (${allSegments.length} segments analyzed)`
               );
             }
           }
