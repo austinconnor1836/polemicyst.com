@@ -20,11 +20,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Composition not found' }, { status: 404 });
     }
 
-    if (!composition.creatorS3Key) {
+    const creatorTracks = composition.tracks.filter(
+      (t) => (t.trackType ?? 'reference') === 'creator'
+    );
+    const refTracks = composition.tracks.filter(
+      (t) => (t.trackType ?? 'reference') === 'reference'
+    );
+
+    const hasCreator = !!composition.creatorS3Key || creatorTracks.length > 0;
+    if (!hasCreator) {
       return NextResponse.json({ error: 'Creator video not uploaded' }, { status: 400 });
     }
 
-    if (composition.tracks.length === 0) {
+    if (refTracks.length === 0) {
       return NextResponse.json(
         { error: 'At least one reference track is required' },
         { status: 400 }

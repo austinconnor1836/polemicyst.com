@@ -36,6 +36,7 @@ import Link from 'next/link';
 
 interface Track {
   id: string;
+  trackType?: string;
   label?: string | null;
   s3Key: string;
   s3Url: string;
@@ -173,7 +174,7 @@ export default function CompositionEditorPage() {
   >(new Map());
   const [cropAdjustTarget, setCropAdjustTarget] = useState<string | null>(null);
 
-  // Background upload state — creator video
+  // Background upload state — creator video (legacy single-creator, kept for backward compat)
   const [creatorBlobUrl, setCreatorBlobUrl] = useState<string | null>(null);
   const [creatorUploadStatus, setCreatorUploadStatus] = useState<UploadStatus>('idle');
   const [creatorUploadProgress, setCreatorUploadProgress] = useState<number | null>(null);
@@ -196,10 +197,17 @@ export default function CompositionEditorPage() {
   const [refUploadProgress, setRefUploadProgress] = useState<number | null>(null);
   const [refUploadSpeed, setRefUploadSpeed] = useState<number | null>(null);
 
+  // Creator track upload state (multi-file)
+  const [addingCreatorTrack, setAddingCreatorTrack] = useState(false);
+  const [creatorTrackUploadStatus, setCreatorTrackUploadStatus] = useState<UploadStatus>('idle');
+  const [creatorTrackUploadProgress, setCreatorTrackUploadProgress] = useState<number | null>(null);
+  const [creatorTrackUploadSpeed, setCreatorTrackUploadSpeed] = useState<number | null>(null);
+
   // Client-side rendering: store raw File objects for WebCodecs demuxer
   const useClientRender = supportsClientRender();
   const [creatorFile, setCreatorFile] = useState<File | null>(null);
   const [refFiles, setRefFiles] = useState<Map<string, File>>(new Map());
+  const [creatorFiles, setCreatorFiles] = useState<Map<string, File>>(new Map());
 
   // Client-rendered output blobs (lifted from RenderControls for EditOutputModal access)
   const [clientOutputBlobs, setClientOutputBlobs] = useState<Map<string, Blob>>(new Map());
@@ -804,6 +812,101 @@ export default function CompositionEditorPage() {
     [compositionId, fetchComposition, probeVideo, pendingRefMeta, pendingRefBlobUrl]
   );
 
+  // --- Creator track upload handlers (multi-file) ---
+  const handleCreatorTrackFileSelected = useCallback(
+    (data: {
+      blobUrl: string;
+      file: File;
+      filename: string;
+      fileSize: number;
+      durationS: number;
+      width: number;
+      height: number;
+    }) => {
+      if (useClientRender) {
+        setCreatorTrackUploadStatus('complete');
+        const tempId = `local_creator_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        setCreatorFiles((prev) => new Map(prev).set(tempId, data.file));
+        saveRefFileToCache(compositionId, tempId, data.file, {
+          label: data.filename,
+          durationS: data.durationS,
+          width: data.width,
+          height: data.height,
+        });
+
+        setComposition((prev) => {
+          if (!prev) return prev;
+          const creatorTracks = prev.tracks.filter(
+            (t) => (t.trackType ?? 'reference') === 'creator'
+          );
+          const newTrack: Track = {
+            id: tempId,
+            trackType: 'creator',
+            label: data.filename,
+            s3Key: '',
+            s3Url: data.blobUrl,
+            durationS: data.durationS,
+            width: data.width,
+            height: data.height,
+            startAtS: 0,
+            trimStartS: 0,
+            trimEndS: null,
+            sortOrder: creatorTracks.length,
+            hasAudio: true,
+          };
+          return { ...prev, tracks: [...prev.tracks, newTrack] };
+        });
+        setCreatorTrackUploadStatus('idle');
+        toast.success('Creator video added');
+      } else {
+        setCreatorTrackUploadStatus('uploading');
+        // Store pending metadata for the S3 upload completion handler
+        setPendingRefMeta({
+          filename: data.filename,
+          durationS: data.durationS,
+          width: data.width,
+          height: data.height,
+        });
+      }
+      setCreatorTrackUploadProgress(null);
+    },
+    [useClientRender, compositionId]
+  );
+
+  const handleCreatorTrackUploadComplete = useCallback(
+    async (data: { s3Key: string; s3Url: string }) => {
+      setCreatorTrackUploadStatus('complete');
+      setAddingCreatorTrack(true);
+      try {
+        const probe = await probeVideo(data.s3Key);
+        const res = await fetch(`/api/compositions/${compositionId}/tracks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            s3Key: data.s3Key,
+            s3Url: data.s3Url,
+            trackType: 'creator',
+            label: pendingRefMeta?.filename ?? 'Creator',
+            durationS: probe?.durationS ?? pendingRefMeta?.durationS ?? 10,
+            width: probe?.width ?? pendingRefMeta?.width ?? null,
+            height: probe?.height ?? pendingRefMeta?.height ?? null,
+            hasAudio: probe?.hasAudio ?? true,
+          }),
+        });
+        if (!res.ok) throw new Error('Failed to add creator track');
+        await fetchComposition();
+        toast.success('Creator video added');
+      } catch (err) {
+        toast.error('Failed to add creator video');
+      } finally {
+        setPendingRefMeta(null);
+        setCreatorTrackUploadStatus('idle');
+        setAddingCreatorTrack(false);
+      }
+    },
+    [compositionId, fetchComposition, probeVideo, pendingRefMeta]
+  );
+
   const handleUpdateTrack = useCallback(
     async (trackId: string, data: Partial<Track>) => {
       try {
@@ -830,12 +933,16 @@ export default function CompositionEditorPage() {
 
   const handleRemoveTrack = useCallback(
     async (trackId: string) => {
-      if (!confirm('Remove this reference track?')) return;
+      if (!confirm('Remove this track?')) return;
       setDeletingTrackId(trackId);
       try {
-        // Local tracks (client-render) don't exist on the server — just remove locally
         if (trackId.startsWith('local_')) {
           setRefFiles((prev) => {
+            const next = new Map(prev);
+            next.delete(trackId);
+            return next;
+          });
+          setCreatorFiles((prev) => {
             const next = new Map(prev);
             next.delete(trackId);
             return next;
@@ -878,7 +985,10 @@ export default function CompositionEditorPage() {
   const handleTrimSave = useCallback(
     async (trimStartS: number, trimEndS: number) => {
       if (!trimTarget) return;
-      if (trimTarget.type === 'creator') {
+      if (trimTarget.type === 'creator' && trimTarget.trackId) {
+        await handleUpdateTrack(trimTarget.trackId, { trimStartS, trimEndS });
+        toast.success('Creator trim updated');
+      } else if (trimTarget.type === 'creator') {
         await save({ creatorTrimStartS: trimStartS, creatorTrimEndS: trimEndS } as any);
         toast.success('Creator trim updated');
       } else if (trimTarget.trackId) {
@@ -1036,8 +1146,32 @@ export default function CompositionEditorPage() {
     }
   }, [save]);
 
-  // Effective creator duration — local metadata as fallback (client-render may not persist to DB)
-  const creatorDurationS = composition?.creatorDurationS ?? creatorLocalMeta?.durationS ?? 0;
+  // Split tracks by type
+  const creatorTracks = (composition?.tracks ?? []).filter(
+    (t) => (t.trackType ?? 'reference') === 'creator'
+  );
+  const referenceTracks = (composition?.tracks ?? []).filter(
+    (t) => (t.trackType ?? 'reference') === 'reference'
+  );
+
+  // Total creator duration across all creator tracks
+  const creatorTracksDurationS = creatorTracks.reduce((sum, t) => {
+    const dur = (t.trimEndS ?? t.durationS) - t.trimStartS;
+    return sum + Math.max(0, dur);
+  }, 0);
+
+  // Effective creator duration — prefer multi-track sum, fallback to legacy single-creator
+  const creatorDurationS =
+    creatorTracksDurationS > 0
+      ? creatorTracksDurationS
+      : (composition?.creatorDurationS ?? creatorLocalMeta?.durationS ?? 0);
+
+  // Whether we have creator content (multi-track or legacy single)
+  const hasCreatorContent =
+    creatorTracks.length > 0 || !!composition?.creatorS3Key || !!creatorBlobUrl;
+
+  // Combined files map for client render (creator + reference)
+  const allFiles = new Map([...refFiles, ...creatorFiles]);
 
   // Whether any transcription is still in progress (creator or tracks)
   const transcribing =
@@ -1162,44 +1296,58 @@ export default function CompositionEditorPage() {
         </CardContent>
       </Card>
 
-      {/* Creator video */}
+      {/* Creator videos */}
       <Card>
         <CardHeader>
-          <CardTitle>Creator Video</CardTitle>
-          <CardDescription>Your commentary footage</CardDescription>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <CardTitle>Creator Videos</CardTitle>
+                {creatorTracks.length > 0 && (
+                  <Badge variant="secondary">{creatorTracks.length}</Badge>
+                )}
+                {creatorDurationS > 0 && (
+                  <Badge variant="outline" className="text-xs font-normal text-muted-foreground">
+                    Total: {Math.floor(creatorDurationS / 60)}:
+                    {String(Math.floor(creatorDurationS % 60)).padStart(2, '0')}
+                  </Badge>
+                )}
+              </div>
+              <CardDescription>
+                Your commentary footage
+                {creatorTracks.length > 1 ? ' — files will be combined in order' : ''}
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {(() => {
-            // Creator video source: S3 URL or local blob
-            const creatorSrc = composition.creatorS3Url || creatorBlobUrl;
-            const creatorDur = creatorDurationS;
-            const hasCreatorVideo = !!creatorSrc;
-            // When creator exists via blob (client-render), the uploader would show
-            // the blob preview instead of the dropzone. We suppress that by not passing
-            // blobUrl when the creator is already shown as a CompositionVideoPanel.
-            const uploaderBlobUrl = hasCreatorVideo ? null : creatorBlobUrl;
+            // Legacy single-creator support (compositions that used the old creatorS3Key approach)
+            const legacyCreatorSrc = composition.creatorS3Url || creatorBlobUrl;
+            const hasLegacyCreator = !!legacyCreatorSrc && creatorTracks.length === 0;
+            const uploaderBlobUrl = hasLegacyCreator ? null : creatorBlobUrl;
 
             return (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {/* Show creator video panel when a creator video exists */}
-                {hasCreatorVideo && (
+                {/* Legacy single-creator video panel */}
+                {hasLegacyCreator && (
                   <CompositionVideoPanel
-                    src={creatorSrc!}
+                    src={legacyCreatorSrc!}
                     label="Creator Video"
                     badge="Commentary"
                     sublabel={
-                      creatorDur > 0
-                        ? `${Math.floor(creatorDur / 60)}:${String(Math.floor(creatorDur % 60)).padStart(2, '0')}`
+                      creatorDurationS > 0
+                        ? `${Math.floor(creatorDurationS / 60)}:${String(Math.floor(creatorDurationS % 60)).padStart(2, '0')}`
                         : undefined
                     }
                     onTimeUpdate={setCurrentTime}
                     onClick={
-                      creatorDur > 0
+                      creatorDurationS > 0
                         ? () =>
                             setTrimTarget({
                               type: 'creator',
-                              src: creatorSrc!,
-                              durationS: creatorDur,
+                              src: legacyCreatorSrc!,
+                              durationS: creatorDurationS,
                               trimStartS: composition.creatorTrimStartS,
                               trimEndS: composition.creatorTrimEndS ?? null,
                               title: 'Trim Creator Video',
@@ -1222,7 +1370,6 @@ export default function CompositionEditorPage() {
                             creatorTrimEndS: null,
                           } as any);
                         }
-                        // Also clear local blob state
                         if (creatorBlobUrl) URL.revokeObjectURL(creatorBlobUrl);
                         setCreatorBlobUrl(null);
                         setCreatorFile(null);
@@ -1250,49 +1397,106 @@ export default function CompositionEditorPage() {
                   />
                 )}
 
-                {/* Dropzone to add or replace creator video */}
-                <div className="space-y-2">
-                  <VideoUploader
-                    label={
-                      hasCreatorVideo
-                        ? 'Replace commentary video'
-                        : useClientRender
-                          ? 'Add your commentary video'
-                          : 'Upload your commentary video'
-                    }
-                    blobUrl={uploaderBlobUrl}
-                    uploadStatus={hasCreatorVideo ? 'idle' : creatorUploadStatus}
-                    uploadProgress={creatorUploadProgress}
-                    uploadSpeed={creatorUploadSpeed}
-                    localOnly={useClientRender}
-                    onFileSelected={handleCreatorFileSelected}
-                    onUploadComplete={handleCreatorUploadComplete}
-                    onUploadProgress={(p, s) => {
-                      setCreatorUploadProgress(p);
-                      setCreatorUploadSpeed(s);
-                    }}
-                    onUploadError={(msg) => {
-                      setCreatorUploadStatus('error');
-                      toast.error(msg);
-                    }}
-                    keyPrefix={`compositions/${compositionId}/raw`}
-                  />
-                  {/* Transcription status for client-render mode */}
-                  {useClientRender && transcriptionStatus === 'transcribing' && (
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Transcribing...
-                    </div>
-                  )}
-                  {useClientRender && transcriptionStatus === 'complete' && (
-                    <div className="text-xs text-green-600 dark:text-green-400">
-                      Transcript ready
-                    </div>
-                  )}
-                  {useClientRender && transcriptionStatus === 'error' && (
-                    <div className="text-xs text-destructive">Transcription failed</div>
-                  )}
-                </div>
+                {/* Multi-track creator video panels */}
+                {creatorTracks.map((track, i) => {
+                  const effectiveDuration = (track.trimEndS ?? track.durationS) - track.trimStartS;
+                  return (
+                    <CompositionVideoPanel
+                      key={track.id}
+                      src={track.s3Url}
+                      label={track.label || `Creator ${i + 1}`}
+                      badge={`${i + 1} of ${creatorTracks.length}`}
+                      sublabel={`${effectiveDuration.toFixed(1)}s`}
+                      deleting={deletingTrackId === track.id}
+                      disabled={isRendering}
+                      onDelete={() => handleRemoveTrack(track.id)}
+                      onClick={() =>
+                        setTrimTarget({
+                          type: 'creator',
+                          trackId: track.id,
+                          src: track.s3Url,
+                          durationS: track.durationS,
+                          trimStartS: track.trimStartS,
+                          trimEndS: track.trimEndS,
+                          title: `Trim ${track.label || `Creator ${i + 1}`}`,
+                        })
+                      }
+                    />
+                  );
+                })}
+
+                {/* Dropzone: show when no legacy creator OR when using multi-track */}
+                {!hasLegacyCreator && creatorTracks.length < 10 && (
+                  <div className="space-y-2">
+                    <VideoUploader
+                      label={
+                        addingCreatorTrack
+                          ? 'Adding...'
+                          : creatorTracks.length > 0
+                            ? 'Add more commentary'
+                            : useClientRender
+                              ? 'Add your commentary video(s)'
+                              : 'Upload your commentary video(s)'
+                      }
+                      uploadStatus={creatorTrackUploadStatus}
+                      uploadProgress={creatorTrackUploadProgress}
+                      uploadSpeed={creatorTrackUploadSpeed}
+                      localOnly={useClientRender}
+                      multiple
+                      onFileSelected={handleCreatorTrackFileSelected}
+                      onUploadComplete={handleCreatorTrackUploadComplete}
+                      onUploadProgress={(p, s) => {
+                        setCreatorTrackUploadProgress(p);
+                        setCreatorTrackUploadSpeed(s);
+                      }}
+                      onUploadError={(msg) => {
+                        setCreatorTrackUploadStatus('error');
+                        toast.error(msg);
+                      }}
+                      className={addingCreatorTrack ? 'pointer-events-none opacity-50' : ''}
+                      keyPrefix={`compositions/${compositionId}/raw`}
+                    />
+                    {useClientRender && transcriptionStatus === 'transcribing' && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Transcribing...
+                      </div>
+                    )}
+                    {useClientRender && transcriptionStatus === 'complete' && (
+                      <div className="text-xs text-green-600 dark:text-green-400">
+                        Transcript ready
+                      </div>
+                    )}
+                    {useClientRender && transcriptionStatus === 'error' && (
+                      <div className="text-xs text-destructive">Transcription failed</div>
+                    )}
+                  </div>
+                )}
+
+                {/* Legacy single-creator: show uploader to replace */}
+                {hasLegacyCreator && (
+                  <div className="space-y-2">
+                    <VideoUploader
+                      label="Replace commentary video"
+                      blobUrl={uploaderBlobUrl}
+                      uploadStatus={'idle'}
+                      uploadProgress={creatorUploadProgress}
+                      uploadSpeed={creatorUploadSpeed}
+                      localOnly={useClientRender}
+                      onFileSelected={handleCreatorFileSelected}
+                      onUploadComplete={handleCreatorUploadComplete}
+                      onUploadProgress={(p, s) => {
+                        setCreatorUploadProgress(p);
+                        setCreatorUploadSpeed(s);
+                      }}
+                      onUploadError={(msg) => {
+                        setCreatorUploadStatus('error');
+                        toast.error(msg);
+                      }}
+                      keyPrefix={`compositions/${compositionId}/raw`}
+                    />
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -1306,17 +1510,20 @@ export default function CompositionEditorPage() {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <CardTitle>Reference Clips</CardTitle>
-                {composition.tracks.length > 0 && (
-                  <Badge variant="secondary">{composition.tracks.length}/10</Badge>
+                {referenceTracks.length > 0 && (
+                  <Badge variant="secondary">{referenceTracks.length}/10</Badge>
                 )}
               </div>
-              <CardDescription>Source videos you&#39;re reacting to</CardDescription>
+              <CardDescription>
+                Source videos you&#39;re reacting to
+                {referenceTracks.length > 1 ? ' — files will be combined in order' : ''}
+              </CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {composition.tracks.map((track, i) => {
+            {referenceTracks.map((track, i) => {
               const effectiveDuration = (track.trimEndS ?? track.durationS) - track.trimStartS;
               const trackTranscribing =
                 !track.id.startsWith('local_') && track.s3Url && !track.transcriptJson;
@@ -1374,14 +1581,15 @@ export default function CompositionEditorPage() {
               );
             })}
 
-            {composition.tracks.length < 10 && (
+            {referenceTracks.length < 10 && (
               <VideoUploader
-                label={addingTrack ? 'Adding track...' : 'Add reference clip'}
+                label={addingTrack ? 'Adding track...' : 'Add reference clip(s)'}
                 blobUrl={pendingRefBlobUrl}
                 uploadStatus={refUploadStatus}
                 uploadProgress={refUploadProgress}
                 uploadSpeed={refUploadSpeed}
                 localOnly={useClientRender}
+                multiple
                 onFileSelected={handleRefFileSelected}
                 onUploadComplete={handleRefUploadComplete}
                 onUploadProgress={(p, s) => {
@@ -1401,23 +1609,21 @@ export default function CompositionEditorPage() {
       </Card>
 
       {/* Timeline (only in timeline mode) */}
-      {composition.mode === 'timeline' &&
-        composition.tracks.length > 0 &&
-        composition.creatorDurationS && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Timeline</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TimelineEditor
-                tracks={composition.tracks}
-                creatorDurationS={composition.creatorDurationS}
-                currentTime={currentTime}
-                onTrackMove={handleTrackMove}
-              />
-            </CardContent>
-          </Card>
-        )}
+      {composition.mode === 'timeline' && referenceTracks.length > 0 && creatorDurationS > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Timeline</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TimelineEditor
+              tracks={referenceTracks}
+              creatorDurationS={creatorDurationS}
+              currentTime={currentTime}
+              onTrackMove={handleTrackMove}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Audio mix */}
       {/* Audio defaults to 'both' — no UI panel needed */}
@@ -1448,7 +1654,7 @@ export default function CompositionEditorPage() {
                 )}
             </div>
             <div className="flex gap-2">
-              {(composition.creatorS3Key || creatorBlobUrl) && (
+              {hasCreatorContent && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -1528,24 +1734,31 @@ export default function CompositionEditorPage() {
             compositionId={compositionId}
             compositionStatus={composition.status}
             outputs={composition.outputs}
-            hasCreator={!!(composition.creatorS3Key || creatorBlobUrl)}
-            hasTracks={composition.tracks.length > 0}
+            hasCreator={hasCreatorContent}
+            hasTracks={referenceTracks.length > 0}
             uploadsInProgress={
-              creatorUploadStatus === 'uploading' || refUploadStatus === 'uploading'
+              creatorUploadStatus === 'uploading' ||
+              refUploadStatus === 'uploading' ||
+              creatorTrackUploadStatus === 'uploading'
             }
-            uploadProgress={Math.max(creatorUploadProgress ?? 0, refUploadProgress ?? 0)}
-            hasPortraitRef={composition.tracks.some(
+            uploadProgress={Math.max(
+              creatorUploadProgress ?? 0,
+              refUploadProgress ?? 0,
+              creatorTrackUploadProgress ?? 0
+            )}
+            hasPortraitRef={referenceTracks.some(
               (t) => t.sourceCrop || (t.width != null && t.height != null && t.height > t.width)
             )}
-            hasLandscapeRef={composition.tracks.some(
+            hasLandscapeRef={referenceTracks.some(
               (t) => !t.sourceCrop && (t.width == null || t.height == null || t.width >= t.height)
             )}
             autoLayouts={detectOutputLayouts()}
             onStatusChange={handleStatusChange}
             compositionTitle={composition.title}
-            trackLabels={composition.tracks.map((t) => t.label || '').filter(Boolean)}
+            trackLabels={referenceTracks.map((t) => t.label || '').filter(Boolean)}
             // Client-side render props
             creatorFile={creatorFile}
+            creatorFiles={creatorFiles}
             refFiles={refFiles}
             composition={composition}
             clientOutputBlobs={clientOutputBlobs}
@@ -1652,10 +1865,10 @@ export default function CompositionEditorPage() {
           s3Url: o.s3Url!,
           hasS3Key: !o.s3Url!.startsWith('blob:'),
         }))}
-        trackLabels={composition.tracks.map((t) => t.label || '').filter(Boolean)}
+        trackLabels={referenceTracks.map((t) => t.label || '').filter(Boolean)}
         generationContext={{
           title: composition.title,
-          trackLabels: composition.tracks.map((t) => t.label || '').filter(Boolean),
+          trackLabels: referenceTracks.map((t) => t.label || '').filter(Boolean),
           layouts: completedOutputs.map((o) => o.layout),
           transcript: (() => {
             const parts: string[] = [];
@@ -1664,7 +1877,14 @@ export default function CompositionEditorPage() {
                 composition.creatorTranscriptJson.map((s: { text: string }) => s.text).join(' ')
               );
             }
-            for (const t of composition.tracks) {
+            for (const t of creatorTracks) {
+              if (t.transcriptJson) {
+                parts.push(
+                  (t.transcriptJson as Array<{ text: string }>).map((s) => s.text).join(' ')
+                );
+              }
+            }
+            for (const t of referenceTracks) {
               if (t.transcriptJson) {
                 parts.push(
                   (t.transcriptJson as Array<{ text: string }>).map((s) => s.text).join(' ')

@@ -42,6 +42,8 @@ interface VideoUploaderProps {
   keyPrefix?: string;
   /** If true, skip S3 upload — just provide local file for client-side rendering */
   localOnly?: boolean;
+  /** If true, allow selecting multiple files at once */
+  multiple?: boolean;
 }
 
 const CHUNK_SIZE = 64 * 1024 * 1024; // 64MB chunks
@@ -158,6 +160,7 @@ export function VideoUploader({
   className,
   keyPrefix,
   localOnly,
+  multiple,
 }: VideoUploaderProps) {
   const [dragOver, setDragOver] = useState(false);
   const [internalProgress, setInternalProgress] = useState(0);
@@ -420,23 +423,35 @@ export function VideoUploader({
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragOver(false);
-      const file = e.dataTransfer.files[0];
-      if (file && file.type.startsWith('video/')) {
-        handleFile(file);
+      const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('video/'));
+      if (multiple) {
+        const sorted = [...files].sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0));
+        for (const file of sorted) {
+          handleFile(file);
+        }
+      } else {
+        const file = files[0];
+        if (file) handleFile(file);
       }
     },
-    [handleFile]
+    [handleFile, multiple]
   );
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        handleFile(file);
+      const files = Array.from(e.target.files || []);
+      if (multiple) {
+        const sorted = [...files].sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0));
+        for (const file of sorted) {
+          handleFile(file);
+        }
+      } else {
+        const file = files[0];
+        if (file) handleFile(file);
       }
       e.target.value = '';
     },
-    [handleFile]
+    [handleFile, multiple]
   );
 
   // Cleanup blob URLs on unmount
@@ -551,6 +566,7 @@ export function VideoUploader({
         ref={inputRef}
         type="file"
         accept="video/*"
+        multiple={multiple}
         onChange={handleFileChange}
         className="hidden"
       />

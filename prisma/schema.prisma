@@ -679,6 +679,7 @@ model CompositionTrack {
   id            String      @id @default(cuid())
   compositionId String
   composition   Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
+  trackType     String      @default("reference") // reference | creator
   label         String?
   s3Key         String
   s3Url         String
