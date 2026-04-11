@@ -46,6 +46,13 @@ interface VideoUploaderProps {
   initialFile?: File | null;
   /** If true, allow selecting multiple files at once */
   multiple?: boolean;
+  /**
+   * If provided, the component bypasses its internal single-file upload pipeline
+   * entirely and just hands the selected files back to the parent. Use this when
+   * the parent needs to orchestrate concurrent multi-file uploads with per-file
+   * progress UI (VideoUploader's internal state is single-file only).
+   */
+  onFilesSelected?: (files: File[]) => void;
 }
 
 const CHUNK_SIZE = 25 * 1024 * 1024; // 25MB chunks — balances parallelism with per-chunk overhead
@@ -214,6 +221,7 @@ export function VideoUploader({
   localOnly,
   initialFile,
   multiple,
+  onFilesSelected,
 }: VideoUploaderProps) {
   const [dragOver, setDragOver] = useState(false);
   const [internalProgress, setInternalProgress] = useState(0);
@@ -557,34 +565,49 @@ export function VideoUploader({
       e.preventDefault();
       setDragOver(false);
       const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('video/'));
+      if (files.length === 0) return;
+      const sorted =
+        multiple && files.length > 1
+          ? [...files].sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0))
+          : files;
+      // Parent-driven multi-file mode: just hand the files back
+      if (onFilesSelected) {
+        onFilesSelected(multiple ? sorted : [sorted[0]]);
+        return;
+      }
       if (multiple) {
-        const sorted = [...files].sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0));
         for (const file of sorted) {
           handleFile(file);
         }
       } else {
-        const file = files[0];
-        if (file) handleFile(file);
+        handleFile(sorted[0]);
       }
     },
-    [handleFile, multiple]
+    [handleFile, multiple, onFilesSelected]
   );
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(e.target.files || []);
+      e.target.value = '';
+      if (files.length === 0) return;
+      const sorted =
+        multiple && files.length > 1
+          ? [...files].sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0))
+          : files;
+      if (onFilesSelected) {
+        onFilesSelected(multiple ? sorted : [sorted[0]]);
+        return;
+      }
       if (multiple) {
-        const sorted = [...files].sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0));
         for (const file of sorted) {
           handleFile(file);
         }
       } else {
-        const file = files[0];
-        if (file) handleFile(file);
+        handleFile(sorted[0]);
       }
-      e.target.value = '';
     },
-    [handleFile, multiple]
+    [handleFile, multiple, onFilesSelected]
   );
 
   // Auto-start upload for a pre-loaded file (e.g. restored from cache after page refresh)
@@ -596,11 +619,14 @@ export function VideoUploader({
     }
   }, [initialFile, handleFile]);
 
-  // Cleanup blob URLs on unmount
+  // Reset the abort flag on mount. Don't auto-abort on unmount —
+  // React strict mode's mount→unmount→remount dance would otherwise leave
+  // abortRef permanently true, causing every subsequent startUpload loop
+  // to throw 'Upload cancelled' silently (the catch early-returns when
+  // abortRef is true). Uploads also continue if the component remounts due
+  // to parent reconciliation; only explicit delete-button clicks cancel.
   useEffect(() => {
-    return () => {
-      abortRef.current = true;
-    };
+    abortRef.current = false;
   }, []);
 
   const hasVideo = !!(s3Key && s3Url) || !!blobUrl;

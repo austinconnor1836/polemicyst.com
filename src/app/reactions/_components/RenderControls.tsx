@@ -588,7 +588,7 @@ export function RenderControls({
   }, [uploadOutputRef, handleUploadOutput]);
 
   const handleRender = async () => {
-    if (!hasCreator || !hasTracks) return;
+    if (!hasCreator) return;
 
     if (uploadsInProgress) {
       toast(`Finishing upload… ${uploadProgress ?? 0}%`, { icon: '⏳' });
@@ -663,11 +663,13 @@ export function RenderControls({
     }
   };
 
-  const detectionSummary = !hasTracks
-    ? 'Upload reference clips to render'
-    : canClientRender
-      ? 'Client-side render (no upload needed)'
-      : 'Rendering both 9:16 and 16:9 formats';
+  const detectionSummary = !hasCreator
+    ? 'Upload at least one creator video to render'
+    : !hasTracks
+      ? 'Creator-only render — stitching creator videos with no reference overlay'
+      : canClientRender
+        ? 'Client-side render (no upload needed)'
+        : 'Rendering both 9:16 and 16:9 formats';
 
   // Aggregate progress across all layouts for the button label
   const aggregatePercent =
@@ -697,7 +699,7 @@ export function RenderControls({
             Cancel
           </Button>
         )}
-        <Button onClick={handleRender} disabled={rendering || !hasCreator || !hasTracks}>
+        <Button onClick={handleRender} disabled={rendering || !hasCreator}>
           {rendering && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {renderButtonLabel}
         </Button>

@@ -20,6 +20,7 @@ import { EditOutputModal, type CompositionCut } from '../_components/EditOutputM
 import { VideoPublishModal } from '@/components/VideoPublishModal';
 import { supportsClientRender } from '@/lib/client-render';
 import { detectCropFromVideo } from '@/lib/client-render/detect-crop';
+import { uploadFileMultipart } from '@/lib/multipart-upload';
 import {
   saveBlobToCache,
   loadBlobsFromCache,
@@ -137,6 +138,88 @@ function statusBadge(status: string) {
   }
 }
 
+function formatBytesPerSec(bps: number): string {
+  if (!isFinite(bps) || bps <= 0) return '';
+  if (bps < 1024) return `${bps.toFixed(0)} B/s`;
+  if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(0)} KB/s`;
+  return `${(bps / (1024 * 1024)).toFixed(1)} MB/s`;
+}
+
+interface PendingUploadCardProps {
+  upload: {
+    id: string;
+    filename: string;
+    blobUrl: string;
+    progress: number;
+    bytesPerSec: number;
+    status: 'uploading' | 'finalizing' | 'error';
+    error?: string;
+  };
+  onCancel: () => void;
+}
+
+function PendingUploadCard({ upload, onCancel }: PendingUploadCardProps) {
+  const speedLabel = formatBytesPerSec(upload.bytesPerSec);
+  return (
+    <div className="group relative flex flex-col gap-2 rounded-md border bg-card p-3">
+      <div className="relative aspect-video w-full overflow-hidden rounded bg-black">
+        <video
+          src={upload.blobUrl}
+          className="h-full w-full object-cover opacity-80"
+          muted
+          playsInline
+          preload="metadata"
+        />
+        <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 to-transparent p-2 pt-6">
+          <div className="mb-1 flex items-center justify-between text-[11px] text-white/95">
+            <span className="font-medium">
+              {upload.status === 'finalizing'
+                ? 'Finalizing…'
+                : upload.status === 'error'
+                  ? 'Failed'
+                  : `Uploading ${upload.progress}%`}
+            </span>
+            {upload.status === 'uploading' && speedLabel && (
+              <span className="text-white/80">{speedLabel}</span>
+            )}
+          </div>
+          {upload.status !== 'error' && (
+            <div className="h-1 w-full overflow-hidden rounded-full bg-white/20">
+              <div
+                className={`h-full rounded-full transition-[width] duration-300 ${upload.status === 'finalizing' ? 'animate-pulse bg-amber-400' : 'bg-blue-400'}`}
+                style={{
+                  width: `${upload.status === 'finalizing' ? 100 : upload.progress}%`,
+                }}
+              />
+            </div>
+          )}
+          {upload.status === 'error' && upload.error && (
+            <div className="truncate text-[10px] text-red-300">{upload.error}</div>
+          )}
+        </div>
+        <Button
+          variant="secondary"
+          size="icon"
+          className="absolute right-1.5 top-1.5 z-20 h-7 w-7 rounded-full bg-white/85 text-gray-900 backdrop-blur hover:bg-white dark:bg-zinc-900/80 dark:text-zinc-100 dark:hover:bg-zinc-900"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (upload.status === 'uploading' || upload.status === 'finalizing') {
+              if (!confirm('Cancel this upload?')) return;
+            }
+            onCancel();
+          }}
+          title={upload.status === 'error' ? 'Remove' : 'Cancel upload'}
+        >
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      <div className="truncate text-xs font-medium text-foreground" title={upload.filename}>
+        {upload.filename}
+      </div>
+    </div>
+  );
+}
+
 export default function CompositionEditorPage() {
   const params = useParams();
   const router = useRouter();
@@ -207,11 +290,25 @@ export default function CompositionEditorPage() {
   const [refUploadProgress, setRefUploadProgress] = useState<number | null>(null);
   const [refUploadSpeed, setRefUploadSpeed] = useState<number | null>(null);
 
-  // Creator track upload state (multi-file)
-  const [addingCreatorTrack, setAddingCreatorTrack] = useState(false);
-  const [creatorTrackUploadStatus, setCreatorTrackUploadStatus] = useState<UploadStatus>('idle');
-  const [creatorTrackUploadProgress, setCreatorTrackUploadProgress] = useState<number | null>(null);
-  const [creatorTrackUploadSpeed, setCreatorTrackUploadSpeed] = useState<number | null>(null);
+  // Multi-file upload progress, one entry per in-flight file. Driven by uploadFileMultipart
+  // (the parent owns orchestration so each file gets its own progress UI). Used for both
+  // creator and reference tracks.
+  type PendingUpload = {
+    id: string;
+    filename: string;
+    blobUrl: string;
+    fileSize: number;
+    durationS: number | null;
+    width: number | null;
+    height: number | null;
+    progress: number; // 0-100
+    bytesPerSec: number;
+    status: 'uploading' | 'finalizing' | 'error';
+    error?: string;
+    abort: AbortController;
+    trackType: 'creator' | 'reference';
+  };
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
 
   // File objects for rendering / upload resume
   const useClientRender = supportsClientRender();
@@ -868,99 +965,191 @@ export default function CompositionEditorPage() {
   );
 
   // --- Creator track upload handlers (multi-file) ---
-  const handleCreatorTrackFileSelected = useCallback(
+  // Client-render path: synthesise a local creator track from a probed file.
+  // S3 upload path is now handled by handleFilesSelected → uploadFileMultipart.
+  const addLocalCreatorTrack = useCallback(
     (data: {
       blobUrl: string;
       file: File;
       filename: string;
-      fileSize: number;
       durationS: number;
       width: number;
       height: number;
     }) => {
-      if (useClientRender) {
-        setCreatorTrackUploadStatus('complete');
-        const tempId = `local_creator_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        setCreatorFiles((prev) => new Map(prev).set(tempId, data.file));
-        saveRefFileToCache(compositionId, tempId, data.file, {
+      const tempId = `local_creator_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      setCreatorFiles((prev) => new Map(prev).set(tempId, data.file));
+      saveRefFileToCache(compositionId, tempId, data.file, {
+        label: data.filename,
+        durationS: data.durationS,
+        width: data.width,
+        height: data.height,
+      });
+      setComposition((prev) => {
+        if (!prev) return prev;
+        const creatorTracks = prev.tracks.filter((t) => (t.trackType ?? 'reference') === 'creator');
+        const newTrack: Track = {
+          id: tempId,
+          trackType: 'creator',
           label: data.filename,
+          s3Key: '',
+          s3Url: data.blobUrl,
           durationS: data.durationS,
           width: data.width,
           height: data.height,
-        });
-
-        setComposition((prev) => {
-          if (!prev) return prev;
-          const creatorTracks = prev.tracks.filter(
-            (t) => (t.trackType ?? 'reference') === 'creator'
-          );
-          const newTrack: Track = {
-            id: tempId,
-            trackType: 'creator',
-            label: data.filename,
-            s3Key: '',
-            s3Url: data.blobUrl,
-            durationS: data.durationS,
-            width: data.width,
-            height: data.height,
-            startAtS: 0,
-            trimStartS: 0,
-            trimEndS: null,
-            sortOrder: creatorTracks.length,
-            hasAudio: true,
-          };
-          return { ...prev, tracks: [...prev.tracks, newTrack] };
-        });
-        setCreatorTrackUploadStatus('idle');
-        toast.success('Creator video added');
-      } else {
-        setCreatorTrackUploadStatus('uploading');
-        // Store pending metadata for the S3 upload completion handler
-        setPendingRefMeta({
-          filename: data.filename,
-          durationS: data.durationS,
-          width: data.width,
-          height: data.height,
-        });
-      }
-      setCreatorTrackUploadProgress(null);
+          startAtS: 0,
+          trimStartS: 0,
+          trimEndS: null,
+          sortOrder: creatorTracks.length,
+          hasAudio: true,
+        };
+        return { ...prev, tracks: [...prev.tracks, newTrack] };
+      });
+      toast.success('Creator video added');
     },
-    [useClientRender, compositionId]
+    [compositionId]
   );
 
-  const handleCreatorTrackUploadComplete = useCallback(
-    async (data: { s3Key: string; s3Url: string }) => {
-      setCreatorTrackUploadStatus('complete');
-      setAddingCreatorTrack(true);
-      try {
-        const probe = await probeVideo(data.s3Key);
-        const res = await fetch(`/api/compositions/${compositionId}/tracks`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            s3Key: data.s3Key,
-            s3Url: data.s3Url,
-            trackType: 'creator',
-            label: pendingRefMeta?.filename ?? 'Creator',
-            durationS: probe?.durationS ?? pendingRefMeta?.durationS ?? 10,
-            width: probe?.width ?? pendingRefMeta?.width ?? null,
-            height: probe?.height ?? pendingRefMeta?.height ?? null,
-            hasAudio: probe?.hasAudio ?? true,
-          }),
-        });
-        if (!res.ok) throw new Error('Failed to add creator track');
-        await fetchComposition();
-        toast.success('Creator video added');
-      } catch (err) {
-        toast.error('Failed to add creator video');
-      } finally {
-        setPendingRefMeta(null);
-        setCreatorTrackUploadStatus('idle');
-        setAddingCreatorTrack(false);
+  // Process N files in parallel — each one gets its own pendingUploads entry,
+  // its own AbortController, and its own progress callback. Once a file finishes
+  // its multipart upload, the parent POSTs to /api/compositions/:id/tracks and
+  // refetches the composition. Failures stay in the list as 'error' so the user
+  // can retry or remove them. Used for both creator and reference tracks.
+  const handleFilesSelected = useCallback(
+    async (files: File[], trackType: 'creator' | 'reference') => {
+      if (useClientRender) {
+        // Client-render mode keeps files local and synthesises tracks immediately
+        // (no S3 upload). Only the creator path is supported here today.
+        for (const file of files) {
+          const blobUrl = URL.createObjectURL(file);
+          const meta = await import('@/lib/probe-video')
+            .then((m) => m.probeVideo(blobUrl))
+            .catch(() => ({ durationS: 0, width: 1920, height: 1080 }));
+          if (trackType === 'creator') {
+            addLocalCreatorTrack({
+              blobUrl,
+              file,
+              filename: file.name,
+              durationS: meta.durationS,
+              width: meta.width,
+              height: meta.height,
+            });
+          }
+        }
+        return;
       }
+
+      const created: PendingUpload[] = [];
+      for (const file of files) {
+        const id = `pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const blobUrl = URL.createObjectURL(file);
+        let durationS: number | null = null;
+        let width: number | null = null;
+        let height: number | null = null;
+        try {
+          const meta = await import('@/lib/probe-video').then((m) => m.probeVideo(blobUrl));
+          durationS = meta.durationS;
+          width = meta.width;
+          height = meta.height;
+        } catch {
+          // probe failure is non-fatal — server-side ffprobe will fill these in
+        }
+        created.push({
+          id,
+          filename: file.name,
+          blobUrl,
+          fileSize: file.size,
+          durationS,
+          width,
+          height,
+          progress: 0,
+          bytesPerSec: 0,
+          status: 'uploading',
+          abort: new AbortController(),
+          trackType,
+        });
+      }
+      setPendingUploads((prev) => [...prev, ...created]);
+
+      // Kick off uploads in parallel — each runs independently with its own
+      // closure over `entry` so they can never clobber each other's state.
+      created.forEach((entry, idx) => {
+        const file = files[idx];
+        (async () => {
+          try {
+            const result = await uploadFileMultipart(file, {
+              keyPrefix: `compositions/${compositionId}/raw`,
+              signal: entry.abort.signal,
+              onProgress: (p) => {
+                setPendingUploads((prev) =>
+                  prev.map((u) =>
+                    u.id === entry.id
+                      ? { ...u, progress: p.percent, bytesPerSec: p.bytesPerSec }
+                      : u
+                  )
+                );
+              },
+            });
+
+            // Mark as finalizing while we POST to /tracks
+            setPendingUploads((prev) =>
+              prev.map((u) => (u.id === entry.id ? { ...u, status: 'finalizing' } : u))
+            );
+
+            const probe = await probeVideo(result.s3Key);
+            const res = await fetch(`/api/compositions/${compositionId}/tracks`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                s3Key: result.s3Key,
+                s3Url: result.s3Url,
+                trackType,
+                label: entry.filename,
+                // Pass the index within this batch so the server can preserve
+                // the client's intended order even when multiple POSTs race.
+                sortOrder: idx,
+                durationS: probe?.durationS ?? entry.durationS ?? 10,
+                width: probe?.width ?? entry.width ?? null,
+                height: probe?.height ?? entry.height ?? null,
+                hasAudio: probe?.hasAudio ?? true,
+              }),
+            });
+            if (!res.ok) throw new Error(`POST /tracks ${res.status}`);
+
+            // Remove this entry and refresh composition state
+            setPendingUploads((prev) => prev.filter((u) => u.id !== entry.id));
+            URL.revokeObjectURL(entry.blobUrl);
+            await fetchComposition();
+            toast.success(`${trackType === 'creator' ? 'Creator' : 'Reference'} video added`);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Upload failed';
+            console.error(`[upload] ${entry.filename} failed:`, err);
+            // Don't mark as error if user aborted
+            if (entry.abort.signal.aborted) {
+              setPendingUploads((prev) => prev.filter((u) => u.id !== entry.id));
+              URL.revokeObjectURL(entry.blobUrl);
+              return;
+            }
+            setPendingUploads((prev) =>
+              prev.map((u) => (u.id === entry.id ? { ...u, status: 'error', error: msg } : u))
+            );
+            toast.error(`${entry.filename}: ${msg}`);
+          }
+        })();
+      });
     },
-    [compositionId, fetchComposition, probeVideo, pendingRefMeta]
+    [compositionId, fetchComposition, probeVideo, addLocalCreatorTrack, useClientRender]
   );
+
+  const handleCancelPendingUpload = useCallback((id: string) => {
+    setPendingUploads((prev) => {
+      const entry = prev.find((u) => u.id === id);
+      if (entry) {
+        entry.abort.abort();
+        URL.revokeObjectURL(entry.blobUrl);
+      }
+      return prev.filter((u) => u.id !== id);
+    });
+  }, []);
 
   const handleUpdateTrack = useCallback(
     async (trackId: string, data: Partial<Track>) => {
@@ -1504,53 +1693,58 @@ export default function CompositionEditorPage() {
                   );
                 })}
 
+                {/* Pending uploads: per-file progress cards */}
+                {pendingUploads
+                  .filter((u) => u.trackType === 'creator')
+                  .map((u) => (
+                    <PendingUploadCard
+                      key={u.id}
+                      upload={u}
+                      onCancel={() => handleCancelPendingUpload(u.id)}
+                    />
+                  ))}
+
                 {/* Dropzone: show when no legacy creator OR when using multi-track */}
-                {!hasLegacyCreator && creatorTracks.length < 10 && (
-                  <div className="space-y-2">
-                    <VideoUploader
-                      label={
-                        addingCreatorTrack
-                          ? 'Adding...'
-                          : creatorTracks.length > 0
+                {!hasLegacyCreator &&
+                  creatorTracks.length +
+                    pendingUploads.filter((u) => u.trackType === 'creator').length <
+                    10 && (
+                    <div className="space-y-2">
+                      <VideoUploader
+                        label={
+                          creatorTracks.length > 0 ||
+                          pendingUploads.some((u) => u.trackType === 'creator')
                             ? 'Add more commentary'
                             : useClientRender
                               ? 'Add your commentary video(s)'
                               : 'Upload your commentary video(s)'
-                      }
-                      uploadStatus={creatorTrackUploadStatus}
-                      uploadProgress={creatorTrackUploadProgress}
-                      uploadSpeed={creatorTrackUploadSpeed}
-                      localOnly={useClientRender}
-                      multiple
-                      onFileSelected={handleCreatorTrackFileSelected}
-                      onUploadComplete={handleCreatorTrackUploadComplete}
-                      onUploadProgress={(p, s) => {
-                        setCreatorTrackUploadProgress(p);
-                        setCreatorTrackUploadSpeed(s);
-                      }}
-                      onUploadError={(msg) => {
-                        setCreatorTrackUploadStatus('error');
-                        toast.error(msg);
-                      }}
-                      className={addingCreatorTrack ? 'pointer-events-none opacity-50' : ''}
-                      keyPrefix={`compositions/${compositionId}/raw`}
-                    />
-                    {useClientRender && transcriptionStatus === 'transcribing' && (
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        Transcribing...
-                      </div>
-                    )}
-                    {useClientRender && transcriptionStatus === 'complete' && (
-                      <div className="text-xs text-green-600 dark:text-green-400">
-                        Transcript ready
-                      </div>
-                    )}
-                    {useClientRender && transcriptionStatus === 'error' && (
-                      <div className="text-xs text-destructive">Transcription failed</div>
-                    )}
-                  </div>
-                )}
+                        }
+                        uploadStatus="idle"
+                        localOnly={useClientRender}
+                        multiple
+                        onFilesSelected={(files) => handleFilesSelected(files, 'creator')}
+                        // The next two props are required by the type but unused when
+                        // onFilesSelected takes over the upload pipeline.
+                        onFileSelected={() => {}}
+                        onUploadComplete={() => {}}
+                        keyPrefix={`compositions/${compositionId}/raw`}
+                      />
+                      {useClientRender && transcriptionStatus === 'transcribing' && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Transcribing...
+                        </div>
+                      )}
+                      {useClientRender && transcriptionStatus === 'complete' && (
+                        <div className="text-xs text-green-600 dark:text-green-400">
+                          Transcript ready
+                        </div>
+                      )}
+                      {useClientRender && transcriptionStatus === 'error' && (
+                        <div className="text-xs text-destructive">Transcription failed</div>
+                      )}
+                    </div>
+                  )}
 
                 {/* Legacy single-creator: show uploader to replace */}
                 {hasLegacyCreator && (
@@ -1828,12 +2022,12 @@ export default function CompositionEditorPage() {
             uploadsInProgress={
               creatorUploadStatus === 'uploading' ||
               refUploadStatus === 'uploading' ||
-              creatorTrackUploadStatus === 'uploading'
+              pendingUploads.some((u) => u.status !== 'error')
             }
             uploadProgress={Math.max(
               creatorUploadProgress ?? 0,
               refUploadProgress ?? 0,
-              creatorTrackUploadProgress ?? 0
+              ...pendingUploads.filter((u) => u.status !== 'error').map((u) => u.progress)
             )}
             hasPortraitRef={referenceTracks.some(
               (t) => t.sourceCrop || (t.width != null && t.height != null && t.height > t.width)

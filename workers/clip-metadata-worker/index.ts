@@ -566,7 +566,9 @@ new Worker<ReactionComposeJob>(
       const composition = await prisma.composition.findUnique({
         where: { id: compositionId },
         include: {
-          tracks: { orderBy: { sortOrder: 'asc' } },
+          // createdAt is the tiebreaker for tracks that ended up with the same
+          // sortOrder due to a concurrent-insert race. Keeps order deterministic.
+          tracks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
           outputs: true,
         },
       });
@@ -576,9 +578,7 @@ new Worker<ReactionComposeJob>(
       const creatorTracks = allTracks.filter(
         (t: any) => (t.trackType ?? 'reference') === 'creator'
       );
-      const refTracks = allTracks.filter(
-        (t: any) => (t.trackType ?? 'reference') === 'reference'
-      );
+      const refTracks = allTracks.filter((t: any) => (t.trackType ?? 'reference') === 'reference');
 
       const hasCreator = !!composition?.creatorS3Url || creatorTracks.length > 0;
       if (!composition || !hasCreator) {
@@ -646,15 +646,24 @@ new Worker<ReactionComposeJob>(
 
           console.log(`🔗 Concatenating ${creatorPaths.length} creator tracks...`);
           const { execFileSync } = require('child_process');
-          execFileSync('ffmpeg', [
-            '-y',
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', concatListPath,
-            '-c', 'copy',
-            '-movflags', '+faststart',
-            concatOutputPath,
-          ], { stdio: 'pipe', timeout: 300_000 });
+          execFileSync(
+            'ffmpeg',
+            [
+              '-y',
+              '-f',
+              'concat',
+              '-safe',
+              '0',
+              '-i',
+              concatListPath,
+              '-c',
+              'copy',
+              '-movflags',
+              '+faststart',
+              concatOutputPath,
+            ],
+            { stdio: 'pipe', timeout: 300_000 }
+          );
           creatorPath = concatOutputPath;
           console.log('✅ Creator tracks concatenated');
         }
@@ -878,7 +887,9 @@ new Worker<ReactionComposeJob>(
           return sum + Math.max(0, dur);
         }, 0);
         if (effectiveCreatorDurationS <= 0) effectiveCreatorDurationS = 60;
-        console.log(`📏 Effective creator duration from ${creatorTracks.length} tracks: ${effectiveCreatorDurationS.toFixed(1)}s`);
+        console.log(
+          `📏 Effective creator duration from ${creatorTracks.length} tracks: ${effectiveCreatorDurationS.toFixed(1)}s`
+        );
       }
 
       // 6. Render each layout

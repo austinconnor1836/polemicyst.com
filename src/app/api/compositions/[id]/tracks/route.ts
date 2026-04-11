@@ -36,6 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       trimEndS,
       hasAudio,
       trackType,
+      sortOrder: clientSortOrder,
     } = body;
 
     const type = trackType === 'creator' ? 'creator' : 'reference';
@@ -56,24 +57,38 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     }
 
-    const nextOrder = tracksOfType.length;
-
-    const track = await prisma.compositionTrack.create({
-      data: {
-        compositionId: id,
-        trackType: type,
-        label: label || null,
-        s3Key,
-        s3Url,
-        durationS,
-        width: width ?? null,
-        height: height ?? null,
-        startAtS: startAtS ?? 0,
-        trimStartS: trimStartS ?? 0,
-        trimEndS: trimEndS ?? null,
-        sortOrder: nextOrder,
-        hasAudio: hasAudio ?? true,
-      },
+    // Concurrent multi-file uploads can race here: each parallel POST sees the
+    // same tracksOfType.length snapshot and ends up writing the same sortOrder.
+    // Compute a fresh max from a transactional aggregate, and bias by an
+    // optional client-provided base offset so the client's intended order
+    // (sorted by file lastModified) is preserved when multiple files race.
+    const track = await prisma.$transaction(async (tx) => {
+      const max = await tx.compositionTrack.aggregate({
+        where: { compositionId: id, trackType: type },
+        _max: { sortOrder: true },
+      });
+      const currentMax = max._max.sortOrder ?? -1;
+      // If the client passed an explicit sortOrder, use max(currentMax + 1 + clientSortOrder, currentMax + 1)
+      // so its relative ordering within a batch is preserved while still being unique.
+      const nextOrder =
+        typeof clientSortOrder === 'number' ? currentMax + 1 + clientSortOrder : currentMax + 1;
+      return tx.compositionTrack.create({
+        data: {
+          compositionId: id,
+          trackType: type,
+          label: label || null,
+          s3Key,
+          s3Url,
+          durationS,
+          width: width ?? null,
+          height: height ?? null,
+          startAtS: startAtS ?? 0,
+          trimStartS: trimStartS ?? 0,
+          trimEndS: trimEndS ?? null,
+          sortOrder: nextOrder,
+          hasAudio: hasAudio ?? true,
+        },
+      });
     });
 
     // Queue transcription for the new track (non-fatal)

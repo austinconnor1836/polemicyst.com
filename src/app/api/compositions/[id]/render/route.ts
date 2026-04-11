@@ -31,13 +31,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!hasCreator) {
       return NextResponse.json({ error: 'Creator video not uploaded' }, { status: 400 });
     }
-
-    if (refTracks.length === 0) {
-      return NextResponse.json(
-        { error: 'At least one reference track is required' },
-        { status: 400 }
-      );
-    }
+    // Reference tracks are optional — a creator-only composition just stitches the
+    // creator videos together. The compose worker handles an empty refTracks array.
+    void refTracks;
 
     if (composition.status === 'rendering') {
       return NextResponse.json({ error: 'Render already in progress' }, { status: 409 });
