@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { signIn } from 'next-auth/react';
 import {
   Dialog,
   DialogContent,
@@ -24,9 +25,46 @@ import {
   Type,
   Settings,
   Save,
+  Link2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
+
+/** Map a platform to the NextAuth provider used to connect it. */
+function providerForPlatform(platform: string): string | null {
+  switch (platform) {
+    case 'youtube':
+      return 'google';
+    case 'facebook':
+    case 'instagram':
+    case 'threads':
+      return 'facebook';
+    case 'twitter':
+      return 'twitter';
+    case 'bluesky':
+      return 'bluesky';
+    default:
+      return null;
+  }
+}
+
+/** Detect whether a publish error is caused by expired / invalid OAuth credentials. */
+function isAuthError(errMsg?: string): boolean {
+  if (!errMsg) return false;
+  const s = errMsg.toLowerCase();
+  return (
+    s.includes('not connected') ||
+    s.includes('oauth') ||
+    s.includes('access_token') ||
+    s.includes('access token') ||
+    s.includes("expected 1 '.'") || // Facebook malformed token
+    s.includes('token has expired') ||
+    s.includes('invalid_grant') ||
+    s.includes('unauthorized') ||
+    s.includes('401') ||
+    s.includes('403')
+  );
+}
 
 interface PlatformInfo {
   platform: string;
@@ -598,31 +636,47 @@ export function VideoPublishModal({
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {platforms.map((p) => (
-                      <button
-                        key={p.platform}
-                        type="button"
-                        disabled={!p.connected}
-                        onClick={() => togglePlatform(p.platform)}
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                          !p.connected
-                            ? 'cursor-not-allowed border-border text-muted-foreground opacity-50'
-                            : selectedPlatforms.has(p.platform)
-                              ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300'
-                              : 'border-border text-foreground hover:bg-muted'
-                        }`}
-                      >
-                        {p.supportsVideo ? (
-                          <Video className="h-3 w-3" />
-                        ) : (
-                          <Type className="h-3 w-3" />
-                        )}
-                        {p.displayName}
-                        {!p.connected && (
-                          <span className="text-xs text-muted-foreground">(not connected)</span>
-                        )}
-                      </button>
-                    ))}
+                    {platforms.map((p) => {
+                      const provider = providerForPlatform(p.platform);
+                      return (
+                        <div key={p.platform} className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={!p.connected}
+                            onClick={() => togglePlatform(p.platform)}
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                              !p.connected
+                                ? 'cursor-not-allowed border-border text-muted-foreground opacity-50'
+                                : selectedPlatforms.has(p.platform)
+                                  ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300'
+                                  : 'border-border text-foreground hover:bg-muted'
+                            }`}
+                          >
+                            {p.supportsVideo ? (
+                              <Video className="h-3 w-3" />
+                            ) : (
+                              <Type className="h-3 w-3" />
+                            )}
+                            {p.displayName}
+                          </button>
+                          {!p.connected && provider && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 gap-1 rounded-full text-xs"
+                              onClick={() =>
+                                signIn(provider, { callbackUrl: window.location.href })
+                              }
+                              title={`Connect ${p.displayName}`}
+                            >
+                              <Link2 className="h-3 w-3" />
+                              Connect
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 <p className="text-[11px] text-muted-foreground">
@@ -653,32 +707,55 @@ export function VideoPublishModal({
           {/* Results */}
           {phase === 'results' && (
             <div className="space-y-3 py-2">
-              {results.map((r) => (
-                <div key={r.platform} className="flex items-center justify-between gap-3 text-sm">
-                  <div className="flex items-center gap-2">
-                    {r.success ? (
-                      <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                    ) : (
-                      <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                    )}
-                    <span>{platformDisplayName(r.platform)}</span>
+              {results.map((r) => {
+                const authError = !r.success && isAuthError(r.error);
+                const provider = authError ? providerForPlatform(r.platform) : null;
+                return (
+                  <div key={r.platform} className="flex items-start justify-between gap-3 text-sm">
+                    <div className="flex min-w-0 items-start gap-2">
+                      {r.success ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                      ) : (
+                        <XCircle className="h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+                      )}
+                      <div className="min-w-0">
+                        <div>{platformDisplayName(r.platform)}</div>
+                        {!r.success && r.error && (
+                          <div className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
+                            {authError
+                              ? 'Your connection expired. Reconnect to publish again.'
+                              : r.error}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {r.success && r.platformUrl ? (
+                      <a
+                        href={r.platformUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
+                      >
+                        View <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : authError && provider ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 shrink-0 gap-1 text-xs"
+                        onClick={() => signIn(provider, { callbackUrl: window.location.href })}
+                      >
+                        <Link2 className="h-3 w-3" />
+                        Reconnect
+                      </Button>
+                    ) : !r.success ? (
+                      <Badge className="shrink-0 bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300">
+                        Failed
+                      </Badge>
+                    ) : null}
                   </div>
-                  {r.success && r.platformUrl ? (
-                    <a
-                      href={r.platformUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
-                    >
-                      View <ExternalLink className="h-3 w-3" />
-                    </a>
-                  ) : !r.success ? (
-                    <Badge className="bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300">
-                      {r.error || 'Failed'}
-                    </Badge>
-                  ) : null}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -686,6 +763,15 @@ export function VideoPublishModal({
         <DialogFooter className="pt-4 gap-2 sm:gap-2">
           {phase === 'compose' && (
             <>
+              <a
+                href="/settings/publishing"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mr-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <Link2 className="h-3 w-3" />
+                Manage connections
+              </a>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>

@@ -132,6 +132,15 @@ function findExistingUpload(
 }
 
 /** Upload a blob via XHR with byte-level progress and retry */
+class UploadHttpError extends Error {
+  constructor(
+    message: string,
+    public status: number
+  ) {
+    super(message);
+  }
+}
+
 function xhrPut(url: string, body: Blob, onProgress: (loaded: number) => void): Promise<string> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -143,25 +152,39 @@ function xhrPut(url: string, body: Blob, onProgress: (loaded: number) => void): 
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve(xhr.getResponseHeader('ETag') || '');
       } else {
-        reject(new Error(`Upload failed with status ${xhr.status}`));
+        reject(new UploadHttpError(`Upload failed with status ${xhr.status}`, xhr.status));
       }
     };
-    xhr.onerror = () => reject(new Error('Upload network error'));
+    xhr.onerror = () => reject(new UploadHttpError('Upload network error', 0));
     xhr.send(body);
   });
 }
 
+/**
+ * Upload a chunk with retries. If the presigned URL expired (403), refresh it
+ * via the provided `refreshUrl` callback and retry with the new URL.
+ */
 async function xhrPutWithRetry(
-  url: string,
+  initialUrl: string,
   body: Blob,
-  onProgress: (loaded: number) => void
+  onProgress: (loaded: number) => void,
+  refreshUrl?: () => Promise<string>
 ): Promise<string> {
   let lastError: Error | null = null;
+  let url = initialUrl;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       return await xhrPut(url, body, onProgress);
     } catch (err) {
       lastError = err as Error;
+      // On 403 (expired presigned URL), refresh the URL before retrying
+      if (err instanceof UploadHttpError && err.status === 403 && refreshUrl) {
+        try {
+          url = await refreshUrl();
+        } catch {
+          // If refresh fails, fall through to backoff retry with old URL
+        }
+      }
       if (attempt < MAX_RETRIES) {
         const delay = RETRY_BASE_MS * Math.pow(2, attempt);
         await new Promise((r) => setTimeout(r, delay));
@@ -223,8 +246,30 @@ export function VideoUploader({
       setErrorMessage(null);
 
       try {
-        // 1. Check for an existing in-progress upload (resume after page refresh)
-        const existing = keyPrefix ? findExistingUpload(keyPrefix, file.name, file.size) : null;
+        // 1. Check for an existing in-progress upload (resume after page refresh).
+        // Verify the multipart upload still exists in S3 — it may have been aborted
+        // or expired. If verification fails, fall through to initiating a fresh one.
+        let existing = keyPrefix ? findExistingUpload(keyPrefix, file.name, file.size) : null;
+        if (existing) {
+          try {
+            const verifyRes = await fetch(
+              `/api/uploads/multipart/list-parts?uploadId=${encodeURIComponent(existing.uploadId)}&key=${encodeURIComponent(existing.key)}`
+            );
+            if (!verifyRes.ok) {
+              console.warn(
+                `[upload] Stale resume state for ${file.name} — multipart upload no longer exists, starting fresh`
+              );
+              clearUploadState(existing.key, keyPrefix, file.name, file.size);
+              existing = null;
+            }
+          } catch {
+            console.warn(
+              `[upload] Failed to verify resume state for ${file.name} — starting fresh`
+            );
+            clearUploadState(existing.key, keyPrefix, file.name, file.size);
+            existing = null;
+          }
+        }
 
         let uploadId: string;
         let key: string;
@@ -354,15 +399,33 @@ export function VideoUploader({
           const start = (partNumber - 1) * CHUNK_SIZE;
           const end = Math.min(start + CHUNK_SIZE, file.size);
           const chunk = file.slice(start, end);
-          const url = urlMap.get(partNumber);
-          if (!url) throw new Error(`No URL for part ${partNumber}`);
+          const initialUrl = urlMap.get(partNumber);
+          if (!initialUrl) throw new Error(`No URL for part ${partNumber}`);
 
           chunkLoaded.set(partNumber, 0);
 
-          const etag = await xhrPutWithRetry(url, chunk, (loaded) => {
-            chunkLoaded.set(partNumber, loaded);
-            updateProgress();
-          });
+          // Refresh callback for when the presigned URL expires mid-upload
+          const refreshUrl = async (): Promise<string> => {
+            const res = await fetch('/api/uploads/multipart/part-url', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ uploadId, key, partNumber }),
+            });
+            if (!res.ok) throw new Error('Failed to refresh part URL');
+            const { url } = await res.json();
+            urlMap.set(partNumber, url);
+            return url;
+          };
+
+          const etag = await xhrPutWithRetry(
+            initialUrl,
+            chunk,
+            (loaded) => {
+              chunkLoaded.set(partNumber, loaded);
+              updateProgress();
+            },
+            refreshUrl
+          );
 
           chunkLoaded.set(partNumber, end - start);
           updateProgress(true);
@@ -588,12 +651,16 @@ export function VideoUploader({
               </div>
             )}
 
-            {/* Remove / cancel button (hover-revealed, same UX as CompositionVideoPanel delete) */}
+            {/* Remove / cancel button — z-20 so it sits above the z-10 error overlay.
+                Always visible on error state so the user can delete a failed upload. */}
             {onRemove && (
               <Button
                 variant="secondary"
                 size="icon"
-                className="absolute right-1.5 top-1.5 h-7 w-7 rounded-full bg-white/85 text-gray-900 opacity-0 backdrop-blur transition-opacity hover:bg-white group-hover:opacity-100 dark:bg-zinc-900/80 dark:text-zinc-100 dark:hover:bg-zinc-900"
+                className={cn(
+                  'absolute right-1.5 top-1.5 z-20 h-7 w-7 rounded-full bg-white/85 text-gray-900 backdrop-blur transition-opacity hover:bg-white dark:bg-zinc-900/80 dark:text-zinc-100 dark:hover:bg-zinc-900',
+                  status === 'error' ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                )}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (

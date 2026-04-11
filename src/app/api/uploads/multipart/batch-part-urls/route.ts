@@ -29,6 +29,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 12-hour expiry to safely cover large uploads over slow connections.
+    // A 10GB file on a 20 Mbps connection takes ~68 minutes; we need headroom.
     const urls = await Promise.all(
       partNumbers.map(async (partNumber: number) => {
         const url = await s3.getSignedUrlPromise('uploadPart', {
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
           Key: key,
           UploadId: uploadId,
           PartNumber: partNumber,
-          Expires: 3600,
+          Expires: 43200,
         });
         return { partNumber, url };
       })

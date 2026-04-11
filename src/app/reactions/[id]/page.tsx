@@ -207,7 +207,7 @@ export default function CompositionEditorPage() {
   // File objects for rendering / upload resume
   const useClientRender = supportsClientRender();
   const [creatorFile, setCreatorFile] = useState<File | null>(null);
-  // Files restored from IndexedDB cache — passed as initialFile to auto-resume uploads
+  // Creator file restored from IndexedDB cache — passed as initialFile to auto-resume upload
   const [restoredCreatorFile, setRestoredCreatorFile] = useState<File | null>(null);
   const [refFiles, setRefFiles] = useState<Map<string, File>>(new Map());
 
@@ -374,9 +374,15 @@ export default function CompositionEditorPage() {
       });
     }
 
-    // Restore reference files — only needed for client-render mode (local-only files).
-    // In server-render mode, refs are uploaded to S3 and stored as DB tracks.
-    if (!useClientRender) return;
+    // Restore reference files — only in client-render mode. In server-render mode,
+    // references live in the DB as tracks once uploaded; any stale cache entries
+    // from prior sessions should be cleared to avoid confusing UI.
+    if (!useClientRender) {
+      loadRefFilesFromCache(compositionId).then((cached) => {
+        cached.forEach((entry) => clearRefFileCache(compositionId, entry.trackId));
+      });
+      return;
+    }
     loadRefFilesFromCache(compositionId).then(async (cached) => {
       if (cached.size === 0) return;
       const newRefFiles = new Map<string, File>();
