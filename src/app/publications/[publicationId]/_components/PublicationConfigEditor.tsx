@@ -51,6 +51,12 @@ type DataSourcesResponse = {
   sources: DataSourceStatus[];
 };
 
+type DataSourcesTestResult = {
+  ranAt: string;
+  snapshotsFetched: number;
+  draftsCreated: number;
+};
+
 interface PublicationConfigEditorProps {
   publicationId: string;
   initialName: string;
@@ -75,6 +81,7 @@ export default function PublicationConfigEditor({
   const [dataSourcesSaving, setDataSourcesSaving] = useState(false);
   const [dataSourcesTesting, setDataSourcesTesting] = useState(false);
   const [dataSources, setDataSources] = useState<DataSourcesResponse | null>(null);
+  const [lastTestResult, setLastTestResult] = useState<DataSourcesTestResult | null>(null);
 
   useEffect(() => {
     const hasChanges =
@@ -182,6 +189,7 @@ export default function PublicationConfigEditor({
 
   const runDataSourcesTest = useCallback(async () => {
     setDataSourcesTesting(true);
+    setLastTestResult(null);
     try {
       const res = await fetch(`/api/publications/${publicationId}/data-sources/test`, {
         method: 'POST',
@@ -190,6 +198,11 @@ export default function PublicationConfigEditor({
       if (!res.ok) {
         throw new Error(data?.error || 'Data source test failed');
       }
+      setLastTestResult({
+        ranAt: data?.ranAt || new Date().toISOString(),
+        snapshotsFetched: Number(data?.snapshotsFetched ?? 0),
+        draftsCreated: Number(data?.draftsCreated ?? 0),
+      });
       toast.success(
         `Dry run complete: ${data?.snapshotsFetched ?? 0} snapshots, ${data?.draftsCreated ?? 0} drafts created`
       );
@@ -400,6 +413,14 @@ export default function PublicationConfigEditor({
                   {dataSources.cadencePreview.lagMinutes}m)
                 </div>
               </div>
+
+              {lastTestResult && (
+                <div className="rounded-md border bg-background/70 p-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Last dry run:</span>{' '}
+                  {lastTestResult.snapshotsFetched} snapshots, {lastTestResult.draftsCreated} drafts{' '}
+                  at {new Date(lastTestResult.ranAt).toLocaleTimeString()}
+                </div>
+              )}
             </div>
           )}
         </div>
