@@ -52,6 +52,16 @@ export type DataDropRunResult = {
   draftsCreated: number;
 };
 
+export type DataSourceDescriptor = {
+  id: DatasetId;
+  datasetId: DatasetId;
+  datasetName: string;
+  name: string;
+  details: string;
+  sourceUrl: string;
+  updateCadence: string;
+};
+
 type AutomationConfig = {
   enabled: boolean;
   datasets: DatasetId[];
@@ -452,6 +462,41 @@ const SNAPSHOT_FETCHERS: Record<DatasetId, () => Promise<DataDropSnapshot>> = {
   nar_existing_home_sales: fetchNarSnapshot,
   redfin_national_housing: fetchRedfinSnapshot,
 };
+
+const DATA_SOURCE_DESCRIPTORS: DataSourceDescriptor[] = [
+  {
+    id: 'jobs_report',
+    datasetId: 'jobs_report',
+    datasetName: 'U.S. Jobs Report',
+    name: 'U.S. Jobs Report',
+    details: 'BLS employment metrics via FRED series PAYEMS and UNRATE.',
+    sourceUrl: 'https://fred.stlouisfed.org/',
+    updateCadence: 'Monthly (typically first Friday)',
+  },
+  {
+    id: 'nar_existing_home_sales',
+    datasetId: 'nar_existing_home_sales',
+    datasetName: 'NAR Existing Home Sales',
+    name: 'NAR Existing Home Sales',
+    details: 'Existing-home sales SAAR via FRED series EXHOSLUSM495S.',
+    sourceUrl: 'https://fred.stlouisfed.org/series/EXHOSLUSM495S',
+    updateCadence: 'Monthly (mid-month release)',
+  },
+  {
+    id: 'redfin_national_housing',
+    datasetId: 'redfin_national_housing',
+    datasetName: 'Redfin National Housing',
+    name: 'Redfin National Housing',
+    details: 'All Residential national market tracker dataset from Redfin Data Center.',
+    sourceUrl:
+      'https://redfin-public-data.s3.us-west-2.amazonaws.com/redfin_market_tracker/us_national_market_tracker.tsv000.gz',
+    updateCadence: 'Monthly (third full week)',
+  },
+];
+
+export function getSupportedDataSources(): DataSourceDescriptor[] {
+  return [...DATA_SOURCE_DESCRIPTORS];
+}
 
 function configFromJson(configJson: unknown): AutomationConfig {
   const defaults: AutomationConfig = {

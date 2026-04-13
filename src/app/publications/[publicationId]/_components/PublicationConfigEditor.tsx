@@ -5,8 +5,51 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { Loader2, Save } from 'lucide-react';
+import { Loader2, Save, Database, FlaskConical } from 'lucide-react';
+import toast from 'react-hot-toast';
+
+type DataSourceDatasetId = 'jobs_report' | 'nar_existing_home_sales' | 'redfin_national_housing';
+
+type DataSourceStatus = {
+  datasetId: DataSourceDatasetId;
+  datasetName: string;
+  connected: boolean;
+  included: boolean;
+  lastSuccessfulReleaseDate?: string;
+  latestImportanceScore?: number;
+};
+
+type DataSourceConfig = {
+  enabled: boolean;
+  datasets: DataSourceDatasetId[];
+  minImportanceScore: number;
+  combinedPosts: boolean;
+  maxPostsPerRun: number;
+};
+
+type CadencePreview = {
+  mode: 'baseline' | 'release-window';
+  intervalMs: number;
+  baselineIntervalMs: number;
+  releaseWindowIntervalMs: number;
+  leadMinutes: number;
+  lagMinutes: number;
+  activeWindows: Array<{
+    datasetId: DataSourceDatasetId;
+    datasetName: string;
+    scheduledAt: string;
+  }>;
+};
+
+type DataSourcesResponse = {
+  publicationId: string;
+  config: DataSourceConfig;
+  cadencePreview: CadencePreview;
+  sources: DataSourceStatus[];
+};
 
 interface PublicationConfigEditorProps {
   publicationId: string;
@@ -28,6 +71,10 @@ export default function PublicationConfigEditor({
   const [configMarkdown, setConfigMarkdown] = useState(initialConfigMarkdown);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [dataSourcesLoading, setDataSourcesLoading] = useState(true);
+  const [dataSourcesSaving, setDataSourcesSaving] = useState(false);
+  const [dataSourcesTesting, setDataSourcesTesting] = useState(false);
+  const [dataSources, setDataSources] = useState<DataSourcesResponse | null>(null);
 
   useEffect(() => {
     const hasChanges =
@@ -36,6 +83,28 @@ export default function PublicationConfigEditor({
       configMarkdown !== initialConfigMarkdown;
     setDirty(hasChanges);
   }, [name, tagline, configMarkdown, initialName, initialTagline, initialConfigMarkdown]);
+
+  const fetchDataSources = useCallback(async () => {
+    setDataSourcesLoading(true);
+    try {
+      const res = await fetch(`/api/publications/${publicationId}/data-sources`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Failed to load data sources' }));
+        throw new Error(data.error || 'Failed to load data sources');
+      }
+      const data: DataSourcesResponse = await res.json();
+      setDataSources(data);
+    } catch (error) {
+      console.error('Failed to load data sources:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to load data sources');
+    } finally {
+      setDataSourcesLoading(false);
+    }
+  }, [publicationId]);
+
+  useEffect(() => {
+    fetchDataSources();
+  }, [fetchDataSources]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -58,6 +127,80 @@ export default function PublicationConfigEditor({
       setSaving(false);
     }
   }, [publicationId, name, tagline, configMarkdown, onSave]);
+
+  const saveDataSources = useCallback(
+    async (nextConfig: DataSourceConfig) => {
+      setDataSourcesSaving(true);
+      try {
+        const res = await fetch(`/api/publications/${publicationId}/data-sources`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(nextConfig),
+        });
+        if (!res.ok) {
+          const data = await res
+            .json()
+            .catch(() => ({ error: 'Failed to save data source config' }));
+          throw new Error(data.error || 'Failed to save data source config');
+        }
+        const data: DataSourcesResponse = await res.json();
+        setDataSources(data);
+        toast.success('Data source settings saved');
+      } catch (error) {
+        console.error('Failed saving data source config:', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to save data source config');
+      } finally {
+        setDataSourcesSaving(false);
+      }
+    },
+    [publicationId]
+  );
+
+  const updateDataSourceConfig = useCallback(
+    (patch: Partial<DataSourceConfig>) => {
+      if (!dataSources || dataSourcesSaving) return;
+      const nextConfig: DataSourceConfig = {
+        ...dataSources.config,
+        ...patch,
+      };
+      void saveDataSources(nextConfig);
+    },
+    [dataSources, dataSourcesSaving, saveDataSources]
+  );
+
+  const toggleDataset = useCallback(
+    (datasetId: DataSourceDatasetId) => {
+      if (!dataSources || dataSourcesSaving) return;
+      const exists = dataSources.config.datasets.includes(datasetId);
+      const nextDatasets = exists
+        ? dataSources.config.datasets.filter((id) => id !== datasetId)
+        : [...dataSources.config.datasets, datasetId];
+      updateDataSourceConfig({ datasets: nextDatasets });
+    },
+    [dataSources, dataSourcesSaving, updateDataSourceConfig]
+  );
+
+  const runDataSourcesTest = useCallback(async () => {
+    setDataSourcesTesting(true);
+    try {
+      const res = await fetch(`/api/publications/${publicationId}/data-sources/test`, {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}) as Record<string, any>);
+      if (!res.ok) {
+        throw new Error(data?.error || 'Data source test failed');
+      }
+      toast.success(
+        `Dry run complete: ${data?.snapshotsFetched ?? 0} snapshots, ${data?.draftsCreated ?? 0} drafts created`
+      );
+      await fetchDataSources();
+    } catch (error) {
+      console.error('Failed running data source test:', error);
+      toast.error(error instanceof Error ? error.message : 'Data source test failed');
+    } finally {
+      setDataSourcesTesting(false);
+    }
+  }, [publicationId, fetchDataSources]);
 
   // Parse some preview info from the config
   const previewLines = configMarkdown.split('\n');
@@ -117,6 +260,150 @@ export default function PublicationConfigEditor({
 
       {/* Preview sidebar */}
       <div className="space-y-4">
+        <div className="rounded-lg border bg-muted/50 p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Database className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Connected Data Sources
+              </h3>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={runDataSourcesTest}
+              disabled={dataSourcesTesting || dataSourcesLoading || dataSourcesSaving}
+            >
+              {dataSourcesTesting ? (
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              ) : (
+                <FlaskConical className="mr-1 h-3 w-3" />
+              )}
+              Test now
+            </Button>
+          </div>
+
+          {dataSourcesLoading || !dataSources ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading data source status…
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between rounded-md border bg-background/70 p-2">
+                <div>
+                  <div className="text-sm font-medium">Enable automation</div>
+                  <div className="text-xs text-muted-foreground">
+                    Create data-drop article drafts automatically
+                  </div>
+                </div>
+                <Switch
+                  checked={dataSources.config.enabled}
+                  disabled={dataSourcesSaving}
+                  onCheckedChange={(checked) => updateDataSourceConfig({ enabled: checked })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                {dataSources.sources.map((source) => {
+                  const isIncluded = dataSources.config.datasets.includes(source.datasetId);
+                  return (
+                    <div key={source.datasetId} className="rounded-md border bg-background/70 p-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-medium">{source.datasetName}</div>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            <Badge variant={source.connected ? 'secondary' : 'destructive'}>
+                              {source.connected ? 'Connected' : 'Unavailable'}
+                            </Badge>
+                            <Badge variant={isIncluded ? 'default' : 'outline'}>
+                              {isIncluded ? 'Included' : 'Excluded'}
+                            </Badge>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {source.lastSuccessfulReleaseDate
+                              ? `Last release: ${source.lastSuccessfulReleaseDate}`
+                              : 'No recent release parsed'}
+                            {typeof source.latestImportanceScore === 'number'
+                              ? ` • Score ${source.latestImportanceScore.toFixed(1)}`
+                              : ''}
+                          </div>
+                        </div>
+                        <Switch
+                          checked={isIncluded}
+                          disabled={dataSourcesSaving}
+                          onCheckedChange={() => toggleDataset(source.datasetId)}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-2 rounded-md border bg-background/70 p-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm">Minimum importance score</Label>
+                  <span className="text-xs text-muted-foreground">
+                    {dataSources.config.minImportanceScore.toFixed(0)}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={dataSources.config.minImportanceScore}
+                  disabled={dataSourcesSaving}
+                  onChange={(e) =>
+                    updateDataSourceConfig({ minImportanceScore: parseInt(e.target.value, 10) })
+                  }
+                  className="w-full accent-primary"
+                />
+                <div className="text-xs text-muted-foreground">
+                  Only releases scoring above this threshold create drafts.
+                </div>
+              </div>
+
+              <div className="rounded-md border bg-background/70 p-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium">Multi-dataset synthesis</div>
+                    <div className="text-xs text-muted-foreground">
+                      Generate combined posts when multiple datasets are meaningful
+                    </div>
+                  </div>
+                  <Switch
+                    checked={dataSources.config.combinedPosts}
+                    disabled={dataSourcesSaving}
+                    onCheckedChange={(checked) =>
+                      updateDataSourceConfig({ combinedPosts: checked })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-md border bg-background/70 p-2 text-xs text-muted-foreground">
+                <div>
+                  Cadence:{' '}
+                  <span className="font-medium text-foreground">
+                    {dataSources.cadencePreview.mode}
+                  </span>
+                  {' • '}
+                  every {(dataSources.cadencePreview.intervalMs / 60000).toFixed(0)}m
+                </div>
+                <div>
+                  Baseline {(dataSources.cadencePreview.baselineIntervalMs / 60000).toFixed(0)}m,
+                  release window{' '}
+                  {(dataSources.cadencePreview.releaseWindowIntervalMs / 60000).toFixed(0)}m (lead{' '}
+                  {dataSources.cadencePreview.leadMinutes}m / lag{' '}
+                  {dataSources.cadencePreview.lagMinutes}m)
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="rounded-lg border bg-muted/50 p-4">
           <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Config Preview
