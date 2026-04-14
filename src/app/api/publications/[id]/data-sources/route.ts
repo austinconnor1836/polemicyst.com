@@ -15,7 +15,18 @@ type DataDropAutomationConfig = {
 
 const DEFAULT_CONFIG: DataDropAutomationConfig = {
   enabled: false,
-  datasets: ['jobs_report', 'nar_existing_home_sales', 'redfin_national_housing', 'gallup_polls'],
+  datasets: [
+    'jobs_report',
+    'nar_existing_home_sales',
+    'redfin_national_housing',
+    'gallup_polls',
+    'cpi_inflation',
+    'weekly_jobless_claims',
+    'retail_sales',
+    'housing_starts_permits',
+    'yield_curve_spread',
+    'consumer_sentiment',
+  ],
   minImportanceScore: 35,
   combinedPosts: true,
   maxPostsPerRun: 3,
@@ -34,7 +45,13 @@ function parseConfig(configJson: unknown): DataDropAutomationConfig {
           value === 'jobs_report' ||
           value === 'nar_existing_home_sales' ||
           value === 'redfin_national_housing' ||
-          value === 'gallup_polls'
+          value === 'gallup_polls' ||
+          value === 'cpi_inflation' ||
+          value === 'weekly_jobless_claims' ||
+          value === 'retail_sales' ||
+          value === 'housing_starts_permits' ||
+          value === 'yield_curve_spread' ||
+          value === 'consumer_sentiment'
       )
     : DEFAULT_CONFIG.datasets;
 
@@ -156,7 +173,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         value === 'jobs_report' ||
         value === 'nar_existing_home_sales' ||
         value === 'redfin_national_housing' ||
-        value === 'gallup_polls'
+        value === 'gallup_polls' ||
+        value === 'cpi_inflation' ||
+        value === 'weekly_jobless_claims' ||
+        value === 'retail_sales' ||
+        value === 'housing_starts_permits' ||
+        value === 'yield_curve_spread' ||
+        value === 'consumer_sentiment'
     );
 
     const nextConfig: DataDropAutomationConfig = {

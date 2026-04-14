@@ -93,6 +93,55 @@ const MONTHLY_RELEASE_SCHEDULES: MonthlyScheduleDefinition[] = [
     resolveMonthlyReleaseUtc: (year, monthIndex) =>
       withUtcTime(nthWeekdayOfMonthUtc(year, monthIndex, 2, 2), 13, 0),
   },
+  {
+    datasetId: 'inflation_cpi_core',
+    datasetName: 'U.S. CPI & Core CPI',
+    // CPI typically releases around mid-month.
+    resolveMonthlyReleaseUtc: (year, monthIndex) =>
+      new Date(Date.UTC(year, monthIndex, 13, 13, 30, 0, 0)),
+  },
+  {
+    datasetId: 'jobless_claims_weekly',
+    datasetName: 'Initial Jobless Claims',
+    // Weekly claims are usually released Thursday morning ET.
+    resolveMonthlyReleaseUtc: (year, monthIndex) =>
+      withUtcTime(nthWeekdayOfMonthUtc(year, monthIndex, 4, 1), 13, 30),
+  },
+  {
+    datasetId: 'retail_sales_advance',
+    datasetName: 'U.S. Retail Sales',
+    // Retail sales commonly land around mid-month.
+    resolveMonthlyReleaseUtc: (year, monthIndex) =>
+      new Date(Date.UTC(year, monthIndex, 15, 13, 30, 0, 0)),
+  },
+  {
+    datasetId: 'housing_starts_permits',
+    datasetName: 'Housing Starts & Permits',
+    // Housing starts/permits usually release around middle of month.
+    resolveMonthlyReleaseUtc: (year, monthIndex) =>
+      new Date(Date.UTC(year, monthIndex, 18, 13, 30, 0, 0)),
+  },
+  {
+    datasetId: 'yield_curve_spread',
+    datasetName: 'Yield Curve Spread',
+    // Treasury series are updated daily; use first business day as anchor.
+    resolveMonthlyReleaseUtc: (year, monthIndex) =>
+      withUtcTime(nthWeekdayOfMonthUtc(year, monthIndex, 1, 1), 21, 0),
+  },
+  {
+    datasetId: 'consumer_sentiment',
+    datasetName: 'Consumer Sentiment',
+    // University of Michigan preliminary sentiment usually lands early month Friday.
+    resolveMonthlyReleaseUtc: (year, monthIndex) =>
+      withUtcTime(nthWeekdayOfMonthUtc(year, monthIndex, 5, 2), 14, 0),
+  },
+  {
+    datasetId: 'gallup_economy',
+    datasetName: 'Gallup Economy',
+    // RSS/rolling updates; use weekly Friday anchor.
+    resolveMonthlyReleaseUtc: (year, monthIndex) =>
+      withUtcTime(nthWeekdayOfMonthUtc(year, monthIndex, 5, 1), 13, 0),
+  },
 ];
 
 function computeScheduledReleases(now: Date): DataDropReleaseWindow[] {

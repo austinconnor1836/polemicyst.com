@@ -4,9 +4,17 @@ import type { Prisma } from '@prisma/client';
 
 export type DatasetId =
   | 'jobs_report'
+  | 'cpi_inflation'
+  | 'jobless_claims'
+  | 'retail_sales'
+  | 'housing_starts'
+  | 'building_permits'
+  | 'yield_curve_spread'
+  | 'consumer_sentiment'
   | 'nar_existing_home_sales'
   | 'redfin_national_housing'
-  | 'gallup_polls';
+  | 'gallup_polls'
+  | 'gallup_economy';
 
 type SeriesPoint = {
   date: string;
@@ -79,12 +87,21 @@ const REDFIN_NATIONAL_URL =
   'https://redfin-public-data.s3.us-west-2.amazonaws.com/redfin_market_tracker/us_national_market_tracker.tsv000.gz';
 const REDFIN_DATA_CENTER_URL = 'https://www.redfin.com/news/data-center/';
 const GALLUP_POLITICS_RSS_URL = 'https://news.gallup.com/topic/government+and+politics.rss';
+const GALLUP_ECONOMY_RSS_URL = 'https://news.gallup.com/topic/economy.rss';
 const FETCH_TIMEOUT_MS = 20_000;
 const DEFAULT_DATASETS: DatasetId[] = [
   'jobs_report',
+  'cpi_inflation',
+  'jobless_claims',
+  'retail_sales',
+  'housing_starts',
+  'building_permits',
+  'yield_curve_spread',
+  'consumer_sentiment',
   'nar_existing_home_sales',
   'redfin_national_housing',
   'gallup_polls',
+  'gallup_economy',
 ];
 
 function parseNumber(raw: string | null | undefined): number | null {
@@ -340,6 +357,462 @@ export async function fetchJobsSnapshot(): Promise<DataDropSnapshot> {
       unemploymentRate: unrateLatest.value,
       unemploymentDeltaPp,
       unemploymentYoYPp,
+    },
+  };
+}
+
+export async function fetchCpiInflationSnapshot(): Promise<DataDropSnapshot> {
+  const [headlineCpi, coreCpi] = await Promise.all([
+    fetchFredSeries('CPIAUCSL'),
+    fetchFredSeries('CPILFESL'),
+  ]);
+  if (headlineCpi.length < 13 || coreCpi.length < 13) {
+    throw new Error('CPI series are too short');
+  }
+
+  const headlineLatest = latestPoint(headlineCpi);
+  const headlinePrevious = previousPoint(headlineCpi);
+  const headlineYearAgo = yearAgoPoint(headlineCpi);
+  const coreLatest = latestPoint(coreCpi);
+  const corePrevious = previousPoint(coreCpi);
+  const coreYearAgo = yearAgoPoint(coreCpi);
+
+  const headlineMom = pctChange(headlineLatest.value, headlinePrevious?.value ?? null);
+  const headlineYoY = pctChange(headlineLatest.value, headlineYearAgo?.value ?? null);
+  const coreMom = pctChange(coreLatest.value, corePrevious?.value ?? null);
+  const coreYoY = pctChange(coreLatest.value, coreYearAgo?.value ?? null);
+
+  const importanceScore = Math.min(
+    100,
+    Math.abs(headlineMom ?? 0) * 30 +
+      Math.abs(coreMom ?? 0) * 35 +
+      Math.abs(headlineYoY ?? 0) * 6 +
+      Math.abs(coreYoY ?? 0) * 8
+  );
+
+  const whyImportant: string[] = [];
+  if (Math.abs(coreMom ?? 0) >= 0.25) {
+    whyImportant.push(`Core CPI changed ${signed(coreMom, 2)}% month-over-month.`);
+  }
+  if (Math.abs(headlineMom ?? 0) >= 0.3) {
+    whyImportant.push(`Headline CPI moved ${signed(headlineMom, 2)}% month-over-month.`);
+  }
+  if (Math.abs(coreYoY ?? 0) >= 0.5) {
+    whyImportant.push(`Core CPI is ${signed(coreYoY, 1)}% year-over-year.`);
+  }
+  if (whyImportant.length === 0) {
+    whyImportant.push(
+      'Inflation remains a primary macro signal for rates and real-income pressure.'
+    );
+  }
+
+  const releaseDate = [headlineLatest.date, coreLatest.date].sort().at(-1) ?? headlineLatest.date;
+  return {
+    datasetId: 'cpi_inflation',
+    datasetName: 'U.S. CPI Inflation',
+    releaseDate,
+    releaseKey: `cpi_inflation:${releaseDate}`,
+    importanceScore,
+    summary: `CPI ${signed(headlineYoY, 1)}% YoY (${signed(headlineMom, 2)}% MoM); core ${signed(
+      coreYoY,
+      1
+    )}% YoY (${signed(coreMom, 2)}% MoM).`,
+    whyImportant,
+    metrics: [
+      {
+        label: 'Headline CPI',
+        value: `${headlineLatest.value.toFixed(2)}`,
+        mom: `${signed(headlineMom, 2)}%`,
+        yoy: `${signed(headlineYoY, 1)}%`,
+      },
+      {
+        label: 'Core CPI',
+        value: `${coreLatest.value.toFixed(2)}`,
+        mom: `${signed(coreMom, 2)}%`,
+        yoy: `${signed(coreYoY, 1)}%`,
+      },
+    ],
+    sourceUrls: [`${FRED_SERIES_URL}CPIAUCSL`, `${FRED_SERIES_URL}CPILFESL`],
+    tags: ['inflation', 'cpi', 'core inflation', 'macro'],
+    raw: {
+      headlineCpi: headlineLatest.value,
+      coreCpi: coreLatest.value,
+      headlineMomPct: headlineMom,
+      headlineYoYPct: headlineYoY,
+      coreMomPct: coreMom,
+      coreYoYPct: coreYoY,
+    },
+  };
+}
+
+export async function fetchJoblessClaimsSnapshot(): Promise<DataDropSnapshot> {
+  const [initialClaims, continuingClaims] = await Promise.all([
+    fetchFredSeries('ICSA'),
+    fetchFredSeries('CCSA'),
+  ]);
+  if (initialClaims.length < 2 || continuingClaims.length < 2) {
+    throw new Error('Jobless claims series are too short');
+  }
+
+  const initialLatest = latestPoint(initialClaims);
+  const initialPrevious = previousPoint(initialClaims);
+  const continuingLatest = latestPoint(continuingClaims);
+  const continuingPrevious = previousPoint(continuingClaims);
+
+  const initialWoW = pctChange(initialLatest.value, initialPrevious?.value ?? null);
+  const continuingWoW = pctChange(continuingLatest.value, continuingPrevious?.value ?? null);
+  const initialDelta = pointChange(initialLatest.value, initialPrevious?.value ?? null);
+
+  const importanceScore = Math.min(
+    100,
+    Math.abs(initialWoW ?? 0) * 8 +
+      Math.abs(continuingWoW ?? 0) * 5 +
+      Math.abs(initialDelta ?? 0) / 25_000
+  );
+
+  const whyImportant: string[] = [];
+  if (Math.abs(initialWoW ?? 0) >= 5) {
+    whyImportant.push(`Initial claims moved ${signed(initialWoW, 1)}% week-over-week.`);
+  }
+  if (Math.abs(continuingWoW ?? 0) >= 3) {
+    whyImportant.push(`Continuing claims moved ${signed(continuingWoW, 1)}% week-over-week.`);
+  }
+  if (whyImportant.length === 0) {
+    whyImportant.push('Claims are stable but remain a high-frequency labor stress indicator.');
+  }
+
+  const releaseDate =
+    [initialLatest.date, continuingLatest.date].sort().at(-1) ?? initialLatest.date;
+  return {
+    datasetId: 'jobless_claims',
+    datasetName: 'U.S. Jobless Claims',
+    releaseDate,
+    releaseKey: `jobless_claims:${releaseDate}`,
+    importanceScore,
+    summary: `Initial claims ${Math.round(initialLatest.value).toLocaleString()} (${signed(
+      initialWoW,
+      1
+    )}% WoW), continuing claims ${Math.round(continuingLatest.value).toLocaleString()} (${signed(
+      continuingWoW,
+      1
+    )}% WoW).`,
+    whyImportant,
+    metrics: [
+      {
+        label: 'Initial Claims',
+        value: Math.round(initialLatest.value).toLocaleString(),
+        mom: `${signed(initialWoW, 1)}% WoW`,
+      },
+      {
+        label: 'Continuing Claims',
+        value: Math.round(continuingLatest.value).toLocaleString(),
+        mom: `${signed(continuingWoW, 1)}% WoW`,
+      },
+    ],
+    sourceUrls: [`${FRED_SERIES_URL}ICSA`, `${FRED_SERIES_URL}CCSA`],
+    tags: ['labor market', 'jobless claims', 'weekly data'],
+    raw: {
+      initialClaims: initialLatest.value,
+      continuingClaims: continuingLatest.value,
+      initialWoWPct: initialWoW,
+      continuingWoWPct: continuingWoW,
+      initialDelta,
+    },
+  };
+}
+
+export async function fetchRetailSalesSnapshot(): Promise<DataDropSnapshot> {
+  const retailSales = await fetchFredSeries('RSAFS');
+  if (retailSales.length < 13) {
+    throw new Error('Retail sales series is too short');
+  }
+
+  const latest = latestPoint(retailSales);
+  const previous = previousPoint(retailSales);
+  const yearAgo = yearAgoPoint(retailSales);
+  const momPct = pctChange(latest.value, previous?.value ?? null);
+  const yoyPct = pctChange(latest.value, yearAgo?.value ?? null);
+
+  const importanceScore = Math.min(100, Math.abs(momPct ?? 0) * 18 + Math.abs(yoyPct ?? 0) * 4);
+  const whyImportant: string[] = [];
+  if (Math.abs(momPct ?? 0) >= 1) {
+    whyImportant.push(`Retail sales moved ${signed(momPct, 1)}% month-over-month.`);
+  }
+  if (Math.abs(yoyPct ?? 0) >= 3) {
+    whyImportant.push(`Retail sales are ${signed(yoyPct, 1)}% year-over-year.`);
+  }
+  if (whyImportant.length === 0) {
+    whyImportant.push('Consumer demand is steady; monitor for inflections in spending momentum.');
+  }
+
+  return {
+    datasetId: 'retail_sales',
+    datasetName: 'U.S. Retail Sales',
+    releaseDate: latest.date,
+    releaseKey: `retail_sales:${latest.date}`,
+    importanceScore,
+    summary: `Retail sales ${signed(momPct, 1)}% MoM and ${signed(yoyPct, 1)}% YoY (${Math.round(
+      latest.value
+    ).toLocaleString()}).`,
+    whyImportant,
+    metrics: [
+      {
+        label: 'Retail Sales (Advance)',
+        value: Math.round(latest.value).toLocaleString(),
+        mom: `${signed(momPct, 1)}%`,
+        yoy: `${signed(yoyPct, 1)}%`,
+      },
+    ],
+    sourceUrls: [`${FRED_SERIES_URL}RSAFS`],
+    tags: ['consumer spending', 'retail sales', 'macro'],
+    raw: {
+      value: latest.value,
+      momPct,
+      yoyPct,
+    },
+  };
+}
+
+export async function fetchHousingStartsSnapshot(): Promise<DataDropSnapshot> {
+  const starts = await fetchFredSeries('HOUST');
+  if (starts.length < 13) {
+    throw new Error('Housing starts series is too short');
+  }
+
+  const latest = latestPoint(starts);
+  const previous = previousPoint(starts);
+  const yearAgo = yearAgoPoint(starts);
+  const momPct = pctChange(latest.value, previous?.value ?? null);
+  const yoyPct = pctChange(latest.value, yearAgo?.value ?? null);
+  const importanceScore = Math.min(100, Math.abs(momPct ?? 0) * 12 + Math.abs(yoyPct ?? 0) * 5);
+
+  const whyImportant: string[] = [];
+  if (Math.abs(momPct ?? 0) >= 4) {
+    whyImportant.push(`Housing starts shifted ${signed(momPct, 1)}% month-over-month.`);
+  }
+  if (Math.abs(yoyPct ?? 0) >= 7) {
+    whyImportant.push(`Housing starts are ${signed(yoyPct, 1)}% year-over-year.`);
+  }
+  if (whyImportant.length === 0) {
+    whyImportant.push(
+      'Starts are stable; still important for supply and construction trend checks.'
+    );
+  }
+
+  return {
+    datasetId: 'housing_starts',
+    datasetName: 'U.S. Housing Starts',
+    releaseDate: latest.date,
+    releaseKey: `housing_starts:${latest.date}`,
+    importanceScore,
+    summary: `Housing starts ${signed(momPct, 1)}% MoM and ${signed(yoyPct, 1)}% YoY (${(
+      latest.value / 1_000
+    ).toFixed(2)}M SAAR).`,
+    whyImportant,
+    metrics: [
+      {
+        label: 'Housing Starts (SAAR)',
+        value: `${(latest.value / 1_000).toFixed(2)}M`,
+        mom: `${signed(momPct, 1)}%`,
+        yoy: `${signed(yoyPct, 1)}%`,
+      },
+    ],
+    sourceUrls: [`${FRED_SERIES_URL}HOUST`],
+    tags: ['housing', 'housing starts', 'construction'],
+    raw: {
+      value: latest.value,
+      momPct,
+      yoyPct,
+    },
+  };
+}
+
+export async function fetchBuildingPermitsSnapshot(): Promise<DataDropSnapshot> {
+  const permits = await fetchFredSeries('PERMIT');
+  if (permits.length < 13) {
+    throw new Error('Building permits series is too short');
+  }
+
+  const latest = latestPoint(permits);
+  const previous = previousPoint(permits);
+  const yearAgo = yearAgoPoint(permits);
+  const momPct = pctChange(latest.value, previous?.value ?? null);
+  const yoyPct = pctChange(latest.value, yearAgo?.value ?? null);
+  const importanceScore = Math.min(100, Math.abs(momPct ?? 0) * 11 + Math.abs(yoyPct ?? 0) * 5);
+
+  const whyImportant: string[] = [];
+  if (Math.abs(momPct ?? 0) >= 3) {
+    whyImportant.push(`Building permits moved ${signed(momPct, 1)}% month-over-month.`);
+  }
+  if (Math.abs(yoyPct ?? 0) >= 6) {
+    whyImportant.push(`Building permits are ${signed(yoyPct, 1)}% year-over-year.`);
+  }
+  if (whyImportant.length === 0) {
+    whyImportant.push('Permits are steady; useful for forward-looking housing supply direction.');
+  }
+
+  return {
+    datasetId: 'building_permits',
+    datasetName: 'U.S. Building Permits',
+    releaseDate: latest.date,
+    releaseKey: `building_permits:${latest.date}`,
+    importanceScore,
+    summary: `Building permits ${signed(momPct, 1)}% MoM and ${signed(yoyPct, 1)}% YoY (${(
+      latest.value / 1_000
+    ).toFixed(2)}M SAAR).`,
+    whyImportant,
+    metrics: [
+      {
+        label: 'Building Permits (SAAR)',
+        value: `${(latest.value / 1_000).toFixed(2)}M`,
+        mom: `${signed(momPct, 1)}%`,
+        yoy: `${signed(yoyPct, 1)}%`,
+      },
+    ],
+    sourceUrls: [`${FRED_SERIES_URL}PERMIT`],
+    tags: ['housing', 'building permits', 'construction'],
+    raw: {
+      value: latest.value,
+      momPct,
+      yoyPct,
+    },
+  };
+}
+
+export async function fetchYieldCurveSpreadSnapshot(): Promise<DataDropSnapshot> {
+  const [tenYear, twoYear] = await Promise.all([fetchFredSeries('DGS10'), fetchFredSeries('DGS2')]);
+  if (tenYear.length < 2 || twoYear.length < 2) {
+    throw new Error('Yield curve series are too short');
+  }
+
+  const twoYearByDate = new Map(twoYear.map((point) => [point.date, point.value]));
+  const aligned = tenYear
+    .filter((point) => twoYearByDate.has(point.date))
+    .map((point) => ({
+      date: point.date,
+      tenYearYield: point.value,
+      twoYearYield: twoYearByDate.get(point.date) as number,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (aligned.length < 2) {
+    throw new Error('Yield curve series do not have enough overlapping points');
+  }
+
+  const latest = aligned[aligned.length - 1];
+  const previous = aligned[aligned.length - 2];
+  const spread = latest.tenYearYield - latest.twoYearYield;
+  const previousSpread = previous.tenYearYield - previous.twoYearYield;
+  const spreadChange = spread - previousSpread;
+  const importanceScore = Math.min(100, Math.abs(spread) * 30 + Math.abs(spreadChange) * 60);
+
+  const whyImportant: string[] = [];
+  if (spread < 0) {
+    whyImportant.push(`The 10Y-2Y spread is inverted at ${signed(spread, 2)} pp.`);
+  } else if (spread > 1.25) {
+    whyImportant.push(`The 10Y-2Y spread is steep at ${signed(spread, 2)} pp.`);
+  }
+  if (Math.abs(spreadChange) >= 0.1) {
+    whyImportant.push(`Spread changed ${signed(spreadChange, 2)} pp day-over-day.`);
+  }
+  if (whyImportant.length === 0) {
+    whyImportant.push('Yield-curve slope remains a key macro/recession risk barometer.');
+  }
+
+  return {
+    datasetId: 'yield_curve_spread',
+    datasetName: 'U.S. Yield Curve (10Y-2Y)',
+    releaseDate: latest.date,
+    releaseKey: `yield_curve_spread:${latest.date}`,
+    importanceScore,
+    summary: `10Y yield ${latest.tenYearYield.toFixed(2)}%, 2Y ${latest.twoYearYield.toFixed(
+      2
+    )}%, spread ${signed(spread, 2)} pp (${signed(spreadChange, 2)} pp d/d).`,
+    whyImportant,
+    metrics: [
+      {
+        label: '10Y Treasury Yield',
+        value: `${latest.tenYearYield.toFixed(2)}%`,
+      },
+      {
+        label: '2Y Treasury Yield',
+        value: `${latest.twoYearYield.toFixed(2)}%`,
+      },
+      {
+        label: '10Y-2Y Spread',
+        value: `${signed(spread, 2)} pp`,
+        mom: `${signed(spreadChange, 2)} pp`,
+      },
+    ],
+    sourceUrls: [`${FRED_SERIES_URL}DGS10`, `${FRED_SERIES_URL}DGS2`],
+    tags: ['rates', 'yield curve', 'treasuries', 'recession risk'],
+    raw: {
+      tenYearYield: latest.tenYearYield,
+      twoYearYield: latest.twoYearYield,
+      spread,
+      spreadChange,
+    },
+  };
+}
+
+export async function fetchConsumerSentimentSnapshot(): Promise<DataDropSnapshot> {
+  const sentiment = await fetchFredSeries('UMCSENT');
+  if (sentiment.length < 13) {
+    throw new Error('Consumer sentiment series is too short');
+  }
+
+  const latest = latestPoint(sentiment);
+  const previous = previousPoint(sentiment);
+  const yearAgo = yearAgoPoint(sentiment);
+  const momPct = pctChange(latest.value, previous?.value ?? null);
+  const yoyPct = pctChange(latest.value, yearAgo?.value ?? null);
+  const pointDelta = pointChange(latest.value, previous?.value ?? null);
+  const importanceScore = Math.min(100, Math.abs(pointDelta ?? 0) * 6 + Math.abs(yoyPct ?? 0) * 2);
+
+  const whyImportant: string[] = [];
+  if (Math.abs(pointDelta ?? 0) >= 4) {
+    whyImportant.push(
+      `Consumer sentiment changed ${signed(pointDelta, 1)} points month-over-month.`
+    );
+  }
+  if (Math.abs(yoyPct ?? 0) >= 8) {
+    whyImportant.push(`Consumer sentiment is ${signed(yoyPct, 1)}% year-over-year.`);
+  }
+  if (whyImportant.length === 0) {
+    whyImportant.push(
+      'Sentiment is steady; still useful for consumption and confidence trend direction.'
+    );
+  }
+
+  return {
+    datasetId: 'consumer_sentiment',
+    datasetName: 'U.S. Consumer Sentiment',
+    releaseDate: latest.date,
+    releaseKey: `consumer_sentiment:${latest.date}`,
+    importanceScore,
+    summary: `Consumer sentiment ${latest.value.toFixed(1)} (${signed(pointDelta, 1)} points MoM, ${signed(
+      yoyPct,
+      1
+    )}% YoY).`,
+    whyImportant,
+    metrics: [
+      {
+        label: 'Sentiment Index',
+        value: latest.value.toFixed(1),
+        mom: `${signed(pointDelta, 1)} pts`,
+        yoy: `${signed(yoyPct, 1)}%`,
+      },
+      {
+        label: 'Monthly Percent Change',
+        value: `${signed(momPct, 1)}%`,
+      },
+    ],
+    sourceUrls: [`${FRED_SERIES_URL}UMCSENT`],
+    tags: ['consumer sentiment', 'confidence', 'macro'],
+    raw: {
+      value: latest.value,
+      pointDelta,
+      momPct,
+      yoyPct,
     },
   };
 }

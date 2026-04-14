@@ -729,7 +729,19 @@ components:
       properties:
         id:
           type: string
-          enum: [jobs_report, nar_existing_home_sales, redfin_national_housing, gallup_polls]
+          enum:
+            [
+              jobs_report,
+              nar_existing_home_sales,
+              redfin_national_housing,
+              gallup_polls,
+              cpi_report,
+              jobless_claims,
+              retail_sales,
+              housing_starts_permits,
+              treasury_yield_curve,
+              consumer_sentiment,
+            ]
         name:
           type: string
         connected:
@@ -779,7 +791,19 @@ components:
           type: array
           items:
             type: string
-            enum: [jobs_report, nar_existing_home_sales, redfin_national_housing, gallup_polls]
+            enum:
+              [
+                jobs_report,
+                nar_existing_home_sales,
+                redfin_national_housing,
+                gallup_polls,
+                cpi_report,
+                jobless_claims,
+                retail_sales,
+                housing_starts_permits,
+                treasury_yield_curve,
+                consumer_sentiment,
+              ]
         minImportanceScore:
           type: number
         combinedPosts:
@@ -819,7 +843,19 @@ components:
           type: array
           items:
             type: string
-            enum: [jobs_report, nar_existing_home_sales, redfin_national_housing, gallup_polls]
+            enum:
+              [
+                jobs_report,
+                nar_existing_home_sales,
+                redfin_national_housing,
+                gallup_polls,
+                cpi_report,
+                jobless_claims,
+                retail_sales,
+                housing_starts_permits,
+                treasury_yield_curve,
+                consumer_sentiment,
+              ]
         minImportanceScore:
           type: number
         combinedPosts:

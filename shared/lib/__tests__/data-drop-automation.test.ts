@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseFredCsv, parseGallupRss } from '../data-drop-automation';
+import { parseFredCsv, parseGallupRss, parseCensusReleaseDate } from '../data-drop-automation';
 
 describe('parseFredCsv', () => {
   it('parses dated numeric observations and skips missing points', () => {
@@ -41,5 +41,16 @@ describe('parseGallupRss', () => {
       link: 'https://news.gallup.com/poll/696191/record-high-say-government-power.aspx',
       pubDate: 'Fri, 10 Oct 2025 08:00:00 GMT',
     });
+  });
+});
+
+describe('parseCensusReleaseDate', () => {
+  it('extracts YYYY-MM-DD date from Census/FRED release strings', () => {
+    expect(parseCensusReleaseDate('1984-01-17 08:30:00-05')).toBe('1984-01-17');
+    expect(parseCensusReleaseDate('2026-04-16')).toBe('2026-04-16');
+  });
+
+  it('falls back to null for unknown formats', () => {
+    expect(parseCensusReleaseDate('tomorrow morning')).toBeNull();
   });
 });

@@ -15,7 +15,15 @@ type DataSourceDatasetId =
   | 'jobs_report'
   | 'nar_existing_home_sales'
   | 'redfin_national_housing'
-  | 'gallup_polls';
+  | 'gallup_polls'
+  | 'cpi_inflation'
+  | 'jobless_claims'
+  | 'retail_sales'
+  | 'housing_starts_permits'
+  | 'yield_curve_spread'
+  | 'consumer_sentiment'
+  | 'gallup_economy'
+  | 'gallup_social';
 
 type DataSourceStatus = {
   datasetId: DataSourceDatasetId;
