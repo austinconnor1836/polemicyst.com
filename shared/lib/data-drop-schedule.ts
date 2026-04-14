@@ -60,15 +60,7 @@ function nthWeekdayOfMonthUtc(
 
 function withUtcTime(base: Date, hours: number, minutes: number): Date {
   return new Date(
-    Date.UTC(
-      base.getUTCFullYear(),
-      base.getUTCMonth(),
-      base.getUTCDate(),
-      hours,
-      minutes,
-      0,
-      0
-    )
+    Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), hours, minutes, 0, 0)
   );
 }
 
@@ -84,7 +76,8 @@ const MONTHLY_RELEASE_SCHEDULES: MonthlyScheduleDefinition[] = [
     datasetId: 'nar_existing_home_sales',
     datasetName: 'NAR Existing Home Sales',
     // NAR releases usually land around mid-month.
-    resolveMonthlyReleaseUtc: (year, monthIndex) => new Date(Date.UTC(year, monthIndex, 20, 14, 0, 0, 0)),
+    resolveMonthlyReleaseUtc: (year, monthIndex) =>
+      new Date(Date.UTC(year, monthIndex, 20, 14, 0, 0, 0)),
   },
   {
     datasetId: 'redfin_national_housing',
@@ -92,6 +85,13 @@ const MONTHLY_RELEASE_SCHEDULES: MonthlyScheduleDefinition[] = [
     // Redfin monthly market tracker data usually updates in the third full week Friday.
     resolveMonthlyReleaseUtc: (year, monthIndex) =>
       withUtcTime(nthWeekdayOfMonthUtc(year, monthIndex, 5, 3), 15, 0),
+  },
+  {
+    datasetId: 'gallup_polls',
+    datasetName: 'Gallup Polls',
+    // Gallup publishes polls on a rolling cadence; use second Tuesday as acceleration anchor.
+    resolveMonthlyReleaseUtc: (year, monthIndex) =>
+      withUtcTime(nthWeekdayOfMonthUtc(year, monthIndex, 2, 2), 13, 0),
   },
 ];
 

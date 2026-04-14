@@ -729,7 +729,7 @@ components:
       properties:
         id:
           type: string
-          enum: [jobs_report, nar_existing_home_sales, redfin_national_housing]
+          enum: [jobs_report, nar_existing_home_sales, redfin_national_housing, gallup_polls]
         name:
           type: string
         connected:
@@ -779,7 +779,7 @@ components:
           type: array
           items:
             type: string
-            enum: [jobs_report, nar_existing_home_sales, redfin_national_housing]
+            enum: [jobs_report, nar_existing_home_sales, redfin_national_housing, gallup_polls]
         minImportanceScore:
           type: number
         combinedPosts:
@@ -819,7 +819,7 @@ components:
           type: array
           items:
             type: string
-            enum: [jobs_report, nar_existing_home_sales, redfin_national_housing]
+            enum: [jobs_report, nar_existing_home_sales, redfin_national_housing, gallup_polls]
         minImportanceScore:
           type: number
         combinedPosts:

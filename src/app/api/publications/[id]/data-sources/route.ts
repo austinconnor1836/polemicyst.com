@@ -15,7 +15,7 @@ type DataDropAutomationConfig = {
 
 const DEFAULT_CONFIG: DataDropAutomationConfig = {
   enabled: false,
-  datasets: ['jobs_report', 'nar_existing_home_sales', 'redfin_national_housing'],
+  datasets: ['jobs_report', 'nar_existing_home_sales', 'redfin_national_housing', 'gallup_polls'],
   minImportanceScore: 35,
   combinedPosts: true,
   maxPostsPerRun: 3,
@@ -33,7 +33,8 @@ function parseConfig(configJson: unknown): DataDropAutomationConfig {
         (value): value is DatasetId =>
           value === 'jobs_report' ||
           value === 'nar_existing_home_sales' ||
-          value === 'redfin_national_housing'
+          value === 'redfin_national_housing' ||
+          value === 'gallup_polls'
       )
     : DEFAULT_CONFIG.datasets;
 
@@ -154,7 +155,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       (value: unknown): value is DatasetId =>
         value === 'jobs_report' ||
         value === 'nar_existing_home_sales' ||
-        value === 'redfin_national_housing'
+        value === 'redfin_national_housing' ||
+        value === 'gallup_polls'
     );
 
     const nextConfig: DataDropAutomationConfig = {

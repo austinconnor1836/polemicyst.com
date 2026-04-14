@@ -2,7 +2,11 @@ import { prisma } from './prisma';
 import { gunzipSync } from 'zlib';
 import type { Prisma } from '@prisma/client';
 
-export type DatasetId = 'jobs_report' | 'nar_existing_home_sales' | 'redfin_national_housing';
+export type DatasetId =
+  | 'jobs_report'
+  | 'nar_existing_home_sales'
+  | 'redfin_national_housing'
+  | 'gallup_polls';
 
 type SeriesPoint = {
   date: string;
@@ -74,11 +78,13 @@ const FRED_SERIES_URL = 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=';
 const REDFIN_NATIONAL_URL =
   'https://redfin-public-data.s3.us-west-2.amazonaws.com/redfin_market_tracker/us_national_market_tracker.tsv000.gz';
 const REDFIN_DATA_CENTER_URL = 'https://www.redfin.com/news/data-center/';
+const GALLUP_POLITICS_RSS_URL = 'https://news.gallup.com/topic/government+and+politics.rss';
 const FETCH_TIMEOUT_MS = 20_000;
 const DEFAULT_DATASETS: DatasetId[] = [
   'jobs_report',
   'nar_existing_home_sales',
   'redfin_national_housing',
+  'gallup_polls',
 ];
 
 function parseNumber(raw: string | null | undefined): number | null {
@@ -155,6 +161,59 @@ function signed(value: number | null, fractionDigits = 1): string {
   return value >= 0 ? `+${formatted}` : `-${formatted}`;
 }
 
+function parseRfc822Date(raw: string): Date | null {
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function decodeXmlEntities(input: string): string {
+  return input
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function stripCdata(raw: string): string {
+  const cdataMatch = raw.match(/^<!\[CDATA\[([\s\S]*)\]\]>$/);
+  return cdataMatch ? cdataMatch[1] : raw;
+}
+
+function parseXmlTag(section: string, tag: string): string | null {
+  const pattern = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i');
+  const match = section.match(pattern);
+  if (!match || !match[1]) return null;
+  const value = stripCdata(match[1]).trim();
+  return decodeXmlEntities(value);
+}
+
+type RssItem = {
+  title: string;
+  description: string;
+  link: string;
+  pubDate: string;
+};
+
+export function parseGallupRss(xmlText: string): RssItem[] {
+  const items: RssItem[] = [];
+  const matches = xmlText.matchAll(/<item>([\s\S]*?)<\/item>/gi);
+  for (const match of matches) {
+    const section = match[1];
+    if (!section) continue;
+
+    const title = parseXmlTag(section, 'title');
+    const description = parseXmlTag(section, 'description');
+    const link = parseXmlTag(section, 'link');
+    const pubDate = parseXmlTag(section, 'pubDate');
+
+    if (!title || !description || !link || !pubDate) continue;
+    items.push({ title, description, link, pubDate });
+  }
+
+  return items;
+}
+
 async function fetchText(url: string): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -202,7 +261,10 @@ async function fetchFredSeries(seriesId: string): Promise<SeriesPoint[]> {
 }
 
 export async function fetchJobsSnapshot(): Promise<DataDropSnapshot> {
-  const [payems, unrate] = await Promise.all([fetchFredSeries('PAYEMS'), fetchFredSeries('UNRATE')]);
+  const [payems, unrate] = await Promise.all([
+    fetchFredSeries('PAYEMS'),
+    fetchFredSeries('UNRATE'),
+  ]);
   if (payems.length < 2 || unrate.length < 2) {
     throw new Error('Jobs report series are too short');
   }
@@ -226,7 +288,9 @@ export async function fetchJobsSnapshot(): Promise<DataDropSnapshot> {
 
   const whyImportant: string[] = [];
   if (Math.abs(payrollDeltaK ?? 0) >= 150) {
-    whyImportant.push(`Payroll momentum moved by ${signed(payrollDeltaK, 0)}K jobs month-over-month.`);
+    whyImportant.push(
+      `Payroll momentum moved by ${signed(payrollDeltaK, 0)}K jobs month-over-month.`
+    );
   }
   if (Math.abs(unemploymentDeltaPp ?? 0) >= 0.2) {
     whyImportant.push(
@@ -239,7 +303,9 @@ export async function fetchJobsSnapshot(): Promise<DataDropSnapshot> {
     );
   }
   if (whyImportant.length === 0) {
-    whyImportant.push('Labor metrics are steady, but still important for confirming trend direction.');
+    whyImportant.push(
+      'Labor metrics are steady, but still important for confirming trend direction.'
+    );
   }
 
   const releaseDate = [payemsLatest.date, unrateLatest.date].sort().at(-1) ?? payemsLatest.date;
@@ -300,7 +366,9 @@ export async function fetchNarSnapshot(): Promise<DataDropSnapshot> {
     whyImportant.push(`Sales are ${signed(yoyPct, 1)}% year-over-year.`);
   }
   if (whyImportant.length === 0) {
-    whyImportant.push('Home sales are stable, useful for trend confirmation and inflection detection.');
+    whyImportant.push(
+      'Home sales are stable, useful for trend confirmation and inflection detection.'
+    );
   }
 
   return {
@@ -399,7 +467,9 @@ export async function fetchRedfinSnapshot(): Promise<DataDropSnapshot> {
 
   const importanceScore = Math.min(
     100,
-    Math.abs(medianSalePriceYoY) * 2 + Math.abs(inventoryYoY) * 1.2 + Math.abs(monthsSupplyYoY) * 1.1
+    Math.abs(medianSalePriceYoY) * 2 +
+      Math.abs(inventoryYoY) * 1.2 +
+      Math.abs(monthsSupplyYoY) * 1.1
   );
 
   const whyImportant: string[] = [];
@@ -413,7 +483,9 @@ export async function fetchRedfinSnapshot(): Promise<DataDropSnapshot> {
     whyImportant.push(`Months of supply is ${signed(monthsSupplyYoY, 1)}% year-over-year.`);
   }
   if (whyImportant.length === 0) {
-    whyImportant.push('Housing supply and price changes remain a key read-through for affordability.');
+    whyImportant.push(
+      'Housing supply and price changes remain a key read-through for affordability.'
+    );
   }
 
   return {
@@ -457,10 +529,102 @@ export async function fetchRedfinSnapshot(): Promise<DataDropSnapshot> {
   };
 }
 
+function firstPercentValue(input: string): number | null {
+  const match = input.match(/(\d{1,3}(?:\.\d+)?)\s*%/);
+  if (!match || !match[1]) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function clampSummary(text: string, maxLen = 220): string {
+  const compact = text.replace(/\s+/g, ' ').trim();
+  if (compact.length <= maxLen) return compact;
+  return `${compact.slice(0, maxLen - 1)}…`;
+}
+
+function canonicalGallupLink(link: string): string {
+  return link.replace(/\?.*$/, '');
+}
+
+export async function fetchGallupPollsSnapshot(): Promise<DataDropSnapshot> {
+  const rssText = await fetchText(GALLUP_POLITICS_RSS_URL);
+  const items = parseGallupRss(rssText);
+  if (items.length === 0) {
+    throw new Error('Gallup RSS feed returned no parsable items');
+  }
+
+  const headlineItem = items.find((item) => item.link.includes('/poll/')) ?? items[0];
+  const publishedAt = parseRfc822Date(headlineItem.pubDate);
+  const releaseDate = publishedAt
+    ? publishedAt.toISOString().slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+
+  const percentSignal = firstPercentValue(`${headlineItem.title} ${headlineItem.description}`);
+  const daysSinceRelease = publishedAt
+    ? Math.max(0, (Date.now() - publishedAt.getTime()) / (24 * 60 * 60 * 1000))
+    : 999;
+  const recencyScore = Math.max(5, 40 - daysSinceRelease * 1.5);
+  const percentScore =
+    percentSignal === null ? 15 : Math.min(40, Math.abs(percentSignal - 50) * 1.2);
+  const languageSignal = /(record|new high|new low|surge|drops?|plunge|highest|lowest)/i.test(
+    `${headlineItem.title} ${headlineItem.description}`
+  )
+    ? 20
+    : 0;
+  const importanceScore = Math.min(100, recencyScore + percentScore + languageSignal);
+
+  const whyImportant = [
+    `Latest Gallup headline: "${headlineItem.title}".`,
+    publishedAt
+      ? `Published ${monthYear(releaseDate)} with topic-level political sentiment context.`
+      : 'Publication date unavailable; using most recent RSS item.',
+  ];
+  if (percentSignal !== null) {
+    whyImportant.push(`Headline includes a ${percentSignal.toFixed(1)}% poll signal.`);
+  }
+
+  const summary = clampSummary(`${headlineItem.title} ${headlineItem.description}`);
+  const articleUrl = canonicalGallupLink(headlineItem.link);
+
+  return {
+    datasetId: 'gallup_polls',
+    datasetName: 'Gallup Polls (Government & Politics)',
+    releaseDate,
+    releaseKey: `gallup_polls:${releaseDate}`,
+    importanceScore,
+    summary,
+    whyImportant,
+    metrics: [
+      {
+        label: 'Headline Poll Signal',
+        value: percentSignal === null ? 'n/a' : `${percentSignal.toFixed(1)}%`,
+      },
+      {
+        label: 'Latest Poll Headline',
+        value: headlineItem.title,
+      },
+      {
+        label: 'Published',
+        value: publishedAt ? publishedAt.toISOString() : headlineItem.pubDate,
+      },
+    ],
+    sourceUrls: [GALLUP_POLITICS_RSS_URL, articleUrl],
+    tags: ['gallup', 'polling', 'politics', 'public opinion'],
+    raw: {
+      title: headlineItem.title,
+      description: clampSummary(headlineItem.description, 300),
+      articleUrl,
+      pubDate: headlineItem.pubDate,
+      headlinePercent: percentSignal,
+    },
+  };
+}
+
 const SNAPSHOT_FETCHERS: Record<DatasetId, () => Promise<DataDropSnapshot>> = {
   jobs_report: fetchJobsSnapshot,
   nar_existing_home_sales: fetchNarSnapshot,
   redfin_national_housing: fetchRedfinSnapshot,
+  gallup_polls: fetchGallupPollsSnapshot,
 };
 
 const DATA_SOURCE_DESCRIPTORS: DataSourceDescriptor[] = [
@@ -491,6 +655,15 @@ const DATA_SOURCE_DESCRIPTORS: DataSourceDescriptor[] = [
     sourceUrl:
       'https://redfin-public-data.s3.us-west-2.amazonaws.com/redfin_market_tracker/us_national_market_tracker.tsv000.gz',
     updateCadence: 'Monthly (third full week)',
+  },
+  {
+    id: 'gallup_polls',
+    datasetId: 'gallup_polls',
+    datasetName: 'Gallup Polls',
+    name: 'Gallup Polls',
+    details: 'Gallup Government & Politics poll headline feed (RSS).',
+    sourceUrl: GALLUP_POLITICS_RSS_URL,
+    updateCadence: 'Weekly/rolling (RSS headlines)',
   },
 ];
 
@@ -523,7 +696,8 @@ function configFromJson(configJson: unknown): AutomationConfig {
         (value): value is DatasetId =>
           value === 'jobs_report' ||
           value === 'nar_existing_home_sales' ||
-          value === 'redfin_national_housing'
+          value === 'redfin_national_housing' ||
+          value === 'gallup_polls'
       )
     : [];
 
@@ -535,9 +709,13 @@ function configFromJson(configJson: unknown): AutomationConfig {
         ? automation.minImportanceScore
         : defaults.minImportanceScore,
     combinedPosts:
-      typeof automation.combinedPosts === 'boolean' ? automation.combinedPosts : defaults.combinedPosts,
+      typeof automation.combinedPosts === 'boolean'
+        ? automation.combinedPosts
+        : defaults.combinedPosts,
     maxPostsPerRun:
-      typeof automation.maxPostsPerRun === 'number' ? automation.maxPostsPerRun : defaults.maxPostsPerRun,
+      typeof automation.maxPostsPerRun === 'number'
+        ? automation.maxPostsPerRun
+        : defaults.maxPostsPerRun,
   };
 }
 
@@ -553,7 +731,8 @@ async function resolveAutomationTargets(
     },
   });
 
-  const forcedPublicationId = publicationIdOverride || process.env.DATA_DROP_AUTOMATION_PUBLICATION_ID;
+  const forcedPublicationId =
+    publicationIdOverride || process.env.DATA_DROP_AUTOMATION_PUBLICATION_ID;
 
   const targets: PublicationAutomationTarget[] = [];
   for (const publication of allPublications) {
@@ -623,7 +802,9 @@ function markdownForCombined(snapshots: DataDropSnapshot[]): string {
   }
   lines.push('## Important conclusions');
   lines.push('- Cross-check labor strength versus housing demand and inventory dynamics.');
-  lines.push('- Prioritize the indicators with the largest absolute month-over-month and year-over-year shifts.');
+  lines.push(
+    '- Prioritize the indicators with the largest absolute month-over-month and year-over-year shifts.'
+  );
   lines.push('- Treat this as directional context and validate with the next release cycle.');
   lines.push('');
   lines.push('## Sources');
@@ -835,7 +1016,9 @@ export async function runDataDropAutomation(
     } else {
       await createCombinedDraft(target, selectedForCombined);
       draftsCreated += 1;
-      console.log(`[data-drop] Created combined draft publication=${target.id} sourceId=${combinedKey}`);
+      console.log(
+        `[data-drop] Created combined draft publication=${target.id} sourceId=${combinedKey}`
+      );
     }
   }
 

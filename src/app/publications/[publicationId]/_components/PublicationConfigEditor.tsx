@@ -11,7 +11,11 @@ import { cn } from '@/lib/utils';
 import { Loader2, Save, Database, FlaskConical } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-type DataSourceDatasetId = 'jobs_report' | 'nar_existing_home_sales' | 'redfin_national_housing';
+type DataSourceDatasetId =
+  | 'jobs_report'
+  | 'nar_existing_home_sales'
+  | 'redfin_national_housing'
+  | 'gallup_polls';
 
 type DataSourceStatus = {
   datasetId: DataSourceDatasetId;
