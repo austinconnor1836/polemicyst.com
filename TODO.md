@@ -63,7 +63,7 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 
 ### Core Product
 
-- [ ] Clip editing/trimming improvements (trim UI on detail page)
+- [x] Clip editing/trimming improvements (trim UI on detail page)
 - [ ] Clip export to social platforms (verify Bluesky, Meta, YouTube, Twitter flows work)
 - [ ] AI description generation (verify `generateDescription` endpoint works)
 - [ ] Clip templates system (CRUD exists but UI may not be wired up)

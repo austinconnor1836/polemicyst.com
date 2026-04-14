@@ -289,6 +289,12 @@ Switch to the private model when:
 
 ## Change log
 
+### 2026-04-14
+
+- **Manual clip edits now feed model training signals** — when users adjust clip trims or delete clips, the backend records explicit `ClipFeedback` events and maps them onto matching `TrainingExample` rows as user-feedback labels.
+- Updated `PATCH /api/clips/:id` and `DELETE /api/clips/:id` to write feedback events (`trim_adjusted`, `clip_deleted`) and backfill training labels (`userFeedbackLabel`, `userFeedbackTrimStartS`, `userFeedbackTrimEndS`, `userFeedbackCreatedAt`) on matched examples.
+- Extended admin training export (`GET /api/admin/training-data`) to include user feedback metadata in JSONL `meta` output and summary counts (`feedbackLabeledCount`).
+
 ### 2026-04-08
 
 - **Auto-detected quote/excerpt graphics** — when a creator reads or cites a quote in their reaction video, the system automatically detects it and overlays a styled graphic in the rendered output.

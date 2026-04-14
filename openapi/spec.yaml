@@ -404,6 +404,16 @@ components:
           type: number
         trimEndS:
           type: number
+        feedbackLogged:
+          type: boolean
+
+    DeleteClipResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        feedbackLogged:
+          type: boolean
 
     ExportClipResponse:
       type: object
@@ -1161,10 +1171,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  ok:
-                    type: boolean
+                $ref: '#/components/schemas/DeleteClipResponse'
 
   /api/clips/{id}/export:
     post:

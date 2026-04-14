@@ -13,6 +13,8 @@ const s3 = new AWS.S3({
   signatureVersion: 'v4',
 });
 
+const TRAINING_MATCH_TOLERANCE_S = 0.75;
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getAuthenticatedUser(req);
@@ -22,7 +24,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const clip = await prisma.video.findUnique({
     where: { id },
-    select: { id: true, userId: true },
+    select: {
+      id: true,
+      userId: true,
+      trimStartS: true,
+      trimEndS: true,
+      feedVideoId: true,
+      sourceVideoId: true,
+    },
   });
   if (!clip) {
     return NextResponse.json({ error: 'Clip not found' }, { status: 404 });
@@ -45,10 +54,65 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Invalid trim range.' }, { status: 400 });
   }
 
-  const updated = await prisma.video.update({
-    where: { id },
-    data: { trimStartS, trimEndS },
-    select: { id: true, trimStartS: true, trimEndS: true },
+  const previousTrimStartS = clip.trimStartS ?? trimStartS;
+  const previousTrimEndS = clip.trimEndS ?? trimEndS;
+  const feedbackAt = new Date();
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const resolvedFeedVideoId =
+      clip.feedVideoId ??
+      (clip.sourceVideoId
+        ? ((
+            await tx.feedVideo.findFirst({
+              where: { clipSourceVideoId: clip.sourceVideoId },
+              select: { id: true },
+            })
+          )?.id ?? null)
+        : null);
+
+    const updatedClip = await tx.video.update({
+      where: { id },
+      data: { trimStartS, trimEndS },
+      select: { id: true, trimStartS: true, trimEndS: true },
+    });
+
+    await tx.clipFeedback.create({
+      data: {
+        userId: user.id,
+        clipId: clip.id,
+        feedVideoId: resolvedFeedVideoId,
+        action: 'trim_adjusted',
+        oldTrimStartS: clip.trimStartS,
+        oldTrimEndS: clip.trimEndS,
+        newTrimStartS: trimStartS,
+        newTrimEndS: trimEndS,
+      },
+    });
+
+    if (resolvedFeedVideoId) {
+      await tx.trainingExample.updateMany({
+        where: {
+          userId: user.id,
+          jobId: resolvedFeedVideoId,
+          tStartS: {
+            gte: previousTrimStartS - TRAINING_MATCH_TOLERANCE_S,
+            lte: previousTrimStartS + TRAINING_MATCH_TOLERANCE_S,
+          },
+          tEndS: {
+            gte: previousTrimEndS - TRAINING_MATCH_TOLERANCE_S,
+            lte: previousTrimEndS + TRAINING_MATCH_TOLERANCE_S,
+          },
+        },
+        data: {
+          userFeedbackLabel: 'trim_adjusted',
+          userFeedbackTrimStartS: trimStartS,
+          userFeedbackTrimEndS: trimEndS,
+          userFeedbackCreatedAt: feedbackAt,
+        },
+      });
+    }
+
+    return updatedClip;
   });
 
   return NextResponse.json(updated);
@@ -63,7 +127,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const clip = await prisma.video.findUnique({
     where: { id },
-    select: { id: true, userId: true, s3Key: true },
+    select: {
+      id: true,
+      userId: true,
+      s3Key: true,
+      trimStartS: true,
+      trimEndS: true,
+      feedVideoId: true,
+      sourceVideoId: true,
+    },
   });
   if (!clip) {
     return NextResponse.json({ error: 'Clip not found' }, { status: 404 });
@@ -86,8 +158,64 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
   }
 
-  await prisma.video.delete({
-    where: { id: clip.id },
+  const feedbackAt = new Date();
+  const targetTrimStartS = clip.trimStartS;
+  const targetTrimEndS = clip.trimEndS;
+
+  await prisma.$transaction(async (tx) => {
+    const resolvedFeedVideoId =
+      clip.feedVideoId ??
+      (clip.sourceVideoId
+        ? ((
+            await tx.feedVideo.findFirst({
+              where: { clipSourceVideoId: clip.sourceVideoId },
+              select: { id: true },
+            })
+          )?.id ?? null)
+        : null);
+
+    await tx.clipFeedback.create({
+      data: {
+        userId: user.id,
+        clipId: clip.id,
+        feedVideoId: resolvedFeedVideoId,
+        action: 'clip_deleted',
+        oldTrimStartS: clip.trimStartS,
+        oldTrimEndS: clip.trimEndS,
+      },
+    });
+
+    if (
+      resolvedFeedVideoId &&
+      targetTrimStartS != null &&
+      targetTrimEndS != null &&
+      targetTrimEndS > targetTrimStartS
+    ) {
+      await tx.trainingExample.updateMany({
+        where: {
+          userId: user.id,
+          jobId: resolvedFeedVideoId,
+          tStartS: {
+            gte: targetTrimStartS - TRAINING_MATCH_TOLERANCE_S,
+            lte: targetTrimStartS + TRAINING_MATCH_TOLERANCE_S,
+          },
+          tEndS: {
+            gte: targetTrimEndS - TRAINING_MATCH_TOLERANCE_S,
+            lte: targetTrimEndS + TRAINING_MATCH_TOLERANCE_S,
+          },
+        },
+        data: {
+          userFeedbackLabel: 'clip_deleted',
+          userFeedbackTrimStartS: null,
+          userFeedbackTrimEndS: null,
+          userFeedbackCreatedAt: feedbackAt,
+        },
+      });
+    }
+
+    await tx.video.delete({
+      where: { id: clip.id },
+    });
   });
 
   return NextResponse.json({ ok: true });
