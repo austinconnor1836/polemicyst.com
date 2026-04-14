@@ -13,6 +13,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const publication = await prisma.publication.findFirst({
       where: { id, userId: user.id },
+      include: {
+        articles: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: { updatedAt: 'desc' },
+        },
+      },
     });
 
     if (!publication) {

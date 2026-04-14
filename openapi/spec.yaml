@@ -723,6 +723,181 @@ components:
           description: URL to the app store listing
           example: 'https://play.google.com/store/apps/details?id=com.polemicyst.android'
 
+    PublicationDataSource:
+      type: object
+      required: [datasetId, datasetName, connected, included]
+      properties:
+        datasetId:
+          type: string
+          enum:
+            [
+              jobs_report,
+              cpi_inflation,
+              jobless_claims,
+              retail_sales,
+              housing_starts,
+              building_permits,
+              yield_curve_spread,
+              consumer_sentiment,
+              nar_existing_home_sales,
+              redfin_national_housing,
+              gallup_polls,
+              gallup_economy,
+            ]
+        datasetName:
+          type: string
+        connected:
+          type: boolean
+        included:
+          type: boolean
+        lastSuccessfulReleaseDate:
+          type: string
+          format: date
+          nullable: true
+        latestImportanceScore:
+          type: number
+          nullable: true
+
+    PublicationDataSourcesSettings:
+      type: object
+      required:
+        [
+          publicationId,
+          config,
+          cadencePreview,
+          sources,
+        ]
+      properties:
+        publicationId:
+          type: string
+        config:
+          type: object
+          required: [enabled, datasets, minImportanceScore, combinedPosts, maxPostsPerRun]
+          properties:
+            enabled:
+              type: boolean
+            datasets:
+              type: array
+              items:
+                type: string
+                enum:
+                  [
+                    jobs_report,
+                    cpi_inflation,
+                    jobless_claims,
+                    retail_sales,
+                    housing_starts,
+                    building_permits,
+                    yield_curve_spread,
+                    consumer_sentiment,
+                    nar_existing_home_sales,
+                    redfin_national_housing,
+                    gallup_polls,
+                    gallup_economy,
+                  ]
+            minImportanceScore:
+              type: number
+            combinedPosts:
+              type: boolean
+            maxPostsPerRun:
+              type: integer
+        cadencePreview:
+          type: object
+          required:
+            [
+              mode,
+              intervalMs,
+              baselineIntervalMs,
+              releaseWindowIntervalMs,
+              leadMinutes,
+              lagMinutes,
+              activeWindows,
+            ]
+          properties:
+            mode:
+              type: string
+              enum: [baseline, release-window]
+            intervalMs:
+              type: integer
+            baselineIntervalMs:
+              type: integer
+            releaseWindowIntervalMs:
+              type: integer
+            leadMinutes:
+              type: integer
+            lagMinutes:
+              type: integer
+            activeWindows:
+              type: array
+              items:
+                type: object
+                required: [datasetId, datasetName, scheduledAt]
+                properties:
+                  datasetId:
+                    type: string
+                  datasetName:
+                    type: string
+                  scheduledAt:
+                    type: string
+                    format: date-time
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicationDataSource'
+
+    PublicationDataSourcesUpdateRequest:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        datasets:
+          type: array
+          items:
+            type: string
+            enum:
+              [
+                jobs_report,
+                cpi_inflation,
+                jobless_claims,
+                retail_sales,
+                housing_starts,
+                building_permits,
+                yield_curve_spread,
+                consumer_sentiment,
+                nar_existing_home_sales,
+                redfin_national_housing,
+                gallup_polls,
+                gallup_economy,
+              ]
+        minImportanceScore:
+          type: number
+        combinedPosts:
+          type: boolean
+        maxPostsPerRun:
+          type: integer
+
+    PublicationDataSourcesTestResponse:
+      type: object
+      required: [publicationId, testedAt, dryRun, result]
+      properties:
+        publicationId:
+          type: string
+        testedAt:
+          type: string
+          format: date-time
+        dryRun:
+          type: boolean
+        result:
+          type: object
+          required: [publicationsChecked, snapshotsFetched, draftsCreated]
+          properties:
+            publicationsChecked:
+              type: integer
+            snapshotsFetched:
+              type: integer
+            draftsCreated:
+              type: integer
+
 paths:
   /api/app/version-check:
     get:
@@ -1608,6 +1783,109 @@ paths:
                 $ref: '#/components/schemas/SocialPlatformsResponse'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/publications/{id}/data-sources:
+    get:
+      operationId: getPublicationDataSources
+      summary: Get connected data-source status and automation settings for a publication
+      tags: [Publications]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Publication data-source status and settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationDataSourcesSettings'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Publication not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      operationId: updatePublicationDataSources
+      summary: Update publication data-source automation settings
+      tags: [Publications]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicationDataSourcesUpdateRequest'
+      responses:
+        '200':
+          description: Updated publication data-source settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationDataSourcesSettings'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Publication not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/publications/{id}/data-sources/test:
+    post:
+      operationId: testPublicationDataSources
+      summary: Trigger a dry-run data-source test for a publication
+      tags: [Publications]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Dry-run completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationDataSourcesTestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Publication not found
           content:
             application/json:
               schema:
