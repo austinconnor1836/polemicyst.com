@@ -183,6 +183,11 @@ function parseRfc822Date(raw: string): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+export function parseCensusReleaseDate(raw: string): string | null {
+  const match = raw.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  return match?.[1] ?? null;
+}
+
 function decodeXmlEntities(input: string): string {
   return input
     .replace(/&amp;/g, '&')
@@ -1093,11 +1098,93 @@ export async function fetchGallupPollsSnapshot(): Promise<DataDropSnapshot> {
   };
 }
 
+export async function fetchGallupEconomySnapshot(): Promise<DataDropSnapshot> {
+  const rssText = await fetchText(GALLUP_ECONOMY_RSS_URL);
+  const items = parseGallupRss(rssText);
+  if (items.length === 0) {
+    throw new Error('Gallup Economy RSS feed returned no parsable items');
+  }
+
+  const headlineItem = items.find((item) => item.link.includes('/poll/')) ?? items[0];
+  const publishedAt = parseRfc822Date(headlineItem.pubDate);
+  const releaseDate = publishedAt
+    ? publishedAt.toISOString().slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+
+  const percentSignal = firstPercentValue(`${headlineItem.title} ${headlineItem.description}`);
+  const daysSinceRelease = publishedAt
+    ? Math.max(0, (Date.now() - publishedAt.getTime()) / (24 * 60 * 60 * 1000))
+    : 999;
+  const recencyScore = Math.max(5, 40 - daysSinceRelease * 1.5);
+  const percentScore =
+    percentSignal === null ? 15 : Math.min(40, Math.abs(percentSignal - 50) * 1.2);
+  const languageSignal = /(record|new high|new low|surge|drops?|plunge|highest|lowest)/i.test(
+    `${headlineItem.title} ${headlineItem.description}`
+  )
+    ? 20
+    : 0;
+  const importanceScore = Math.min(100, recencyScore + percentScore + languageSignal);
+
+  const whyImportant = [
+    `Latest Gallup economy headline: "${headlineItem.title}".`,
+    publishedAt
+      ? `Published ${monthYear(releaseDate)} with topic-level economic sentiment context.`
+      : 'Publication date unavailable; using most recent RSS item.',
+  ];
+  if (percentSignal !== null) {
+    whyImportant.push(`Headline includes a ${percentSignal.toFixed(1)}% poll signal.`);
+  }
+
+  const summary = clampSummary(`${headlineItem.title} ${headlineItem.description}`);
+  const articleUrl = canonicalGallupLink(headlineItem.link);
+
+  return {
+    datasetId: 'gallup_economy',
+    datasetName: 'Gallup Polls (Economy)',
+    releaseDate,
+    releaseKey: `gallup_economy:${releaseDate}`,
+    importanceScore,
+    summary,
+    whyImportant,
+    metrics: [
+      {
+        label: 'Headline Poll Signal',
+        value: percentSignal === null ? 'n/a' : `${percentSignal.toFixed(1)}%`,
+      },
+      {
+        label: 'Latest Poll Headline',
+        value: headlineItem.title,
+      },
+      {
+        label: 'Published',
+        value: publishedAt ? publishedAt.toISOString() : headlineItem.pubDate,
+      },
+    ],
+    sourceUrls: [GALLUP_ECONOMY_RSS_URL, articleUrl],
+    tags: ['gallup', 'polling', 'economy', 'public opinion'],
+    raw: {
+      title: headlineItem.title,
+      description: clampSummary(headlineItem.description, 300),
+      articleUrl,
+      pubDate: headlineItem.pubDate,
+      headlinePercent: percentSignal,
+    },
+  };
+}
+
 const SNAPSHOT_FETCHERS: Record<DatasetId, () => Promise<DataDropSnapshot>> = {
   jobs_report: fetchJobsSnapshot,
+  cpi_inflation: fetchCpiInflationSnapshot,
+  jobless_claims: fetchJoblessClaimsSnapshot,
+  retail_sales: fetchRetailSalesSnapshot,
+  housing_starts: fetchHousingStartsSnapshot,
+  building_permits: fetchBuildingPermitsSnapshot,
+  yield_curve_spread: fetchYieldCurveSpreadSnapshot,
+  consumer_sentiment: fetchConsumerSentimentSnapshot,
   nar_existing_home_sales: fetchNarSnapshot,
   redfin_national_housing: fetchRedfinSnapshot,
   gallup_polls: fetchGallupPollsSnapshot,
+  gallup_economy: fetchGallupEconomySnapshot,
 };
 
 const DATA_SOURCE_DESCRIPTORS: DataSourceDescriptor[] = [
@@ -1109,6 +1196,69 @@ const DATA_SOURCE_DESCRIPTORS: DataSourceDescriptor[] = [
     details: 'BLS employment metrics via FRED series PAYEMS and UNRATE.',
     sourceUrl: 'https://fred.stlouisfed.org/',
     updateCadence: 'Monthly (typically first Friday)',
+  },
+  {
+    id: 'cpi_inflation',
+    datasetId: 'cpi_inflation',
+    datasetName: 'U.S. CPI Inflation',
+    name: 'CPI Inflation',
+    details: 'Headline and core CPI via FRED series CPIAUCSL and CPILFESL.',
+    sourceUrl: 'https://fred.stlouisfed.org/series/CPIAUCSL',
+    updateCadence: 'Monthly (mid-month release)',
+  },
+  {
+    id: 'jobless_claims',
+    datasetId: 'jobless_claims',
+    datasetName: 'U.S. Jobless Claims',
+    name: 'Jobless Claims',
+    details: 'Initial and continuing claims via FRED series ICSA and CCSA.',
+    sourceUrl: 'https://fred.stlouisfed.org/series/ICSA',
+    updateCadence: 'Weekly (Thursday release)',
+  },
+  {
+    id: 'retail_sales',
+    datasetId: 'retail_sales',
+    datasetName: 'U.S. Retail Sales',
+    name: 'Retail Sales',
+    details: 'Advance retail sales via FRED series RSAFS.',
+    sourceUrl: 'https://fred.stlouisfed.org/series/RSAFS',
+    updateCadence: 'Monthly (mid-month release)',
+  },
+  {
+    id: 'housing_starts',
+    datasetId: 'housing_starts',
+    datasetName: 'U.S. Housing Starts',
+    name: 'Housing Starts',
+    details: 'Housing starts SAAR via FRED series HOUST.',
+    sourceUrl: 'https://fred.stlouisfed.org/series/HOUST',
+    updateCadence: 'Monthly (mid-month release)',
+  },
+  {
+    id: 'building_permits',
+    datasetId: 'building_permits',
+    datasetName: 'U.S. Building Permits',
+    name: 'Building Permits',
+    details: 'Building permits SAAR via FRED series PERMIT.',
+    sourceUrl: 'https://fred.stlouisfed.org/series/PERMIT',
+    updateCadence: 'Monthly (mid-month release)',
+  },
+  {
+    id: 'yield_curve_spread',
+    datasetId: 'yield_curve_spread',
+    datasetName: 'U.S. Yield Curve (10Y-2Y)',
+    name: 'Yield Curve Spread',
+    details: 'Treasury curve slope using FRED series DGS10 and DGS2.',
+    sourceUrl: 'https://fred.stlouisfed.org/series/T10Y2Y',
+    updateCadence: 'Daily',
+  },
+  {
+    id: 'consumer_sentiment',
+    datasetId: 'consumer_sentiment',
+    datasetName: 'U.S. Consumer Sentiment',
+    name: 'Consumer Sentiment',
+    details: 'University of Michigan sentiment index via FRED series UMCSENT.',
+    sourceUrl: 'https://fred.stlouisfed.org/series/UMCSENT',
+    updateCadence: 'Monthly',
   },
   {
     id: 'nar_existing_home_sales',
@@ -1136,6 +1286,15 @@ const DATA_SOURCE_DESCRIPTORS: DataSourceDescriptor[] = [
     name: 'Gallup Polls',
     details: 'Gallup Government & Politics poll headline feed (RSS).',
     sourceUrl: GALLUP_POLITICS_RSS_URL,
+    updateCadence: 'Weekly/rolling (RSS headlines)',
+  },
+  {
+    id: 'gallup_economy',
+    datasetId: 'gallup_economy',
+    datasetName: 'Gallup Economy',
+    name: 'Gallup Economy',
+    details: 'Gallup economy topic poll headline feed (RSS).',
+    sourceUrl: GALLUP_ECONOMY_RSS_URL,
     updateCadence: 'Weekly/rolling (RSS headlines)',
   },
 ];
@@ -1168,9 +1327,17 @@ function configFromJson(configJson: unknown): AutomationConfig {
     ? automation.datasets.filter(
         (value): value is DatasetId =>
           value === 'jobs_report' ||
+          value === 'cpi_inflation' ||
+          value === 'jobless_claims' ||
+          value === 'retail_sales' ||
+          value === 'housing_starts' ||
+          value === 'building_permits' ||
+          value === 'yield_curve_spread' ||
+          value === 'consumer_sentiment' ||
           value === 'nar_existing_home_sales' ||
           value === 'redfin_national_housing' ||
-          value === 'gallup_polls'
+          value === 'gallup_polls' ||
+          value === 'gallup_economy'
       )
     : [];
 

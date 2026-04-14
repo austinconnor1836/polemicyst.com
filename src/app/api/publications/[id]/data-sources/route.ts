@@ -17,15 +17,17 @@ const DEFAULT_CONFIG: DataDropAutomationConfig = {
   enabled: false,
   datasets: [
     'jobs_report',
+    'cpi_inflation',
+    'jobless_claims',
+    'retail_sales',
+    'housing_starts',
+    'building_permits',
+    'yield_curve_spread',
+    'consumer_sentiment',
     'nar_existing_home_sales',
     'redfin_national_housing',
     'gallup_polls',
-    'cpi_inflation',
-    'weekly_jobless_claims',
-    'retail_sales',
-    'housing_starts_permits',
-    'yield_curve_spread',
-    'consumer_sentiment',
+    'gallup_economy',
   ],
   minImportanceScore: 35,
   combinedPosts: true,
@@ -43,15 +45,17 @@ function parseConfig(configJson: unknown): DataDropAutomationConfig {
     ? source.datasets.filter(
         (value): value is DatasetId =>
           value === 'jobs_report' ||
+          value === 'cpi_inflation' ||
+          value === 'jobless_claims' ||
+          value === 'retail_sales' ||
+          value === 'housing_starts' ||
+          value === 'building_permits' ||
+          value === 'yield_curve_spread' ||
+          value === 'consumer_sentiment' ||
           value === 'nar_existing_home_sales' ||
           value === 'redfin_national_housing' ||
           value === 'gallup_polls' ||
-          value === 'cpi_inflation' ||
-          value === 'weekly_jobless_claims' ||
-          value === 'retail_sales' ||
-          value === 'housing_starts_permits' ||
-          value === 'yield_curve_spread' ||
-          value === 'consumer_sentiment'
+          value === 'gallup_economy'
       )
     : DEFAULT_CONFIG.datasets;
 
@@ -171,15 +175,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const datasets = datasetsInput.filter(
       (value: unknown): value is DatasetId =>
         value === 'jobs_report' ||
+        value === 'cpi_inflation' ||
+        value === 'jobless_claims' ||
+        value === 'retail_sales' ||
+        value === 'housing_starts' ||
+        value === 'building_permits' ||
+        value === 'yield_curve_spread' ||
+        value === 'consumer_sentiment' ||
         value === 'nar_existing_home_sales' ||
         value === 'redfin_national_housing' ||
         value === 'gallup_polls' ||
-        value === 'cpi_inflation' ||
-        value === 'weekly_jobless_claims' ||
-        value === 'retail_sales' ||
-        value === 'housing_starts_permits' ||
-        value === 'yield_curve_spread' ||
-        value === 'consumer_sentiment'
+        value === 'gallup_economy'
     );
 
     const nextConfig: DataDropAutomationConfig = {

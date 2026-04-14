@@ -725,51 +725,37 @@ components:
 
     PublicationDataSource:
       type: object
-      required: [id, name, connected, enabled]
+      required: [datasetId, datasetName, connected, included]
       properties:
-        id:
+        datasetId:
           type: string
           enum:
             [
               jobs_report,
+              cpi_inflation,
+              jobless_claims,
+              retail_sales,
+              housing_starts,
+              building_permits,
+              yield_curve_spread,
+              consumer_sentiment,
               nar_existing_home_sales,
               redfin_national_housing,
               gallup_polls,
-              cpi_report,
-              jobless_claims,
-              retail_sales,
-              housing_starts_permits,
-              treasury_yield_curve,
-              consumer_sentiment,
+              gallup_economy,
             ]
-        name:
+        datasetName:
           type: string
         connected:
           type: boolean
-        enabled:
+        included:
           type: boolean
-        details:
-          type: string
-          nullable: true
-        sourceUrl:
-          type: string
-          nullable: true
-        lastReleaseDate:
+        lastSuccessfulReleaseDate:
           type: string
           format: date
           nullable: true
-        lastImportanceScore:
+        latestImportanceScore:
           type: number
-          nullable: true
-        lastSummary:
-          type: string
-          nullable: true
-        checkedAt:
-          type: string
-          format: date-time
-          nullable: true
-        error:
-          type: string
           nullable: true
 
     PublicationDataSourcesSettings:
@@ -777,52 +763,75 @@ components:
       required:
         [
           publicationId,
-          datasets,
-          minImportanceScore,
-          combinedPosts,
-          maxPostsPerRun,
-          cadence,
+          config,
+          cadencePreview,
           sources,
         ]
       properties:
         publicationId:
           type: string
-        datasets:
-          type: array
-          items:
-            type: string
-            enum:
-              [
-                jobs_report,
-                nar_existing_home_sales,
-                redfin_national_housing,
-                gallup_polls,
-                cpi_report,
-                jobless_claims,
-                retail_sales,
-                housing_starts_permits,
-                treasury_yield_curve,
-                consumer_sentiment,
-              ]
-        minImportanceScore:
-          type: number
-        combinedPosts:
-          type: boolean
-        maxPostsPerRun:
-          type: integer
-        cadence:
+        config:
           type: object
-          required: [mode, intervalMs]
+          required: [enabled, datasets, minImportanceScore, combinedPosts, maxPostsPerRun]
+          properties:
+            enabled:
+              type: boolean
+            datasets:
+              type: array
+              items:
+                type: string
+                enum:
+                  [
+                    jobs_report,
+                    cpi_inflation,
+                    jobless_claims,
+                    retail_sales,
+                    housing_starts,
+                    building_permits,
+                    yield_curve_spread,
+                    consumer_sentiment,
+                    nar_existing_home_sales,
+                    redfin_national_housing,
+                    gallup_polls,
+                    gallup_economy,
+                  ]
+            minImportanceScore:
+              type: number
+            combinedPosts:
+              type: boolean
+            maxPostsPerRun:
+              type: integer
+        cadencePreview:
+          type: object
+          required:
+            [
+              mode,
+              intervalMs,
+              baselineIntervalMs,
+              releaseWindowIntervalMs,
+              leadMinutes,
+              lagMinutes,
+              activeWindows,
+            ]
           properties:
             mode:
               type: string
               enum: [baseline, release-window]
             intervalMs:
               type: integer
+            baselineIntervalMs:
+              type: integer
+            releaseWindowIntervalMs:
+              type: integer
+            leadMinutes:
+              type: integer
+            lagMinutes:
+              type: integer
             activeWindows:
               type: array
               items:
                 type: object
+                required: [datasetId, datasetName, scheduledAt]
                 properties:
                   datasetId:
                     type: string
@@ -839,6 +848,8 @@ components:
     PublicationDataSourcesUpdateRequest:
       type: object
       properties:
+        enabled:
+          type: boolean
         datasets:
           type: array
           items:
@@ -846,15 +857,17 @@ components:
             enum:
               [
                 jobs_report,
+                cpi_inflation,
+                jobless_claims,
+                retail_sales,
+                housing_starts,
+                building_permits,
+                yield_curve_spread,
+                consumer_sentiment,
                 nar_existing_home_sales,
                 redfin_national_housing,
                 gallup_polls,
-                cpi_report,
-                jobless_claims,
-                retail_sales,
-                housing_starts_permits,
-                treasury_yield_curve,
-                consumer_sentiment,
+                gallup_economy,
               ]
         minImportanceScore:
           type: number

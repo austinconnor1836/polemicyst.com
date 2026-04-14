@@ -94,30 +94,37 @@ const MONTHLY_RELEASE_SCHEDULES: MonthlyScheduleDefinition[] = [
       withUtcTime(nthWeekdayOfMonthUtc(year, monthIndex, 2, 2), 13, 0),
   },
   {
-    datasetId: 'inflation_cpi_core',
+    datasetId: 'cpi_inflation',
     datasetName: 'U.S. CPI & Core CPI',
     // CPI typically releases around mid-month.
     resolveMonthlyReleaseUtc: (year, monthIndex) =>
       new Date(Date.UTC(year, monthIndex, 13, 13, 30, 0, 0)),
   },
   {
-    datasetId: 'jobless_claims_weekly',
+    datasetId: 'jobless_claims',
     datasetName: 'Initial Jobless Claims',
     // Weekly claims are usually released Thursday morning ET.
     resolveMonthlyReleaseUtc: (year, monthIndex) =>
       withUtcTime(nthWeekdayOfMonthUtc(year, monthIndex, 4, 1), 13, 30),
   },
   {
-    datasetId: 'retail_sales_advance',
+    datasetId: 'retail_sales',
     datasetName: 'U.S. Retail Sales',
     // Retail sales commonly land around mid-month.
     resolveMonthlyReleaseUtc: (year, monthIndex) =>
       new Date(Date.UTC(year, monthIndex, 15, 13, 30, 0, 0)),
   },
   {
-    datasetId: 'housing_starts_permits',
-    datasetName: 'Housing Starts & Permits',
-    // Housing starts/permits usually release around middle of month.
+    datasetId: 'housing_starts',
+    datasetName: 'Housing Starts',
+    // Housing starts usually release around middle of month.
+    resolveMonthlyReleaseUtc: (year, monthIndex) =>
+      new Date(Date.UTC(year, monthIndex, 18, 13, 30, 0, 0)),
+  },
+  {
+    datasetId: 'building_permits',
+    datasetName: 'Building Permits',
+    // Permits are released alongside starts around middle of month.
     resolveMonthlyReleaseUtc: (year, monthIndex) =>
       new Date(Date.UTC(year, monthIndex, 18, 13, 30, 0, 0)),
   },

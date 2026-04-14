@@ -13,17 +13,17 @@ import toast from 'react-hot-toast';
 
 type DataSourceDatasetId =
   | 'jobs_report'
-  | 'nar_existing_home_sales'
-  | 'redfin_national_housing'
-  | 'gallup_polls'
   | 'cpi_inflation'
   | 'jobless_claims'
   | 'retail_sales'
-  | 'housing_starts_permits'
+  | 'housing_starts'
+  | 'building_permits'
   | 'yield_curve_spread'
   | 'consumer_sentiment'
-  | 'gallup_economy'
-  | 'gallup_social';
+  | 'nar_existing_home_sales'
+  | 'redfin_national_housing'
+  | 'gallup_polls'
+  | 'gallup_economy';
 
 type DataSourceStatus = {
   datasetId: DataSourceDatasetId;
@@ -210,13 +210,14 @@ export default function PublicationConfigEditor({
       if (!res.ok) {
         throw new Error(data?.error || 'Data source test failed');
       }
+      const result = (data?.result ?? {}) as Record<string, unknown>;
       setLastTestResult({
-        ranAt: data?.ranAt || new Date().toISOString(),
-        snapshotsFetched: Number(data?.snapshotsFetched ?? 0),
-        draftsCreated: Number(data?.draftsCreated ?? 0),
+        ranAt: data?.testedAt || new Date().toISOString(),
+        snapshotsFetched: Number(result?.snapshotsFetched ?? 0),
+        draftsCreated: Number(result?.draftsCreated ?? 0),
       });
       toast.success(
-        `Dry run complete: ${data?.snapshotsFetched ?? 0} snapshots, ${data?.draftsCreated ?? 0} drafts created`
+        `Dry run complete: ${result?.snapshotsFetched ?? 0} snapshots, ${result?.draftsCreated ?? 0} drafts created`
       );
       await fetchDataSources();
     } catch (error) {

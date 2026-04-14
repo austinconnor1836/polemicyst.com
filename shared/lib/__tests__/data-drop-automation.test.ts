@@ -54,3 +54,12 @@ describe('parseCensusReleaseDate', () => {
     expect(parseCensusReleaseDate('tomorrow morning')).toBeNull();
   });
 });
+
+describe('dataset identifier consistency', () => {
+  it('keeps Gallup economy as a supported dataset id', async () => {
+    const { getSupportedDataSources } = await import('../data-drop-automation');
+    const sources = getSupportedDataSources();
+    const ids = sources.map((source) => source.id);
+    expect(ids).toContain('gallup_economy');
+  });
+});
