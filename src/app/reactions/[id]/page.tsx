@@ -18,6 +18,7 @@ import { TrimModal } from '../_components/TrimModal';
 import { CropAdjustModal } from '../_components/CropAdjustModal';
 import { EditOutputModal, type CompositionCut } from '../_components/EditOutputModal';
 import { VideoPublishModal } from '@/components/VideoPublishModal';
+import { PublishMembershipGate } from '@/components/PublishMembershipGate';
 import { supportsClientRender } from '@/lib/client-render';
 import { detectCropFromVideo } from '@/lib/client-render/detect-crop';
 import {
@@ -33,6 +34,7 @@ import {
 } from '@/lib/client-render/blob-cache';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 
 interface Track {
   id: string;
@@ -141,6 +143,8 @@ export default function CompositionEditorPage() {
   const params = useParams();
   const router = useRouter();
   const compositionId = params.id as string;
+  const { status } = useSession();
+  const isAuthenticated = status === 'authenticated';
 
   const [composition, setComposition] = useState<Composition | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1821,34 +1825,42 @@ export default function CompositionEditorPage() {
           <CardHeader>
             <div className="space-y-1">
               <CardTitle>Publish</CardTitle>
-              <CardDescription>Share your reaction to connected platforms.</CardDescription>
+              <CardDescription>
+                {isAuthenticated
+                  ? 'Share your reaction to connected platforms.'
+                  : 'Sign in to publish, connect accounts, and choose the membership tier that fits.'}
+              </CardDescription>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="flex items-start gap-6">
-              {thumbnailCompositeUrl && (
-                <div className="space-y-1.5 shrink-0">
-                  <p className="text-sm font-medium">Thumbnail</p>
-                  <img
-                    src={thumbnailCompositeUrl}
-                    alt="Composite thumbnail"
-                    className="w-48 rounded-md border"
-                  />
-                  <p className="text-[11px] text-muted-foreground">Used as YouTube thumbnail</p>
+            {!isAuthenticated ? (
+              <PublishMembershipGate compact />
+            ) : (
+              <div className="flex items-start gap-6">
+                {thumbnailCompositeUrl && (
+                  <div className="space-y-1.5 shrink-0">
+                    <p className="text-sm font-medium">Thumbnail</p>
+                    <img
+                      src={thumbnailCompositeUrl}
+                      alt="Composite thumbnail"
+                      className="w-48 rounded-md border"
+                    />
+                    <p className="text-[11px] text-muted-foreground">Used as YouTube thumbnail</p>
+                  </div>
+                )}
+                <div className="flex-1 space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    {thumbnailCompositeUrl
+                      ? 'Publish your rendered video with the current thumbnail to your connected accounts.'
+                      : 'Publish your rendered video to your connected accounts.'}
+                  </p>
+                  <Button onClick={() => setPublishAllOpen(true)}>
+                    <Share2 className="h-4 w-4" />
+                    Publish
+                  </Button>
                 </div>
-              )}
-              <div className="flex-1 space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  {thumbnailCompositeUrl
-                    ? 'Publish your rendered video with the current thumbnail to your connected accounts.'
-                    : 'Publish your rendered video to your connected accounts.'}
-                </p>
-                <Button onClick={() => setPublishAllOpen(true)}>
-                  <Share2 className="h-4 w-4" />
-                  Publish
-                </Button>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       )}
