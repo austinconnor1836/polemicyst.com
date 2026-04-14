@@ -115,7 +115,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return updatedClip;
   });
 
-  return NextResponse.json(updated);
+  return NextResponse.json({ ...updated, feedbackLogged: true });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -218,5 +218,5 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     });
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, feedbackLogged: true });
 }

@@ -407,6 +407,142 @@ components:
         feedbackLogged:
           type: boolean
 
+    TrainingExample:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        jobId:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+          nullable: true
+        transcriptText:
+          type: string
+        tStartS:
+          type: number
+        tEndS:
+          type: number
+        targetPlatform:
+          type: string
+        contentStyle:
+          type: string
+          nullable: true
+        saferClips:
+          type: boolean
+        includeAudio:
+          type: boolean
+        frameCount:
+          type: integer
+        audioSeconds:
+          type: number
+        heuristicScore:
+          type: number
+          nullable: true
+        heuristicFeatures:
+          type: object
+          nullable: true
+          additionalProperties: true
+        llmScore:
+          type: number
+        hookScore:
+          type: number
+          nullable: true
+        contextScore:
+          type: number
+          nullable: true
+        captionabilityScore:
+          type: number
+          nullable: true
+        comedicScore:
+          type: number
+          nullable: true
+        provocativeScore:
+          type: number
+          nullable: true
+        visualEnergyScore:
+          type: number
+          nullable: true
+        audioEnergyScore:
+          type: number
+          nullable: true
+        riskScore:
+          type: number
+          nullable: true
+        riskFlags:
+          type: array
+          nullable: true
+          items:
+            type: string
+        hasViralMoment:
+          type: boolean
+          nullable: true
+        confidence:
+          type: number
+          nullable: true
+        rationale:
+          type: string
+          nullable: true
+        finalScore:
+          type: number
+        wasSelected:
+          type: boolean
+        userFeedbackLabel:
+          type: string
+          nullable: true
+        userFeedbackTrimStartS:
+          type: number
+          nullable: true
+        userFeedbackTrimEndS:
+          type: number
+          nullable: true
+        userFeedbackCreatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        inputTokens:
+          type: integer
+          nullable: true
+        outputTokens:
+          type: integer
+          nullable: true
+        estimatedCostUsd:
+          type: number
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    AdminTrainingDataResponse:
+      type: object
+      required: [totalCount, selectedCount, feedbackLabeledCount, avgConfidence, providerCounts, days, examples]
+      properties:
+        totalCount:
+          type: integer
+        selectedCount:
+          type: integer
+        feedbackLabeledCount:
+          type: integer
+        avgConfidence:
+          type: number
+        providerCounts:
+          type: object
+          additionalProperties:
+            type: integer
+        days:
+          type: integer
+        examples:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingExample'
+
     DeleteClipResponse:
       type: object
       properties:
