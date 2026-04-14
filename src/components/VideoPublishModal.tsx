@@ -26,6 +26,8 @@ import {
   Save,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSession } from 'next-auth/react';
+import { PublishMembershipGate } from '@/components/PublishMembershipGate';
 import toast from 'react-hot-toast';
 
 interface PlatformInfo {
@@ -92,6 +94,9 @@ export function VideoPublishModal({
   onRequestUpload,
   uploadingLayout,
 }: VideoPublishModalProps) {
+  const { status } = useSession();
+  const showAuthGate = status === 'unauthenticated';
+  const checkingAuth = status === 'loading';
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
@@ -120,6 +125,11 @@ export function VideoPublishModal({
     // Pick default output — prefer mobile
     const mobileOutput = outputs.find((o) => o.layout === 'mobile');
     setSelectedOutputId(mobileOutput?.id || outputs[0]?.id || '');
+
+    if (showAuthGate || checkingAuth) {
+      setGenerating(false);
+      return;
+    }
 
     // Auto-generate description (only in generate mode)
     if (generationContext && descMode === 'generate') {
@@ -159,10 +169,16 @@ export function VideoPublishModal({
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, status]);
 
   useEffect(() => {
     if (!open) return;
+    if (status !== 'authenticated') {
+      setPlatforms([]);
+      setSelectedPlatforms(new Set());
+      setLoadingPlatforms(false);
+      return;
+    }
     let cancelled = false;
 
     const fetchPlatforms = async () => {
@@ -190,7 +206,7 @@ export function VideoPublishModal({
     return () => {
       cancelled = true;
     };
-  }, [open, compositionId]);
+  }, [open, compositionId, status]);
 
   // Auto-trigger S3 upload for the selected output when modal opens
   const uploadTriggeredRef = useRef<string | null>(null);
@@ -300,7 +316,8 @@ export function VideoPublishModal({
     description.trim().length > 0 &&
     connectedSelected.length > 0 &&
     phase === 'compose' &&
-    !needsCloudUpload;
+    !needsCloudUpload &&
+    status === 'authenticated';
 
   const handlePublish = async () => {
     setPhase('publishing');
@@ -388,248 +405,259 @@ export function VideoPublishModal({
         <div className="space-y-3">
           {phase === 'compose' && (
             <>
-              {/* Title */}
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Title</label>
-                <Input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Video title"
-                />
-              </div>
-
-              {/* Description mode toggle + content */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">Description</label>
-                  <div className="flex rounded-md border">
-                    <button
-                      type="button"
-                      className={cn(
-                        'flex items-center gap-1 px-2.5 py-1 text-xs transition-colors',
-                        descMode === 'generate'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'hover:bg-muted'
-                      )}
-                      onClick={() => {
-                        // Save current template edits before switching
-                        if (descMode === 'template' && activeTemplatePlatform) {
-                          setTemplates((prev) => ({
-                            ...prev,
-                            [activeTemplatePlatform]: description,
-                          }));
-                        }
-                        setDescMode('generate');
-                        setDescription(generatedDescription);
-                      }}
-                    >
-                      <Sparkles className="h-3 w-3" />
-                      Generate
-                    </button>
-                    <button
-                      type="button"
-                      className={cn(
-                        'px-2.5 py-1 text-xs transition-colors',
-                        descMode === 'template'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'hover:bg-muted'
-                      )}
-                      onClick={() => {
-                        // Save current generated description before switching
-                        if (descMode === 'generate') {
-                          setGeneratedDescription(description);
-                        }
-                        setDescMode('template');
-                        setGenerating(false);
-                        // Default to youtube, or first connected platform
-                        const defaultPlatform =
-                          connectedSelected.find((p) => p.platform === 'youtube')?.platform ||
-                          connectedSelected[0]?.platform ||
-                          null;
-                        if (defaultPlatform) {
-                          setActiveTemplatePlatform(defaultPlatform);
-                          setDescription(templates[defaultPlatform] || '');
-                        }
-                      }}
-                    >
-                      Template
-                    </button>
-                  </div>
+              {checkingAuth ? (
+                <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Checking account access...
                 </div>
-
-                {/* Template mode: platform pills */}
-                {descMode === 'template' && connectedSelected.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1">
-                    {connectedSelected.map((p) => (
-                      <button
-                        key={p.platform}
-                        type="button"
-                        onClick={() => {
-                          // Save current edits before switching
-                          if (activeTemplatePlatform) {
-                            setTemplates((prev) => ({
-                              ...prev,
-                              [activeTemplatePlatform]: description,
-                            }));
-                          }
-                          switchTemplatePlatform(p.platform);
-                        }}
-                        className={cn(
-                          'rounded-full border px-2.5 py-1 text-xs transition-colors',
-                          activeTemplatePlatform === p.platform
-                            ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300'
-                            : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
-                        )}
-                      >
-                        {PLATFORM_LABELS[p.platform] || p.displayName}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={openTemplateEditor}
-                      className="rounded-full border border-border p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                      title="Edit default templates"
-                    >
-                      <Settings className="h-3 w-3" />
-                    </button>
+              ) : showAuthGate ? (
+                <PublishMembershipGate />
+              ) : (
+                <>
+                  {/* Title */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Title</label>
+                    <Input
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="Video title"
+                    />
                   </div>
-                )}
 
-                {/* Description textarea */}
-                <div className="relative">
-                  <Textarea
-                    value={isGenerating ? '' : description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder={
-                      isGenerating
-                        ? ' '
-                        : descMode === 'template' && activeTemplatePlatform
-                          ? `${PLATFORM_LABELS[activeTemplatePlatform] || activeTemplatePlatform} description...`
-                          : 'Video description...'
-                    }
-                    rows={4}
-                    disabled={isGenerating}
-                    className={isGenerating ? 'opacity-50' : ''}
-                  />
-                  {isGenerating && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Sparkles className="h-4 w-4 animate-pulse" />
-                        Generating description...
+                  {/* Description mode toggle + content */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">Description</label>
+                      <div className="flex rounded-md border">
+                        <button
+                          type="button"
+                          className={cn(
+                            'flex items-center gap-1 px-2.5 py-1 text-xs transition-colors',
+                            descMode === 'generate'
+                              ? 'bg-primary text-primary-foreground'
+                              : 'hover:bg-muted'
+                          )}
+                          onClick={() => {
+                            // Save current template edits before switching
+                            if (descMode === 'template' && activeTemplatePlatform) {
+                              setTemplates((prev) => ({
+                                ...prev,
+                                [activeTemplatePlatform]: description,
+                              }));
+                            }
+                            setDescMode('generate');
+                            setDescription(generatedDescription);
+                          }}
+                        >
+                          <Sparkles className="h-3 w-3" />
+                          Generate
+                        </button>
+                        <button
+                          type="button"
+                          className={cn(
+                            'px-2.5 py-1 text-xs transition-colors',
+                            descMode === 'template'
+                              ? 'bg-primary text-primary-foreground'
+                              : 'hover:bg-muted'
+                          )}
+                          onClick={() => {
+                            // Save current generated description before switching
+                            if (descMode === 'generate') {
+                              setGeneratedDescription(description);
+                            }
+                            setDescMode('template');
+                            setGenerating(false);
+                            // Default to youtube, or first connected platform
+                            const defaultPlatform =
+                              connectedSelected.find((p) => p.platform === 'youtube')?.platform ||
+                              connectedSelected[0]?.platform ||
+                              null;
+                            if (defaultPlatform) {
+                              setActiveTemplatePlatform(defaultPlatform);
+                              setDescription(templates[defaultPlatform] || '');
+                            }
+                          }}
+                        >
+                          Template
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Template mode: platform pills */}
+                    {descMode === 'template' && connectedSelected.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1">
+                        {connectedSelected.map((p) => (
+                          <button
+                            key={p.platform}
+                            type="button"
+                            onClick={() => {
+                              // Save current edits before switching
+                              if (activeTemplatePlatform) {
+                                setTemplates((prev) => ({
+                                  ...prev,
+                                  [activeTemplatePlatform]: description,
+                                }));
+                              }
+                              switchTemplatePlatform(p.platform);
+                            }}
+                            className={cn(
+                              'rounded-full border px-2.5 py-1 text-xs transition-colors',
+                              activeTemplatePlatform === p.platform
+                                ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300'
+                                : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                            )}
+                          >
+                            {PLATFORM_LABELS[p.platform] || p.displayName}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={openTemplateEditor}
+                          className="rounded-full border border-border p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                          title="Edit default templates"
+                        >
+                          <Settings className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Description textarea */}
+                    <div className="relative">
+                      <Textarea
+                        value={isGenerating ? '' : description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        placeholder={
+                          isGenerating
+                            ? ' '
+                            : descMode === 'template' && activeTemplatePlatform
+                              ? `${PLATFORM_LABELS[activeTemplatePlatform] || activeTemplatePlatform} description...`
+                              : 'Video description...'
+                        }
+                        rows={4}
+                        disabled={isGenerating}
+                        className={isGenerating ? 'opacity-50' : ''}
+                      />
+                      {isGenerating && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Sparkles className="h-4 w-4 animate-pulse" />
+                            Generating description...
+                          </div>
+                        </div>
+                      )}
+                      {!isGenerating && generationContext && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-1.5 top-1.5 h-7 w-7 text-muted-foreground hover:text-foreground"
+                          onClick={handleGenerate}
+                          title="Generate description with AI"
+                        >
+                          <Sparkles className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Output selector */}
+                  {outputs.length > 1 && (
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Video output</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {outputs.map((output) => (
+                          <button
+                            key={output.id}
+                            type="button"
+                            onClick={() => setSelectedOutputId(output.id)}
+                            className={`rounded-lg border p-2 text-left transition-colors ${
+                              selectedOutputId === output.id
+                                ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950'
+                                : 'border-border hover:bg-muted'
+                            }`}
+                          >
+                            <VideoCard
+                              size="sm"
+                              src={output.s3Url}
+                              label={LAYOUT_LABELS[output.layout] || output.layout}
+                              controls={false}
+                              className="max-w-none pointer-events-none"
+                              badge={
+                                output.hasS3Key ? (
+                                  <Badge variant="secondary" className="text-[10px] h-4 gap-0.5">
+                                    <Video className="h-2.5 w-2.5" />
+                                    Cloud
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-[10px] h-4 gap-0.5">
+                                    Local
+                                  </Badge>
+                                )
+                              }
+                            />
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}
-                  {!isGenerating && generationContext && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-1.5 top-1.5 h-7 w-7 text-muted-foreground hover:text-foreground"
-                      onClick={handleGenerate}
-                      title="Generate description with AI"
-                    >
-                      <Sparkles className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              </div>
 
-              {/* Output selector */}
-              {outputs.length > 1 && (
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Video output</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {outputs.map((output) => (
-                      <button
-                        key={output.id}
-                        type="button"
-                        onClick={() => setSelectedOutputId(output.id)}
-                        className={`rounded-lg border p-2 text-left transition-colors ${
-                          selectedOutputId === output.id
-                            ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950'
-                            : 'border-border hover:bg-muted'
-                        }`}
-                      >
-                        <VideoCard
-                          size="sm"
-                          src={output.s3Url}
-                          label={LAYOUT_LABELS[output.layout] || output.layout}
-                          controls={false}
-                          className="max-w-none pointer-events-none"
-                          badge={
-                            output.hasS3Key ? (
-                              <Badge variant="secondary" className="text-[10px] h-4 gap-0.5">
-                                <Video className="h-2.5 w-2.5" />
-                                Cloud
-                              </Badge>
+                  {/* Cloud upload status */}
+                  {needsCloudUpload && (
+                    <div className="rounded-md border border-blue-300 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-200">
+                      {uploadingLayout ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Uploading render to cloud… Configure your post while it uploads.
+                        </span>
+                      ) : (
+                        'Waiting to upload render to cloud…'
+                      )}
+                    </div>
+                  )}
+
+                  {/* Platform toggles */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Platforms</p>
+                    {loadingPlatforms ? (
+                      <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading platforms...
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {platforms.map((p) => (
+                          <button
+                            key={p.platform}
+                            type="button"
+                            disabled={!p.connected}
+                            onClick={() => togglePlatform(p.platform)}
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                              !p.connected
+                                ? 'cursor-not-allowed border-border text-muted-foreground opacity-50'
+                                : selectedPlatforms.has(p.platform)
+                                  ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300'
+                                  : 'border-border text-foreground hover:bg-muted'
+                            }`}
+                          >
+                            {p.supportsVideo ? (
+                              <Video className="h-3 w-3" />
                             ) : (
-                              <Badge variant="outline" className="text-[10px] h-4 gap-0.5">
-                                Local
-                              </Badge>
-                            )
-                          }
-                        />
-                      </button>
-                    ))}
+                              <Type className="h-3 w-3" />
+                            )}
+                            {p.displayName}
+                            {!p.connected && (
+                              <span className="text-xs text-muted-foreground">(not connected)</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[11px] text-muted-foreground">
+                      <Video className="inline h-3 w-3 mr-0.5" /> = video upload &middot;{' '}
+                      <Type className="inline h-3 w-3 mr-0.5" /> = text post
+                    </p>
                   </div>
-                </div>
+                </>
               )}
-
-              {/* Cloud upload status */}
-              {needsCloudUpload && (
-                <div className="rounded-md border border-blue-300 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-200">
-                  {uploadingLayout ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Uploading render to cloud… Configure your post while it uploads.
-                    </span>
-                  ) : (
-                    'Waiting to upload render to cloud…'
-                  )}
-                </div>
-              )}
-
-              {/* Platform toggles */}
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Platforms</p>
-                {loadingPlatforms ? (
-                  <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading platforms...
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {platforms.map((p) => (
-                      <button
-                        key={p.platform}
-                        type="button"
-                        disabled={!p.connected}
-                        onClick={() => togglePlatform(p.platform)}
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                          !p.connected
-                            ? 'cursor-not-allowed border-border text-muted-foreground opacity-50'
-                            : selectedPlatforms.has(p.platform)
-                              ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300'
-                              : 'border-border text-foreground hover:bg-muted'
-                        }`}
-                      >
-                        {p.supportsVideo ? (
-                          <Video className="h-3 w-3" />
-                        ) : (
-                          <Type className="h-3 w-3" />
-                        )}
-                        {p.displayName}
-                        {!p.connected && (
-                          <span className="text-xs text-muted-foreground">(not connected)</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <p className="text-[11px] text-muted-foreground">
-                  <Video className="inline h-3 w-3 mr-0.5" /> = video upload &middot;{' '}
-                  <Type className="inline h-3 w-3 mr-0.5" /> = text post
-                </p>
-              </div>
             </>
           )}
 
@@ -684,16 +712,21 @@ export function VideoPublishModal({
         </div>
 
         <DialogFooter className="pt-4 gap-2 sm:gap-2">
-          {phase === 'compose' && (
-            <>
+          {phase === 'compose' &&
+            (showAuthGate || checkingAuth ? (
               <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
+                Close
               </Button>
-              <Button onClick={handlePublish} disabled={!canPublish}>
-                Publish
-              </Button>
-            </>
-          )}
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handlePublish} disabled={!canPublish}>
+                  Publish
+                </Button>
+              </>
+            ))}
           {phase === 'results' && <Button onClick={() => onOpenChange(false)}>Done</Button>}
         </DialogFooter>
       </DialogContent>
