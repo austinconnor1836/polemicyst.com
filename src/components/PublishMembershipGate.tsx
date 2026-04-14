@@ -24,7 +24,7 @@ interface PublishMembershipGateProps {
 
 export function PublishMembershipGate({
   title = 'Sign in to publish',
-  description = 'Publishing is available to members. Pick a tier and continue to connected platform publishing.',
+  description = 'Publishing is available to members. Pick a tier and continue to connected-account publishing.',
   compact = false,
 }: PublishMembershipGateProps) {
   return (
