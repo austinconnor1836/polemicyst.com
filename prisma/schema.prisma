@@ -5,8 +5,8 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/client"
+  provider      = "prisma-client-js"
+  output        = "../node_modules/.prisma/client"
   binaryTargets = ["native", "darwin-arm64"]
 }
 
@@ -16,29 +16,29 @@ datasource db {
 }
 
 model User {
-  id                       String               @id @default(uuid())
-  name                     String?
-  email                    String?              @unique
-  emailVerified            DateTime?
-  stripeCustomerId         String?
-  subscriptionPlan         String               @default("free") // 'free', 'pro', etc.
-  image                    String?
-  defaultLLMProvider       String               @default("ollama")
-  defaultPublishPlatforms  Json?                // string[] of platform identifiers for social posting defaults
-  accounts                 Account[]
-  sessions                 Session[]
-  videos                   Video[]
-  templatePreferences      TemplatePreferences?
-  clipCropTemplates        ClipCropTemplate[]
-  videoFeeds               VideoFeed[]
-  feedVideos               FeedVideo[]
-  brands                   Brand[]
-  automationRule           AutomationRule?
-  publications             Publication[]
-  publishingAccounts       PublishingAccount[]
-  uploadLogs               UploadLog[]
-  socialPosts              SocialPost[]
-  compositions             Composition[]
+  id                      String               @id @default(uuid())
+  name                    String?
+  email                   String?              @unique
+  emailVerified           DateTime?
+  stripeCustomerId        String?
+  subscriptionPlan        String               @default("free") // 'free', 'pro', etc.
+  image                   String?
+  defaultLLMProvider      String               @default("ollama")
+  defaultPublishPlatforms Json? // string[] of platform identifiers for social posting defaults
+  accounts                Account[]
+  sessions                Session[]
+  videos                  Video[]
+  templatePreferences     TemplatePreferences?
+  clipCropTemplates       ClipCropTemplate[]
+  videoFeeds              VideoFeed[]
+  feedVideos              FeedVideo[]
+  brands                  Brand[]
+  automationRule          AutomationRule?
+  publications            Publication[]
+  publishingAccounts      PublishingAccount[]
+  uploadLogs              UploadLog[]
+  socialPosts             SocialPost[]
+  compositions            Composition[]
 }
 
 model TemplatePreferences {
@@ -72,8 +72,8 @@ model Video {
   createdAt           DateTime @default(now())
 
   // Clip relationship (self-referencing)
-  sourceVideo   Video?  @relation("ClipSource", fields: [sourceVideoId], references: [id])
-  sourceVideoId String?
+  sourceVideo    Video?  @relation("ClipSource", fields: [sourceVideoId], references: [id])
+  sourceVideoId  String?
   generatedClips Video[] @relation("ClipSource")
 
   // Link back to the source FeedVideo that spawned this clip
@@ -81,18 +81,18 @@ model Video {
   feedVideoId String?
 
   // Added relation for pipeline segments
-  segments        Segment[]
+  segments            Segment[]
   clipSourceFeedVideo FeedVideo? @relation("FeedVideoClipSource")
 }
 
 model Brand {
-  id        String   @id @default(cuid())
-  name      String
-  imageUrl  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String      @id @default(cuid())
+  name       String
+  imageUrl   String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   videoFeeds VideoFeed[]
 
   @@index([userId])
@@ -100,26 +100,26 @@ model Brand {
 }
 
 model VideoFeed {
-  id              String    @id @default(cuid())
-  name            String
-  sourceUrl       String
-  sourceType      String
-  pollingInterval Int
-  lastCheckedAt   DateTime?
-  lastVideoId     String?
-  autoGenerateClips Boolean   @default(false)
-  viralitySettings  Json?
+  id                  String    @id @default(cuid())
+  name                String
+  sourceUrl           String
+  sourceType          String
+  pollingInterval     Int
+  lastCheckedAt       DateTime?
+  lastVideoId         String?
+  autoGenerateClips   Boolean   @default(false)
+  viralitySettings    Json?
   youtubeChannelId    String?
   youtubeChannelTitle String?
   youtubeChannelThumb String?
-  brandId         String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  brandId             String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  brand    Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  brand      Brand?      @relation(fields: [brandId], references: [id], onDelete: SetNull)
   feedVideos FeedVideo[]
 
   @@index([brandId])
@@ -139,7 +139,7 @@ model FeedVideo {
   status                String    @default("ready") // pending | ready | failed
   transcript            String?
   transcriptJson        Json?
-  transcriptSource      String?   // whisper | youtube-manual | youtube-auto
+  transcriptSource      String? // whisper | youtube-manual | youtube-auto
   speakerTranscriptJson Json?
   clipGenerationStatus  String    @default("idle") // idle | queued | processing | completed | failed
   clipGenerationError   String?
@@ -148,10 +148,10 @@ model FeedVideo {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  generatedClips  Video[] @relation("FeedVideoClips")
-  jobLogs         JobLog[]
-  truthAnalyses   TruthAnalysis[]
-  analysisChats   AnalysisChat[]
+  generatedClips Video[]         @relation("FeedVideoClips")
+  jobLogs        JobLog[]
+  truthAnalyses  TruthAnalysis[]
+  analysisChats  AnalysisChat[]
 
   @@unique([feedId, videoId])
   @@map("account_videos")
@@ -184,16 +184,16 @@ model Session {
 }
 
 model Segment {
-  id        String   @id @default(cuid())
-  videoId   String
-  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  tStartS   Float
-  tEndS     Float
-  features  Json
-  llmNotes  Json?
-  score     Float
-  selected  Boolean  @default(false)
-  clips     Clip[]
+  id             String                 @id @default(cuid())
+  videoId        String
+  video          Video                  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  tStartS        Float
+  tEndS          Float
+  features       Json
+  llmNotes       Json?
+  score          Float
+  selected       Boolean                @default(false)
+  clips          Clip[]
   rhetoricLabels SegmentRhetoricLabel[]
 
   @@index([videoId])
@@ -244,9 +244,9 @@ model SegmentRhetoricLabel {
 model CostEvent {
   id               String   @id @default(cuid())
   userId           String
-  jobId            String   // feedVideoId — groups events per video run
-  stage            String   // download | transcription | llm_scoring | ffmpeg_render | s3_upload
-  provider         String?  // gemini | ollama | whisper | s3 | ffmpeg
+  jobId            String // feedVideoId — groups events per video run
+  stage            String // download | transcription | llm_scoring | ffmpeg_render | s3_upload
+  provider         String? // gemini | ollama | whisper | s3 | ffmpeg
   model            String?
   inputTokens      Int?
   outputTokens     Int?
@@ -264,16 +264,16 @@ model CostEvent {
 }
 
 model JobLog {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   feedVideoId String
   feedVideo   FeedVideo @relation(fields: [feedVideoId], references: [id], onDelete: Cascade)
-  jobType     String   // transcription | speaker-transcription | clip-generation | download
-  status      String   // queued | started | completed | failed
+  jobType     String // transcription | speaker-transcription | clip-generation | download
+  status      String // queued | started | completed | failed
   message     String?
-  error       String?  @db.Text
+  error       String?   @db.Text
   durationMs  Int?
   metadata    Json?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([feedVideoId])
   @@index([jobType])
@@ -282,22 +282,22 @@ model JobLog {
 }
 
 model UploadLog {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stage        String   // initiate | part-url | part-upload | complete-multipart | register | from-url
-  status       String   // started | success | failed
-  filename     String?
-  key          String?
-  uploadId     String?
-  partNumber   Int?
-  fileSize     Int?
-  contentType  String?
-  durationMs   Int?
-  error        String?  @db.Text
-  metadata     Json?
-  userAgent    String?
-  createdAt    DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stage       String // initiate | part-url | part-upload | complete-multipart | register | from-url
+  status      String // started | success | failed
+  filename    String?
+  key         String?
+  uploadId    String?
+  partNumber  Int?
+  fileSize    Int?
+  contentType String?
+  durationMs  Int?
+  error       String?  @db.Text
+  metadata    Json?
+  userAgent   String?
+  createdAt   DateTime @default(now())
 
   @@index([userId])
   @@index([stage])
@@ -307,43 +307,43 @@ model UploadLog {
 }
 
 model ClipCropTemplate {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name       String
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
   aspectRatio String
-  cropX      Float
-  cropY      Float
-  cropWidth  Float
-  cropHeight Float
-  isDefault  Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  cropX       Float
+  cropY       Float
+  cropWidth   Float
+  cropHeight  Float
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@unique([userId, name])
   @@index([userId])
 }
 
 model AutomationRule {
-  id               String   @id @default(cuid())
-  userId           String   @unique
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  enabled          Boolean  @default(false)
-  autoGenerateClips Boolean @default(true)
-  viralitySettings Json?
-  captionsEnabled  Boolean  @default(true)
-  captionStyle     String   @default("default")
-  aspectRatio      String   @default("9:16")
-  cropTemplateId   String?
-  autoPublish      Boolean  @default(false)
-  publishPlatforms Json?
+  enabled              Boolean @default(false)
+  autoGenerateClips    Boolean @default(true)
+  viralitySettings     Json?
+  captionsEnabled      Boolean @default(true)
+  captionStyle         String  @default("default")
+  aspectRatio          String  @default("9:16")
+  cropTemplateId       String?
+  autoPublish          Boolean @default(false)
+  publishPlatforms     Json?
   autoEditSettings     Json?
-  quoteGraphicsEnabled Boolean  @default(false)
-  quoteGraphicStyle    String   @default("pull-quote") // pull-quote | lower-third | highlight-card | side-panel | typewriter
+  quoteGraphicsEnabled Boolean @default(false)
+  quoteGraphicStyle    String  @default("pull-quote") // pull-quote | lower-third | highlight-card | side-panel | typewriter
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model TruthAnalysis {
@@ -352,11 +352,11 @@ model TruthAnalysis {
   feedVideo        FeedVideo @relation(fields: [feedVideoId], references: [id], onDelete: Cascade)
   clipId           String    @default("__video__") // "__video__" = full video; otherwise clip ID
   userId           String
-  provider         String    // gemini | ollama
+  provider         String // gemini | ollama
   model            String?
   status           String    @default("pending") // pending | processing | completed | failed
   error            String?   @db.Text
-  result           Json?     // TruthAnalysisResult
+  result           Json? // TruthAnalysisResult
   inputTokens      Int?
   outputTokens     Int?
   estimatedCostUsd Float?
@@ -370,26 +370,26 @@ model TruthAnalysis {
 }
 
 model TrainingExample {
-  id                  String   @id @default(cuid())
-  userId              String
-  jobId               String   // feedVideoId
-  provider            String   // gemini | ollama
-  model               String?  // e.g. models/gemini-2.5-flash
+  id       String  @id @default(cuid())
+  userId   String
+  jobId    String // feedVideoId
+  provider String // gemini | ollama
+  model    String? // e.g. models/gemini-2.5-flash
 
   // Input
-  transcriptText      String   @db.Text
-  tStartS             Float
-  tEndS               Float
-  targetPlatform      String   @default("all")
-  contentStyle        String?
-  saferClips          Boolean  @default(false)
-  includeAudio        Boolean  @default(false)
-  frameCount          Int      @default(0)
-  audioSeconds        Float    @default(0)
+  transcriptText String  @db.Text
+  tStartS        Float
+  tEndS          Float
+  targetPlatform String  @default("all")
+  contentStyle   String?
+  saferClips     Boolean @default(false)
+  includeAudio   Boolean @default(false)
+  frameCount     Int     @default(0)
+  audioSeconds   Float   @default(0)
 
   // Heuristic pre-score context
-  heuristicScore      Float?
-  heuristicFeatures   Json?
+  heuristicScore    Float?
+  heuristicFeatures Json?
 
   // LLM output (raw scores before aggregation)
   llmScore            Float
@@ -401,22 +401,22 @@ model TrainingExample {
   visualEnergyScore   Float?
   audioEnergyScore    Float?
   riskScore           Float?
-  riskFlags           Json?    // string[]
+  riskFlags           Json? // string[]
   hasViralMoment      Boolean?
   confidence          Float?
   rationale           String?  @db.Text
 
   // Post-aggregation
-  finalScore          Float    // after platform weights + safety penalty
-  wasSelected         Boolean  @default(false) // made it into final clip set
+  finalScore  Float // after platform weights + safety penalty
+  wasSelected Boolean @default(false) // made it into final clip set
 
   // Cost metadata
-  inputTokens         Int?
-  outputTokens        Int?
-  estimatedCostUsd    Float?
-  durationMs          Int?
+  inputTokens      Int?
+  outputTokens     Int?
+  estimatedCostUsd Float?
+  durationMs       Int?
 
-  createdAt           DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([jobId])
@@ -426,26 +426,26 @@ model TrainingExample {
 }
 
 model TruthTrainingExample {
-  id               String   @id @default(cuid())
-  userId           String
-  feedVideoId      String
-  provider         String   // gemini | ollama
-  model            String?
-  type             String   // analysis | chat
+  id          String  @id @default(cuid())
+  userId      String
+  feedVideoId String
+  provider    String // gemini | ollama
+  model       String?
+  type        String // analysis | chat
 
   // Input
-  transcriptText   String   @db.Text
-  analysisContext   Json?    // for chat: the TruthAnalysisResult used as context
-  conversationHistory Json?  // for chat: prior messages array
+  transcriptText      String @db.Text
+  analysisContext     Json? // for chat: the TruthAnalysisResult used as context
+  conversationHistory Json? // for chat: prior messages array
 
   // Output
-  result           Json     // analysis: TruthAnalysisResult, chat: { content: string }
+  result Json // analysis: TruthAnalysisResult, chat: { content: string }
 
   // Quality signals
-  overallCredibility Float?  // from analysis result (0-10)
-  assertionCount   Int?
-  fallacyCount     Int?
-  biasCount        Int?
+  overallCredibility Float? // from analysis result (0-10)
+  assertionCount     Int?
+  fallacyCount       Int?
+  biasCount          Int?
 
   // Cost metadata
   inputTokens      Int?
@@ -453,7 +453,7 @@ model TruthTrainingExample {
   estimatedCostUsd Float?
   durationMs       Int?
 
-  createdAt        DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([feedVideoId])
@@ -462,83 +462,107 @@ model TruthTrainingExample {
   @@index([createdAt])
 }
 
-model AnalysisChat {
-  id              String   @id @default(cuid())
-  feedVideoId     String
-  feedVideo       FeedVideo @relation(fields: [feedVideoId], references: [id], onDelete: Cascade)
-  clipId          String   @default("__video__")
-  userId          String
-  provider        String   // gemini | ollama
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+model LectureTrainingExample {
+  id                  String   @id @default(cuid())
+  userId              String
+  jobId               String
+  provider            String // gemini | ollama | ocr
+  model               String?
+  sourceFilename      String
+  frameIntervalS      Int
+  sampledFrameCount   Int      @default(0)
+  extractedSlideCount Int      @default(0)
+  input               Json // frame timeline + extraction settings
+  output              Json // notes + exports
+  inputTokens         Int?
+  outputTokens        Int?
+  estimatedCostUsd    Float?
+  durationMs          Int?
+  createdAt           DateTime @default(now())
 
-  messages        AnalysisChatMessage[]
+  @@index([userId])
+  @@index([jobId])
+  @@index([provider])
+  @@index([createdAt])
+}
+
+model AnalysisChat {
+  id          String    @id @default(cuid())
+  feedVideoId String
+  feedVideo   FeedVideo @relation(fields: [feedVideoId], references: [id], onDelete: Cascade)
+  clipId      String    @default("__video__")
+  userId      String
+  provider    String // gemini | ollama
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  messages AnalysisChatMessage[]
 
   @@unique([feedVideoId, clipId])
   @@index([userId])
 }
 
 model AnalysisChatMessage {
-  id               String   @id @default(cuid())
+  id               String       @id @default(cuid())
   chatId           String
   chat             AnalysisChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  role             String   // user | assistant
-  content          String   @db.Text
+  role             String // user | assistant
+  content          String       @db.Text
   inputTokens      Int?
   outputTokens     Int?
   estimatedCostUsd Float?
   durationMs       Int?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime     @default(now())
 
   @@index([chatId])
 }
 
 model Publication {
-  id                    String    @id @default(cuid())
+  id                    String   @id @default(cuid())
   userId                String
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name                  String
   tagline               String?
-  configMarkdown        String    @db.Text
+  configMarkdown        String   @db.Text
   configJson            Json?
   substackUrl           String?
-  substackConnected     Boolean   @default(false)
+  substackConnected     Boolean  @default(false)
   substackCookieEnc     String?
   substackPublicationId String?
-  isDefault             Boolean   @default(false)
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  isDefault             Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  articles              Article[]
+  articles Article[]
 
-  @@index([userId])
   @@unique([userId, name])
+  @@index([userId])
 }
 
 model Article {
-  id               String    @id @default(cuid())
-  publicationId    String
-  publication      Publication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
-  userId           String
-  title            String
-  subtitle         String?
-  bodyMarkdown     String?   @db.Text
-  bodyHtml         String?   @db.Text
-  sourceType       String?
-  sourceId         String?
-  sourceContext     Json?
-  generationModel  String?
-  status           String    @default("draft")
-  substackDraftId  String?
-  substackPostId   String?
-  publishError     String?
-  publishedAt      DateTime?
-  tags             Json?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id              String      @id @default(cuid())
+  publicationId   String
+  publication     Publication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+  userId          String
+  title           String
+  subtitle        String?
+  bodyMarkdown    String?     @db.Text
+  bodyHtml        String?     @db.Text
+  sourceType      String?
+  sourceId        String?
+  sourceContext   Json?
+  generationModel String?
+  status          String      @default("draft")
+  substackDraftId String?
+  substackPostId  String?
+  publishError    String?
+  publishedAt     DateTime?
+  tags            Json?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
-  graphics         ArticleGraphic[]
-  publishes        ArticlePublish[]
+  graphics  ArticleGraphic[]
+  publishes ArticlePublish[]
 
   @@index([publicationId])
   @@index([userId])
@@ -575,145 +599,145 @@ model PublishingAccount {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  publishes         ArticlePublish[]
+  publishes ArticlePublish[]
 
   @@index([userId])
 }
 
 model ArticlePublish {
-  id                  String   @id @default(cuid())
+  id                  String            @id @default(cuid())
   articleId           String
-  article             Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  article             Article           @relation(fields: [articleId], references: [id], onDelete: Cascade)
   publishingAccountId String
   publishingAccount   PublishingAccount @relation(fields: [publishingAccountId], references: [id], onDelete: Cascade)
   platformDraftId     String?
   platformPostId      String?
   platformUrl         String?
-  status              String   @default("draft")
+  status              String            @default("draft")
   publishError        String?
   publishedAt         DateTime?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
+  @@unique([articleId, publishingAccountId])
   @@index([articleId])
   @@index([publishingAccountId])
-  @@unique([articleId, publishingAccountId])
 }
 
 model SocialPost {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  content    String   @db.Text
-  platforms  Json     // string[] of platforms this post was sent to
-  status     String   @default("pending") // pending | publishing | completed | failed
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String   @db.Text
+  platforms Json // string[] of platforms this post was sent to
+  status    String   @default("pending") // pending | publishing | completed | failed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  publishes  SocialPostPublish[]
+  publishes SocialPostPublish[]
 
   @@index([userId])
   @@index([createdAt])
 }
 
 model SocialPostPublish {
-  id             String    @id @default(cuid())
+  id             String     @id @default(cuid())
   socialPostId   String
   socialPost     SocialPost @relation(fields: [socialPostId], references: [id], onDelete: Cascade)
-  platform       String    // twitter | facebook | bluesky | threads
-  status         String    @default("pending") // pending | published | failed
+  platform       String // twitter | facebook | bluesky | threads
+  status         String     @default("pending") // pending | published | failed
   platformPostId String?
   platformUrl    String?
   publishError   String?
   publishedAt    DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
+  @@unique([socialPostId, platform])
   @@index([socialPostId])
   @@index([platform])
-  @@unique([socialPostId, platform])
 }
 
 model Composition {
-  id               String   @id @default(cuid())
-  userId           String
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title            String
-  mode             String   @default("pre-synced") // pre-synced | timeline
-  status           String   @default("draft") // draft | rendering | completed | failed
-  audioMode        String   @default("both") // creator | reference | both
-  creatorVolume    Float    @default(1.0)
-  referenceVolume  Float    @default(1.0)
-  creatorS3Key     String?
-  creatorS3Url     String?
-  creatorDurationS    Float?
-  creatorWidth        Int?
-  creatorHeight       Int?
-  creatorTrimStartS   Float    @default(0)
-  creatorTrimEndS     Float?
-  creatorTranscript      String?  @db.Text
-  creatorTranscriptJson  Json?
-  cuts                    Json?    // Array<{ id: string; startS: number; endS: number }> — applied globally to all tracks
-  silenceRegions          Json?    // Array<{ startS: number; endS: number }> — cached FFmpeg silencedetect output
-  autoEditResult          Json?    // { cuts: AutoEditCut[]; summary: AutoEditSummary } — cached auto-edit analysis
-  detectedQuotes          Json?    // Array<DetectedQuote> — LLM-detected cited/quoted passages
-  quoteGraphicStyle       String?  // pull-quote | lower-third | highlight-card | side-panel | typewriter
+  id                      String   @id @default(cuid())
+  userId                  String
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title                   String
+  mode                    String   @default("pre-synced") // pre-synced | timeline
+  status                  String   @default("draft") // draft | rendering | completed | failed
+  audioMode               String   @default("both") // creator | reference | both
+  creatorVolume           Float    @default(1.0)
+  referenceVolume         Float    @default(1.0)
+  creatorS3Key            String?
+  creatorS3Url            String?
+  creatorDurationS        Float?
+  creatorWidth            Int?
+  creatorHeight           Int?
+  creatorTrimStartS       Float    @default(0)
+  creatorTrimEndS         Float?
+  creatorTranscript       String?  @db.Text
+  creatorTranscriptJson   Json?
+  cuts                    Json? // Array<{ id: string; startS: number; endS: number }> — applied globally to all tracks
+  silenceRegions          Json? // Array<{ startS: number; endS: number }> — cached FFmpeg silencedetect output
+  autoEditResult          Json? // { cuts: AutoEditCut[]; summary: AutoEditSummary } — cached auto-edit analysis
+  detectedQuotes          Json? // Array<DetectedQuote> — LLM-detected cited/quoted passages
+  quoteGraphicStyle       String? // pull-quote | lower-third | highlight-card | side-panel | typewriter
   quoteGraphicsEnabled    Boolean  @default(false)
-  thumbnailCutoutPosition String  @default("right") // left | right
-  thumbnailCutoutSize     String  @default("large")  // small | medium | large
-  thumbnailBgMode         String  @default("frame") // "frame" | "ai"
-  thumbnailBgCrop         String?               // JSON: {x,y,w,h} crop rect for thumbnail background
-  createdAt           DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  thumbnailCutoutPosition String   @default("right") // left | right
+  thumbnailCutoutSize     String   @default("large") // small | medium | large
+  thumbnailBgMode         String   @default("frame") // "frame" | "ai"
+  thumbnailBgCrop         String? // JSON: {x,y,w,h} crop rect for thumbnail background
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
-  tracks           CompositionTrack[]
-  outputs          CompositionOutput[]
-  thumbnails       CompositionThumbnail[]
-  thumbnailAssets  ThumbnailAsset[]
+  tracks          CompositionTrack[]
+  outputs         CompositionOutput[]
+  thumbnails      CompositionThumbnail[]
+  thumbnailAssets ThumbnailAsset[]
 
   @@index([userId])
   @@index([status])
 }
 
 model CompositionTrack {
-  id            String      @id @default(cuid())
-  compositionId String
-  composition   Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
-  trackType     String      @default("reference") // reference | creator
-  label         String?
-  s3Key         String
-  s3Url         String
-  durationS     Float
-  width         Int?
-  height        Int?
-  startAtS      Float       @default(0)
-  trimStartS    Float       @default(0)
-  trimEndS      Float?
-  sortOrder     Int         @default(0)
-  hasAudio      Boolean     @default(true)
-  transcript    String?     @db.Text
+  id             String      @id @default(cuid())
+  compositionId  String
+  composition    Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
+  trackType      String      @default("reference") // reference | creator
+  label          String?
+  s3Key          String
+  s3Url          String
+  durationS      Float
+  width          Int?
+  height         Int?
+  startAtS       Float       @default(0)
+  trimStartS     Float       @default(0)
+  trimEndS       Float?
+  sortOrder      Int         @default(0)
+  hasAudio       Boolean     @default(true)
+  transcript     String?     @db.Text
   transcriptJson Json?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   @@index([compositionId])
 }
 
 model CompositionOutput {
-  id            String      @id @default(cuid())
-  compositionId String
-  composition   Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
-  layout        String      // mobile | landscape
-  s3Key         String?
-  s3Url         String?
-  status        String      @default("pending") // pending | rendering | completed | failed
-  renderError   String?     @db.Text
-  durationMs    Int?
-  fileSizeBytes BigInt?
-  transcript    String?     @db.Text
+  id             String      @id @default(cuid())
+  compositionId  String
+  composition    Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
+  layout         String // mobile | landscape
+  s3Key          String?
+  s3Url          String?
+  status         String      @default("pending") // pending | rendering | completed | failed
+  renderError    String?     @db.Text
+  durationMs     Int?
+  fileSizeBytes  BigInt?
+  transcript     String?     @db.Text
   transcriptJson Json?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   @@index([compositionId])
 }
@@ -738,12 +762,12 @@ model ThumbnailAsset {
   id              String      @id @default(cuid())
   compositionId   String
   composition     Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
-  type            String      // "reference" | "cutout"
+  type            String // "reference" | "cutout"
   s3Key           String
   s3Url           String
   frameTimestampS Float
   visionScore     Float?
-  styleVariant    String?     // null for reference/cutout; "cinematic" | "vivid" | "gradient" | "warm" for ai_background
+  styleVariant    String? // null for reference/cutout; "cinematic" | "vivid" | "gradient" | "warm" for ai_background
   createdAt       DateTime    @default(now())
 
   @@index([compositionId, type])

@@ -115,7 +115,8 @@ components:
           description: Burn transcript captions into generated clips
         captionFont:
           type: string
-          enum: [DejaVu Sans, Liberation Sans, Noto Sans, DejaVu Sans Mono, Liberation Mono, Noto Mono]
+          enum:
+            [DejaVu Sans, Liberation Sans, Noto Sans, DejaVu Sans Mono, Liberation Mono, Noto Mono]
           description: Font family for burned-in captions
         captionFontSize:
           type: string
@@ -362,7 +363,8 @@ components:
           description: Burn transcript captions into generated clips
         captionFont:
           type: string
-          enum: [DejaVu Sans, Liberation Sans, Noto Sans, DejaVu Sans Mono, Liberation Mono, Noto Mono]
+          enum:
+            [DejaVu Sans, Liberation Sans, Noto Sans, DejaVu Sans Mono, Liberation Mono, Noto Mono]
         captionFontSize:
           type: string
           enum: [small, medium, large, xlarge]
@@ -723,7 +725,253 @@ components:
           description: URL to the app store listing
           example: 'https://play.google.com/store/apps/details?id=com.polemicyst.android'
 
+    LectureSlideNote:
+      type: object
+      required: [index, timestampS, timestampLabel, title, body, rawText]
+      properties:
+        index:
+          type: integer
+        timestampS:
+          type: number
+        timestampLabel:
+          type: string
+          example: '03:12'
+        title:
+          type: string
+        body:
+          type: string
+        rawText:
+          type: string
+
+    LectureNotesOutputs:
+      type: object
+      required: [markdown, latex, text]
+      properties:
+        markdown:
+          type: string
+          description: Obsidian-ready Markdown export
+        latex:
+          type: string
+        text:
+          type: string
+
+    LectureNotesResponse:
+      type: object
+      required:
+        [
+          sourceFilename,
+          intervalSeconds,
+          sampledFrameCount,
+          extractedSlideCount,
+          durationS,
+          notes,
+          outputs,
+        ]
+      properties:
+        sourceFilename:
+          type: string
+        providerRequested:
+          type: string
+          enum: [auto, gemini, ollama, ocr]
+        providerUsed:
+          type: string
+          enum: [gemini, ollama, ocr]
+        modelUsed:
+          type: string
+          nullable: true
+        fallbackUsed:
+          type: boolean
+        trainingJobId:
+          type: string
+        intervalSeconds:
+          type: integer
+        sampledFrameCount:
+          type: integer
+        extractedSlideCount:
+          type: integer
+        durationS:
+          type: number
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/LectureSlideNote'
+        outputs:
+          $ref: '#/components/schemas/LectureNotesOutputs'
+
+    LectureTrainingExample:
+      type: object
+      required:
+        [
+          id,
+          userId,
+          jobId,
+          provider,
+          sourceFilename,
+          frameIntervalS,
+          sampledFrameCount,
+          extractedSlideCount,
+          input,
+          output,
+          createdAt,
+        ]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        jobId:
+          type: string
+        provider:
+          type: string
+          enum: [gemini, ollama, ocr]
+        model:
+          type: string
+          nullable: true
+        sourceFilename:
+          type: string
+        frameIntervalS:
+          type: integer
+        sampledFrameCount:
+          type: integer
+        extractedSlideCount:
+          type: integer
+        input:
+          type: object
+          additionalProperties: true
+        output:
+          type: object
+          additionalProperties: true
+        inputTokens:
+          type: integer
+          nullable: true
+        outputTokens:
+          type: integer
+          nullable: true
+        estimatedCostUsd:
+          type: number
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
 paths:
+  /api/lecture-notes:
+    post:
+      operationId: extractLectureNotes
+      summary: Extract slide notes from a lecture video and export as Markdown/LaTeX/Text
+      description: >
+        Accepts a lecture video upload, samples slide frames, runs OCR, deduplicates
+        repeated slides, and returns structured notes plus Obsidian-ready markdown.
+      tags: [LectureNotes]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Lecture video file
+                intervalSeconds:
+                  type: integer
+                  minimum: 2
+                  maximum: 30
+                  description: Frame sampling interval in seconds (lower = more detail/cost)
+                provider:
+                  type: string
+                  enum: [auto, gemini, ollama, ocr]
+                  default: auto
+                  description: Provider strategy. auto prefers Gemini teacher model, then local fallback.
+                modelName:
+                  type: string
+                  description: Optional explicit model override for Gemini/Ollama.
+      responses:
+        '200':
+          description: Lecture notes extracted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LectureNotesResponse'
+        '400':
+          description: Missing/invalid input or no readable slide text found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/admin/training-data/lecture:
+    get:
+      operationId: getLectureTrainingData
+      summary: Export lecture extraction training examples for model distillation
+      description: >
+        Admin-only endpoint. Returns lecture extraction training examples (Gemini/Ollama/OCR),
+        including provider input/output payloads. Supports JSON and JSONL export.
+      tags: [Admin]
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 30
+        - name: provider
+          in: query
+          schema:
+            type: string
+            enum: [gemini, ollama, ocr]
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [json, jsonl]
+            default: json
+      responses:
+        '200':
+          description: Lecture training data export
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalCount:
+                    type: integer
+                  providerCounts:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                  days:
+                    type: integer
+                  examples:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LectureTrainingExample'
+            application/jsonl:
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Extraction failed (e.g., OCR dependencies unavailable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/app/version-check:
     get:
       operationId: checkAppVersion

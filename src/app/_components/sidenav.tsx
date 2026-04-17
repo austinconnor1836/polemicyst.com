@@ -16,6 +16,7 @@ import ListAltIcon from '@mui/icons-material/ListAlt';
 import SettingsIcon from '@mui/icons-material/Settings';
 import VideoCallIcon from '@mui/icons-material/VideoCall';
 import LoginIcon from '@mui/icons-material/Login';
+import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import { useSession } from 'next-auth/react';
 
 interface SidePanelProps {
@@ -30,6 +31,7 @@ const publicNavItems: SideNavItem[] = [
 const authenticatedNavItems: SideNavItem[] = [
   { label: 'Dashboard', element: <HomeIcon />, href: '/connected-accounts' },
   { label: 'Automation', element: <SettingsIcon />, href: '/settings/automation' },
+  { label: 'Lecture Notes', element: <AutoStoriesIcon />, href: '/lecture-notes' },
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
   { label: 'NCAA Seeds', element: <SportsBasketballIcon />, href: '/ncaa-seed-probability' },
   { label: 'Reactions', element: <VideoCallIcon />, href: '/reactions' },
