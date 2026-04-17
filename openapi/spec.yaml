@@ -723,7 +723,118 @@ components:
           description: URL to the app store listing
           example: 'https://play.google.com/store/apps/details?id=com.polemicyst.android'
 
+    LectureSlideNote:
+      type: object
+      required: [index, timestampS, timestampLabel, title, body, rawText]
+      properties:
+        index:
+          type: integer
+        timestampS:
+          type: number
+        timestampLabel:
+          type: string
+          example: '03:12'
+        title:
+          type: string
+        body:
+          type: string
+        rawText:
+          type: string
+
+    LectureNotesOutputs:
+      type: object
+      required: [markdown, latex, text]
+      properties:
+        markdown:
+          type: string
+          description: Obsidian-ready Markdown export
+        latex:
+          type: string
+        text:
+          type: string
+
+    LectureNotesResponse:
+      type: object
+      required:
+        [
+          sourceFilename,
+          intervalSeconds,
+          sampledFrameCount,
+          extractedSlideCount,
+          durationS,
+          notes,
+          outputs,
+        ]
+      properties:
+        sourceFilename:
+          type: string
+        intervalSeconds:
+          type: integer
+        sampledFrameCount:
+          type: integer
+        extractedSlideCount:
+          type: integer
+        durationS:
+          type: number
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/LectureSlideNote'
+        outputs:
+          $ref: '#/components/schemas/LectureNotesOutputs'
+
 paths:
+  /api/lecture-notes:
+    post:
+      operationId: extractLectureNotes
+      summary: Extract slide notes from a lecture video and export as Markdown/LaTeX/Text
+      description: >
+        Accepts a lecture video upload, samples slide frames, runs OCR, deduplicates
+        repeated slides, and returns structured notes plus Obsidian-ready markdown.
+      tags: [LectureNotes]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Lecture video file
+                intervalSeconds:
+                  type: integer
+                  minimum: 2
+                  maximum: 30
+                  description: Frame sampling interval in seconds (lower = more detail/cost)
+      responses:
+        '200':
+          description: Lecture notes extracted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LectureNotesResponse'
+        '400':
+          description: Missing/invalid input or no readable slide text found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Extraction failed (e.g., OCR dependencies unavailable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/app/version-check:
     get:
       operationId: checkAppVersion
