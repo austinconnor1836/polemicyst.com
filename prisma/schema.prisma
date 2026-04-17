@@ -39,6 +39,8 @@ model User {
   uploadLogs               UploadLog[]
   socialPosts              SocialPost[]
   compositions             Composition[]
+  clipFeedbackEvents       ClipFeedback[]
+  autoEditFeedbackEvents   AutoEditFeedback[]
 }
 
 model TemplatePreferences {
@@ -83,6 +85,7 @@ model Video {
   // Added relation for pipeline segments
   segments        Segment[]
   clipSourceFeedVideo FeedVideo? @relation("FeedVideoClipSource")
+  clipFeedbackEvents ClipFeedback[] @relation("VideoClipFeedback")
 }
 
 model Brand {
@@ -152,6 +155,7 @@ model FeedVideo {
   jobLogs         JobLog[]
   truthAnalyses   TruthAnalysis[]
   analysisChats   AnalysisChat[]
+  clipFeedbackEvents ClipFeedback[]
 
   @@unique([feedId, videoId])
   @@map("account_videos")
@@ -278,6 +282,28 @@ model JobLog {
   @@index([feedVideoId])
   @@index([jobType])
   @@index([status])
+  @@index([createdAt])
+}
+
+model ClipFeedback {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clipId          String
+  clip            Video     @relation("VideoClipFeedback", fields: [clipId], references: [id], onDelete: Cascade)
+  feedVideoId     String?
+  feedVideo       FeedVideo? @relation(fields: [feedVideoId], references: [id], onDelete: SetNull)
+  action          String    // trim_adjusted | clip_deleted
+  oldTrimStartS   Float?
+  oldTrimEndS     Float?
+  newTrimStartS   Float?
+  newTrimEndS     Float?
+  createdAt       DateTime  @default(now())
+
+  @@index([userId])
+  @@index([clipId])
+  @@index([feedVideoId])
+  @@index([action])
   @@index([createdAt])
 }
 
@@ -409,6 +435,10 @@ model TrainingExample {
   // Post-aggregation
   finalScore          Float    // after platform weights + safety penalty
   wasSelected         Boolean  @default(false) // made it into final clip set
+  userFeedbackLabel   String?  // trim_adjusted | clip_deleted
+  userFeedbackTrimStartS Float?
+  userFeedbackTrimEndS Float?
+  userFeedbackCreatedAt DateTime?
 
   // Cost metadata
   inputTokens         Int?
@@ -659,6 +689,7 @@ model Composition {
   detectedQuotes          Json?    // Array<DetectedQuote> — LLM-detected cited/quoted passages
   quoteGraphicStyle       String?  // pull-quote | lower-third | highlight-card | side-panel | typewriter
   quoteGraphicsEnabled    Boolean  @default(false)
+  autoEditFeedbackEvents  AutoEditFeedback[]
   thumbnailCutoutPosition String  @default("right") // left | right
   thumbnailCutoutSize     String  @default("large")  // small | medium | large
   thumbnailBgMode         String  @default("frame") // "frame" | "ai"
@@ -673,6 +704,31 @@ model Composition {
 
   @@index([userId])
   @@index([status])
+}
+
+model AutoEditFeedback {
+  id                    String      @id @default(cuid())
+  compositionId         String
+  composition           Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
+  userId                String
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action                String      // retry | accepted
+  attemptNumber         Int
+  aggressiveness        String      // conservative | balanced | aggressive
+  badTakeDetection      Boolean
+  minSilenceToKeepS     Float
+  minSilenceDurationS   Float
+  silenceThresholdDb    Float
+  totalCuts             Int
+  totalRemovedS         Float
+  triggerRender         Boolean     @default(true)
+  feedbackSource        String      @default("manual") // manual | publish
+  createdAt             DateTime    @default(now())
+
+  @@index([compositionId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
 }
 
 model CompositionTrack {

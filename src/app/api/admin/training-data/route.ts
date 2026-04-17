@@ -72,6 +72,10 @@ export async function GET(req: NextRequest) {
           model: ex.model,
           finalScore: ex.finalScore,
           wasSelected: ex.wasSelected,
+          userFeedbackLabel: ex.userFeedbackLabel,
+          userFeedbackTrimStartS: ex.userFeedbackTrimStartS,
+          userFeedbackTrimEndS: ex.userFeedbackTrimEndS,
+          userFeedbackCreatedAt: ex.userFeedbackCreatedAt,
           estimatedCostUsd: ex.estimatedCostUsd,
           createdAt: ex.createdAt,
         },
@@ -93,6 +97,7 @@ export async function GET(req: NextRequest) {
   const avgConfidence =
     examples.reduce((sum, ex) => sum + (ex.confidence ?? 0), 0) / (totalCount || 1);
   const selectedCount = examples.filter((ex) => ex.wasSelected).length;
+  const feedbackLabeledCount = examples.filter((ex) => ex.userFeedbackLabel != null).length;
 
   for (const ex of examples) {
     providerCounts[ex.provider] = (providerCounts[ex.provider] || 0) + 1;
@@ -101,6 +106,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     totalCount,
     selectedCount,
+    feedbackLabeledCount,
     avgConfidence: Math.round(avgConfidence * 100) / 100,
     providerCounts,
     days,
