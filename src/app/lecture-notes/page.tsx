@@ -8,6 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 type SlideNote = {
   index: number;
@@ -24,6 +31,16 @@ type LectureNotesResponse = {
   sampledFrameCount: number;
   extractedSlideCount: number;
   durationS: number;
+  providerRequested: 'auto' | 'gemini' | 'ollama' | 'ocr';
+  providerUsed: 'gemini' | 'ollama' | 'ocr';
+  modelUsed: string | null;
+  fallbackUsed: boolean;
+  trainingJobId: string;
+  usage: {
+    inputTokens?: number;
+    outputTokens?: number;
+    estimatedCostUsd?: number;
+  } | null;
   notes: SlideNote[];
   outputs: {
     markdown: string;
@@ -33,6 +50,7 @@ type LectureNotesResponse = {
 };
 
 type OutputFormat = 'markdown' | 'latex' | 'text';
+type ExtractionProvider = 'auto' | 'gemini' | 'ollama' | 'ocr';
 
 function formatDuration(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds));
@@ -67,6 +85,8 @@ export default function LectureNotesPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<LectureNotesResponse | null>(null);
   const [selectedFormat, setSelectedFormat] = useState<OutputFormat>('markdown');
+  const [provider, setProvider] = useState<ExtractionProvider>('auto');
+  const [modelName, setModelName] = useState('');
   const [copyState, setCopyState] = useState<'idle' | 'done' | 'error'>('idle');
 
   useEffect(() => {
@@ -101,6 +121,10 @@ export default function LectureNotesPage() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('intervalSeconds', String(intervalSeconds));
+      formData.append('provider', provider);
+      if (modelName.trim()) {
+        formData.append('modelName', modelName.trim());
+      }
 
       const response = await fetch('/api/lecture-notes', {
         method: 'POST',
@@ -195,6 +219,39 @@ export default function LectureNotesPage() {
                 Lower values capture more slide transitions but process more slowly.
               </p>
             </div>
+            <div className="space-y-2">
+              <Label>Extraction provider</Label>
+              <Select
+                value={provider}
+                onValueChange={(value) => setProvider(value as ExtractionProvider)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Auto (Gemini then fallback)</SelectItem>
+                  <SelectItem value="gemini">Gemini teacher model</SelectItem>
+                  <SelectItem value="ollama">Ollama local model</SelectItem>
+                  <SelectItem value="ocr">OCR only (no LLM)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Use Gemini first for best quality, then train your own model from captured examples.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="model-name">Model override (optional)</Label>
+              <Input
+                id="model-name"
+                type="text"
+                value={modelName}
+                placeholder="e.g. gemini-2.0-flash or llama3"
+                onChange={(event) => setModelName(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave blank to use environment defaults.
+              </p>
+            </div>
           </div>
 
           <Button onClick={handleExtract} disabled={loading || !file} className="gap-2">
@@ -245,6 +302,40 @@ export default function LectureNotesPage() {
                   <p className="text-muted-foreground">Sample interval</p>
                   <p className="text-lg font-semibold">{result.intervalSeconds}s</p>
                 </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-muted-foreground">Provider used</p>
+                  <p className="text-lg font-semibold">{result.providerUsed}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-muted-foreground">Model</p>
+                  <p className="text-sm font-semibold truncate">
+                    {result.modelUsed || 'n/a (OCR only)'}
+                  </p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-muted-foreground">Training job</p>
+                  <p className="text-sm font-semibold truncate">{result.trainingJobId}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-muted-foreground">Fallback</p>
+                  <p className="text-lg font-semibold">{result.fallbackUsed ? 'Yes' : 'No'}</p>
+                </div>
+                {result.usage?.inputTokens != null && (
+                  <div className="rounded-md border p-3">
+                    <p className="text-muted-foreground">Input tokens</p>
+                    <p className="text-lg font-semibold">
+                      {result.usage.inputTokens.toLocaleString()}
+                    </p>
+                  </div>
+                )}
+                {result.usage?.outputTokens != null && (
+                  <div className="rounded-md border p-3">
+                    <p className="text-muted-foreground">Output tokens</p>
+                    <p className="text-lg font-semibold">
+                      {result.usage.outputTokens.toLocaleString()}
+                    </p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
