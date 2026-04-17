@@ -6,7 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Crop, Loader2, RefreshCw, Scissors, Share2, Wand2, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Crop,
+  Loader2,
+  RefreshCw,
+  Scissors,
+  Share2,
+  Wand2,
+  X,
+} from 'lucide-react';
 import { ModeSelector } from '../_components/ModeSelector';
 import { VideoUploader, type UploadStatus } from '../_components/VideoUploader';
 import { CompositionVideoPanel } from '../_components/CompositionVideoPanel';
@@ -105,6 +115,18 @@ interface Composition {
   outputs: Output[];
 }
 
+type AutoEditResponse = {
+  cuts: Array<{ id: string; startS: number; endS: number; reason: string; detail: string }>;
+  summary: AutoEditSummary;
+  attemptNumber?: number;
+  settingsUsed?: {
+    aggressiveness: 'conservative' | 'balanced' | 'aggressive';
+    badTakeDetection: boolean;
+    minSilenceToKeepS: number;
+  };
+  triggerRender?: boolean;
+};
+
 /**
  * Always render both mobile (9:16) and landscape (16:9) outputs.
  */
@@ -158,6 +180,7 @@ export default function CompositionEditorPage() {
   const [editOutputOpen, setEditOutputOpen] = useState(false);
   const [autoEditing, setAutoEditing] = useState(false);
   const [autoEditCuts, setAutoEditCuts] = useState<CompositionCut[] | undefined>(undefined);
+  const [autoEditAttemptNumber, setAutoEditAttemptNumber] = useState(0);
   const [trimTarget, setTrimTarget] = useState<{
     type: 'creator' | 'reference';
     trackId?: string;
@@ -1064,6 +1087,31 @@ export default function CompositionEditorPage() {
     [compositionId]
   );
 
+  const triggerRenderForCuts = useCallback(async () => {
+    const renderRes = await fetch(`/api/compositions/${compositionId}/render`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ layouts: detectOutputLayouts() }),
+    });
+    if (renderRes.ok) {
+      // Update status to rendering so RenderControls shows progress
+      setComposition((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          status: 'rendering',
+          outputs: prev.outputs.map((o) => ({
+            ...o,
+            status: 'pending',
+            s3Url: null,
+            renderError: null,
+          })),
+        };
+      });
+    }
+    return renderRes.ok;
+  }, [compositionId, detectOutputLayouts]);
+
   // Auto-Edit: analyze transcript, save cuts, and trigger a re-render.
   // Uses server-side FFmpeg (not the client-side splicer) so cuts are applied
   // precisely without keyframe snap-back artifacts.
@@ -1073,7 +1121,7 @@ export default function CompositionEditorPage() {
       const res = await fetch(`/api/compositions/${compositionId}/auto-edit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apply: true }),
+        body: JSON.stringify({ apply: true, triggerRender: true }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Auto-edit failed' }));
@@ -1081,7 +1129,8 @@ export default function CompositionEditorPage() {
         return;
       }
       const result = await res.json();
-      const { summary, cuts } = result;
+      const { summary, cuts, attemptNumber } = result;
+      if (typeof attemptNumber === 'number') setAutoEditAttemptNumber(attemptNumber);
 
       if (cuts.length === 0) {
         toast('No dead space or bad takes detected', { icon: '👍', duration: 3000 });
@@ -1106,34 +1155,76 @@ export default function CompositionEditorPage() {
       );
       setAutoEditCuts(modalCuts);
 
-      // Trigger a server-side re-render so FFmpeg applies cuts precisely
-      const renderRes = await fetch(`/api/compositions/${compositionId}/render`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ layouts: detectOutputLayouts() }),
-      });
-      if (renderRes.ok) {
-        // Update status to rendering so RenderControls shows progress
-        setComposition((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            status: 'rendering',
-            outputs: prev.outputs.map((o) => ({
-              ...o,
-              status: 'pending',
-              s3Url: null,
-              renderError: null,
-            })),
-          };
-        });
-      }
+      await triggerRenderForCuts();
     } catch {
       toast.error('Auto-edit failed');
     } finally {
       setAutoEditing(false);
     }
-  }, [compositionId, composition?.outputs, detectOutputLayouts]);
+  }, [compositionId, triggerRenderForCuts]);
+
+  const handleAutoEditRetry = useCallback(async () => {
+    setAutoEditing(true);
+    try {
+      const res = await fetch(`/api/compositions/${compositionId}/auto-edit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, triggerRender: true, feedbackAction: 'retry' }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Auto-edit retry failed' }));
+        toast.error(err.error || 'Auto-edit retry failed');
+        return;
+      }
+      const result = await res.json();
+      const { summary, cuts, attemptNumber, settingsUsed } = result;
+      if (typeof attemptNumber === 'number') setAutoEditAttemptNumber(attemptNumber);
+
+      if (cuts.length === 0) {
+        toast('Retry found no additional cuts', { icon: '🤷', duration: 3000 });
+        return;
+      }
+
+      toast.success(
+        `Try #${attemptNumber}: ${summary.totalCuts} cut${summary.totalCuts === 1 ? '' : 's'} (${summary.totalRemovedS}s removed) — ${settingsUsed.aggressiveness}`,
+        { duration: 4500 }
+      );
+
+      setComposition((prev) => (prev ? { ...prev, cuts } : prev));
+      const modalCuts: CompositionCut[] = cuts.map(
+        (c: { id: string; startS: number; endS: number }) => ({
+          id: c.id,
+          startS: c.startS,
+          endS: c.endS,
+        })
+      );
+      setAutoEditCuts(modalCuts);
+
+      await triggerRenderForCuts();
+    } catch {
+      toast.error('Auto-edit retry failed');
+    } finally {
+      setAutoEditing(false);
+    }
+  }, [compositionId, triggerRenderForCuts]);
+
+  const handleAutoEditAccept = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/compositions/${compositionId}/auto-edit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: false, triggerRender: false, feedbackAction: 'accepted' }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to save auto-edit feedback' }));
+        toast.error(err.error || 'Failed to save auto-edit feedback');
+        return;
+      }
+      toast.success('Saved auto-edit feedback — reinforcing this result');
+    } catch {
+      toast.error('Failed to save auto-edit feedback');
+    }
+  }, [compositionId]);
 
   // Clear all cuts from composition
   const handleClearCuts = useCallback(async () => {
@@ -1677,6 +1768,36 @@ export default function CompositionEditorPage() {
                   {composition.silenceRegions ? 'Re-analyze' : 'Auto-Edit'}
                 </Button>
               )}
+              {hasCreatorContent &&
+                composition.autoEditResult?.summary &&
+                composition.autoEditResult.summary.totalCuts > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    onClick={handleAutoEditRetry}
+                    disabled={isRendering || autoEditing || !composition.creatorTranscriptJson}
+                    title="Try another auto-edit attempt with tuned aggressiveness"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Try Again{autoEditAttemptNumber > 0 ? ` (#${autoEditAttemptNumber + 1})` : ''}
+                  </Button>
+                )}
+              {hasCreatorContent &&
+                composition.autoEditResult?.summary &&
+                composition.autoEditResult.summary.totalCuts > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    onClick={handleAutoEditAccept}
+                    disabled={isRendering || autoEditing}
+                    title="This auto-edit result is good — reinforce this win"
+                  >
+                    <CheckCircle2 className="h-3 w-3" />
+                    Looks Good
+                  </Button>
+                )}
               {composition.cuts &&
                 Array.isArray(composition.cuts) &&
                 composition.cuts.length > 0 && (

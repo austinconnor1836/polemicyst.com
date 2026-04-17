@@ -289,6 +289,13 @@ Switch to the private model when:
 
 ## Change log
 
+### 2026-04-17
+
+- **Iterative auto-edit with reinforcement feedback** — reaction editor now supports retrying auto-edit attempts ("Try Again") and accepting good outcomes ("Looks Good"), with each action logged as structured training feedback.
+- New Prisma model `AutoEditFeedback` tracks per-attempt settings and outcomes (`retry` / `accepted`) including aggressiveness, silence thresholds, and removal summary metrics.
+- `POST /api/compositions/:id/auto-edit` now supports `feedbackAction` (`retry` / `accepted`), increments attempt numbers, adaptively tunes settings on retries, and stores metadata (`attemptNumber`, `settingsUsed`, `acceptedAt`) in `autoEditResult`.
+- `POST /api/compositions/:id/transcribe?action=save` now computes and persists an initial `autoEditResult` from transcript + silence regions when available, so the first auto-edit feedback cycle has baseline metadata.
+
 ### 2026-04-14
 
 - **Manual clip edits now feed model training signals** — when users adjust clip trims or delete clips, the backend records explicit `ClipFeedback` events and maps them onto matching `TrainingExample` rows as user-feedback labels.
