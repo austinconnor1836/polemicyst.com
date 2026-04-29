@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { Check, Crop, Download, Loader2, RefreshCw, Wand2 } from 'lucide-react';
+import { Check, Crop, Download, ImagePlus, Loader2, RefreshCw, Wand2 } from 'lucide-react';
 import { ThumbnailCropModal } from './ThumbnailCropModal';
 import toast from 'react-hot-toast';
 import { extractFrames } from '@/lib/client-render/extract-frames';
@@ -18,13 +18,13 @@ interface ThumbnailAsset {
   s3Url: string;
   frameTimestampS: number;
   visionScore: number | null;
-  type: 'reference' | 'cutout' | 'ai_background';
+  type: 'reference' | 'cutout' | 'ai_background' | 'custom_background';
   styleVariant?: string | null;
 }
 
 type Position = 'left' | 'right';
 type Size = 'small' | 'medium' | 'large';
-type BgMode = 'frame' | 'ai';
+type BgMode = 'frame' | 'ai' | 'custom';
 
 interface ThumbnailPanelProps {
   compositionId: string;
@@ -148,15 +148,18 @@ export function ThumbnailPanel({
   const [referenceFrames, setReferenceFrames] = useState<ThumbnailAsset[]>([]);
   const [cutouts, setCutouts] = useState<ThumbnailAsset[]>([]);
   const [aiBackgrounds, setAiBackgrounds] = useState<ThumbnailAsset[]>([]);
+  const [customBackgrounds, setCustomBackgrounds] = useState<ThumbnailAsset[]>([]);
   const [selectedRefId, setSelectedRefId] = useState<string | null>(null);
   const [selectedCutoutId, setSelectedCutoutId] = useState<string | null>(null);
   const [position, setPosition] = useState<Position>('right');
   const [size, setSize] = useState<Size>('large');
   const [bgMode, setBgMode] = useState<BgMode>('frame');
   const [generatingAi, setGeneratingAi] = useState(false);
+  const [uploadingCustomBg, setUploadingCustomBg] = useState(false);
   const [compositeUrl, setCompositeUrl] = useState<string | null>(null);
   const [bgCrop, setBgCrop] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [cropModalOpen, setCropModalOpen] = useState(false);
+  const customBgInputRef = useRef<HTMLInputElement | null>(null);
 
   // Loading / saving state
   const [initialLoad, setInitialLoad] = useState(true);
@@ -200,15 +203,21 @@ export function ThumbnailPanel({
       const refs: ThumbnailAsset[] = data.referenceFrames || [];
       const cuts: ThumbnailAsset[] = data.cutouts || [];
       const aiBgs: ThumbnailAsset[] = data.aiBackgrounds || [];
+      const customBgs: ThumbnailAsset[] = data.customBackgrounds || [];
       setReferenceFrames(refs);
       setCutouts(cuts);
       setAiBackgrounds(aiBgs);
+      setCustomBackgrounds(customBgs);
 
       // Restore settings
       if (data.settings) {
         setPosition(data.settings.position || 'right');
         setSize(data.settings.size || 'large');
-        if (data.settings.bgMode === 'ai' || data.settings.bgMode === 'frame') {
+        if (
+          data.settings.bgMode === 'ai' ||
+          data.settings.bgMode === 'frame' ||
+          data.settings.bgMode === 'custom'
+        ) {
           setBgMode(data.settings.bgMode);
         }
         if (data.settings.bgCrop) {
@@ -219,14 +228,16 @@ export function ThumbnailPanel({
         setCompositeUrl(data.compositeUrl);
       }
 
-      // Auto-select best if nothing selected yet (use functional updater to avoid stale closure)
-      if (refs.length > 0) {
-        setSelectedRefId((prev) => {
-          if (prev) return prev;
-          const best = refs.reduce((a, b) => ((b.visionScore ?? 0) > (a.visionScore ?? 0) ? b : a));
-          return best.id;
-        });
-      }
+      // Auto-select a background from the restored mode if nothing is selected yet.
+      setSelectedRefId((prev) => {
+        if (prev) return prev;
+        const restoredMode = data.settings?.bgMode;
+        if (restoredMode === 'custom' && customBgs.length > 0) return customBgs[0].id;
+        if (restoredMode === 'ai' && aiBgs.length > 0) return aiBgs[0].id;
+        if (refs.length === 0) return prev;
+        const best = refs.reduce((a, b) => ((b.visionScore ?? 0) > (a.visionScore ?? 0) ? b : a));
+        return best.id;
+      });
       if (cuts.length > 0) {
         setSelectedCutoutId((prev) => {
           if (prev) return prev;
@@ -438,7 +449,7 @@ export function ThumbnailPanel({
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [selectedRefId, selectedCutoutId, position, size, bgCrop, doComposite]);
+  }, [selectedRefId, selectedCutoutId, position, size, bgMode, bgCrop, doComposite]);
 
   // ---------------------------------------------------------------------------
   // Regenerate handler
@@ -449,6 +460,7 @@ export function ThumbnailPanel({
     setReferenceFrames([]);
     setCutouts([]);
     setAiBackgrounds([]);
+    setCustomBackgrounds([]);
     setCompositeUrl(null);
     setSelectedRefId(null);
     setSelectedCutoutId(null);
@@ -592,12 +604,55 @@ export function ThumbnailPanel({
     await generateAiBackgrounds();
   }, [generateAiBackgrounds]);
 
+  const handleCustomBackgroundUpload = useCallback(
+    async (file: File | undefined) => {
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        toast.error('Upload an image file');
+        return;
+      }
+
+      setUploadingCustomBg(true);
+      try {
+        const formData = new FormData();
+        formData.append('background', file);
+
+        const res = await fetch(
+          `/api/compositions/${compositionId}/thumbnails/custom-backgrounds`,
+          {
+            method: 'POST',
+            body: formData,
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to upload background');
+        }
+
+        const asset = data.asset as ThumbnailAsset;
+        setCustomBackgrounds((prev) => [asset, ...prev]);
+        setBgMode('custom');
+        setSelectedRefId(asset.id);
+        setBgCrop(null);
+        toast.success('Custom background uploaded');
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to upload background');
+      } finally {
+        setUploadingCustomBg(false);
+        if (customBgInputRef.current) customBgInputRef.current.value = '';
+      }
+    },
+    [compositionId]
+  );
+
   const isRendering = compositionStatus === 'rendering';
   const hasAssets = referenceFrames.length > 0 || cutouts.length > 0;
-  // In AI mode, background can be an AI asset; in frame mode, it's a reference frame
-  const activeBackgrounds = bgMode === 'ai' ? aiBackgrounds : referenceFrames;
+  const activeBackgrounds =
+    bgMode === 'ai' ? aiBackgrounds : bgMode === 'custom' ? customBackgrounds : referenceFrames;
   const selectedRef =
     activeBackgrounds.find((r) => r.id === selectedRefId) ??
+    customBackgrounds.find((r) => r.id === selectedRefId) ??
+    aiBackgrounds.find((r) => r.id === selectedRefId) ??
     referenceFrames.find((r) => r.id === selectedRefId);
   const selectedCutout = cutouts.find((c) => c.id === selectedCutoutId);
 
@@ -706,6 +761,24 @@ export function ThumbnailPanel({
                   <button
                     className={cn(
                       'flex items-center gap-1 px-2.5 py-1 text-xs transition-colors',
+                      bgMode === 'custom' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                    )}
+                    onClick={() => {
+                      if (customBackgrounds.length > 0) {
+                        setBgMode('custom');
+                        setBgCrop(null);
+                        setSelectedRefId(customBackgrounds[0].id);
+                      } else {
+                        customBgInputRef.current?.click();
+                      }
+                    }}
+                  >
+                    <ImagePlus className="h-3 w-3" />
+                    Custom
+                  </button>
+                  <button
+                    className={cn(
+                      'flex items-center gap-1 px-2.5 py-1 text-xs transition-colors',
                       bgMode === 'ai' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
                     )}
                     onClick={handleAiModeSelect}
@@ -748,7 +821,7 @@ export function ThumbnailPanel({
                 <Crop className="h-3 w-3" />
                 Crop BG
               </Button>
-              {bgCrop && bgMode === 'frame' && (
+              {bgCrop && bgMode !== 'ai' && (
                 <span className="rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">
                   Cropped
                 </span>
@@ -893,6 +966,78 @@ export function ThumbnailPanel({
             </div>
           )}
 
+          {bgMode === 'custom' && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Custom Backgrounds
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 text-xs"
+                  onClick={() => customBgInputRef.current?.click()}
+                  disabled={uploadingCustomBg}
+                >
+                  {uploadingCustomBg ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <ImagePlus className="h-3 w-3" />
+                  )}
+                  Upload
+                </Button>
+                <input
+                  ref={customBgInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => handleCustomBackgroundUpload(event.target.files?.[0])}
+                />
+              </div>
+              {uploadingCustomBg ? (
+                <AssetSkeletonGrid count={1} />
+              ) : customBackgrounds.length > 0 ? (
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {customBackgrounds.map((asset) => (
+                    <button
+                      key={asset.id}
+                      onClick={() => {
+                        setSelectedRefId(asset.id);
+                        setBgCrop(null);
+                      }}
+                      className={cn(
+                        'group relative flex-shrink-0 overflow-hidden rounded-md border-2 transition-all',
+                        selectedRefId === asset.id
+                          ? 'border-blue-500 ring-2 ring-blue-500/30'
+                          : 'border-border hover:border-blue-300 dark:hover:border-blue-600'
+                      )}
+                    >
+                      <img
+                        src={asset.s3Url}
+                        alt="Custom background"
+                        className="h-16 w-24 object-cover"
+                        loading="lazy"
+                      />
+                      {selectedRefId === asset.id && (
+                        <div className="absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-white">
+                          <Check className="h-2.5 w-2.5" />
+                        </div>
+                      )}
+                      <div className="absolute bottom-0.5 left-0.5 rounded bg-emerald-600/80 px-1 py-px text-[9px] font-medium text-white">
+                        Custom
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="py-2 text-center text-xs text-muted-foreground">
+                  Upload a post image, screenshot, or designed background to place behind the
+                  creator cutout.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Cutouts grid */}
           {cutouts.length > 0 && (
             <div className="space-y-1.5">
@@ -964,7 +1109,7 @@ export function ThumbnailPanel({
             </div>
           )}
           {/* Crop modal */}
-          {selectedRef && bgMode === 'frame' && (
+          {selectedRef && bgMode !== 'ai' && (
             <ThumbnailCropModal
               open={cropModalOpen}
               onOpenChange={setCropModalOpen}

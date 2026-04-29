@@ -33,6 +33,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const referenceFrames = assets.filter((a) => a.type === 'reference');
     const cutouts = assets.filter((a) => a.type === 'cutout');
     const aiBackgrounds = assets.filter((a) => a.type === 'ai_background');
+    const customBackgrounds = assets
+      .filter((a) => a.type === 'custom_background')
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
     // Get current selected composite thumbnail URL
     const selectedThumb = await prisma.compositionThumbnail.findFirst({
@@ -44,6 +47,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       referenceFrames,
       cutouts,
       aiBackgrounds,
+      customBackgrounds,
       settings: {
         position: composition.thumbnailCutoutPosition,
         size: composition.thumbnailCutoutSize,
