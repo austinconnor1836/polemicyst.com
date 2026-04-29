@@ -43,13 +43,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const pos: Position = VALID_POSITIONS.includes(position) ? position : 'right';
     const sz: Size = VALID_SIZES.includes(size) ? size : 'large';
 
-    // Fetch both assets (background can be 'reference' or 'ai_background')
+    // Fetch both assets (background can be a frame, generated image, or user upload)
     const [refAsset, cutoutAsset] = await Promise.all([
       prisma.thumbnailAsset.findFirst({
         where: {
           id: referenceAssetId,
           compositionId: id,
-          type: { in: ['reference', 'ai_background'] },
+          type: { in: ['reference', 'ai_background', 'custom_background'] },
         },
       }),
       prisma.thumbnailAsset.findFirst({
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const s3Url = `https://${bucket}.s3.${region}.amazonaws.com/${s3Key}`;
 
     // Validate bgMode
-    const validBgModes = ['frame', 'ai'] as const;
+    const validBgModes = ['frame', 'ai', 'custom'] as const;
     const bg = validBgModes.includes(bgMode) ? bgMode : undefined;
 
     // Update composition settings + upsert the selected thumbnail

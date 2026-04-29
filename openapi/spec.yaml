@@ -115,7 +115,8 @@ components:
           description: Burn transcript captions into generated clips
         captionFont:
           type: string
-          enum: [DejaVu Sans, Liberation Sans, Noto Sans, DejaVu Sans Mono, Liberation Mono, Noto Mono]
+          enum:
+            [DejaVu Sans, Liberation Sans, Noto Sans, DejaVu Sans Mono, Liberation Mono, Noto Mono]
           description: Font family for burned-in captions
         captionFontSize:
           type: string
@@ -362,7 +363,8 @@ components:
           description: Burn transcript captions into generated clips
         captionFont:
           type: string
-          enum: [DejaVu Sans, Liberation Sans, Noto Sans, DejaVu Sans Mono, Liberation Mono, Noto Mono]
+          enum:
+            [DejaVu Sans, Liberation Sans, Noto Sans, DejaVu Sans Mono, Liberation Mono, Noto Mono]
         captionFontSize:
           type: string
           enum: [small, medium, large, xlarge]
@@ -723,7 +725,92 @@ components:
           description: URL to the app store listing
           example: 'https://play.google.com/store/apps/details?id=com.polemicyst.android'
 
+    ThumbnailAsset:
+      type: object
+      properties:
+        id:
+          type: string
+        compositionId:
+          type: string
+        type:
+          type: string
+          enum: [reference, cutout, ai_background, custom_background]
+        s3Key:
+          type: string
+        s3Url:
+          type: string
+        frameTimestampS:
+          type: number
+        visionScore:
+          type: number
+          nullable: true
+        styleVariant:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    CustomThumbnailBackgroundResponse:
+      type: object
+      required: [asset]
+      properties:
+        asset:
+          $ref: '#/components/schemas/ThumbnailAsset'
+
 paths:
+  /api/compositions/{id}/thumbnails/custom-backgrounds:
+    post:
+      operationId: uploadCustomThumbnailBackground
+      summary: Upload a custom thumbnail background
+      description: >
+        Uploads a user-provided background image for the thumbnail builder. The
+        image can then be composited behind an existing creator cutout using the
+        same small, medium, and large cutout sizes.
+      tags: [Compositions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [background]
+              properties:
+                background:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Uploaded custom background asset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomThumbnailBackgroundResponse'
+        '400':
+          description: Missing or invalid background image
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Composition not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/app/version-check:
     get:
       operationId: checkAppVersion
