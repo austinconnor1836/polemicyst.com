@@ -743,7 +743,7 @@ export function ThumbnailPanel({
                   <button
                     className={cn(
                       'px-2.5 py-1 text-xs transition-colors',
-                      bgMode === 'frame' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                      bgMode === 'frame' ? 'bg-blue-600 text-white' : 'hover:bg-muted'
                     )}
                     onClick={() => {
                       setBgMode('frame');
@@ -761,7 +761,7 @@ export function ThumbnailPanel({
                   <button
                     className={cn(
                       'flex items-center gap-1 px-2.5 py-1 text-xs transition-colors',
-                      bgMode === 'custom' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                      bgMode === 'custom' ? 'bg-blue-600 text-white' : 'hover:bg-muted'
                     )}
                     onClick={() => {
                       if (customBackgrounds.length > 0) {
@@ -779,7 +779,7 @@ export function ThumbnailPanel({
                   <button
                     className={cn(
                       'flex items-center gap-1 px-2.5 py-1 text-xs transition-colors',
-                      bgMode === 'ai' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                      bgMode === 'ai' ? 'bg-blue-600 text-white' : 'hover:bg-muted'
                     )}
                     onClick={handleAiModeSelect}
                     disabled={generatingAi}
@@ -835,7 +835,7 @@ export function ThumbnailPanel({
                 <button
                   className={cn(
                     'px-2.5 py-1 text-xs transition-colors',
-                    position === 'left' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                    position === 'left' ? 'bg-blue-600 text-white' : 'hover:bg-muted'
                   )}
                   onClick={() => setPosition('left')}
                 >
@@ -844,7 +844,7 @@ export function ThumbnailPanel({
                 <button
                   className={cn(
                     'px-2.5 py-1 text-xs transition-colors',
-                    position === 'right' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                    position === 'right' ? 'bg-blue-600 text-white' : 'hover:bg-muted'
                   )}
                   onClick={() => setPosition('right')}
                 >
@@ -862,7 +862,7 @@ export function ThumbnailPanel({
                     key={s}
                     className={cn(
                       'px-2.5 py-1 text-xs transition-colors',
-                      size === s ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                      size === s ? 'bg-blue-600 text-white' : 'hover:bg-muted'
                     )}
                     onClick={() => setSize(s)}
                   >
