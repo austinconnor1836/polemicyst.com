@@ -14,11 +14,13 @@ public final class CompositionEditorViewModel: ObservableObject {
 
     private let api: APIClient
     private let compositionId: String
+    private let uploader: VideoUploadService
     private var pollTask: Task<Void, Never>?
 
     public init(api: APIClient, compositionId: String) {
         self.api = api
         self.compositionId = compositionId
+        self.uploader = VideoUploadService(api: api)
     }
 
     public func load() async {
@@ -56,13 +58,13 @@ public final class CompositionEditorViewModel: ObservableObject {
         isUploadingCreator = true
         defer { isUploadingCreator = false }
         do {
-            let (s3Key, s3Url) = try await uploadVideoFile(item: item, prefix: "compositions/\(compositionId)/creator/")
-            let probe = try await api.probeVideo(s3Key: s3Key)
+            let result = try await uploader.upload(item: item, prefix: "compositions/\(compositionId)/creator/")
+            let probe = try await api.probeVideo(s3Key: result.s3Key)
             composition = try await api.updateComposition(
                 id: compositionId,
                 body: UpdateCompositionRequest(
-                    creatorS3Key: s3Key,
-                    creatorS3Url: s3Url,
+                    creatorS3Key: result.s3Key,
+                    creatorS3Url: result.s3Url,
                     creatorDurationS: probe.durationS,
                     creatorWidth: probe.width,
                     creatorHeight: probe.height
@@ -94,12 +96,12 @@ public final class CompositionEditorViewModel: ObservableObject {
         isUploadingTrack = true
         defer { isUploadingTrack = false }
         do {
-            let (s3Key, s3Url) = try await uploadVideoFile(item: item, prefix: "compositions/\(compositionId)/raw/")
-            let probe = try await api.probeVideo(s3Key: s3Key)
+            let result = try await uploader.upload(item: item, prefix: "compositions/\(compositionId)/raw/")
+            let probe = try await api.probeVideo(s3Key: result.s3Key)
             let track = try await api.addTrack(
                 compositionId: compositionId,
                 body: CreateTrackRequest(
-                    s3Key: s3Key, s3Url: s3Url, durationS: probe.durationS,
+                    s3Key: result.s3Key, s3Url: result.s3Url, durationS: probe.durationS,
                     width: probe.width, height: probe.height, hasAudio: probe.hasAudio
                 )
             )
@@ -169,95 +171,6 @@ public final class CompositionEditorViewModel: ObservableObject {
     public func stopPolling() {
         pollTask?.cancel()
         pollTask = nil
-    }
-
-    // MARK: - Private upload helper
-
-    private static let chunkSize = 10 * 1024 * 1024 // 10 MB
-
-    private func uploadVideoFile(item: PhotosPickerItem, prefix: String) async throws -> (s3Key: String, s3Url: String) {
-        guard let movie = try await item.loadTransferable(type: CompositionVideoTransferable.self) else {
-            throw UploadError.noVideo
-        }
-        let fileURL = movie.url
-        let filename = fileURL.lastPathComponent
-        let fileData = try Data(contentsOf: fileURL)
-        let contentType = "video/mp4"
-
-        // Initiate multipart upload
-        let initResponse = try await api.initiateMultipartUpload(filename: "\(prefix)\(filename)", contentType: contentType)
-        let uploadId = initResponse.uploadId
-        let key = initResponse.key
-
-        // Upload parts
-        let totalParts = Int(ceil(Double(fileData.count) / Double(Self.chunkSize)))
-        var completedParts: [MultipartCompletePart] = []
-
-        for partNumber in 1...totalParts {
-            let start = (partNumber - 1) * Self.chunkSize
-            let end = min(partNumber * Self.chunkSize, fileData.count)
-            let chunk = fileData[start..<end]
-
-            let partURLResponse = try await api.getMultipartPartURL(uploadId: uploadId, key: key, partNumber: partNumber)
-            guard let url = URL(string: partURLResponse.url) else {
-                throw UploadError.invalidURL
-            }
-
-            var request = URLRequest(url: url)
-            request.httpMethod = "PUT"
-            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
-            request.setValue("\(chunk.count)", forHTTPHeaderField: "Content-Length")
-
-            let (_, response) = try await URLSession.shared.upload(for: request, from: chunk)
-            guard let httpResponse = response as? HTTPURLResponse,
-                  (200..<300).contains(httpResponse.statusCode),
-                  let etag = httpResponse.value(forHTTPHeaderField: "ETag") else {
-                throw UploadError.partFailed(partNumber)
-            }
-
-            completedParts.append(MultipartCompletePart(partNumber: partNumber, etag: etag))
-        }
-
-        // Complete multipart upload
-        try await api.completeMultipartUpload(uploadId: uploadId, key: key, parts: completedParts)
-
-        // Construct S3 URL from key
-        let s3Url = "https://\(api.baseURL.host ?? "")/api/uploads/proxy/\(key)"
-
-        // Clean up temp file
-        try? FileManager.default.removeItem(at: fileURL)
-
-        return (key, s3Url)
-    }
-}
-
-private enum UploadError: LocalizedError {
-    case noVideo
-    case invalidURL
-    case partFailed(Int)
-
-    var errorDescription: String? {
-        switch self {
-        case .noVideo: return "Could not load the selected video"
-        case .invalidURL: return "Invalid upload URL"
-        case .partFailed(let n): return "Upload part \(n) failed"
-        }
-    }
-}
-
-struct CompositionVideoTransferable: Transferable {
-    let url: URL
-
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(contentType: .movie) { movie in
-            SentTransferredFile(movie.url)
-        } importing: { received in
-            let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-            let dest = tempDir.appendingPathComponent(received.file.lastPathComponent)
-            try FileManager.default.copyItem(at: received.file, to: dest)
-            return Self(url: dest)
-        }
     }
 }
 

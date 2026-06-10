@@ -431,6 +431,13 @@ public struct APIClient {
         try await get(path: "/api/compositions/\(compositionId)/render/status")
     }
 
+    public func saveClientRender(compositionId: String, body: ClientCompleteRenderRequest) async throws {
+        let _: AnyCodable = try await post(
+            path: "/api/compositions/\(compositionId)/render/client-complete",
+            body: body
+        )
+    }
+
     public func cancelRender(compositionId: String) async throws {
         struct EmptyBody: Encodable {}
         let _: AnyCodable = try await post(path: "/api/compositions/\(compositionId)/render/cancel", body: EmptyBody())

@@ -1136,7 +1136,25 @@ public struct CompositionOutput: Identifiable, Codable {
 
 public struct CreateCompositionRequest: Encodable {
     public let title: String?
-    public init(title: String? = nil) { self.title = title }
+    /// Composition mode: "pre-synced" (default, reaction), "timeline" (reaction), or "stitch" (on-device-rendered).
+    public let mode: String?
+    public init(title: String? = nil, mode: String? = nil) {
+        self.title = title
+        self.mode = mode
+    }
+}
+
+public struct ClientCompleteRenderRequest: Encodable {
+    public let layout: String   // "mobile" | "landscape"
+    public let s3Key: String
+    public let s3Url: String
+    public let durationMs: Int?
+    public init(layout: String, s3Key: String, s3Url: String, durationMs: Int?) {
+        self.layout = layout
+        self.s3Key = s3Key
+        self.s3Url = s3Url
+        self.durationMs = durationMs
+    }
 }
 
 public struct UpdateCompositionRequest: Encodable {
