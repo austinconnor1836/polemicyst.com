@@ -155,6 +155,6 @@ public struct ContentTypePicker: View {
             .navigationTitle("Create")
             .navigationBarTitleDisplayMode(.inline)
         }
-        .presentationDetents([.height(420)])
+        .presentationDetents([.medium, .large])
     }
 }

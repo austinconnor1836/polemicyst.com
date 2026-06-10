@@ -57,11 +57,13 @@ struct ClipfireApp: App {
                                 }
                                 .tag(0)
 
-                            SocialPostsListView(viewModel: SocialPostsViewModel(api: apiClient), api: apiClient)
+                            NavigationStack {
+                                MyStitchesView()
+                            }
                                 .tabItem {
-                                    Label("Post", systemImage: "text.bubble")
+                                    Label("Stitches", systemImage: "rectangle.split.3x1")
                                 }
-                                .tag(1)
+                                .tag(6)
 
                             ConnectedAccountsView(viewModel: ConnectedAccountsViewModel(api: apiClient), authService: authService)
                                 .tabItem {
@@ -74,6 +76,12 @@ struct ClipfireApp: App {
                                     Label("Videos", systemImage: "list.bullet")
                                 }
                                 .tag(3)
+
+                            SocialPostsListView(viewModel: SocialPostsViewModel(api: apiClient), api: apiClient)
+                                .tabItem {
+                                    Label("Post", systemImage: "text.bubble")
+                                }
+                                .tag(1)
 
                             CompositionsListView(viewModel: CompositionsViewModel(api: apiClient), api: apiClient)
                                 .tabItem {

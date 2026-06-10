@@ -86,6 +86,8 @@ targets:
         UIBackgroundModes:
           - fetch
         ITSAppUsesNonExemptEncryption: false
+        NSPhotoLibraryUsageDescription: 'Clipfire reads videos directly from your photo library for the Stitch feature, so clips don''t need to be copied first.'
+        NSPhotoLibraryAddUsageDescription: 'Clipfire saves rendered stitches back to your photo library when you choose to.'
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSAllowsArbitraryLoads: true

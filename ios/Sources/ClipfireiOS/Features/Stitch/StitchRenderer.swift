@@ -70,10 +70,13 @@ public final class StitchRenderer {
         var currentTime = CMTime.zero
 
         for clip in clips {
-            let asset = AVURLAsset(url: clip.sourceURL)
+            guard let sourceURL = clip.sourceURL else {
+                throw StitchRenderError.exportFailed("A clip is still copying — please wait and try again.")
+            }
+            let asset = AVURLAsset(url: sourceURL)
             let sourceTracks = try await asset.loadTracks(withMediaType: .video)
             guard let sourceVideo = sourceTracks.first else {
-                throw StitchRenderError.noVideoTrack(clip.sourceURL)
+                throw StitchRenderError.noVideoTrack(sourceURL)
             }
 
             let timescale: Int32 = 600
@@ -85,7 +88,29 @@ public final class StitchRenderer {
 
             if let audioTrack,
                let sourceAudio = try await asset.loadTracks(withMediaType: .audio).first {
-                try? audioTrack.insertTimeRange(range, of: sourceAudio, at: currentTime)
+                // Clamp insertion to the time range actually present in the source audio —
+                // some recordings have video and audio of slightly different durations.
+                let audioTimeRange = try await sourceAudio.load(.timeRange)
+                let safeStart = CMTimeMaximum(range.start, audioTimeRange.start)
+                let safeEnd = CMTimeMinimum(range.end, audioTimeRange.end)
+                if safeEnd > safeStart {
+                    let safeRange = CMTimeRange(start: safeStart, end: safeEnd)
+                    do {
+                        try audioTrack.insertTimeRange(safeRange, of: sourceAudio, at: currentTime)
+                        NSLog("[Stitch] Audio inserted for %@ (%.2fs)",
+                              sourceURL.lastPathComponent,
+                              CMTimeGetSeconds(safeRange.duration))
+                    } catch {
+                        NSLog("[Stitch] Audio insert failed for %@: %@",
+                              sourceURL.lastPathComponent, error.localizedDescription)
+                        // Don't bail the whole render — just lose audio for this clip.
+                    }
+                } else {
+                    NSLog("[Stitch] Audio source has no overlap with desired range for %@",
+                          sourceURL.lastPathComponent)
+                }
+            } else if audioTrack != nil {
+                NSLog("[Stitch] Source has no audio track: %@", sourceURL.lastPathComponent)
             }
 
             // Per-clip transform: aspect-fill into render canvas, honoring source preferredTransform.
@@ -121,9 +146,11 @@ public final class StitchRenderer {
         videoComposition.instructions = instructions
 
         // Cutout overlay → install custom compositor + insert cutout source as a second track.
-        if let cutout {
+        if let cutout, let clipRange = clipTimeRanges(clips: clips)[cutout.clipId] {
             try await installCutout(
                 cutout: cutout,
+                clipStartS: clipRange.startS,
+                clipEndS: clipRange.endS,
                 mixComposition: mixComposition,
                 baseVideoTrack: videoTrack,
                 baseTransforms: baseTransforms,
@@ -141,8 +168,15 @@ public final class StitchRenderer {
             videoLayer.frame = parentLayer.frame
             parentLayer.addSublayer(videoLayer)
 
+            let clipRanges = clipTimeRanges(clips: clips)
             for overlay in textOverlays {
-                let layer = makeTextOverlayLayer(overlay: overlay, renderSize: renderSize)
+                guard let range = clipRanges[overlay.clipId] else { continue }
+                let layer = makeTextOverlayLayer(
+                    overlay: overlay,
+                    startS: range.startS,
+                    endS: range.endS,
+                    renderSize: renderSize
+                )
                 parentLayer.addSublayer(layer)
             }
 
@@ -167,6 +201,19 @@ public final class StitchRenderer {
         exporter.outputFileType = .mp4
         exporter.videoComposition = videoComposition
         exporter.shouldOptimizeForNetworkUse = true
+
+        // Force audio at unity gain. Without an explicit audioMix, some pipelines (especially
+        // when a custom video compositor or animationTool is present) silently drop audio.
+        if let audioTrack = mixComposition.tracks(withMediaType: .audio).first {
+            let audioMix = AVMutableAudioMix()
+            let params = AVMutableAudioMixInputParameters(track: audioTrack)
+            params.setVolume(1.0, at: .zero)
+            audioMix.inputParameters = [params]
+            exporter.audioMix = audioMix
+            NSLog("[Stitch] Audio track present (%.2fs), audioMix set", CMTimeGetSeconds(audioTrack.timeRange.duration))
+        } else {
+            NSLog("[Stitch] No audio track in composition")
+        }
 
         let progressTask = Task { @MainActor in
             while !Task.isCancelled, exporter.status == .waiting || exporter.status == .exporting {
@@ -213,7 +260,23 @@ public final class StitchRenderer {
             .concatenating(CGAffineTransform(translationX: tx, y: ty))
     }
 
-    private func makeTextOverlayLayer(overlay: TextOverlay, renderSize: CGSize) -> CALayer {
+    private func clipTimeRanges(clips: [StitchClip]) -> [UUID: (startS: Double, endS: Double)] {
+        var t: Double = 0
+        var out: [UUID: (Double, Double)] = [:]
+        for clip in clips {
+            let d = clip.effectiveDurationS
+            out[clip.id] = (t, t + d)
+            t += d
+        }
+        return out
+    }
+
+    private func makeTextOverlayLayer(
+        overlay: TextOverlay,
+        startS: Double,
+        endS: Double,
+        renderSize: CGSize
+    ) -> CALayer {
         let container = CALayer()
         container.frame = CGRect(origin: .zero, size: renderSize)
         container.opacity = 0  // animated below
@@ -261,11 +324,11 @@ public final class StitchRenderer {
         // Discrete on/off opacity animation across the export timeline.
         let anim = CAKeyframeAnimation(keyPath: "opacity")
         anim.values = [0, 1, 1, 0]
-        let total = max(0.001, overlay.endS) + 1  // pad so endS keyframe is in-range
+        let total = max(0.001, endS) + 1  // pad so endS keyframe is in-range
         anim.keyTimes = [
             0,
-            NSNumber(value: overlay.startS / total),
-            NSNumber(value: overlay.endS / total),
+            NSNumber(value: startS / total),
+            NSNumber(value: endS / total),
             1,
         ]
         anim.duration = total
@@ -280,6 +343,8 @@ public final class StitchRenderer {
 
     private func installCutout(
         cutout: CutoutOverlay,
+        clipStartS: Double,
+        clipEndS: Double,
         mixComposition: AVMutableComposition,
         baseVideoTrack: AVMutableCompositionTrack,
         baseTransforms: [PersonSegmentationCompositor.BaseTransform],
@@ -295,14 +360,16 @@ public final class StitchRenderer {
             throw StitchRenderError.exportFailed("Could not create cutout track")
         }
 
-        // Insert the cutout source clipped to the cutout's display duration.
+        // Insert the cutout source clipped to the target clip's duration (or the source duration,
+        // whichever is shorter).
         let cutoutAsset = AVURLAsset(url: cutout.sourceURL)
         let cutoutSourceTracks = try await cutoutAsset.loadTracks(withMediaType: .video)
         guard let cutoutSource = cutoutSourceTracks.first else {
             throw StitchRenderError.noVideoTrack(cutout.sourceURL)
         }
         let timescale: Int32 = 600
-        let displayDuration = min(cutout.durationS, cutout.sourceDurationS)
+        let clipDurationS = max(0, clipEndS - clipStartS)
+        let displayDuration = min(clipDurationS, cutout.sourceDurationS)
         let cutoutRange = CMTimeRange(
             start: .zero,
             duration: CMTime(seconds: displayDuration, preferredTimescale: timescale)
@@ -310,7 +377,7 @@ public final class StitchRenderer {
         try cutoutTrack.insertTimeRange(
             cutoutRange,
             of: cutoutSource,
-            at: CMTime(seconds: cutout.startS, preferredTimescale: timescale)
+            at: CMTime(seconds: clipStartS, preferredTimescale: timescale)
         )
 
         // Replace per-clip instructions with one spanning instruction that uses the custom compositor.
@@ -327,6 +394,8 @@ public final class StitchRenderer {
 
         // Configure the compositor's static state.
         PersonSegmentationCompositor.activeCutout = cutout
+        PersonSegmentationCompositor.activeCutoutStartS = clipStartS
+        PersonSegmentationCompositor.activeCutoutEndS = clipEndS
         PersonSegmentationCompositor.activeRenderSize = renderSize
         PersonSegmentationCompositor.baseTransforms = baseTransforms
         PersonSegmentationCompositor.baseTrackID = baseVideoTrack.trackID

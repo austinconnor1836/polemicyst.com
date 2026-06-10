@@ -4,22 +4,30 @@ import SwiftUI
 
 public struct StitchClip: Identifiable, Equatable {
     public let id: UUID
-    public var sourceURL: URL
+    /// Stable sandbox file URL once `loadTransferable` has copied the video out of Photos.
+    /// `nil` while the copy is still in flight. The thumbnail can render from `photoAssetIdentifier`
+    /// before this is populated, so the user never sees a "Loading" cell.
+    public var sourceURL: URL?
+    /// Photos library local identifier used by `PHImageManager` for instant thumbnail loads.
+    public var photoAssetIdentifier: String?
     public var durationS: Double
     public var trimStartS: Double
     public var trimEndS: Double
 
     public var effectiveDurationS: Double { max(0, trimEndS - trimStartS) }
+    public var isFileReady: Bool { sourceURL != nil }
 
     public init(
         id: UUID = UUID(),
-        sourceURL: URL,
+        sourceURL: URL? = nil,
+        photoAssetIdentifier: String? = nil,
         durationS: Double,
         trimStartS: Double = 0,
         trimEndS: Double? = nil
     ) {
         self.id = id
         self.sourceURL = sourceURL
+        self.photoAssetIdentifier = photoAssetIdentifier
         self.durationS = durationS
         self.trimStartS = trimStartS
         self.trimEndS = trimEndS ?? durationS
@@ -28,63 +36,56 @@ public struct StitchClip: Identifiable, Equatable {
 
 public struct TextOverlay: Identifiable, Equatable {
     public let id: UUID
+    /// The clip this overlay is attached to. Overlay appears for the full duration of that clip.
+    public var clipId: UUID
     public var text: String
     public var backgroundColor: Color?
     public var textColor: Color
     public var fontSize: CGFloat
     public var position: CGPoint   // normalized 0..1 in render canvas
-    public var startS: Double      // seconds into final stitch timeline
-    public var endS: Double
 
     public var hasBackground: Bool { backgroundColor != nil }
-    public var durationS: Double { max(0, endS - startS) }
 
     public init(
         id: UUID = UUID(),
+        clipId: UUID,
         text: String,
         backgroundColor: Color? = nil,
         textColor: Color = .white,
         fontSize: CGFloat = 48,
-        position: CGPoint = CGPoint(x: 0.5, y: 0.85),
-        startS: Double,
-        endS: Double
+        position: CGPoint = CGPoint(x: 0.5, y: 0.85)
     ) {
         self.id = id
+        self.clipId = clipId
         self.text = text
         self.backgroundColor = backgroundColor
         self.textColor = textColor
         self.fontSize = fontSize
         self.position = position
-        self.startS = startS
-        self.endS = endS
     }
 }
 
 public struct CutoutOverlay: Identifiable, Equatable {
     public let id: UUID
+    /// The clip this cutout is laid over. Cutout appears for the duration of that clip.
+    public var clipId: UUID
     public var sourceURL: URL
     public var sourceDurationS: Double
-    public var startS: Double      // seconds into final stitch timeline (when to begin showing cutout)
-    public var endS: Double        // seconds into final stitch timeline (when to stop)
     public var position: CGPoint   // normalized 0..1 — center of the cutout in the render canvas
     public var scale: CGFloat      // 0..1 — fraction of render height
 
-    public var durationS: Double { max(0, endS - startS) }
-
     public init(
         id: UUID = UUID(),
+        clipId: UUID,
         sourceURL: URL,
         sourceDurationS: Double,
-        startS: Double,
-        endS: Double,
         position: CGPoint = CGPoint(x: 0.5, y: 0.5),
         scale: CGFloat = 0.6
     ) {
         self.id = id
+        self.clipId = clipId
         self.sourceURL = sourceURL
         self.sourceDurationS = sourceDurationS
-        self.startS = startS
-        self.endS = endS
         self.position = position
         self.scale = scale
     }

@@ -15,6 +15,10 @@ public final class PersonSegmentationCompositor: NSObject, AVVideoCompositing {
 
     /// Cutout overlay placement + source.
     public static var activeCutout: CutoutOverlay?
+    /// Absolute stitch-timeline start time (seconds) of the cutout's clip.
+    public static var activeCutoutStartS: Double = 0
+    /// Absolute stitch-timeline end time (seconds) of the cutout's clip.
+    public static var activeCutoutEndS: Double = 0
     /// Final render canvas size (e.g. 1080×1920).
     public static var activeRenderSize: CGSize = CGSize(width: 1080, height: 1920)
     /// Per-clip transforms for the base track, indexed by absolute composition time range.
@@ -85,7 +89,7 @@ public final class PersonSegmentationCompositor: NSObject, AVVideoCompositing {
         var composite = baseImage ?? CIImage(color: .black).cropped(to: CGRect(origin: .zero, size: renderSize))
 
         if let cutout = Self.activeCutout,
-           timeS >= cutout.startS, timeS <= cutout.endS,
+           timeS >= Self.activeCutoutStartS, timeS <= Self.activeCutoutEndS,
            let cutoutPB = request.sourceFrame(byTrackID: Self.cutoutTrackID),
            let segmented = try? segmentPerson(pixelBuffer: cutoutPB) {
 

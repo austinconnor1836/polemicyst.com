@@ -7,6 +7,8 @@ public final class StitchTimeline: ObservableObject {
     @Published public var textOverlays: [TextOverlay] = []
     @Published public var cutoutOverlay: CutoutOverlay?  // v1: at most one cutout
     @Published public var layout: StitchLayout = .mobile
+    /// Number of clips currently mid-load from Photos. Drives placeholder cells in the grid.
+    @Published public var pendingClipCount: Int = 0
 
     public init() {}
 
@@ -22,21 +24,32 @@ public final class StitchTimeline: ObservableObject {
 
     public func removeClip(id: UUID) {
         clips.removeAll { $0.id == id }
-        // Drop any overlays that now extend past the end.
-        textOverlays = textOverlays.map { overlay in
-            var o = overlay
-            o.endS = min(o.endS, totalDurationS)
-            o.startS = min(o.startS, max(0, totalDurationS - 0.1))
-            return o
-        }
-        .filter { $0.durationS > 0.1 }
-        if let cutout = cutoutOverlay, cutout.startS >= totalDurationS {
+        // Drop any overlays whose target clip no longer exists.
+        textOverlays.removeAll { $0.clipId == id }
+        if cutoutOverlay?.clipId == id {
             cutoutOverlay = nil
         }
     }
 
     public func moveClip(from source: IndexSet, to destination: Int) {
         clips.move(fromOffsets: source, toOffset: destination)
+    }
+
+    /// Set the sandbox file URL on a clip once the background `loadTransferable` copy finishes.
+    public func updateClipSourceURL(id: UUID, url: URL) {
+        guard let idx = clips.firstIndex(where: { $0.id == id }) else { return }
+        clips[idx].sourceURL = url
+    }
+
+    /// Patch a clip's duration once we can read it from the file. Resets trimEndS to match
+    /// the new duration unless the user has manually trimmed.
+    public func updateClipDuration(id: UUID, durationS: Double) {
+        guard let idx = clips.firstIndex(where: { $0.id == id }) else { return }
+        let wasFullDuration = clips[idx].trimEndS == clips[idx].durationS || clips[idx].durationS == 0
+        clips[idx].durationS = durationS
+        if wasFullDuration {
+            clips[idx].trimEndS = durationS
+        }
     }
 
     // MARK: - Text overlay operations
