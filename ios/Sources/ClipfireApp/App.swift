@@ -58,7 +58,7 @@ struct ClipfireApp: App {
                                 .tag(0)
 
                             NavigationStack {
-                                MyStitchesView()
+                                MyStitchesView(api: apiClient)
                             }
                                 .tabItem {
                                     Label("Stitches", systemImage: "rectangle.split.3x1")

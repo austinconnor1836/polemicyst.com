@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 @MainActor
 public final class StitchTimeline: ObservableObject {
@@ -9,6 +10,9 @@ public final class StitchTimeline: ObservableObject {
     @Published public var layout: StitchLayout = .mobile
     /// Number of clips currently mid-load from Photos. Drives placeholder cells in the grid.
     @Published public var pendingClipCount: Int = 0
+    /// Cached preview thumbnails per clip id, populated by NSItemProvider.loadPreviewImage
+    /// the moment the picker closes. Excluded from `StitchTimelineSnapshot` — it's UI-only.
+    @Published public var previewImages: [UUID: UIImage] = [:]
 
     public init() {}
 
@@ -90,6 +94,25 @@ public final class StitchTimeline: ObservableObject {
             cutoutOverlay: cutoutOverlay,
             layout: layout
         )
+    }
+
+    // MARK: - Draft persistence
+
+    public func currentDraft(title: String) -> StitchDraft {
+        StitchDraft(
+            clips: clips,
+            textOverlays: textOverlays,
+            cutoutOverlay: cutoutOverlay,
+            layout: layout,
+            title: title
+        )
+    }
+
+    public func applyDraft(_ draft: StitchDraft) {
+        clips = draft.clips
+        textOverlays = draft.textOverlays
+        cutoutOverlay = draft.cutoutOverlay
+        layout = draft.layout
     }
 }
 

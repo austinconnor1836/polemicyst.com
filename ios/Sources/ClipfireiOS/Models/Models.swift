@@ -1157,6 +1157,24 @@ public struct ClientCompleteRenderRequest: Encodable {
     }
 }
 
+public struct PublishVideoRequest: Encodable {
+    public let sourceKind: String   // "stitch" | "clip" | "reaction"
+    public let sourceId: String     // composition id or clip id
+    public let caption: String
+    public let platforms: [String]  // ids like "youtube", "instagram", "twitter", "bluesky", "tiktok"
+    public init(sourceKind: String, sourceId: String, caption: String, platforms: [String]) {
+        self.sourceKind = sourceKind
+        self.sourceId = sourceId
+        self.caption = caption
+        self.platforms = platforms
+    }
+}
+
+public struct PublishVideoResponse: Codable {
+    public let publishRequestId: String
+    public let queuedPlatforms: [String]
+}
+
 public struct UpdateCompositionRequest: Encodable {
     public let title: String?
     public let audioMode: String?

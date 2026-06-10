@@ -38,6 +38,7 @@ public final class StitchEditorViewModel: ObservableObject {
     @Published public var stage: Stage = .idle
 
     private let api: APIClient
+    public var apiClient: APIClient { api }
     private let uploader: VideoUploadService
     private let renderer = StitchRenderer()
     private var currentRenderTask: Task<Void, Never>?
@@ -52,19 +53,42 @@ public final class StitchEditorViewModel: ObservableObject {
         // edits to timeline.pendingClipCount / timeline.clips don't trigger view re-renders
         // until something on the ViewModel itself changes.
         timelineSubscription = timeline.objectWillChange.sink { [weak self] in
-            self?.objectWillChange.send()
+            guard let self else { return }
+            self.objectWillChange.send()
+            // Persist the in-progress draft after each mutation so it survives reinstalls.
+            self.persistDraft()
+        }
+
+        // Restore an in-progress draft, if any.
+        if let draft = StitchDraftStore.load() {
+            timeline.applyDraft(draft)
+            title = draft.title
+        }
+    }
+
+    private func persistDraft() {
+        // Skip persistence while a render is in flight — the snapshot is being consumed.
+        if case .rendering = stage { return }
+        if case .uploading = stage { return }
+        let draft = timeline.currentDraft(title: title)
+        if draft.isEmpty {
+            StitchDraftStore.clear()
+        } else {
+            StitchDraftStore.save(draft)
         }
     }
 
     // MARK: Clip picking
 
-    public func addClips(from items: [PhotosPickerItem]) async {
-        guard !items.isEmpty else { return }
+    /// Accept picks from the UIKit-backed `StitchClipPicker`. Cells appear instantly with
+    /// PHPicker preview thumbnails (no Photos auth, no PhotosPicker). The slower
+    /// `loadFileRepresentation` runs in the background per clip; render awaits any
+    /// still-pending copies before composing.
+    public func addClips(from providers: [NSItemProvider]) async {
+        guard !providers.isEmpty else { return }
 
-        // INSTANT: insert one skeleton clip per picked item, in pick order. Each gets a
-        // spinner in the grid via StitchThumbnail's default empty-image state. The user
-        // sees N cells appear the moment the picker closes.
-        let clipIds: [UUID] = items.map { _ in UUID() }
+        let clipIds: [UUID] = providers.map { _ in UUID() }
+        // 1) Insert skeleton cells RIGHT NOW so the user sees something instantly.
         for clipId in clipIds {
             timeline.addClip(StitchClip(
                 id: clipId,
@@ -74,40 +98,37 @@ public final class StitchEditorViewModel: ObservableObject {
             ))
         }
 
-        // Parallel file copies in the background. Each clip fills in (URL + duration) as
-        // soon as its own copy finishes — no waiting on the slowest one.
-        // Track the umbrella task so render() can await any still-pending copies.
+        // 2) Kick off the preview-image + file-copy work for each clip in parallel.
         copyTask?.cancel()
         copyTask = Task { [weak self] in
             await withTaskGroup(of: Void.self) { group in
-                for (idx, item) in items.enumerated() {
+                for (idx, provider) in providers.enumerated() {
                     let clipId = clipIds[idx]
                     group.addTask { [weak self] in
-                        await self?.copyOneFile(clipId: clipId, item: item)
+                        await self?.loadFromProvider(clipId: clipId, provider: provider)
                     }
                 }
             }
         }
     }
 
-    /// Background file copy for one clip. Runs from inside the umbrella copyTask. The
-    /// method is @MainActor-isolated via the class — `await` points release main while
-    /// waiting on IO, and we're back on main when we mutate the timeline.
-    private func copyOneFile(clipId: UUID, item: PhotosPickerItem) async {
-        do {
-            guard let movie = try await item.loadTransferable(
-                type: CompositionVideoTransferable.self
-            ) else {
-                timeline.removeClip(id: clipId)
-                return
-            }
-            let avAsset = AVURLAsset(url: movie.url)
-            let durationS = (try? await avAsset.load(.duration)).map { CMTimeGetSeconds($0) } ?? 0
-            timeline.updateClipSourceURL(id: clipId, url: movie.url)
-            timeline.updateClipDuration(id: clipId, durationS: durationS)
-        } catch {
-            timeline.removeClip(id: clipId)
+    /// Loads the preview image (fast, sets `previewImages[clipId]`) and the underlying
+    /// file (slow, sets the clip's `sourceURL` + `durationS`) for one picked item.
+    private func loadFromProvider(clipId: UUID, provider: NSItemProvider) async {
+        // Preview thumbnail — typically a few hundred milliseconds, no file copy.
+        if let preview = await ItemProviderLoader.loadPreviewImage(provider) {
+            timeline.previewImages[clipId] = preview
         }
+        // Actual file — required by the renderer, blocks render but not the grid.
+        guard let url = await ItemProviderLoader.loadMovieFile(provider) else {
+            timeline.removeClip(id: clipId)
+            timeline.previewImages.removeValue(forKey: clipId)
+            return
+        }
+        let avAsset = AVURLAsset(url: url)
+        let durationS = (try? await avAsset.load(.duration)).map { CMTimeGetSeconds($0) } ?? 0
+        timeline.updateClipSourceURL(id: clipId, url: url)
+        timeline.updateClipDuration(id: clipId, durationS: durationS)
     }
 
     /// Called by render() before taking a snapshot — awaits the umbrella copyTask so every
@@ -191,6 +212,11 @@ public final class StitchEditorViewModel: ObservableObject {
                 )
                 LocalStitchStore.shared.add(stitch)
 
+                // Stitch shipped — drop the in-progress draft so the next session starts fresh.
+                StitchDraftStore.clear()
+                self.timeline = StitchTimeline()
+                self.title = ""
+
                 // From the user's perspective this is done. Surface success and dismiss.
                 self.stage = .completed(stitchId.uuidString)
 
@@ -273,7 +299,7 @@ public struct StitchEditorView: View {
     @StateObject private var viewModel: StitchEditorViewModel
     @State private var path = NavigationPath()
     @Environment(\.dismiss) private var dismiss
-    @State private var clipPickerItems: [PhotosPickerItem] = []
+    @State private var showClipPicker = false
     @State private var showErrorAlert = false
 
     public init(api: APIClient) {
@@ -285,7 +311,6 @@ public struct StitchEditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignTokens.largeSpacing) {
                     StepHeader(current: 1, total: 3, label: "Select Clips")
-                    layoutCard
                     clipsCard
                     nextButton(
                         label: "Next: Text Overlays",
@@ -313,14 +338,15 @@ public struct StitchEditorView: View {
                 case .cutout:
                     StitchCutoutStepView(viewModel: viewModel)
                 case .myStitches:
-                    MyStitchesView()
+                    MyStitchesView(api: viewModel.apiClient)
                 }
             }
-            .onChange(of: clipPickerItems) { _, items in
-                guard !items.isEmpty else { return }
-                let snapshot = items
-                clipPickerItems = []
-                Task { await viewModel.addClips(from: snapshot) }
+            .sheet(isPresented: $showClipPicker) {
+                StitchClipPicker(maxSelectionCount: 0) { providers in
+                    showClipPicker = false
+                    Task { await viewModel.addClips(from: providers) }
+                }
+                .ignoresSafeArea()
             }
             .onChange(of: viewModel.stage) { _, stage in
                 if case .failed = stage { showErrorAlert = true }
@@ -339,33 +365,14 @@ public struct StitchEditorView: View {
         }
     }
 
-    private var layoutCard: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.smallSpacing) {
-            Text("Layout").font(.headline).foregroundStyle(DesignTokens.textPrimary)
-            Picker("Layout", selection: $viewModel.timeline.layout) {
-                ForEach(StitchLayout.allCases) { layout in
-                    Text(layout.label).tag(layout)
-                }
-            }
-            .pickerStyle(.segmented)
-        }
-        .padding()
-        .background(DesignTokens.surface)
-        .cornerRadius(DesignTokens.cornerRadius)
-    }
-
     private var clipsCard: some View {
         VStack(alignment: .leading, spacing: DesignTokens.spacing) {
             HStack {
                 Text("Clips").font(.headline).foregroundStyle(DesignTokens.textPrimary)
                 Spacer()
-                PhotosPicker(
-                    selection: $clipPickerItems,
-                    maxSelectionCount: 0,
-                    selectionBehavior: .ordered,
-                    matching: .videos,
-                    photoLibrary: .shared()
-                ) {
+                Button {
+                    showClipPicker = true
+                } label: {
                     Label("Add", systemImage: "plus.circle.fill")
                         .foregroundStyle(DesignTokens.accent)
                 }
@@ -387,6 +394,7 @@ public struct StitchEditorView: View {
                         ClipThumbCell(
                             order: index + 1,
                             clip: clip,
+                            cachedPreview: viewModel.timeline.previewImages[clip.id],
                             onRemove: { viewModel.timeline.removeClip(id: clip.id) }
                         )
                     }
@@ -414,12 +422,13 @@ private struct StitchTextStepView: View {
     @ObservedObject var viewModel: StitchEditorViewModel
     let onNext: () -> Void
     @State private var addingTextForClipId: UUID?
+    @State private var editingOverlayId: UUID?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignTokens.largeSpacing) {
                 StepHeader(current: 2, total: 3, label: "Text Overlays")
-                Text("Tap a clip to add text or text-with-background that shows during that clip. This step is optional.")
+                Text("Tap a clip's Text button to add an overlay. Tap an existing chip to drag/pinch its position and size like Instagram. This step is optional.")
                     .font(.subheadline)
                     .foregroundStyle(DesignTokens.muted)
 
@@ -428,8 +437,10 @@ private struct StitchTextStepView: View {
                         ClipOverlayRow(
                             order: index + 1,
                             clip: clip,
+                            cachedPreview: viewModel.timeline.previewImages[clip.id],
                             overlays: viewModel.timeline.textOverlays.filter { $0.clipId == clip.id },
                             onAddText: { addingTextForClipId = clip.id },
+                            onEditOverlay: { id in editingOverlayId = id },
                             onRemoveOverlay: { id in viewModel.timeline.removeTextOverlay(id: id) }
                         )
                     }
@@ -449,6 +460,29 @@ private struct StitchTextStepView: View {
             AddTextOverlaySheet(clipId: wrapper.id) { overlay in
                 viewModel.timeline.addTextOverlay(overlay)
                 addingTextForClipId = nil
+                // After adding, immediately open the positioning editor (Instagram pattern).
+                editingOverlayId = overlay.id
+            }
+        }
+        .fullScreenCover(item: Binding(
+            get: { editingOverlayId.map { ClipIdWrapper(id: $0) } },
+            set: { editingOverlayId = $0?.id }
+        )) { wrapper in
+            if let overlay = viewModel.timeline.textOverlays.first(where: { $0.id == wrapper.id }),
+               let clip = viewModel.timeline.clips.first(where: { $0.id == overlay.clipId }) {
+                TextOverlayEditorView(
+                    clip: clip,
+                    cachedPreview: viewModel.timeline.previewImages[clip.id],
+                    layout: viewModel.timeline.layout,
+                    overlay: Binding(
+                        get: {
+                            viewModel.timeline.textOverlays.first(where: { $0.id == wrapper.id }) ?? overlay
+                        },
+                        set: { newValue in
+                            viewModel.timeline.updateTextOverlay(newValue)
+                        }
+                    )
+                )
             }
         }
     }
@@ -461,14 +495,16 @@ private struct ClipIdWrapper: Identifiable {
 private struct ClipOverlayRow: View {
     let order: Int
     let clip: StitchClip
+    let cachedPreview: UIImage?
     let overlays: [TextOverlay]
     let onAddText: () -> Void
+    let onEditOverlay: (UUID) -> Void
     let onRemoveOverlay: (UUID) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignTokens.smallSpacing) {
             HStack(spacing: DesignTokens.spacing) {
-                StitchThumbnail(clip: clip)
+                StitchThumbnail(clip: clip, cachedPreview: cachedPreview)
                     .cornerRadius(8)
                     .frame(width: 80, height: 80)
                 VStack(alignment: .leading, spacing: 2) {
@@ -492,27 +528,35 @@ private struct ClipOverlayRow: View {
             if !overlays.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(overlays) { overlay in
-                        HStack(spacing: 6) {
-                            Image(systemName: overlay.hasBackground ? "textformat.alt" : "textformat")
-                                .foregroundStyle(DesignTokens.muted)
-                                .font(.caption)
-                            Text(overlay.text)
-                                .font(.caption)
-                                .foregroundStyle(DesignTokens.textPrimary)
-                                .lineLimit(1)
-                            Spacer()
-                            Button {
-                                onRemoveOverlay(overlay.id)
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.red)
+                        Button {
+                            onEditOverlay(overlay.id)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: overlay.hasBackground ? "textformat.alt" : "textformat")
+                                    .foregroundStyle(DesignTokens.muted)
+                                    .font(.caption)
+                                Text(overlay.text)
+                                    .font(.caption)
+                                    .foregroundStyle(DesignTokens.textPrimary)
+                                    .lineLimit(1)
+                                Spacer()
+                                Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                                    .font(.caption2)
+                                    .foregroundStyle(DesignTokens.muted)
+                                Button {
+                                    onRemoveOverlay(overlay.id)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.red)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(DesignTokens.background)
+                            .cornerRadius(6)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(DesignTokens.background)
-                        .cornerRadius(6)
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.leading, 88)
@@ -830,26 +874,31 @@ private func nextButton(label: String, enabled: Bool, action: @escaping () -> Vo
 /// Square thumbnail. Prefers `PHImageManager` (fast, uses Photos' cached thumbnails) when
 /// a `photoIdentifier` is provided; falls back to `AVAssetImageGenerator` on a sandbox
 /// file URL otherwise.
-private struct StitchThumbnail: View {
+struct StitchThumbnail: View {
     let sourceURL: URL?
     let photoIdentifier: String?
+    let cachedPreview: UIImage?
     @State private var image: UIImage?
 
-    init(clip: StitchClip) {
+    init(clip: StitchClip, cachedPreview: UIImage? = nil) {
         self.sourceURL = clip.sourceURL
         self.photoIdentifier = clip.photoAssetIdentifier
+        self.cachedPreview = cachedPreview
     }
 
     init(sourceURL: URL?, photoIdentifier: String? = nil) {
         self.sourceURL = sourceURL
         self.photoIdentifier = photoIdentifier
+        self.cachedPreview = nil
     }
+
+    private var displayedImage: UIImage? { cachedPreview ?? image }
 
     var body: some View {
         ZStack {
             Color.black
-            if let image {
-                Image(uiImage: image)
+            if let img = displayedImage {
+                Image(uiImage: img)
                     .resizable()
                     .scaledToFill()
             } else {
@@ -859,15 +908,21 @@ private struct StitchThumbnail: View {
         .aspectRatio(1, contentMode: .fit)
         .clipped()
         .task(id: photoIdentifier) {
-            await loadThumbnail()
+            if displayedImage == nil { await loadThumbnail() }
         }
         .task(id: sourceURL) {
-            if image == nil { await loadThumbnail() }
+            if displayedImage == nil { await loadThumbnail() }
         }
     }
 
     private func loadThumbnail() async {
-        if let id = photoIdentifier {
+        // Guard Photos APIs on explicit auth status. Without this guard, calling
+        // PHAsset/PHImageManager when auth is missing has been correlated with crashes
+        // on iOS 26.5. With auth granted, we get instant cached thumbnails.
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        let mayUsePhotos = (status == .authorized || status == .limited)
+
+        if mayUsePhotos, let id = photoIdentifier {
             let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
             if let asset = fetch.firstObject {
                 let options = PHImageRequestOptions()
@@ -938,10 +993,11 @@ private struct PendingClipCell: View {
 private struct ClipThumbCell: View {
     let order: Int
     let clip: StitchClip
+    let cachedPreview: UIImage?
     let onRemove: () -> Void
 
     var body: some View {
-        StitchThumbnail(clip: clip)
+        StitchThumbnail(clip: clip, cachedPreview: cachedPreview)
             .cornerRadius(8)
             .overlay(alignment: .topLeading) {
                 Text("\(order)")

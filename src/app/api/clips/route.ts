@@ -14,6 +14,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Cap the result set so heavy users don't time out the request. 100 is enough to
+    // populate the Clips screen with the most recent generations; pagination can come
+    // later if a user actually has more relevant clips than that.
     const clips = await prisma.video.findMany({
       where: {
         userId: user.id,
@@ -25,6 +28,7 @@ export async function GET(req: NextRequest) {
         ],
       },
       orderBy: { createdAt: 'desc' },
+      take: 100,
       include: {
         sourceVideo: {
           select: { id: true, videoTitle: true, s3Url: true },

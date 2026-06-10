@@ -7,8 +7,13 @@ public struct MyStitchesView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var playingStitch: LocalStitch?
     @State private var confirmingDeleteOf: LocalStitch?
+    @State private var publishingStitch: LocalStitch?
 
-    public init() {}
+    private let api: APIClient?
+
+    public init(api: APIClient? = nil) {
+        self.api = api
+    }
 
     public var body: some View {
         ScrollView {
@@ -24,7 +29,9 @@ public struct MyStitchesView: View {
                         StitchCard(
                             stitch: stitch,
                             url: store.localURL(for: stitch),
+                            canPublish: api != nil,
                             onTap: { playingStitch = stitch },
+                            onPublish: { publishingStitch = stitch },
                             onDelete: { confirmingDeleteOf = stitch }
                         )
                     }
@@ -42,6 +49,21 @@ public struct MyStitchesView: View {
         }
         .sheet(item: $playingStitch) { stitch in
             StitchPlayerSheet(url: store.localURL(for: stitch))
+        }
+        .sheet(item: $publishingStitch) { stitch in
+            if let api {
+                VideoPublishSheet(
+                    source: VideoPublishSheet.VideoSource(
+                        id: stitch.serverCompositionId ?? stitch.id.uuidString,
+                        kind: .stitch,
+                        title: stitch.title,
+                        durationS: stitch.durationS,
+                        thumbnail: nil,
+                        localFileURL: store.localURL(for: stitch)
+                    ),
+                    api: api
+                )
+            }
         }
         .alert(
             "Delete stitch?",
@@ -79,7 +101,9 @@ public struct MyStitchesView: View {
 private struct StitchCard: View {
     let stitch: LocalStitch
     let url: URL
+    let canPublish: Bool
     let onTap: () -> Void
+    let onPublish: () -> Void
     let onDelete: () -> Void
 
     @State private var thumbnail: UIImage?
@@ -131,6 +155,19 @@ private struct StitchCard: View {
                 Text(stitch.createdAt, style: .relative)
                     .font(.caption2)
                     .foregroundStyle(DesignTokens.muted)
+            }
+
+            if canPublish {
+                Button(action: onPublish) {
+                    Label("Publish", systemImage: "paperplane.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 28)
+                        .background(DesignTokens.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
             }
         }
         .task(id: url) {
