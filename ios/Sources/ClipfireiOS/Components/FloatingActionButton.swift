@@ -25,12 +25,20 @@ public struct ContentTypePicker: View {
     let onVideo: () -> Void
     var onSocialPost: (() -> Void)?
     var onReaction: (() -> Void)?
+    var onStitch: (() -> Void)?
 
-    public init(onPublication: @escaping () -> Void, onVideo: @escaping () -> Void, onSocialPost: (() -> Void)? = nil, onReaction: (() -> Void)? = nil) {
+    public init(
+        onPublication: @escaping () -> Void,
+        onVideo: @escaping () -> Void,
+        onSocialPost: (() -> Void)? = nil,
+        onReaction: (() -> Void)? = nil,
+        onStitch: (() -> Void)? = nil
+    ) {
         self.onPublication = onPublication
         self.onVideo = onVideo
         self.onSocialPost = onSocialPost
         self.onReaction = onReaction
+        self.onStitch = onStitch
     }
 
     public var body: some View {
@@ -119,12 +127,34 @@ public struct ContentTypePicker: View {
                     }
                     .listRowBackground(DesignTokens.surface)
                 }
+
+                if let onStitch {
+                    Button {
+                        onStitch()
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Stitch")
+                                    .font(.body)
+                                    .foregroundStyle(DesignTokens.textPrimary)
+                                Text("Stitch videos together with text or cutout overlays")
+                                    .font(.caption)
+                                    .foregroundStyle(DesignTokens.muted)
+                            }
+                        } icon: {
+                            Image(systemName: "rectangle.split.3x1")
+                                .foregroundStyle(DesignTokens.accent)
+                                .frame(width: 32)
+                        }
+                    }
+                    .listRowBackground(DesignTokens.surface)
+                }
             }
             .scrollContentBackground(.hidden)
             .background(DesignTokens.background.ignoresSafeArea())
             .navigationTitle("Create")
             .navigationBarTitleDisplayMode(.inline)
         }
-        .presentationDetents([.height(350)])
+        .presentationDetents([.height(420)])
     }
 }

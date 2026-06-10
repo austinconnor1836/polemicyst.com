@@ -26,6 +26,7 @@ struct ClipfireApp: App {
     @State private var showPublicationWizard = false
     @State private var showAddVideo = false
     @State private var showSocialPostComposer = false
+    @State private var showStitchEditor = false
 
     private let apiClient: APIClient
 
@@ -116,8 +117,17 @@ struct ClipfireApp: App {
                             onReaction: {
                                 showContentPicker = false
                                 tabSelection = 5
+                            },
+                            onStitch: {
+                                showContentPicker = false
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showStitchEditor = true
+                                }
                             }
                         )
+                    }
+                    .sheet(isPresented: $showStitchEditor) {
+                        StitchEditorView(api: apiClient)
                     }
                     .sheet(isPresented: $showAddVideo) {
                         AddVideoView(api: apiClient, onVideoAdded: {
