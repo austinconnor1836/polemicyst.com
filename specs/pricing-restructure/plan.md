@@ -105,7 +105,19 @@ but touch different files.
 
 ## Validation gate (every task)
 
-- `npx prisma generate` (after schema changes) — must succeed.
-- `npm run lint` — must pass on touched TS.
-- `npx next build` — attempt; report env-related failures rather than silently passing.
-- Mobile tasks: ensure the plan-id enum compiles; full native build is best-effort.
+A task is **done** only when the checks CI runs are green — not just what was runnable
+locally. Run the gate matching the files touched:
+
+- **Web / shared / workers / prisma:**
+  - `npx prisma generate` (after schema changes) — must succeed.
+  - `npx tsc --noEmit` — must pass.
+  - `npm run lint` — must pass.
+  - `npm run build` — must pass (report env-related failures, don't silently skip).
+- **Android (`android/**`):** `cd android && ./gradlew testDevDebugUnitTest` (compiles + unit tests).
+- **iOS (`ios/**`):** `cd ios && xcodegen generate && xcodebuild test -project Clipfire.xcodeproj -scheme ClipfireApp -skip-testing:ClipfireUITests -destination 'platform=iOS Simulator,name=iPhone 16'`.
+
+**If the environment can't run a required check** (e.g. no Android SDK / Xcode in a cloud
+session), the task is **"CI-gated, not locally verified"** — do NOT mark it done or merge
+until the PR's corresponding required check (`Lint & Build` / `Android Tests` / `iOS
+Tests`) is green. Those run on every PR via `.github/workflows/ci.yml`; full protocol in
+`docs/CI_REQUIRED_CHECKS.md`.
