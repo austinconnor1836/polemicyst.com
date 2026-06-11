@@ -1,17 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { PLANS } from '@/lib/plans';
 
 type StageRow = {
   stage: string;
@@ -39,15 +32,19 @@ type CostData = {
   totalUsd: number;
   totalEvents: number;
   days: number;
+  avgCostPerMinute: number;
+  processedMinutes: number;
+  costPerMinuteSource: 'usage_month' | 'duration_fallback' | 'none';
   byStage: StageRow[];
   byJob: JobRow[];
   daily: DailyRow[];
 };
 
-const PLANS = [
-  { name: 'Pro', priceUsd: 19, clipsPerMonth: 100 },
-  { name: 'Business', priceUsd: 49, clipsPerMonth: 500 },
-];
+/** Parse a display price like "$19" into a number. Returns 0 for "$0" / unparseable. */
+function parseMonthlyPrice(display: string): number {
+  const n = Number(display.replace(/[^0-9.]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
 
 function formatUsd(n: number): string {
   if (n < 0.01 && n > 0) return `$${n.toFixed(6)}`;
@@ -309,35 +306,84 @@ export default function AdminCostsPage() {
           <span className="text-muted-foreground text-xs">{showMargin ? '−' : '+'}</span>
         </button>
         {showMargin && (
-          <div className="px-3 pb-3">
-            <p className="text-[10px] text-muted-foreground mb-3">
-              Based on avg cost per job of {formatUsd(avgCostPerClip)}
+          <div className="px-3 pb-3 space-y-3">
+            {/* Hero: cost per upload minute */}
+            <div className="rounded-lg bg-muted/20 p-3 flex items-baseline justify-between">
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Cost per upload minute
+                </p>
+                <p className="text-xl font-bold font-mono">{formatUsd(data.avgCostPerMinute)}</p>
+              </div>
+              <p className="text-[10px] text-muted-foreground text-right max-w-[55%]">
+                {data.costPerMinuteSource === 'usage_month' && (
+                  <>
+                    {data.processedMinutes.toFixed(0)} min processed
+                    <br />
+                    (from UsageMonth)
+                  </>
+                )}
+                {data.costPerMinuteSource === 'duration_fallback' && (
+                  <em>
+                    Fallback: derived from CostEvent.durationMs (no UsageMonth data in window)
+                  </em>
+                )}
+                {data.costPerMinuteSource === 'none' && (
+                  <em>No minute data — projections will be $0</em>
+                )}
+              </p>
+            </div>
+
+            <p className="text-[10px] italic text-muted-foreground">
+              Numbers are placeholders pending WTP research.
             </p>
-            <div className="space-y-3">
-              {PLANS.map((plan) => {
-                const estCost = avgCostPerClip * plan.clipsPerMonth;
-                const margin = plan.priceUsd - estCost;
-                const marginPct =
-                  plan.priceUsd > 0 ? ((margin / plan.priceUsd) * 100).toFixed(1) : '0';
-                return (
-                  <div key={plan.name} className="rounded-lg bg-muted/20 p-2.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-semibold">{plan.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        ${plan.priceUsd}/mo · {plan.clipsPerMonth} clips
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs">
-                      <span className="text-muted-foreground">Est. cost: {formatUsd(estCost)}</span>
-                      <span
-                        className={`font-mono font-semibold ${margin >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
+
+            {/* Plan table */}
+            <div className="rounded-lg border border-border/40 overflow-hidden">
+              <div className="grid grid-cols-12 gap-1 px-2 py-1.5 bg-muted/30 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+                <div className="col-span-2">Plan</div>
+                <div className="col-span-2 text-right">Price</div>
+                <div className="col-span-2 text-right">Min/mo</div>
+                <div className="col-span-2 text-right">COGS</div>
+                <div className="col-span-2 text-right">Margin</div>
+                <div className="col-span-2 text-right">Margin %</div>
+              </div>
+              {Object.values(PLANS)
+                .filter((p) => p.id !== 'free')
+                .map((plan) => {
+                  const revenue = parseMonthlyPrice(plan.monthlyPriceDisplay);
+                  const minutes = plan.limits.uploadMinutesPerMonth;
+                  const cogs = data.avgCostPerMinute * minutes;
+                  const margin = revenue - cogs;
+                  const marginPct = revenue > 0 ? ((margin / revenue) * 100).toFixed(1) : '0';
+                  return (
+                    <div
+                      key={plan.id}
+                      className="grid grid-cols-12 gap-1 px-2 py-2 text-xs items-center border-t border-border/30"
+                    >
+                      <div className="col-span-2 font-semibold">{plan.name}</div>
+                      <div className="col-span-2 text-right font-mono">
+                        {plan.monthlyPriceDisplay}
+                      </div>
+                      <div className="col-span-2 text-right font-mono">
+                        {minutes.toLocaleString()}
+                      </div>
+                      <div className="col-span-2 text-right font-mono text-muted-foreground">
+                        {formatUsd(cogs)}
+                      </div>
+                      <div
+                        className={`col-span-2 text-right font-mono font-semibold ${margin >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
                       >
-                        {formatUsd(margin)} ({marginPct}%)
-                      </span>
+                        {formatUsd(margin)}
+                      </div>
+                      <div
+                        className={`col-span-2 text-right font-mono font-semibold ${margin >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
+                      >
+                        {marginPct}%
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           </div>
         )}
