@@ -682,6 +682,12 @@ components:
       properties:
         feeds:
           type: integer
+        uploadMinutesUsed:
+          type: number
+          description: Upload minutes consumed this month (from UsageMonth.processedMinutes).
+        uploadMinutesLimit:
+          type: integer
+          description: Plan limit on upload minutes per month, echoed from PLANS.
         clipsThisMonth:
           type: integer
         costThisMonth:

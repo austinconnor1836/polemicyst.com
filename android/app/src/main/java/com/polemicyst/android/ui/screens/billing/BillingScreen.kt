@@ -100,12 +100,12 @@ private fun BillingContent(subscription: SubscriptionInfo) {
             limit = subscription.limits.feeds,
         )
 
-        // TODO(pricing): label unit will be "minutes" once backend confirms final field name.
+        // Prefer the API-echoed limit; fall back to the plan limit for older servers.
         UsageMeter(
             icon = Icons.Filled.Timer,
             label = "Upload Minutes",
             used = subscription.usage.uploadMinutesUsed,
-            limit = subscription.limits.uploadMinutesPerMonth,
+            limit = subscription.usage.uploadMinutesLimit ?: subscription.limits.uploadMinutesPerMonth,
         )
 
         Spacer(modifier = Modifier.height(8.dp))

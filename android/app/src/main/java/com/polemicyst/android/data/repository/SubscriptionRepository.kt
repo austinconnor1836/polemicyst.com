@@ -58,10 +58,17 @@ data class PlanLimits(
     val prioritySupport: Boolean = false,
 )
 
+/**
+ * Per-month usage rollup returned by `GET /api/user/subscription`.
+ * - uploadMinutesUsed: from `UsageMonth.processedMinutes` for the current month.
+ * - uploadMinutesLimit: plan limit echoed by the API (optional for older servers;
+ *   callers should fall back to `PlanLimits.uploadMinutesPerMonth` when null).
+ */
 @JsonClass(generateAdapter = true)
 data class PlanUsage(
     val feeds: Int = 0,
     val uploadMinutesUsed: Int = 0,
+    val uploadMinutesLimit: Int? = null,
 )
 
 interface SubscriptionApi {
