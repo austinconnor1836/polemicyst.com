@@ -39,6 +39,25 @@ model User {
   uploadLogs               UploadLog[]
   socialPosts              SocialPost[]
   compositions             Composition[]
+  usageMonths              UsageMonth[]
+}
+
+/// Per-user, per-month usage rollup. Canonical meter for the upload-minutes
+/// pricing model: the clip pipeline increments `processedMinutes` once per
+/// processed source video, and `checkUploadMinutesQuota` reads it.
+model UsageMonth {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 'YYYY-MM' (UTC) bucket.
+  yearMonth        String
+  processedMinutes Float    @default(0)
+  clipCount        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, yearMonth])
+  @@index([userId])
 }
 
 model TemplatePreferences {
