@@ -25,6 +25,7 @@ model User {
   image                    String?
   defaultLLMProvider       String               @default("ollama")
   defaultPublishPlatforms  Json?                // string[] of platform identifiers for social posting defaults
+  acceptedAgeGate          Boolean?             // COPPA defense (W008): null=grandfathered legacy user, true=explicit 13+ consent at signup
   accounts                 Account[]
   sessions                 Session[]
   videos                   Video[]
