@@ -9,6 +9,7 @@ import { inter } from './ui/fonts';
 import StoreProvider from './StoreProvider';
 import SharedLayout from './SharedLayout';
 import SessionProviderWrapper from './_components/SessionProviderWrapper'; // ✅ Import the wrapper
+import CookieBanner from '@/components/CookieBanner';
 
 function getSiteLabel(host: string): string {
   if (host.startsWith('localhost') || host.startsWith('127.0.0.1')) {
@@ -109,6 +110,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </SessionProviderWrapper>
           </HamburgerProvider>
         </StoreProvider>
+        <CookieBanner />
       </body>
     </html>
   );
