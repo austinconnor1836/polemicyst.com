@@ -4,13 +4,15 @@ import { prisma } from '@shared/lib/prisma';
 import { getStripeClient, getStripePriceId } from '@/lib/stripe';
 import type { PlanId } from '@/lib/plans';
 
+const PAID_PLANS: PlanId[] = ['creator', 'pro', 'agency'];
+
 export async function POST(req: NextRequest) {
   const user = await getAuthenticatedUser(req);
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: { planId?: string };
+  let body: { planId?: string; interval?: string };
   try {
     body = await req.json();
   } catch {
@@ -18,14 +20,17 @@ export async function POST(req: NextRequest) {
   }
 
   const planId = body.planId as PlanId;
-  if (planId !== 'pro' && planId !== 'business') {
+  if (!PAID_PLANS.includes(planId)) {
     return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
   }
 
-  const priceId = getStripePriceId(planId);
+  const rawInterval = typeof body.interval === 'string' ? body.interval.toLowerCase() : 'monthly';
+  const interval: 'monthly' | 'annual' = rawInterval === 'annual' ? 'annual' : 'monthly';
+
+  const priceId = getStripePriceId(planId, interval);
   if (!priceId) {
     return NextResponse.json(
-      { error: `Stripe price not configured for ${planId} plan` },
+      { error: `Stripe price not configured for ${planId} plan (${interval})` },
       { status: 500 }
     );
   }

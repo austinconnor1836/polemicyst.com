@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
 import type { LLMProvider } from '@shared/virality';
-import { checkLlmProviderAccess } from '@/lib/plans';
 
 function normalizeProvider(value?: string | null): LLMProvider {
   return value && value.toLowerCase() === 'ollama' ? 'ollama' : 'gemini';
@@ -26,11 +25,11 @@ async function handleUpdate(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: any;
+  let body: { llmProvider?: unknown };
   try {
     body = await req.json();
   } catch {
-    body = null;
+    body = {};
   }
 
   const requested = typeof body?.llmProvider === 'string' ? body.llmProvider.toLowerCase() : '';
@@ -40,17 +39,8 @@ async function handleUpdate(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid provider' }, { status: 400 });
   }
 
-  const providerAccess = checkLlmProviderAccess(provider, user.subscriptionPlan);
-  if (!providerAccess.allowed) {
-    return NextResponse.json(
-      {
-        error: providerAccess.message,
-        code: 'PLAN_RESTRICTED',
-        allowedProviders: providerAccess.allowedProviders,
-      },
-      { status: 403 }
-    );
-  }
+  // LLM provider access is no longer gated by plan — every tier gets the best
+  // available scoring. No plan check needed here.
 
   await prisma.user.update({
     where: { id: user.id },
