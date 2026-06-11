@@ -58,7 +58,8 @@ public enum MockData {
         ),
         usage: UsageInfo(
             feeds: 3,
-            uploadMinutesThisMonth: 87,
+            uploadMinutesUsed: 87,
+            uploadMinutesLimit: 300,
             costThisMonth: CostSummary(totalUsd: 1.42, eventCount: 54)
         ),
         hasStripeCustomer: true
