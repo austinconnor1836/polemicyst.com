@@ -36,7 +36,7 @@ const PlatformList = () => {
     if (provider === 'bluesky') {
       router.push(`/auth/signin?provider=bluesky`); // Redirect to custom Bluesky sign-in page
     } else {
-      await signIn(provider, { callbackUrl: '/clips-genie' });
+      await signIn(provider, { callbackUrl: '/multiple-file-upload' });
     }
 
     // Refresh authentication status after a short delay
