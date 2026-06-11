@@ -137,7 +137,7 @@ export default function Home() {
           </h1>
 
           <p className="mx-auto mt-6 max-w-2xl text-lg text-muted sm:text-xl">
-            Polemicyst monitors your video sources, finds the most share-worthy moments using AI
+            Clipfire monitors your video sources, finds the most share-worthy moments using AI
             scoring, and exports platform-ready clips in seconds.
           </p>
 
