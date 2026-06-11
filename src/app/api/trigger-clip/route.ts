@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { checkUploadMinutesQuota } from '@/lib/plans';
 import { triggerClipGeneration } from '@shared/services/clip-service';
+import { applyLimit, createLimiter } from '@/lib/rate-limit';
+
+const triggerClipLimiter = createLimiter({
+  tokens: 30,
+  window: '1 m',
+  prefix: 'rl:trigger-clip',
+});
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,6 +16,9 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const limited = await applyLimit(req, user.id, triggerClipLimiter);
+    if (limited) return limited;
 
     const {
       feedVideoId,

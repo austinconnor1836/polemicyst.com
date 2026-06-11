@@ -10,15 +10,25 @@ import {
 import { findOrCreateManualFeed, createFeedVideoRecord } from '@shared/services/upload-service';
 import { logJob } from '@shared/lib/job-logger';
 import { logUpload, getUploadContext } from '@shared/lib/upload-logger';
+import { applyLimit, createLimiter } from '@/lib/rate-limit';
 
 const S3_BUCKET = process.env.S3_BUCKET || 'clips-genie-uploads';
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
+
+const uploadsCompleteLimiter = createLimiter({
+  tokens: 30,
+  window: '1 m',
+  prefix: 'rl:uploads-complete',
+});
 
 export async function POST(req: NextRequest) {
   const user = await getAuthenticatedUser(req);
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  const limited = await applyLimit(req, user.id, uploadsCompleteLimiter);
+  if (limited) return limited;
 
   const startMs = Date.now();
   const { userAgent } = getUploadContext(req);

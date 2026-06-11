@@ -80,3 +80,10 @@ STRIPE_AGENCY_ANNUAL_PRICE_ID=
 # Prefer the per-interval vars above for new deployments.
 STRIPE_PRO_PRICE_ID=
 STRIPE_BUSINESS_PRICE_ID=
+
+# --- Rate limiting (Upstash Redis) ---
+# When both are set, the rate limiter uses Upstash (shared across instances).
+# When unset, falls back to an in-memory per-process limiter — fine for dev,
+# NOT safe in multi-instance production deployments.
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
