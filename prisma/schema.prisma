@@ -357,6 +357,9 @@ model AutomationRule {
   cropTemplateId   String?
   autoPublish      Boolean  @default(false)
   publishPlatforms Json?
+  autoEditSettings     Json?
+  quoteGraphicsEnabled Boolean  @default(false)
+  quoteGraphicStyle    String   @default("pull-quote") // pull-quote | lower-third | highlight-card | side-panel | typewriter
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -657,7 +660,7 @@ model Composition {
   title            String
   mode             String   @default("pre-synced") // pre-synced | timeline
   status           String   @default("draft") // draft | rendering | completed | failed
-  audioMode        String   @default("creator") // creator | reference | both
+  audioMode        String   @default("both") // creator | reference | both
   creatorVolume    Float    @default(1.0)
   referenceVolume  Float    @default(1.0)
   creatorS3Key     String?
@@ -669,9 +672,16 @@ model Composition {
   creatorTrimEndS     Float?
   creatorTranscript      String?  @db.Text
   creatorTranscriptJson  Json?
-  cuts                    Json?    // Array<{ id: string; startS: number; endS: number; targets: string[] }>
+  cuts                    Json?    // Array<{ id: string; startS: number; endS: number }> — applied globally to all tracks
+  silenceRegions          Json?    // Array<{ startS: number; endS: number }> — cached FFmpeg silencedetect output
+  autoEditResult          Json?    // { cuts: AutoEditCut[]; summary: AutoEditSummary } — cached auto-edit analysis
+  detectedQuotes          Json?    // Array<DetectedQuote> — LLM-detected cited/quoted passages
+  quoteGraphicStyle       String?  // pull-quote | lower-third | highlight-card | side-panel | typewriter
+  quoteGraphicsEnabled    Boolean  @default(false)
   thumbnailCutoutPosition String  @default("right") // left | right
   thumbnailCutoutSize     String  @default("large")  // small | medium | large
+  thumbnailBgMode         String  @default("frame") // "frame" | "ai"
+  thumbnailBgCrop         String?               // JSON: {x,y,w,h} crop rect for thumbnail background
   createdAt           DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -688,6 +698,7 @@ model CompositionTrack {
   id            String      @id @default(cuid())
   compositionId String
   composition   Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
+  trackType     String      @default("reference") // reference | creator
   label         String?
   s3Key         String
   s3Url         String
@@ -751,6 +762,7 @@ model ThumbnailAsset {
   s3Url           String
   frameTimestampS Float
   visionScore     Float?
+  styleVariant    String?     // null for reference/cutout; "cinematic" | "vivid" | "gradient" | "warm" for ai_background
   createdAt       DateTime    @default(now())
 
   @@index([compositionId, type])

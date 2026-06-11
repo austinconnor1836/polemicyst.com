@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
-import { Prisma } from '@prisma/client';
+import { deleteFromS3 } from '@shared/lib/s3';
 
 export async function PATCH(
   req: NextRequest,
@@ -84,31 +84,16 @@ export async function DELETE(
       return NextResponse.json({ error: 'Track not found' }, { status: 404 });
     }
 
-    await prisma.compositionTrack.delete({ where: { id: trackId } });
-
-    // Clean orphaned cut targets
-    if (composition.cuts && Array.isArray(composition.cuts)) {
-      const cleaned = (composition.cuts as any[])
-        .map((cut: any) => ({
-          ...cut,
-          targets: cut.targets.filter((t: string) => t !== trackId),
-        }))
-        .filter((cut: any) => cut.targets.length > 0);
-
-      const cutsChanged =
-        cleaned.length !== (composition.cuts as any[]).length ||
-        cleaned.some(
-          (c: any, i: number) =>
-            c.targets.length !== (composition.cuts as any[])[i]?.targets?.length
-        );
-
-      if (cutsChanged) {
-        await prisma.composition.update({
-          where: { id },
-          data: { cuts: cleaned.length > 0 ? cleaned : Prisma.DbNull },
-        });
+    // Best-effort S3 cleanup
+    if (existing.s3Key) {
+      try {
+        await deleteFromS3(existing.s3Key);
+      } catch (err) {
+        console.error(`[DELETE track] Failed to delete S3 object ${existing.s3Key}:`, err);
       }
     }
+
+    await prisma.compositionTrack.delete({ where: { id: trackId } });
 
     return NextResponse.json({ success: true });
   } catch (err) {

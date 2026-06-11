@@ -27,6 +27,7 @@ interface EditOutputModalProps {
   outputs: Array<{ id: string; layout: string; s3Url: string }>;
   outputBlobs: Map<string, Blob>;
   onSpliceComplete: (blobs: Map<string, Blob>, urls: Map<string, string>) => void;
+  initialCuts?: CompositionCut[];
 }
 
 function formatTime(s: number): string {
@@ -52,8 +53,9 @@ export function EditOutputModal({
   outputs,
   outputBlobs,
   onSpliceComplete,
+  initialCuts,
 }: EditOutputModalProps) {
-  const [localCuts, setLocalCuts] = useState<CompositionCut[]>([]);
+  const [localCuts, setLocalCuts] = useState<CompositionCut[]>(initialCuts ?? []);
   const [pendingStartS, setPendingStartS] = useState<number | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState<number>(0);

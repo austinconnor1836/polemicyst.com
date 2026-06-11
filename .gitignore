@@ -37,6 +37,8 @@ clip-worker/node_modules
 # misc
 .DS_Store
 *.pem
+*.crt
+*.key
 test_output.json
 
 # debug
