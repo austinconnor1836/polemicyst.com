@@ -6,6 +6,17 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 
 ## Revenue-Critical (Must-Have for Launch)
 
+### Pricing restructure (see `docs/PRICING_STRATEGY.md`)
+
+_Proposed pricing overhaul for investor readiness — full rationale + proposed tiers in `docs/PRICING_STRATEGY.md`. Validate price points with WTP research before coding the dollar figures._
+
+- [ ] Drop LLM-provider gating — best scoring quality for all tiers (volume, not quality, is the paywall)
+- [ ] Switch value metric from clips/month → upload minutes/month (matches cost driver + competitor norm)
+- [ ] Watermark the free tier
+- [ ] Add an Agency tier ($99+) with team seats to capture high-value buyers
+- [ ] Add annual billing (~20% discount)
+- [ ] Add overage credits (pay-as-you-go minutes) instead of hard-blocking paying users
+
 ### Billing & Quotas
 
 - [x] Stripe checkout integration (pricing page → checkout → webhook)

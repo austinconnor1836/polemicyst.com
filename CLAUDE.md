@@ -289,6 +289,16 @@ Switch to the private model when:
 
 ## Change log
 
+### 2026-06-11
+
+- **Added pricing strategy proposal** — `docs/PRICING_STRATEGY.md` documents a pricing
+  overhaul for investor readiness: drop LLM-provider gating (best quality for all tiers),
+  meter on **upload minutes/month** instead of clips, watermark the free tier, add an
+  **Agency** tier ($99+) with seats, annual billing, and overage credits. Rationale ties
+  the margin story to existing cost instrumentation (`CostEvent`/`CostTracker`) + the
+  Gemini→self-hosted distillation roadmap. **Proposal only — not yet implemented.**
+  Tracked in `TODO.md` under "Pricing restructure".
+
 ### 2026-03-26
 
 - **Architecture evaluation and cleanup** — full clean architecture conformance audit documented in `docs/ARCHITECTURE_EVALUATION.md`.
