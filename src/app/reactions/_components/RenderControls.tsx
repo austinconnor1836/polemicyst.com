@@ -604,6 +604,7 @@ export function RenderControls({
     // Fall back to server-side rendering
     setRendering(true);
 
+    // Optimistically reset outputs to pending so spinners show immediately
     const resetOutputs = outputs.map((o) => ({
       ...o,
       status: 'pending',
@@ -624,45 +625,18 @@ export function RenderControls({
         const data = await res.json();
         toast.error(data.error || 'Failed to start render');
         setRendering(false);
+        // Restore original outputs on failure
         onStatusChange(compositionStatus, outputs);
         return;
       }
 
       toast.success('Render started!');
-    } catch {
+    } catch (err) {
       toast.error('Failed to start render');
       setRendering(false);
       onStatusChange(compositionStatus, outputs);
     }
-  }, [compositionId, autoLayouts, outputs, onStatusChange, compositionStatus]);
-
-  const handleRender = async () => {
-    if (!hasCreator || !hasTracks) return;
-
-    if (uploadsInProgress) {
-      if (!canClientRender) {
-        onRenderRequested?.();
-        toast.success('Render queued — will start when uploads finish');
-      } else {
-        toast(`Finishing upload… ${uploadProgress ?? 0}%`, { icon: '⏳' });
-      }
-      return;
-    }
-
-    if (canClientRender) {
-      handleClientRender();
-      return;
-    }
-
-    handleServerRender();
   };
-
-  // Auto-trigger server render when uploads finish and render was queued
-  useEffect(() => {
-    if (!renderRequested || !serverRenderReady || rendering) return;
-    onCancelRenderRequest?.();
-    handleServerRender();
-  }, [renderRequested, serverRenderReady, rendering, onCancelRenderRequest, handleServerRender]);
 
   const statusBadge = (status: string) => {
     switch (status) {

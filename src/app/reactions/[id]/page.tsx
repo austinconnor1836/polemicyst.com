@@ -137,32 +137,6 @@ function statusBadge(status: string) {
   }
 }
 
-/** Fetch with exponential backoff for flaky network (e.g. Tailscale relay). */
-async function fetchWithRetry(
-  input: RequestInfo,
-  init?: RequestInit,
-  { retries = 3, baseDelayMs = 1000 } = {}
-): Promise<Response> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const res = await fetch(input, init);
-      // Retry on 5xx server errors
-      if (res.status >= 500 && attempt < retries) {
-        await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** attempt));
-        continue;
-      }
-      return res;
-    } catch (err) {
-      lastError = err;
-      if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** attempt));
-      }
-    }
-  }
-  throw lastError;
-}
-
 export default function CompositionEditorPage() {
   const params = useParams();
   const router = useRouter();
@@ -250,7 +224,7 @@ export default function CompositionEditorPage() {
 
   const fetchComposition = useCallback(async () => {
     try {
-      const res = await fetchWithRetry(`/api/compositions/${compositionId}`);
+      const res = await fetch(`/api/compositions/${compositionId}`);
       if (!res.ok) {
         if (res.status === 404) {
           router.push('/reactions');
@@ -541,7 +515,7 @@ export default function CompositionEditorPage() {
     async (updates: Partial<Composition>) => {
       setSaving(true);
       try {
-        const res = await fetchWithRetry(`/api/compositions/${compositionId}`, {
+        const res = await fetch(`/api/compositions/${compositionId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updates),
@@ -584,7 +558,7 @@ export default function CompositionEditorPage() {
       s3Key: string
     ): Promise<{ durationS: number; width: number; height: number; hasAudio: boolean } | null> => {
       try {
-        const res = await fetchWithRetry('/api/compositions/probe', {
+        const res = await fetch('/api/compositions/probe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ s3Key }),
@@ -807,7 +781,7 @@ export default function CompositionEditorPage() {
       setPendingRefBlobUrl(null);
       try {
         const probe = await probeVideo(data.s3Key);
-        const res = await fetchWithRetry(`/api/compositions/${compositionId}/tracks`, {
+        const res = await fetch(`/api/compositions/${compositionId}/tracks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -823,13 +797,8 @@ export default function CompositionEditorPage() {
         if (!res.ok) throw new Error('Failed to add track');
         await fetchComposition();
         toast.success('Reference track added');
-        if (pendingRefBlobUrl) URL.revokeObjectURL(pendingRefBlobUrl);
-        setPendingRefBlobUrl(null);
-        setPendingRefMeta(null);
-        setRefUploadStatus('idle');
       } catch (err) {
-        toast.error('Failed to add track — please retry');
-        setRefUploadStatus('error');
+        toast.error('Failed to add track');
       } finally {
         setPendingRefMeta(null);
         setRefUploadStatus('idle');
@@ -1811,17 +1780,17 @@ export default function CompositionEditorPage() {
             </div>
             <Button
               variant="outline"
-              size="icon"
-              className="h-7 w-7"
+              size="sm"
+              className="h-7 gap-1 text-xs"
               onClick={() => thumbnailRegenerateRef.current?.()}
               disabled={thumbnailGenerating || isRendering}
-              title="Regenerate thumbnails"
             >
               {thumbnailGenerating ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
+                <RefreshCw className="h-3 w-3" />
               )}
+              Regenerate
             </Button>
           </div>
         </CardHeader>
