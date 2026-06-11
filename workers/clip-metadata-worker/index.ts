@@ -4,6 +4,15 @@ dotenv.config({ path: '.env' });
 // For containers, respect already-set env (e.g., DATABASE_URL pointing at service DNS)
 dotenv.config({ path: '.env.local', override: false });
 
+// Initialize Sentry as early as possible so it can capture errors from subsequent imports.
+// Sentry.init is a no-op when DSN is unset, so no extra guard required.
+import * as Sentry from '@sentry/node';
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  tracesSampleRate: 0.1,
+  environment: process.env.NODE_ENV,
+});
+
 import { Worker, Job, Queue } from 'bullmq';
 import { prisma } from '@shared/lib/prisma';
 import { getRedisConnection } from '@shared/queues';

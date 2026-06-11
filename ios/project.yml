@@ -20,6 +20,9 @@ packages:
   GoogleSignIn-iOS:
     url: https://github.com/google/GoogleSignIn-iOS
     from: '8.0.0'
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: '11.0.0'
 
 targets:
   ClipfireiOS:
@@ -47,6 +50,10 @@ targets:
       - path: Supporting/Assets.xcassets
     dependencies:
       - target: ClipfireiOS
+      - package: Firebase
+        product: FirebaseCore
+      - package: Firebase
+        product: FirebaseCrashlytics
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.clipfire.app

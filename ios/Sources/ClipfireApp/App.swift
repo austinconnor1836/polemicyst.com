@@ -1,6 +1,8 @@
 import SwiftUI
 import ClipfireiOS
 import GoogleSignIn
+import FirebaseCore
+import FirebaseCrashlytics
 
 // MARK: - AppDelegate (background upload session handling)
 
@@ -30,6 +32,13 @@ struct ClipfireApp: App {
     private let apiClient: APIClient
 
     init() {
+        // Configure Firebase (Crashlytics) before anything else so early crashes are captured.
+        // When GoogleService-Info.plist is missing (e.g. local dev without secrets), FirebaseApp.configure()
+        // logs a warning and returns — it does not crash. Crashlytics simply stays disabled.
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
+
         let storage = TokenStorage()
         let client = APIClient(
             baseURL: AppConfiguration.apiBaseURL,
