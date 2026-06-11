@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.filter.outputs.app }}
+      android: ${{ steps.filter.outputs.android }}
+      ios: ${{ steps.filter.outputs.ios }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -34,6 +36,10 @@ jobs:
               - '.eslintrc.json'
               - '.prettierrc'
               - 'auth.ts'
+            android:
+              - 'android/**'
+            ios:
+              - 'ios/**'
 
   lint-and-build:
     name: Lint & Build
@@ -73,3 +79,114 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo "No app code changed — skipping build"
+
+  # Android compile + unit tests. Mirrors the android-test job in deploy.yml so
+  # mobile breakage is caught PRE-merge (it previously only ran post-merge on push,
+  # which let a Kotlin compile break reach develop — see #255/#256).
+  android-test:
+    name: Android Tests
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run unit tests
+        working-directory: android
+        run: ./gradlew testDevDebugUnitTest
+
+  android-test-skip:
+    name: Android Tests
+    needs: changes
+    if: needs.changes.outputs.android != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No android code changed — skipping Android tests"
+
+  # iOS build + unit tests. Mirrors the ios-test job in deploy.yml. Uses Debug
+  # config with placeholder xcconfig so it needs no secrets and is safe on PRs.
+  ios-test:
+    name: iOS Tests
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Create xcconfig files
+        working-directory: ios
+        run: |
+          mkdir -p xcconfig
+          cat > xcconfig/Debug.xcconfig << 'XCEOF'
+          GOOGLE_CLIENT_ID = placeholder
+          GOOGLE_CLIENT_ID_REVERSED = placeholder
+          GOOGLE_SERVER_CLIENT_ID = placeholder
+          XCEOF
+          cat > xcconfig/Release.xcconfig << 'XCEOF'
+          GOOGLE_CLIENT_ID = placeholder
+          GOOGLE_CLIENT_ID_REVERSED = placeholder
+          GOOGLE_SERVER_CLIENT_ID = placeholder
+          XCEOF
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Ensure iOS Simulator runtime
+        run: |
+          # Select Xcode and initialize simulator services
+          sudo xcode-select -s /Applications/Xcode_16.4.app
+          xcrun simctl list > /dev/null 2>&1 || true
+          # Download iOS platform if no iPhone simulators are available
+          if ! xcrun simctl list devices available | grep -q "iPhone"; then
+            echo "No iPhone simulators found, downloading iOS platform..."
+            xcodebuild -downloadPlatform iOS || true
+          fi
+          echo "Available simulators:"
+          xcrun simctl list devices available | grep iPhone || echo "WARNING: No iPhone simulators available"
+
+      - name: Run tests
+        working-directory: ios
+        run: |
+          set -o pipefail
+          # Pick the first available iPhone simulator
+          DEST=$(xcrun simctl list devices available -j \
+            | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for runtime, devices in data['devices'].items():
+              if 'iOS' in runtime:
+                  for d in devices:
+                      if 'iPhone' in d['name']:
+                          print(d['name']); sys.exit(0)
+          print('iPhone 16')
+          ")
+          echo "Using simulator: $DEST"
+          xcodebuild test \
+            -project Clipfire.xcodeproj \
+            -scheme ClipfireApp \
+            -skip-testing:ClipfireUITests \
+            -destination "platform=iOS Simulator,name=$DEST" \
+            | xcpretty --color
+
+  ios-test-skip:
+    name: iOS Tests
+    needs: changes
+    if: needs.changes.outputs.ios != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No ios code changed — skipping iOS tests"
