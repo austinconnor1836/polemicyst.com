@@ -545,13 +545,22 @@ public struct PlanLimits: Codable {
 
 public struct UsageInfo: Codable {
     public let feeds: Int
-    /// Upload minutes consumed this month. // TODO(pricing) wire backend to return this field
-    public let uploadMinutesThisMonth: Int
+    /// Upload minutes consumed this month, from `UsageMonth.processedMinutes`.
+    public let uploadMinutesUsed: Int
+    /// Plan limit echoed by the API. Optional for forward/backward compat with
+    /// older server builds; clients should fall back to `plan.limits.uploadMinutesPerMonth`.
+    public let uploadMinutesLimit: Int?
     public let costThisMonth: CostSummary
 
-    public init(feeds: Int, uploadMinutesThisMonth: Int, costThisMonth: CostSummary) {
+    public init(
+        feeds: Int,
+        uploadMinutesUsed: Int,
+        uploadMinutesLimit: Int? = nil,
+        costThisMonth: CostSummary
+    ) {
         self.feeds = feeds
-        self.uploadMinutesThisMonth = uploadMinutesThisMonth
+        self.uploadMinutesUsed = uploadMinutesUsed
+        self.uploadMinutesLimit = uploadMinutesLimit
         self.costThisMonth = costThisMonth
     }
 }

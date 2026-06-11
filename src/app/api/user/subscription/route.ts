@@ -39,6 +39,23 @@ export async function GET(req: NextRequest) {
     },
   });
 
+  // Upload-minutes meter: canonical usage signal for the upload-minutes pricing
+  // model. Pulled from `UsageMonth.processedMinutes`, which the clip pipeline
+  // increments once per processed source video. Zero when no row exists yet.
+  const now = new Date();
+  const yearMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  let uploadMinutesUsed = 0;
+  try {
+    const usageRow = await prisma.usageMonth.findUnique({
+      where: { userId_yearMonth: { userId: userWithRelations.id, yearMonth } },
+      select: { processedMinutes: true },
+    });
+    uploadMinutesUsed = usageRow?.processedMinutes ?? 0;
+  } catch {
+    // UsageMonth table may not exist yet in some environments
+  }
+  const uploadMinutesLimit = plan.limits.uploadMinutesPerMonth;
+
   // Cost tracking summary for the current month
   let costThisMonth: { totalUsd: number; eventCount: number } = { totalUsd: 0, eventCount: 0 };
   try {
@@ -64,6 +81,8 @@ export async function GET(req: NextRequest) {
     },
     usage: {
       feeds: userWithRelations._count.videoFeeds,
+      uploadMinutesUsed,
+      uploadMinutesLimit,
       clipsThisMonth,
       costThisMonth,
     },
