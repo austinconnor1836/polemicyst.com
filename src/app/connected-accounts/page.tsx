@@ -57,6 +57,7 @@ import {
 } from 'lucide-react';
 import { BrandSection } from '@/app/connected-accounts/_components/BrandSection';
 import { BrandDialog } from '@/app/connected-accounts/_components/BrandDialog';
+import { OnboardingChecklist } from '@/app/connected-accounts/_components/OnboardingChecklist';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -808,6 +809,12 @@ export default function FeedsPage() {
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/85 via-background/20 to-transparent" />
         </div>
       </div>
+
+      <OnboardingChecklist
+        hasConnectedAccount={feeds.length > 0}
+        hasFeedVideos={videos.some((v) => !v.clipSourceVideoId)}
+        hasClips={videos.some((v) => Boolean(v.clipSourceVideoId))}
+      />
 
       {pageError && (
         <div className="mb-6">
