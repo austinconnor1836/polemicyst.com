@@ -228,12 +228,10 @@ export default function FeedsPage() {
         const file = await idbGet('pending-upload-file');
 
         if (file && file.name === meta.filename && file.size === meta.size) {
-          console.log('🔄 Found pending upload, resuming automatically...', meta);
           // Trigger resumption
           resumeUpload(file, meta);
         } else {
           // Invalid state, clear it
-          console.log('⚠️ Pending upload metadata found but file missing or mismatched. Clearing.');
           localStorage.removeItem('pending-upload-meta');
           await idbDel('pending-upload-file');
         }
@@ -433,7 +431,6 @@ export default function FeedsPage() {
 
     try {
       // 0. Persistence Hook: Save File and Metadata
-      console.log('💾 Persisting file for auto-resume...');
       await idbSet('pending-upload-file', file);
 
       // 1. Initiate Multipart Upload

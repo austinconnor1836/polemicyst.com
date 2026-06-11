@@ -351,7 +351,6 @@ export default function CompositionEditorPage() {
                 })),
         };
       });
-      console.log(`[page] Restored ${cached.size} cached output(s) from IndexedDB`);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composition, compositionId]);
@@ -387,7 +386,6 @@ export default function CompositionEditorPage() {
           creatorHeight: cached.height,
         };
       });
-      console.log('[page] Restored creator file from IndexedDB');
     });
 
     // Restore reference files (use cached crop if available, else re-detect)
@@ -424,7 +422,6 @@ export default function CompositionEditorPage() {
         if (entry.sourceCrop) {
           track.sourceCrop = entry.sourceCrop;
           detectedCrops.set(entry.trackId, entry.sourceCrop);
-          console.log(`[page] Restored cached crop for ref ${entry.trackId}:`, entry.sourceCrop);
         } else if (entry.width > entry.height) {
           cropPromises.push(
             (async () => {
@@ -436,7 +433,6 @@ export default function CompositionEditorPage() {
               if (crop) {
                 track.sourceCrop = crop;
                 detectedCrops.set(entry.trackId, crop);
-                console.log(`[page] Detected crop for restored ref ${entry.trackId}:`, crop);
               }
             })()
           );
@@ -466,7 +462,6 @@ export default function CompositionEditorPage() {
           .map((t, i) => ({ ...t, sortOrder: prev.tracks.length + i }));
         return toAdd.length > 0 ? { ...prev, tracks: [...prev.tracks, ...toAdd] } : prev;
       });
-      console.log(`[page] Restored ${cached.size} ref file(s) from IndexedDB`);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composition, useClientRender, compositionId]);
@@ -632,8 +627,10 @@ export default function CompositionEditorPage() {
         (async () => {
           try {
             // Step 1: Upload file directly to worker (CORS enabled, bypasses Next.js body limit)
-            const workerBase =
-              process.env.NEXT_PUBLIC_TRANSCRIPTION_WORKER_URL || 'http://localhost:3001';
+            const workerBase = process.env.NEXT_PUBLIC_TRANSCRIPTION_WORKER_URL;
+            if (!workerBase) {
+              throw new Error('NEXT_PUBLIC_TRANSCRIPTION_WORKER_URL env var is required');
+            }
             const formData = new FormData();
             formData.append('file', data.file);
             const workerRes = await fetch(
@@ -761,7 +758,6 @@ export default function CompositionEditorPage() {
             video.muted = true;
             video.src = data.blobUrl;
             sourceCrop = await detectCropFromVideo(video, data.width, data.height);
-            console.log('[page] Crop detection result for ref track:', sourceCrop);
             // Store auto-detected crop so "Reset to Auto" works after manual edits
             if (sourceCrop) {
               setAutoDetectedCrops((prev) => new Map(prev).set(tempId, sourceCrop!));
