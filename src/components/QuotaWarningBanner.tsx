@@ -43,7 +43,7 @@ export function QuotaWarningBanner({
   if (show === 'clips' || show === 'both') {
     if (quota.clips.warning || quota.clips.exceeded) {
       lines.push({
-        label: 'Clips this month',
+        label: 'Upload minutes this month',
         used: quota.clips.used,
         limit: quota.clips.limit,
         exceeded: quota.clips.exceeded,

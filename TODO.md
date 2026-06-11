@@ -6,6 +6,26 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 
 ## Revenue-Critical (Must-Have for Launch)
 
+### Pricing restructure (see `docs/PRICING_STRATEGY.md`)
+
+_Proposed pricing overhaul for investor readiness — full rationale + proposed tiers in `docs/PRICING_STRATEGY.md`. Validate price points with WTP research before coding the dollar figures._
+
+> **IMPLEMENTED on branch `claude/clipfire-investor-readiness-4zb7ev` (PR #255, not yet merged).**
+> The structural code is done, integrated, and CI-green. **Resume/handoff status + open
+> follow-ups live in `specs/pricing-restructure/tasks.md` (read its STATUS/HANDOFF block first).**
+> Dollar amounts are placeholders (`// TODO(pricing)`) pending WTP research.
+
+- [x] Drop LLM-provider gating — best scoring quality for all tiers (volume, not quality, is the paywall)
+- [x] Switch value metric from clips/month → upload minutes/month (matches cost driver + competitor norm)
+- [x] Watermark the free tier
+- [x] Add an Agency tier ($99+) with team seats to capture high-value buyers
+- [x] Add annual billing (~20% discount)
+- [ ] Add overage credits (pay-as-you-go minutes) instead of hard-blocking paying users _(structure only; full metered billing deferred)_
+- [ ] Finalize real prices/limits via WTP (replace `// TODO(pricing)` placeholders)
+- [ ] Wire `uploadMinutesUsed` into `GET /api/user/subscription` (billing page shows `0/limit` until then)
+- [ ] Verify iOS + Android builds (mobile changes uncompiled in cloud session)
+- [ ] Create Stripe Price objects + set `STRIPE_*_{MONTHLY,ANNUAL}_PRICE_ID` env vars; run `prisma migrate deploy` (UsageMonth) on prod
+
 ### Billing & Quotas
 
 - [x] Stripe checkout integration (pricing page → checkout → webhook)
@@ -122,6 +142,7 @@ _Eliminate `develop` branch. Ship from `main` with short-lived feature branches,
 
 ## Infrastructure & DevOps
 
+- [ ] **S3 cleanup on composition deletion** — When a composition is deleted, orphaned S3 objects (creator video, reference videos, rendered outputs, thumbnail assets) remain in the bucket indefinitely. Add S3 object deletion to the `DELETE /api/compositions/[id]` handler: collect all S3 keys from the composition, tracks, outputs, and thumbnail assets, then batch-delete from S3 before (or after) the Prisma cascade delete. Consider a background job for large compositions.
 - [ ] Set up CloudWatch alarms for ECS task failures, high CPU, high memory
 - [ ] Set up billing alerts in AWS to monitor costs
 - [ ] Add CloudFront CDN in front of S3 for clip delivery

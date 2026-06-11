@@ -30,17 +30,20 @@ import com.polemicyst.android.ui.components.ViralitySettingsPanel
 import com.polemicyst.android.ui.components.ViralitySettingsState
 import com.polemicyst.android.ui.components.toState
 
+/**
+ * @param autoGenerateClipsAllowed whether the user's plan includes auto-generate. False on the
+ *   Free tier; true on Creator, Pro, and Agency.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedSettingsSheet(
     feed: VideoFeed,
     onDismiss: () -> Unit,
     onSave: (autoGenerateClips: Boolean, viralitySettings: ViralitySettingsState) -> Unit,
-    isFreeUser: Boolean = false,
-    allowedProviders: List<String> = emptyList(),
+    autoGenerateClipsAllowed: Boolean = false,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var autoGenerate by remember { mutableStateOf(if (isFreeUser) false else feed.autoGenerateClips) }
+    var autoGenerate by remember { mutableStateOf(if (!autoGenerateClipsAllowed) false else feed.autoGenerateClips) }
     var viralityState by remember { mutableStateOf(feed.viralitySettings.toState()) }
 
     ModalBottomSheet(
@@ -77,12 +80,13 @@ fun FeedSettingsSheet(
                     Text(
                         text = "Auto-generate Clips",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = if (isFreeUser) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        color = if (!autoGenerateClipsAllowed) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                                 else MaterialTheme.colorScheme.onSurface,
                     )
-                    if (isFreeUser) {
+                    if (!autoGenerateClipsAllowed) {
+                        // TODO(pricing): update copy once final plan names are confirmed.
                         Text(
-                            text = "Upgrade to Pro to enable",
+                            text = "Upgrade to Creator or higher to enable",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -91,7 +95,7 @@ fun FeedSettingsSheet(
                 Switch(
                     checked = autoGenerate,
                     onCheckedChange = { autoGenerate = it },
-                    enabled = !isFreeUser,
+                    enabled = autoGenerateClipsAllowed,
                 )
             }
 
@@ -100,7 +104,6 @@ fun FeedSettingsSheet(
             ViralitySettingsPanel(
                 state = viralityState,
                 onStateChange = { viralityState = it },
-                allowedProviders = allowedProviders,
             )
 
             Spacer(modifier = Modifier.height(8.dp))

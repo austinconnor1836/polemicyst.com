@@ -50,12 +50,7 @@ export async function screenshotQuoteFromUrl(
 
   const launchOptions: Record<string, unknown> = {
     headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-    ],
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
   };
 
   const executablePath = getChromiumPath();
@@ -113,7 +108,7 @@ export async function screenshotQuoteFromUrl(
     // The script is injected as a raw string to avoid tsx/esbuild transformations
     // that add __name decorators which break inside page.evaluate.
     const escapedQuoteText = JSON.stringify(quoteText);
-    const textFound = await page.evaluate(`
+    const textFound = (await page.evaluate(`
       (function() {
         var searchText = ${escapedQuoteText};
 
@@ -177,7 +172,7 @@ export async function screenshotQuoteFromUrl(
         }
         return true;
       })()
-    `) as boolean;
+    `)) as boolean;
 
     if (textFound) {
       console.log('[quoteScreenshot] Quote text found and highlighted');

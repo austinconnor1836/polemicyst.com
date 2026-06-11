@@ -86,9 +86,7 @@ function tryParseJson(text: string): any | null {
  * Build a chunked transcript string with timestamps for the LLM prompt.
  */
 function buildTimestampedTranscript(segments: TranscriptSegment[]): string {
-  return segments
-    .map((s) => `[${s.start.toFixed(1)}s-${s.end.toFixed(1)}s] ${s.text}`)
-    .join('\n');
+  return segments.map((s) => `[${s.start.toFixed(1)}s-${s.end.toFixed(1)}s] ${s.text}`).join('\n');
 }
 
 const QUOTE_DETECTION_PROMPT = `You are an expert at identifying when a speaker is reading or citing external text versus giving their own commentary.
@@ -187,7 +185,10 @@ export async function detectQuotesWithGemini(
 
   const parsed = tryParseJson(text);
   if (!parsed || !Array.isArray(parsed.quotes)) {
-    console.warn('[quote-detection] Failed to parse LLM response, returning empty:', text.slice(0, 300));
+    console.warn(
+      '[quote-detection] Failed to parse LLM response, returning empty:',
+      text.slice(0, 300)
+    );
     return { quotes: [], provider: 'gemini', model: chosenModel };
   }
 

@@ -15,7 +15,7 @@ import {
 } from '@shared/lib/scoring/viral-scoring';
 import { generateClipFromS3 } from '@shared/util/ffmpegUtils';
 import { scorePhilosophicalRhetoric } from '@shared/lib/scoring/philosophy-ranker';
-import { checkClipQuota } from '@shared/lib/plans';
+import { checkClipQuota, resolvePlan } from '@shared/lib/plans';
 import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
 import { TrainingCollector } from '@shared/lib/training-collector';
 import { logJob } from '@shared/lib/job-logger';
@@ -98,6 +98,8 @@ new Worker(
       );
       return;
     }
+    const userPlan = resolvePlan(quotaUser?.subscriptionPlan);
+    const applyWatermark = userPlan.limits.watermark;
 
     let localVideoPath: string | null = null;
 
@@ -291,6 +293,7 @@ new Worker(
                       fontSize: captionFontSize,
                     }
                   : undefined,
+                watermark: applyWatermark,
               }
             ),
           (result) => {
@@ -338,6 +341,37 @@ new Worker(
         });
 
         console.log(`✅ Clip created and registered: ${s3Url}`);
+      }
+
+      // Upsert usage metering (non-fatal). Derive source video duration from the last
+      // transcript segment end time (already available, no extra I/O needed).
+      try {
+        const lastSegmentEnd =
+          transcriptSegments.length > 0
+            ? (transcriptSegments[transcriptSegments.length - 1].end ?? 0)
+            : 0;
+        const sourceDurationMinutes = lastSegmentEnd / 60;
+        const clipsGenerated = philosophyWeightedCandidates.length;
+        const now = new Date();
+        const yearMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+        await prisma.usageMonth.upsert({
+          where: { userId_yearMonth: { userId, yearMonth } },
+          create: {
+            userId,
+            yearMonth,
+            processedMinutes: sourceDurationMinutes,
+            clipCount: clipsGenerated,
+          },
+          update: {
+            processedMinutes: { increment: sourceDurationMinutes },
+            clipCount: { increment: clipsGenerated },
+          },
+        });
+        console.log(
+          `📊 Usage metered: +${sourceDurationMinutes.toFixed(2)} min, +${clipsGenerated} clips (${yearMonth})`
+        );
+      } catch (meterErr) {
+        console.error('⚠️ Usage metering upsert failed (non-fatal):', meterErr);
       }
 
       await logJob({
@@ -576,9 +610,7 @@ new Worker<ReactionComposeJob>(
       const creatorTracks = allTracks.filter(
         (t: any) => (t.trackType ?? 'reference') === 'creator'
       );
-      const refTracks = allTracks.filter(
-        (t: any) => (t.trackType ?? 'reference') === 'reference'
-      );
+      const refTracks = allTracks.filter((t: any) => (t.trackType ?? 'reference') === 'reference');
 
       const hasCreator = !!composition?.creatorS3Url || creatorTracks.length > 0;
       if (!composition || !hasCreator) {
@@ -646,15 +678,24 @@ new Worker<ReactionComposeJob>(
 
           console.log(`🔗 Concatenating ${creatorPaths.length} creator tracks...`);
           const { execFileSync } = require('child_process');
-          execFileSync('ffmpeg', [
-            '-y',
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', concatListPath,
-            '-c', 'copy',
-            '-movflags', '+faststart',
-            concatOutputPath,
-          ], { stdio: 'pipe', timeout: 300_000 });
+          execFileSync(
+            'ffmpeg',
+            [
+              '-y',
+              '-f',
+              'concat',
+              '-safe',
+              '0',
+              '-i',
+              concatListPath,
+              '-c',
+              'copy',
+              '-movflags',
+              '+faststart',
+              concatOutputPath,
+            ],
+            { stdio: 'pipe', timeout: 300_000 }
+          );
           creatorPath = concatOutputPath;
           console.log('✅ Creator tracks concatenated');
         }
@@ -816,12 +857,16 @@ new Worker<ReactionComposeJob>(
         : [];
 
       // 4b. Quote overlay generation (if enabled)
-      const quoteOverlaysByLayout: Record<string, import('@shared/util/reactionCompose').QuoteOverlayInfo[]> = {};
+      const quoteOverlaysByLayout: Record<
+        string,
+        import('@shared/util/reactionCompose').QuoteOverlayInfo[]
+      > = {};
       if (composition.quoteGraphicsEnabled && composition.detectedQuotes) {
         try {
           const quotes = composition.detectedQuotes as any[];
           if (quotes.length > 0) {
-            const { generateAllQuoteGraphics, cleanupQuoteGraphics } = await import('../../shared/util/quoteGraphics');
+            const { generateAllQuoteGraphics, cleanupQuoteGraphics } =
+              await import('../../shared/util/quoteGraphics');
             const quoteStyle = (composition.quoteGraphicStyle as any) || 'pull-quote';
             const trimOffset = composition.creatorTrimStartS || 0;
 
@@ -830,13 +875,20 @@ new Worker<ReactionComposeJob>(
               const canvasW = isMobile ? 720 : 1280;
               const canvasH = isMobile ? 1280 : 720;
 
-              const adjustedQuotes = quotes.map((q: any) => ({
-                ...q,
-                startS: q.startS - trimOffset,
-                endS: q.endS - trimOffset,
-              })).filter((q: any) => q.endS > 0);
+              const adjustedQuotes = quotes
+                .map((q: any) => ({
+                  ...q,
+                  startS: q.startS - trimOffset,
+                  endS: q.endS - trimOffset,
+                }))
+                .filter((q: any) => q.endS > 0);
 
-              const overlays = await generateAllQuoteGraphics(adjustedQuotes, quoteStyle, canvasW, canvasH);
+              const overlays = await generateAllQuoteGraphics(
+                adjustedQuotes,
+                quoteStyle,
+                canvasW,
+                canvasH
+              );
               quoteOverlaysByLayout[layout] = overlays.map((ov) => ({
                 imagePath: ov.imagePath,
                 startS: ov.quote.startS,
@@ -867,7 +919,9 @@ new Worker<ReactionComposeJob>(
           return sum + Math.max(0, dur);
         }, 0);
         if (effectiveCreatorDurationS <= 0) effectiveCreatorDurationS = 60;
-        console.log(`📏 Effective creator duration from ${creatorTracks.length} tracks: ${effectiveCreatorDurationS.toFixed(1)}s`);
+        console.log(
+          `📏 Effective creator duration from ${creatorTracks.length} tracks: ${effectiveCreatorDurationS.toFixed(1)}s`
+        );
       }
 
       // 6. Render each layout
@@ -1247,9 +1301,7 @@ new Worker<GenericTranscriptionJob>(
 
           if (shouldDetect && result.segments.length > 0) {
             const { detectQuotes } = await import('../../shared/lib/quote-detection');
-            const quoteResult = await detectQuotes(
-              result.segments as any[]
-            );
+            const quoteResult = await detectQuotes(result.segments as any[]);
 
             if (quoteResult.quotes.length > 0) {
               const quoteUpdateData: Record<string, any> = {

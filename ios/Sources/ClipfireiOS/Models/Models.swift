@@ -519,29 +519,39 @@ public struct PlanInfo: Codable {
 
 public struct PlanLimits: Codable {
     public let maxConnectedAccounts: Int
-    public let maxClipsPerMonth: Int
-    public let maxStorageGb: Int
-    public let llmProviders: [String]
+    /// Upload quota in minutes per month (replaces clip count). // TODO(pricing)
+    public let uploadMinutesPerMonth: Int
+    public let watermark: Bool
+    public let teamSeats: Int
     public let autoGenerateClips: Bool
+    public let prioritySupport: Bool
 
-    public init(maxConnectedAccounts: Int, maxClipsPerMonth: Int, maxStorageGb: Int,
-                llmProviders: [String], autoGenerateClips: Bool) {
+    public init(
+        maxConnectedAccounts: Int,
+        uploadMinutesPerMonth: Int,
+        watermark: Bool,
+        teamSeats: Int,
+        autoGenerateClips: Bool,
+        prioritySupport: Bool
+    ) {
         self.maxConnectedAccounts = maxConnectedAccounts
-        self.maxClipsPerMonth = maxClipsPerMonth
-        self.maxStorageGb = maxStorageGb
-        self.llmProviders = llmProviders
+        self.uploadMinutesPerMonth = uploadMinutesPerMonth
+        self.watermark = watermark
+        self.teamSeats = teamSeats
         self.autoGenerateClips = autoGenerateClips
+        self.prioritySupport = prioritySupport
     }
 }
 
 public struct UsageInfo: Codable {
     public let feeds: Int
-    public let clipsThisMonth: Int
+    /// Upload minutes consumed this month. // TODO(pricing) wire backend to return this field
+    public let uploadMinutesThisMonth: Int
     public let costThisMonth: CostSummary
 
-    public init(feeds: Int, clipsThisMonth: Int, costThisMonth: CostSummary) {
+    public init(feeds: Int, uploadMinutesThisMonth: Int, costThisMonth: CostSummary) {
         self.feeds = feeds
-        self.clipsThisMonth = clipsThisMonth
+        self.uploadMinutesThisMonth = uploadMinutesThisMonth
         self.costThisMonth = costThisMonth
     }
 }
