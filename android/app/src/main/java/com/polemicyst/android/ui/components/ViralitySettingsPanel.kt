@@ -69,7 +69,8 @@ fun ViralitySettingsState.toModel(): ViralitySettings = ViralitySettings(
 )
 
 /**
- * @param allowedProviders LLM providers the user's plan permits. Empty = all allowed (no restrictions).
+ * LLM provider selection is no longer plan-restricted — all plans may use any provider.
+ * The [allowedProviders] parameter has been removed as of the pricing restructure.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,10 +78,10 @@ fun ViralitySettingsPanel(
     state: ViralitySettingsState,
     onStateChange: (ViralitySettingsState) -> Unit,
     modifier: Modifier = Modifier,
-    allowedProviders: List<String> = emptyList(),
 ) {
     var showAdvanced by remember { mutableStateOf(false) }
 
+    // All provider options are available to all plans — no plan-gating.
     val allProviderOptions = listOf("gemini", "ollama", "openai", "anthropic", "google")
     val allProviderLabels = listOf("Gemini", "Ollama", "OpenAI", "Anthropic", "Google")
 
@@ -160,11 +161,7 @@ fun ViralitySettingsPanel(
                     options = allProviderOptions,
                     labels = allProviderLabels,
                     onSelect = { onStateChange(state.copy(llmProvider = it)) },
-                    disabledOptions = if (allowedProviders.isNotEmpty()) {
-                        allProviderOptions.filter { it !in allowedProviders }.toSet()
-                    } else {
-                        emptySet()
-                    },
+                    // No plan-gating: all providers are available to all tiers.
                 )
 
                 DropdownSelector(
@@ -238,7 +235,7 @@ private fun DropdownSelector(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            text = if (isDisabled) "${labels[index]} (Pro)" else labels[index],
+                            text = labels[index],
                             color = if (isDisabled) {
                                 MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                             } else {

@@ -14,14 +14,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -96,29 +95,17 @@ private fun BillingContent(subscription: SubscriptionInfo) {
 
         UsageMeter(
             icon = Icons.Filled.RssFeed,
-            label = "Feeds",
+            label = "Connected Accounts",
             used = subscription.usage.feeds,
             limit = subscription.limits.feeds,
         )
 
+        // TODO(pricing): label unit will be "minutes" once backend confirms final field name.
         UsageMeter(
-            icon = Icons.Filled.Movie,
-            label = "Clips",
-            used = subscription.usage.clipsThisMonth,
-            limit = subscription.limits.clipsPerMonth,
-        )
-
-        HorizontalDivider()
-
-        Text(
-            text = "Allowed LLM Providers",
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            text = subscription.limits.allowedProviders
-                .joinToString(", ") { it.replaceFirstChar { c -> c.uppercase() } },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            icon = Icons.Filled.Timer,
+            label = "Upload Minutes",
+            used = subscription.usage.uploadMinutesUsed,
+            limit = subscription.limits.uploadMinutesPerMonth,
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -136,7 +123,9 @@ private fun BillingContent(subscription: SubscriptionInfo) {
             }
         }
 
-        if (subscription.plan == "free") {
+        // Show upgrade CTA for free and creator tiers; on pro/agency the billing portal handles upgrades.
+        // TODO(pricing): update tier comparison URL once /pricing page reflects new tiers.
+        if (subscription.plan == "free" || subscription.plan == "creator") {
             Button(
                 onClick = {
                     val upgradeUrl = subscription.billingPortalUrl ?: "https://polemicyst.com/pricing"
@@ -152,6 +141,26 @@ private fun BillingContent(subscription: SubscriptionInfo) {
 
         Spacer(modifier = Modifier.height(16.dp))
     }
+}
+
+/**
+ * Display name and pricing hint for each plan tier.
+ * TODO(pricing): update prices once final values are confirmed in backend shared/lib/plans.ts.
+ */
+private fun planDisplayName(planId: String): String = when (planId) {
+    "free" -> "Free"
+    "creator" -> "Creator"
+    "pro" -> "Pro"
+    "agency" -> "Agency"
+    else -> planId.replaceFirstChar { it.uppercase() }
+}
+
+private fun planPriceHint(planId: String): String = when (planId) {
+    "free" -> "$0 / month" // TODO(pricing)
+    "creator" -> "See pricing" // TODO(pricing)
+    "pro" -> "See pricing" // TODO(pricing)
+    "agency" -> "See pricing" // TODO(pricing)
+    else -> ""
 }
 
 @Composable
@@ -175,11 +184,20 @@ private fun PlanCard(subscription: SubscriptionInfo) {
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = subscription.plan.replaceFirstChar { it.uppercase() },
+                text = planDisplayName(subscription.plan),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
+            val priceHint = planPriceHint(subscription.plan)
+            if (priceHint.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = priceHint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
+                )
+            }
         }
     }
 }
