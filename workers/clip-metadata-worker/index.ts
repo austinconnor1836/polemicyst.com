@@ -15,7 +15,7 @@ import {
 } from '@shared/lib/scoring/viral-scoring';
 import { generateClipFromS3 } from '@shared/util/ffmpegUtils';
 import { scorePhilosophicalRhetoric } from '@shared/lib/scoring/philosophy-ranker';
-import { checkClipQuota } from '@shared/lib/plans';
+import { checkClipQuota, resolvePlan } from '@shared/lib/plans';
 import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
 import { TrainingCollector } from '@shared/lib/training-collector';
 import { logJob } from '@shared/lib/job-logger';
@@ -87,6 +87,8 @@ new Worker(
       );
       return;
     }
+    const userPlan = resolvePlan(quotaUser?.subscriptionPlan);
+    const applyWatermark = userPlan.limits.watermark;
 
     let localVideoPath: string | null = null;
 
@@ -280,6 +282,7 @@ new Worker(
                       fontSize: captionFontSize,
                     }
                   : undefined,
+                watermark: applyWatermark,
               }
             ),
           (result) => {
@@ -327,6 +330,37 @@ new Worker(
         });
 
         console.log(`✅ Clip created and registered: ${s3Url}`);
+      }
+
+      // Upsert usage metering (non-fatal). Derive source video duration from the last
+      // transcript segment end time (already available, no extra I/O needed).
+      try {
+        const lastSegmentEnd =
+          transcriptSegments.length > 0
+            ? (transcriptSegments[transcriptSegments.length - 1].end ?? 0)
+            : 0;
+        const sourceDurationMinutes = lastSegmentEnd / 60;
+        const clipsGenerated = philosophyWeightedCandidates.length;
+        const now = new Date();
+        const yearMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+        await prisma.usageMonth.upsert({
+          where: { userId_yearMonth: { userId, yearMonth } },
+          create: {
+            userId,
+            yearMonth,
+            processedMinutes: sourceDurationMinutes,
+            clipCount: clipsGenerated,
+          },
+          update: {
+            processedMinutes: { increment: sourceDurationMinutes },
+            clipCount: { increment: clipsGenerated },
+          },
+        });
+        console.log(
+          `📊 Usage metered: +${sourceDurationMinutes.toFixed(2)} min, +${clipsGenerated} clips (${yearMonth})`
+        );
+      } catch (meterErr) {
+        console.error('⚠️ Usage metering upsert failed (non-fatal):', meterErr);
       }
 
       await logJob({
