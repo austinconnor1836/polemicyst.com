@@ -41,22 +41,24 @@ public enum MockData {
 
     // MARK: - Subscription
 
+    // TODO(pricing): mirror final tier names, limits, and prices from shared/lib/plans.ts once backend is updated
     public static let subscription = SubscriptionResponse(
         plan: PlanInfo(
-            id: "pro",
-            name: "Pro",
+            id: "creator",
+            name: "Creator",
             limits: PlanLimits(
-                maxConnectedAccounts: 10,
-                maxClipsPerMonth: 100,
-                maxStorageGb: 50,
-                llmProviders: ["ollama", "gemini"],
-                autoGenerateClips: true
+                maxConnectedAccounts: 5,
+                uploadMinutesPerMonth: 300,
+                watermark: false,
+                teamSeats: 1,
+                autoGenerateClips: true,
+                prioritySupport: false
             ),
-            features: ["Unlimited feeds", "Gemini scoring", "Auto-generate clips"]
+            features: ["5 connected accounts", "300 upload minutes/mo", "No watermark", "Auto-generate clips"]
         ),
         usage: UsageInfo(
             feeds: 3,
-            clipsThisMonth: 27,
+            uploadMinutesThisMonth: 87,
             costThisMonth: CostSummary(totalUsd: 1.42, eventCount: 54)
         ),
         hasStripeCustomer: true

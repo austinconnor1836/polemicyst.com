@@ -100,10 +100,11 @@ public struct SubscriptionView: View {
                 maximum: sub.plan.limits.maxConnectedAccounts
             )
 
+            // Upload-minutes meter (replaces clip count) // TODO(pricing)
             QuotaBar(
-                label: "Clips",
-                current: sub.usage.clipsThisMonth,
-                maximum: sub.plan.limits.maxClipsPerMonth
+                label: "Upload Minutes",
+                current: sub.usage.uploadMinutesThisMonth,
+                maximum: sub.plan.limits.uploadMinutesPerMonth
             )
 
             HStack {
@@ -139,7 +140,8 @@ public struct SubscriptionView: View {
                 }
             }
 
-            if plan.id == "free" || plan.id == "pro" {
+            // Show upgrade nudge for all plans except Agency (top tier)
+            if plan.id != "agency" {
                 Text("Upgrade to unlock more features")
                     .font(.footnote)
                     .foregroundStyle(DesignTokens.muted)
@@ -152,10 +154,13 @@ public struct SubscriptionView: View {
     }
 
     private func planIcon(_ planId: String) -> String {
+        // Four tiers: free | creator | pro | agency // TODO(pricing)
         switch planId {
-        case "pro": return "star.fill"
-        case "business": return "briefcase.fill"
-        default: return "person.fill"
+        case "free":    return "person.fill"
+        case "creator": return "pencil.and.sparkles"
+        case "pro":     return "star.fill"
+        case "agency":  return "briefcase.fill"
+        default:        return "person.fill"
         }
     }
 }

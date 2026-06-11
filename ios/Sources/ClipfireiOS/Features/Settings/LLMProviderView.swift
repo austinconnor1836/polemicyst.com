@@ -5,8 +5,7 @@ public final class LLMProviderViewModel: ObservableObject {
     @Published public var currentProvider = "ollama"
     @Published public var isLoading = false
     @Published public var errorMessage: String?
-    @Published public var upgradeError: APIError?
-    @Published public var allowedProviders: [String] = ["ollama"]
+    // upgradeError and allowedProviders removed: LLM provider is no longer plan-gated. // TODO(pricing)
 
     private let api: APIClient
 
@@ -18,11 +17,9 @@ public final class LLMProviderViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            async let providerTask = api.fetchLLMProvider()
-            async let subTask = api.fetchSubscription()
-            let (provider, sub) = try await (providerTask, subTask)
+            let provider = try await api.fetchLLMProvider()
             currentProvider = provider.llmProvider
-            allowedProviders = sub.plan.limits.llmProviders
+            // No longer fetching subscription for allowedProviders — all providers are available on every plan.
         } catch let error as APIError {
             errorMessage = error.localizedDescription
         } catch {
@@ -38,14 +35,7 @@ public final class LLMProviderViewModel: ObservableObject {
             let result = try await api.updateLLMProvider(UpdateLLMProviderRequest(llmProvider: provider))
             currentProvider = result.llmProvider
         } catch let error as APIError {
-            if error.isUpgradeRequired {
-                upgradeError = error
-                if let allowed = error.allowedProviders {
-                    allowedProviders = allowed
-                }
-            } else {
-                errorMessage = error.localizedDescription
-            }
+            errorMessage = error.localizedDescription
         } catch {
             if error is CancellationError || (error as NSError).code == NSURLErrorCancelled { return }
             errorMessage = "Failed to update provider: \(error.localizedDescription)"
@@ -76,7 +66,8 @@ public struct LLMProviderView: View {
                 } header: {
                     Text("Default LLM Provider")
                 } footer: {
-                    Text("This provider will be used for clip scoring by default. Some providers require a paid plan.")
+                    // LLM provider is no longer plan-gated — all providers available on every plan. // TODO(pricing)
+                    Text("This provider will be used for clip scoring by default.")
                         .foregroundStyle(DesignTokens.muted)
                 }
             }
@@ -95,50 +86,30 @@ public struct LLMProviderView: View {
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }
-            .sheet(item: $viewModel.upgradeError) { error in
-                UpgradePromptView(
-                    message: error.localizedDescription,
-                    onDismiss: { viewModel.upgradeError = nil }
-                )
-                .presentationDetents([.medium])
-            }
         }
     }
 
     @ViewBuilder
     private func providerRow(_ provider: (id: String, label: String, icon: String)) -> some View {
-        let isAllowed = viewModel.allowedProviders.contains(provider.id)
+        // All providers are available on every plan — no lock/upgrade UI needed. // TODO(pricing)
         let isSelected = viewModel.currentProvider == provider.id
 
         Button {
-            if isAllowed {
-                Task { await viewModel.updateProvider(provider.id) }
-            }
+            Task { await viewModel.updateProvider(provider.id) }
         } label: {
             HStack {
                 Image(systemName: provider.icon)
                     .frame(width: 24)
-                    .foregroundStyle(isAllowed ? DesignTokens.accent : DesignTokens.muted)
+                    .foregroundStyle(DesignTokens.accent)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(provider.label)
-                        .foregroundStyle(isAllowed ? DesignTokens.textPrimary : DesignTokens.muted)
-                    if !isAllowed {
-                        Text("Upgrade required")
-                            .font(.caption)
-                            .foregroundStyle(DesignTokens.muted)
-                    }
-                }
+                Text(provider.label)
+                    .foregroundStyle(DesignTokens.textPrimary)
 
                 Spacer()
 
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(DesignTokens.accent)
-                } else if !isAllowed {
-                    Image(systemName: "lock.fill")
-                        .font(.caption)
-                        .foregroundStyle(DesignTokens.muted)
                 }
             }
         }
