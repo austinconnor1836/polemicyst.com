@@ -42,6 +42,8 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@reduxjs/toolkit": "^2.2.7",
     "@types/node-fetch": "^2.6.13",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.0",
     "autoprefixer": "^10.4.19",
     "aws-sdk": "^2.1692.0",
     "axios": "^1.8.2",
