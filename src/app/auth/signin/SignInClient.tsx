@@ -20,10 +20,21 @@ const SignIn = () => {
   const [devEmail, setDevEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // COPPA defense (W008): user must affirm 13+ before any sign-in path is enabled.
+  // We persist consent in a short-lived cookie that the NextAuth signIn callback
+  // reads when creating a new User row (existing users are grandfathered via `null`).
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+
+  const stampAgeGateCookie = () => {
+    // 10-minute cookie scoped to the sign-in round trip. The NextAuth signIn
+    // callback consumes it and writes `acceptedAgeGate=true` for new users.
+    document.cookie = `clipfire_age_gate=1; Max-Age=600; Path=/; SameSite=Lax`;
+  };
 
   const handleBlueskyLogin = async () => {
     setLoading(true);
     setError(null);
+    stampAgeGateCookie();
 
     const response = await signIn('credentials', {
       username: identifier,
@@ -41,6 +52,7 @@ const SignIn = () => {
     if (!devEmail.trim()) return;
     setLoading(true);
     setError(null);
+    stampAgeGateCookie();
 
     const response = await signIn('dev', {
       email: devEmail.trim(),
@@ -54,6 +66,11 @@ const SignIn = () => {
     }
   };
 
+  const handleOAuthLogin = (oauthProvider: 'google' | 'facebook') => {
+    stampAgeGateCookie();
+    signIn(oauthProvider, { callbackUrl });
+  };
+
   return (
     <Suspense fallback={<div className="text-center mt-10">Loading sign-in...</div>}>
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 glass:bg-transparent">
@@ -62,6 +79,21 @@ const SignIn = () => {
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white text-center mb-4">
               Sign in
             </h1>
+
+            {/* COPPA age gate — must be checked before any sign-in path is enabled. */}
+            <label
+              htmlFor="age-gate"
+              className="mb-4 flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            >
+              <input
+                id="age-gate"
+                type="checkbox"
+                checked={ageConfirmed}
+                onChange={(e) => setAgeConfirmed(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300"
+              />
+              <span>I am 13 or older and agree to the terms of service.</span>
+            </label>
 
             {/* Dev-only email login */}
             {IS_DEV && !provider && (
@@ -82,7 +114,7 @@ const SignIn = () => {
                 </div>
                 <Button
                   onClick={handleDevLogin}
-                  disabled={loading || !devEmail.trim()}
+                  disabled={loading || !devEmail.trim() || !ageConfirmed}
                   className="w-full"
                 >
                   {loading ? 'Signing in…' : 'Dev Sign In'}
@@ -104,13 +136,15 @@ const SignIn = () => {
             {!provider && (
               <div className="flex flex-col space-y-3">
                 <Button
-                  onClick={() => signIn('google', { callbackUrl })}
+                  onClick={() => handleOAuthLogin('google')}
+                  disabled={!ageConfirmed}
                   className="bg-red-500 text-white hover:bg-red-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-600"
                 >
                   Sign in with Google
                 </Button>
                 <Button
-                  onClick={() => signIn('facebook', { callbackUrl })}
+                  onClick={() => handleOAuthLogin('facebook')}
+                  disabled={!ageConfirmed}
                   className="bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600 dark:text-white dark:hover:bg-blue-700"
                 >
                   Sign in with Facebook
@@ -144,7 +178,11 @@ const SignIn = () => {
                       onChange={(e) => setPassword(e.target.value)}
                     />
                   </div>
-                  <Button onClick={handleBlueskyLogin} disabled={loading} className="w-full">
+                  <Button
+                    onClick={handleBlueskyLogin}
+                    disabled={loading || !ageConfirmed}
+                    className="w-full"
+                  >
                     {loading ? 'Connecting...' : 'Connect with Bluesky'}
                   </Button>
                 </div>
