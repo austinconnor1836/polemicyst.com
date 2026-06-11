@@ -58,6 +58,7 @@ import {
 import { BrandSection } from '@/app/connected-accounts/_components/BrandSection';
 import { BrandDialog } from '@/app/connected-accounts/_components/BrandDialog';
 import { OnboardingChecklist } from '@/app/connected-accounts/_components/OnboardingChecklist';
+import { PollingStatusBanner } from '@/app/connected-accounts/_components/PollingStatusBanner';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -108,6 +109,10 @@ export default function FeedsPage() {
 
   const [selectedFeedSettings, setSelectedFeedSettings] = useState<VideoFeed | null>(null);
   const [isFeedSettingsOpen, setIsFeedSettingsOpen] = useState(false);
+
+  // W015 — feeds the user just connected; PollingStatusBanner watches each one
+  // until the first FeedVideo lands, then removes itself.
+  const [recentlyConnectedFeedIds, setRecentlyConnectedFeedIds] = useState<string[]>([]);
   const [defaultLLMProvider, setDefaultLLMProvider] = useState<LLMProvider>(
     DEFAULT_VIRALITY_SETTINGS.llmProvider
   );
@@ -535,7 +540,15 @@ export default function FeedsPage() {
         }
         throw new Error('Failed to connect channel');
       }
+      const newFeed: { id?: string } = await res.json().catch(() => ({}));
       await fetchFeeds();
+      if (newFeed?.id) {
+        // W015 — show polling status banner for this newly connected feed.
+        // Cap at 2 to avoid stacking when the user connects several in a row.
+        setRecentlyConnectedFeedIds((prev) =>
+          prev.includes(newFeed.id!) ? prev : [...prev, newFeed.id!].slice(-2)
+        );
+      }
       toast.success('YouTube channel connected');
       setIsAddFeedOpen(false);
       setSelectedPlatform(null);
@@ -815,6 +828,25 @@ export default function FeedsPage() {
         hasFeedVideos={videos.some((v) => !v.clipSourceVideoId)}
         hasClips={videos.some((v) => Boolean(v.clipSourceVideoId))}
       />
+
+      {recentlyConnectedFeedIds.map((feedId) => {
+        const feed = feeds.find((f) => f.id === feedId);
+        return (
+          <PollingStatusBanner
+            key={feedId}
+            feedId={feedId}
+            feedName={feed?.name}
+            onFirstVideo={() => {
+              setRecentlyConnectedFeedIds((prev) => prev.filter((id) => id !== feedId));
+              // Refresh ingested videos so the new clip appears immediately.
+              fetchVideos();
+              toast.success(
+                feed?.name ? `First video ingested from ${feed.name}` : 'First video ingested'
+              );
+            }}
+          />
+        );
+      })}
 
       {pageError && (
         <div className="mb-6">
