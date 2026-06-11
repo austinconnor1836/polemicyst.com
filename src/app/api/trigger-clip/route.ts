@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
-import { checkClipQuota } from '@/lib/plans';
+import { checkUploadMinutesQuota } from '@/lib/plans';
 import { triggerClipGeneration } from '@shared/services/clip-service';
 
 export async function POST(req: NextRequest) {
@@ -35,14 +35,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing feedVideoId' }, { status: 400 });
     }
 
-    const clipQuota = await checkClipQuota(user.id, user.subscriptionPlan);
-    if (!clipQuota.allowed) {
+    const minutesQuota = await checkUploadMinutesQuota(user.id, user.subscriptionPlan);
+    if (!minutesQuota.allowed) {
       return NextResponse.json(
         {
-          error: clipQuota.message,
+          error: minutesQuota.message,
           code: 'QUOTA_EXCEEDED',
-          limit: clipQuota.limit,
-          usage: clipQuota.currentUsage,
+          limit: minutesQuota.limit,
+          usage: minutesQuota.currentUsage,
         },
         { status: 403 }
       );

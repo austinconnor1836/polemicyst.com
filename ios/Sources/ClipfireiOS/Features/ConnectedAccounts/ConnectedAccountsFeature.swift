@@ -163,10 +163,11 @@ public struct ConnectedAccountsView: View {
                                 current: sub.usage.feeds,
                                 maximum: sub.plan.limits.maxConnectedAccounts
                             )
+                            // Upload-minutes quota replaces clip count // TODO(pricing)
                             QuotaBar(
-                                label: "Clips/mo",
-                                current: sub.usage.clipsThisMonth,
-                                maximum: sub.plan.limits.maxClipsPerMonth
+                                label: "Upload Min",
+                                current: sub.usage.uploadMinutesThisMonth,
+                                maximum: sub.plan.limits.uploadMinutesPerMonth
                             )
                         }
                         .padding()

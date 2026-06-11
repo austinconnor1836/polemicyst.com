@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { getClipGenerationQueue, queueTranscriptionJob } from '@shared/queues';
-import { checkClipQuota } from '@/lib/plans';
+import { checkUploadMinutesQuota } from '@/lib/plans';
 import {
   getStrictnessConfig,
   mergeViralitySettings,
@@ -72,9 +72,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (manualFeed.autoGenerateClips && manualFeed.viralitySettings) {
-      const clipQuota = await checkClipQuota(user.id, user.subscriptionPlan);
-      if (!clipQuota.allowed) {
-        console.warn(`[upload:register] Clip quota exceeded for user ${user.id}. Skipping.`);
+      const minutesQuota = await checkUploadMinutesQuota(user.id, user.subscriptionPlan);
+      if (!minutesQuota.allowed) {
+        console.warn(
+          `[upload:register] Upload minutes quota exceeded for user ${user.id}. Skipping.`
+        );
       } else {
         try {
           const rawSettings = manualFeed.viralitySettings as Partial<ViralitySettingsValue>;

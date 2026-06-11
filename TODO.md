@@ -6,6 +6,26 @@ This is the canonical project TODO list. Claude reads this file at the start of 
 
 ## Revenue-Critical (Must-Have for Launch)
 
+### Pricing restructure (see `docs/PRICING_STRATEGY.md`)
+
+_Proposed pricing overhaul for investor readiness — full rationale + proposed tiers in `docs/PRICING_STRATEGY.md`. Validate price points with WTP research before coding the dollar figures._
+
+> **IMPLEMENTED on branch `claude/clipfire-investor-readiness-4zb7ev` (PR #255, not yet merged).**
+> The structural code is done, integrated, and CI-green. **Resume/handoff status + open
+> follow-ups live in `specs/pricing-restructure/tasks.md` (read its STATUS/HANDOFF block first).**
+> Dollar amounts are placeholders (`// TODO(pricing)`) pending WTP research.
+
+- [x] Drop LLM-provider gating — best scoring quality for all tiers (volume, not quality, is the paywall)
+- [x] Switch value metric from clips/month → upload minutes/month (matches cost driver + competitor norm)
+- [x] Watermark the free tier
+- [x] Add an Agency tier ($99+) with team seats to capture high-value buyers
+- [x] Add annual billing (~20% discount)
+- [ ] Add overage credits (pay-as-you-go minutes) instead of hard-blocking paying users _(structure only; full metered billing deferred)_
+- [ ] Finalize real prices/limits via WTP (replace `// TODO(pricing)` placeholders)
+- [ ] Wire `uploadMinutesUsed` into `GET /api/user/subscription` (billing page shows `0/limit` until then)
+- [ ] Verify iOS + Android builds (mobile changes uncompiled in cloud session)
+- [ ] Create Stripe Price objects + set `STRIPE_*_{MONTHLY,ANNUAL}_PRICE_ID` env vars; run `prisma migrate deploy` (UsageMonth) on prod
+
 ### Billing & Quotas
 
 - [x] Stripe checkout integration (pricing page → checkout → webhook)

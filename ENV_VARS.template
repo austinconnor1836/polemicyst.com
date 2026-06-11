@@ -63,6 +63,20 @@ NEXT_PUBLIC_ADMIN_EMAIL=aconnor731@gmail.com
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
-# Price IDs from your Stripe dashboard (Products → Pricing)
+#
+# Per-plan, per-interval price IDs (Stripe dashboard → Products → Pricing).
+# Set both MONTHLY and ANNUAL for each paid tier to enable annual billing.
+# Creator tier
+STRIPE_CREATOR_MONTHLY_PRICE_ID=
+STRIPE_CREATOR_ANNUAL_PRICE_ID=
+# Pro tier
+STRIPE_PRO_MONTHLY_PRICE_ID=
+STRIPE_PRO_ANNUAL_PRICE_ID=
+# Agency tier
+STRIPE_AGENCY_MONTHLY_PRICE_ID=
+STRIPE_AGENCY_ANNUAL_PRICE_ID=
+#
+# DEPRECATED — legacy single-price vars (still read as fallback for existing subscribers).
+# Prefer the per-interval vars above for new deployments.
 STRIPE_PRO_PRICE_ID=
 STRIPE_BUSINESS_PRICE_ID=

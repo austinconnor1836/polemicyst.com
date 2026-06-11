@@ -82,38 +82,40 @@ Ports define **what** the business logic needs; adapters provide the **how**. Ne
 
 #### LLM Scoring (`shared/lib/scoring/`)
 
-| File | Role |
-|------|------|
-| `scoring-provider.ts` | **Port** — `ScoringProvider` interface + `createScoringProvider()` factory |
-| `gemini-adapter.ts` | **Adapter** — Gemini multimodal implementation |
-| `ollama-adapter.ts` | **Adapter** — Ollama (local LLM) implementation |
-| `viral-scoring.ts` | **Orchestrator** — heuristic prefilter → calls `ScoringProvider.scoreSegment()` → aggregates subscores |
+| File                  | Role                                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------ |
+| `scoring-provider.ts` | **Port** — `ScoringProvider` interface + `createScoringProvider()` factory                             |
+| `gemini-adapter.ts`   | **Adapter** — Gemini multimodal implementation                                                         |
+| `ollama-adapter.ts`   | **Adapter** — Ollama (local LLM) implementation                                                        |
+| `viral-scoring.ts`    | **Orchestrator** — heuristic prefilter → calls `ScoringProvider.scoreSegment()` → aggregates subscores |
 
 **Rules:**
+
 - To add a new LLM provider (e.g. fine-tuned model), create a new adapter class implementing `ScoringProvider` and register it in `createScoringProvider()`. Do not modify the orchestrator.
 - The orchestrator accepts an injected `scoringProvider` parameter for testing.
 - Provider-specific concerns (API keys, prompt formatting, media extraction) live **inside the adapter**, never in the orchestrator.
 
 #### Object Storage (`shared/lib/storage/`)
 
-| File | Role |
-|------|------|
+| File                  | Role                                   |
+| --------------------- | -------------------------------------- |
 | `storage-provider.ts` | **Port** — `StorageProvider` interface |
-| `s3-adapter.ts` | **Adapter** — AWS S3 via SDK v3 |
+| `s3-adapter.ts`       | **Adapter** — AWS S3 via SDK v3        |
 
 **Rules:**
+
 - `shared/lib/s3.ts` is a backward-compatible shim that delegates to `S3StorageAdapter`. Prefer importing the adapter directly for new code.
 - All S3 operations must use **SDK v3** (`@aws-sdk/client-s3`). Do not introduce `aws-sdk` v2 imports.
 - The `S3_BUCKET`, `S3_REGION`, and `S3_PREFIX` env vars are read from `storage-provider.ts`.
 
 #### Where ports/adapters are NOT used (and shouldn't be)
 
-| Concern | Why |
-|---------|-----|
-| Database (Prisma) | Single DB engine; repository files suffice |
-| Auth (NextAuth) | Framework-specific; wrapping adds no value |
+| Concern              | Why                                        |
+| -------------------- | ------------------------------------------ |
+| Database (Prisma)    | Single DB engine; repository files suffice |
+| Auth (NextAuth)      | Framework-specific; wrapping adds no value |
 | Queue (BullMQ/Redis) | Tight coupling is fine; unlikely to change |
-| FFmpeg | CLI tool, not a swappable service |
+| FFmpeg               | CLI tool, not a swappable service          |
 
 ### Authentication
 
@@ -131,12 +133,12 @@ All API routes must use `getAuthenticatedUser(req)` from `@shared/lib/auth-helpe
 
 Cost tracking, training data collection, and job logging all follow the same **"accumulate + flush, never block the pipeline"** pattern:
 
-| Concern | Accumulator | Flush target |
-|---------|------------|--------------|
-| Cost | `CostTracker` (`shared/lib/cost-tracking.ts`) | `CostEvent` table |
-| Training | `TrainingCollector` (`shared/lib/training-collector.ts`) | `TrainingExample` table |
+| Concern        | Accumulator                                                         | Flush target                 |
+| -------------- | ------------------------------------------------------------------- | ---------------------------- |
+| Cost           | `CostTracker` (`shared/lib/cost-tracking.ts`)                       | `CostEvent` table            |
+| Training       | `TrainingCollector` (`shared/lib/training-collector.ts`)            | `TrainingExample` table      |
 | Truth training | `TruthTrainingCollector` (`shared/lib/truth-training-collector.ts`) | `TruthTrainingExample` table |
-| Job logs | `logJob()` (`shared/lib/job-logger.ts`) | `JobLog` table |
+| Job logs       | `logJob()` (`shared/lib/job-logger.ts`)                             | `JobLog` table               |
 
 All are non-fatal — failures are logged but never crash the pipeline.
 
@@ -288,6 +290,17 @@ Switch to the private model when:
 - **Cost tracking**: each chat call tracked as `llm_scoring` stage with `metadata: { type: 'truth_chat' }`.
 
 ## Change log
+
+### 2026-06-11
+
+- **Added pricing strategy proposal** — `docs/PRICING_STRATEGY.md` documents a pricing
+  overhaul for investor readiness: drop LLM-provider gating (best quality for all tiers),
+  meter on **upload minutes/month** instead of clips, watermark the free tier, add an
+  **Agency** tier ($99+) with seats, annual billing, and overage credits. Rationale ties
+  the margin story to existing cost instrumentation (`CostEvent`/`CostTracker`) + the
+  Gemini→self-hosted distillation roadmap. Structural implementation since landed on the
+  `claude/clipfire-investor-readiness-4zb7ev` branch (see `specs/pricing-restructure/`);
+  dollar amounts remain placeholders pending WTP research.
 
 ### 2026-04-08
 

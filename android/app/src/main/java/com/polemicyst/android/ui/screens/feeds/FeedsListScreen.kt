@@ -140,8 +140,8 @@ fun FeedsListScreen(
                 viewModel.updateFeedSettings(feed.id, autoGenerate, viralityState)
                 settingsFeed = null
             },
-            isFreeUser = uiState.subscription?.plan == "free",
-            allowedProviders = uiState.subscription?.limits?.allowedProviders ?: listOf("openai"),
+            // Auto-generate is available on creator, pro, and agency tiers; not on free.
+            autoGenerateClipsAllowed = uiState.subscription?.limits?.autoGenerateClips ?: false,
         )
     }
 }

@@ -46,11 +46,7 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function buildPullQuoteHtml(
-  quote: DetectedQuote,
-  width: number,
-  height: number
-): string {
+function buildPullQuoteHtml(quote: DetectedQuote, width: number, height: number): string {
   const attribution = quote.attribution
     ? `<div class="attribution">— ${escapeHtml(quote.attribution)}</div>`
     : '';
@@ -106,11 +102,7 @@ function buildPullQuoteHtml(
 </body></html>`;
 }
 
-function buildLowerThirdHtml(
-  quote: DetectedQuote,
-  width: number,
-  height: number
-): string {
+function buildLowerThirdHtml(quote: DetectedQuote, width: number, height: number): string {
   const attribution = quote.attribution
     ? `<div class="source">${escapeHtml(quote.attribution)}</div>`
     : '';
@@ -154,11 +146,7 @@ function buildLowerThirdHtml(
 </body></html>`;
 }
 
-function buildHighlightCardHtml(
-  quote: DetectedQuote,
-  width: number,
-  height: number
-): string {
+function buildHighlightCardHtml(quote: DetectedQuote, width: number, height: number): string {
   const attribution = quote.attribution
     ? `<div class="attribution">${escapeHtml(quote.attribution)}</div>`
     : '';
@@ -212,11 +200,7 @@ function buildHighlightCardHtml(
 </body></html>`;
 }
 
-function buildSidePanelHtml(
-  quote: DetectedQuote,
-  width: number,
-  height: number
-): string {
+function buildSidePanelHtml(quote: DetectedQuote, width: number, height: number): string {
   const panelWidth = Math.round(width * 0.42);
   const attribution = quote.attribution
     ? `<div class="attribution">— ${escapeHtml(quote.attribution)}</div>`
@@ -303,12 +287,7 @@ export async function generateQuoteGraphic(
 ): Promise<QuoteOverlay> {
   const { rasterizeGraphic } = await import('../lib/publishing/rasterize');
 
-  const html = buildQuoteHtml(
-    opts.quote,
-    opts.style,
-    opts.canvasWidth,
-    opts.canvasHeight
-  );
+  const html = buildQuoteHtml(opts.quote, opts.style, opts.canvasWidth, opts.canvasHeight);
 
   const pngBuffer = await rasterizeGraphic(html, {
     width: opts.canvasWidth,
@@ -434,10 +413,34 @@ export function cleanupQuoteGraphics(overlays: QuoteOverlay[]): void {
 /**
  * Available quote graphic style options with labels.
  */
-export const QUOTE_GRAPHIC_STYLES: { value: QuoteGraphicStyle; label: string; description: string }[] = [
-  { value: 'pull-quote', label: 'Pull Quote', description: 'Large quotation marks with centered text' },
-  { value: 'lower-third', label: 'Lower Third', description: 'Text bar across the bottom of the frame' },
-  { value: 'highlight-card', label: 'Highlight Card', description: 'Rounded card with accent border' },
-  { value: 'side-panel', label: 'Side Panel', description: 'Quote text in a styled panel on one side' },
-  { value: 'typewriter', label: 'Typewriter', description: 'Text appears word-by-word (client-side only)' },
+export const QUOTE_GRAPHIC_STYLES: {
+  value: QuoteGraphicStyle;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: 'pull-quote',
+    label: 'Pull Quote',
+    description: 'Large quotation marks with centered text',
+  },
+  {
+    value: 'lower-third',
+    label: 'Lower Third',
+    description: 'Text bar across the bottom of the frame',
+  },
+  {
+    value: 'highlight-card',
+    label: 'Highlight Card',
+    description: 'Rounded card with accent border',
+  },
+  {
+    value: 'side-panel',
+    label: 'Side Panel',
+    description: 'Quote text in a styled panel on one side',
+  },
+  {
+    value: 'typewriter',
+    label: 'Typewriter',
+    description: 'Text appears word-by-word (client-side only)',
+  },
 ];
