@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: { planId?: string };
+  let body: { planId?: string; interval?: string };
   try {
     body = await req.json();
   } catch {
@@ -18,7 +18,9 @@ export async function POST(req: NextRequest) {
   }
 
   const planId = body.planId as PlanId;
-  if (planId !== 'pro' && planId !== 'business') {
+  // Free tier has no Stripe checkout; all paid tiers are valid.
+  // TODO(T010): resolve per-interval Stripe price IDs once pricing-backend lands.
+  if (planId !== 'creator' && planId !== 'pro' && planId !== 'agency') {
     return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
   }
 
