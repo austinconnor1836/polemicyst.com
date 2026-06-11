@@ -359,6 +359,8 @@ model AutomationRule {
   cropTemplateId   String?
   autoPublish      Boolean  @default(false)
   publishPlatforms Json?
+  /// When true, the Publish sheet auto-runs AI title/caption generation as soon as it opens.
+  autoGeneratePublishMeta Boolean @default(false)
   autoEditSettings     Json?
   quoteGraphicsEnabled Boolean  @default(false)
   quoteGraphicStyle    String   @default("pull-quote") // pull-quote | lower-third | highlight-card | side-panel | typewriter

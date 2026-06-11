@@ -44,9 +44,11 @@ public struct VideoPublishSheet: View {
     let source: VideoSource
     let api: APIClient
     @Environment(\.dismiss) private var dismiss
+    @State private var title: String = ""
     @State private var caption: String = ""
     @State private var selectedPlatforms: Set<String> = []
     @State private var isPublishing = false
+    @State private var isGenerating = false
     @State private var resultMessage: String?
     @State private var showResult = false
     @State private var showPreview = false
@@ -61,6 +63,8 @@ public struct VideoPublishSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignTokens.largeSpacing) {
                     previewCard
+                    aiSuggestButton
+                    titleCard
                     captionCard
                     platformsCard
                     publishButton
@@ -70,6 +74,16 @@ public struct VideoPublishSheet: View {
             .background(DesignTokens.background.ignoresSafeArea())
             .navigationTitle("Publish Video")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                // Read the user's "auto-generate publish meta" preference and trigger the
+                // AI suggest on open if enabled. Failure is silent — the manual button is
+                // always available as fallback.
+                if let settings = try? await api.fetchAutomationSettings(),
+                   settings.autoGeneratePublishMeta,
+                   title.isEmpty, caption.isEmpty {
+                    await suggestWithAI()
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }.disabled(isPublishing)
@@ -131,6 +145,44 @@ public struct VideoPublishSheet: View {
                     .clipShape(Capsule())
             }
             Spacer()
+        }
+        .padding()
+        .background(DesignTokens.surface)
+        .cornerRadius(DesignTokens.cornerRadius)
+    }
+
+    private var aiSuggestButton: some View {
+        Button {
+            Task { await suggestWithAI() }
+        } label: {
+            HStack(spacing: 6) {
+                if isGenerating {
+                    ProgressView().tint(.white).scaleEffect(0.8)
+                } else {
+                    Image(systemName: "sparkles")
+                }
+                Text(isGenerating ? "Drafting…" : "Suggest title & caption with AI")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 40)
+            .background(
+                LinearGradient(
+                    colors: [.purple, DesignTokens.accent],
+                    startPoint: .leading, endPoint: .trailing
+                )
+            )
+            .cornerRadius(DesignTokens.cornerRadius)
+        }
+        .buttonStyle(.plain)
+        .disabled(isGenerating || isPublishing)
+    }
+
+    private var titleCard: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.smallSpacing) {
+            Text("Title").font(.headline).foregroundStyle(DesignTokens.textPrimary)
+            TextField("Video title", text: $title)
+                .textFieldStyle(.roundedBorder)
         }
         .padding()
         .background(DesignTokens.surface)
@@ -243,6 +295,7 @@ public struct VideoPublishSheet: View {
             let request = PublishVideoRequest(
                 sourceKind: source.kind.rawValue,
                 sourceId: source.id,
+                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                 caption: caption.trimmingCharacters(in: .whitespacesAndNewlines),
                 platforms: Array(selectedPlatforms).sorted()
             )
@@ -251,6 +304,27 @@ public struct VideoPublishSheet: View {
             showResult = true
         } catch {
             resultMessage = "Failed to queue publish: \(error.localizedDescription)"
+            showResult = true
+        }
+    }
+
+    private func suggestWithAI() async {
+        isGenerating = true
+        defer { isGenerating = false }
+        do {
+            let contextParts = [source.title, caption.trimmingCharacters(in: .whitespacesAndNewlines)]
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n")
+            let request = GenerateMetaRequest(
+                context: contextParts.isEmpty ? "A short video the user wants to publish to social media." : contextParts,
+                platforms: selectedPlatforms.isEmpty ? ["youtube", "instagram", "twitter", "bluesky", "tiktok"] : Array(selectedPlatforms).sorted(),
+                seedTitle: title.isEmpty ? nil : title
+            )
+            let response = try await api.generatePublishMeta(request)
+            if !response.title.isEmpty { title = response.title }
+            if !response.caption.isEmpty { caption = response.caption }
+        } catch {
+            resultMessage = "AI suggestion failed: \(error.localizedDescription)"
             showResult = true
         }
     }

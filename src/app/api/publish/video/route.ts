@@ -18,9 +18,10 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { sourceKind, sourceId, caption, platforms } = body as {
+    const { sourceKind, sourceId, title, caption, platforms } = body as {
       sourceKind?: string;
       sourceId?: string;
+      title?: string;
       caption?: string;
       platforms?: string[];
     };
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest) {
       sourceKind,
       sourceId,
       platforms: queued,
+      titlePreview: (title ?? '').slice(0, 80),
       captionPreview: (caption ?? '').slice(0, 80),
     });
 

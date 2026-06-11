@@ -435,6 +435,10 @@ public struct APIClient {
         try await post(path: "/api/publish/video", body: body)
     }
 
+    public func generatePublishMeta(_ body: GenerateMetaRequest) async throws -> GenerateMetaResponse {
+        try await post(path: "/api/publish/generate-meta", body: body)
+    }
+
     public func saveClientRender(compositionId: String, body: ClientCompleteRenderRequest) async throws {
         let _: AnyCodable = try await post(
             path: "/api/compositions/\(compositionId)/render/client-complete",

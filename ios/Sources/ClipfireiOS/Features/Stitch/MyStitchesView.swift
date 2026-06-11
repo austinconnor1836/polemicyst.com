@@ -42,11 +42,6 @@ public struct MyStitchesView: View {
         .background(DesignTokens.background.ignoresSafeArea())
         .navigationTitle("My Stitches")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Close") { dismiss() }
-            }
-        }
         .sheet(item: $playingStitch) { stitch in
             StitchPlayerSheet(url: store.localURL(for: stitch))
         }
@@ -147,15 +142,10 @@ private struct StitchCard: View {
             }
             .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(stitch.title)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(DesignTokens.textPrimary)
-                    .lineLimit(1)
-                Text(stitch.createdAt, style: .relative)
-                    .font(.caption2)
-                    .foregroundStyle(DesignTokens.muted)
-            }
+            Text(stitch.title)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(DesignTokens.textPrimary)
+                .lineLimit(1)
 
             if canPublish {
                 Button(action: onPublish) {

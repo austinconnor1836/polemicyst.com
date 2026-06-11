@@ -620,6 +620,8 @@ public struct AutomationSettings: Codable {
     public var aspectRatio: String
     public var autoPublish: Bool
     public var publishPlatforms: [String]
+    /// When true, the Publish sheet auto-fills the title + caption via AI the moment it opens.
+    public var autoGeneratePublishMeta: Bool
 
     public init(
         enabled: Bool = false,
@@ -629,7 +631,8 @@ public struct AutomationSettings: Codable {
         captionStyle: String = "default",
         aspectRatio: String = "9:16",
         autoPublish: Bool = false,
-        publishPlatforms: [String] = []
+        publishPlatforms: [String] = [],
+        autoGeneratePublishMeta: Bool = false
     ) {
         self.enabled = enabled
         self.autoGenerateClips = autoGenerateClips
@@ -639,11 +642,13 @@ public struct AutomationSettings: Codable {
         self.aspectRatio = aspectRatio
         self.autoPublish = autoPublish
         self.publishPlatforms = publishPlatforms
+        self.autoGeneratePublishMeta = autoGeneratePublishMeta
     }
 
     enum CodingKeys: String, CodingKey {
         case enabled, autoGenerateClips, viralitySettings, captionsEnabled
         case captionStyle, aspectRatio, autoPublish, publishPlatforms
+        case autoGeneratePublishMeta
     }
 
     public init(from decoder: Decoder) throws {
@@ -655,6 +660,7 @@ public struct AutomationSettings: Codable {
         aspectRatio = try c.decode(String.self, forKey: .aspectRatio)
         autoPublish = try c.decode(Bool.self, forKey: .autoPublish)
         publishPlatforms = (try? c.decode([String].self, forKey: .publishPlatforms)) ?? []
+        autoGeneratePublishMeta = (try? c.decode(Bool.self, forKey: .autoGeneratePublishMeta)) ?? false
 
         // Decode viralitySettings from [String: AnyCodable] dictionary
         if let dict = try? c.decode([String: AnyCodable].self, forKey: .viralitySettings) {
@@ -680,6 +686,7 @@ public struct AutomationSettings: Codable {
         try c.encode(aspectRatio, forKey: .aspectRatio)
         try c.encode(autoPublish, forKey: .autoPublish)
         try c.encode(publishPlatforms, forKey: .publishPlatforms)
+        try c.encode(autoGeneratePublishMeta, forKey: .autoGeneratePublishMeta)
         try c.encode(viralitySettings.toDictionary(), forKey: .viralitySettings)
     }
 }
@@ -1160,11 +1167,13 @@ public struct ClientCompleteRenderRequest: Encodable {
 public struct PublishVideoRequest: Encodable {
     public let sourceKind: String   // "stitch" | "clip" | "reaction"
     public let sourceId: String     // composition id or clip id
+    public let title: String
     public let caption: String
     public let platforms: [String]  // ids like "youtube", "instagram", "twitter", "bluesky", "tiktok"
-    public init(sourceKind: String, sourceId: String, caption: String, platforms: [String]) {
+    public init(sourceKind: String, sourceId: String, title: String, caption: String, platforms: [String]) {
         self.sourceKind = sourceKind
         self.sourceId = sourceId
+        self.title = title
         self.caption = caption
         self.platforms = platforms
     }
@@ -1173,6 +1182,22 @@ public struct PublishVideoRequest: Encodable {
 public struct PublishVideoResponse: Codable {
     public let publishRequestId: String
     public let queuedPlatforms: [String]
+}
+
+public struct GenerateMetaRequest: Encodable {
+    public let context: String      // free-text context about the video (transcript, working title, etc.)
+    public let platforms: [String]  // tailor tone to these
+    public let seedTitle: String?
+    public init(context: String, platforms: [String], seedTitle: String? = nil) {
+        self.context = context
+        self.platforms = platforms
+        self.seedTitle = seedTitle
+    }
+}
+
+public struct GenerateMetaResponse: Codable {
+    public let title: String
+    public let caption: String
 }
 
 public struct UpdateCompositionRequest: Encodable {
