@@ -53,6 +53,8 @@ export type CaptionOptions = {
 export type ClipGenerationOptions = {
   showTimestamp?: boolean;
   captions?: CaptionOptions;
+  /** When true, a "Clipfire" watermark is stamped in the bottom-right corner. */
+  watermark?: boolean;
 };
 
 export function generateAssSubtitles(
@@ -100,6 +102,12 @@ export function formatAssTime(seconds: number): string {
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 }
 
+function buildWatermarkFilter(): string {
+  // Semi-transparent "Clipfire" label in the bottom-right corner.
+  // Uses drawtext with a dark background box for readability across varied footage.
+  return "drawtext=text='Clipfire':fontsize=24:fontcolor=white@0.75:borderw=1:bordercolor=black@0.5:x=w-tw-16:y=h-th-16:box=1:boxcolor=black@0.35:boxborderw=4";
+}
+
 function buildTimestampFilter(startTimeStr: string): string {
   const startSeconds = parseTimeToSeconds(startTimeStr);
   const hh = Math.floor(startSeconds / 3600);
@@ -128,6 +136,9 @@ export async function generateClipFromS3(
   let vf = aspectRatioFilter;
   if (options?.showTimestamp) {
     vf += ',' + buildTimestampFilter(start);
+  }
+  if (options?.watermark) {
+    vf += ',' + buildWatermarkFilter();
   }
 
   let assFilePath: string | null = null;
