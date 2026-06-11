@@ -2,11 +2,13 @@ import SwiftUI
 
 public struct ViralitySettingsView: View {
     @Binding public var settings: ViralitySettings
-    public var allowedProviders: [String]
 
-    public init(settings: Binding<ViralitySettings>, allowedProviders: [String] = ["ollama", "gemini"]) {
+    // LLM provider is no longer plan-gated; all providers are available on every plan. // TODO(pricing)
+    // The `allowedProviders` parameter has been removed. Pass no argument when constructing this view.
+    private static let allProviders: [String] = ["ollama", "gemini"]
+
+    public init(settings: Binding<ViralitySettings>) {
         self._settings = settings
-        self.allowedProviders = allowedProviders
     }
 
     public var body: some View {
@@ -36,7 +38,7 @@ public struct ViralitySettingsView: View {
             }
 
             Picker("LLM Provider", selection: $settings.llmProvider) {
-                ForEach(allowedProviders, id: \.self) { provider in
+                ForEach(Self.allProviders, id: \.self) { provider in
                     Text(provider.capitalized).tag(provider)
                 }
             }
