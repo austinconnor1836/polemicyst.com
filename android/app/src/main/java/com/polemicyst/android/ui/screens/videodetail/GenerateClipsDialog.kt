@@ -29,9 +29,8 @@ import com.polemicyst.android.ui.components.ViralitySettingsState
 fun GenerateClipsDialog(
     onDismiss: () -> Unit,
     onGenerate: (aspectRatio: AspectRatio, viralitySettings: ViralitySettingsState) -> Unit,
-    clipsUsed: Int = 0,
-    clipsLimit: Int = -1,
-    allowedProviders: List<String> = emptyList(),
+    uploadMinutesUsed: Int = 0,
+    uploadMinutesLimit: Int = -1,
 ) {
     var aspectRatio by remember { mutableStateOf(AspectRatio.PORTRAIT) }
     var viralityState by remember { mutableStateOf(ViralitySettingsState()) }
@@ -47,11 +46,11 @@ fun GenerateClipsDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                if (clipsLimit != -1) {
+                if (uploadMinutesLimit != -1) {
                     QuotaIndicator(
-                        label = "Clips this month",
-                        used = clipsUsed,
-                        limit = clipsLimit,
+                        label = "Upload minutes this month",
+                        used = uploadMinutesUsed,
+                        limit = uploadMinutesLimit,
                     )
                 }
 
@@ -69,7 +68,6 @@ fun GenerateClipsDialog(
                 ViralitySettingsPanel(
                     state = viralityState,
                     onStateChange = { viralityState = it },
-                    allowedProviders = allowedProviders,
                 )
             }
         },
