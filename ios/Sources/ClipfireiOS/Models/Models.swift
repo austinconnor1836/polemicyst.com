@@ -1103,6 +1103,10 @@ public struct Composition: Identifiable, Codable {
     public let creatorHeight: Int?
     public let creatorTrimStartS: Double
     public let creatorTrimEndS: Double?
+    /// Per-segment transcript of the creator clip. Optional; populated by the
+    /// transcription worker after the creator video is set. Used by the AI
+    /// publish helper to build the stitched-composition transcript prompt.
+    public let creatorTranscriptJson: [TranscriptSegment]?
     public let tracks: [CompositionTrack]?
     public let outputs: [CompositionOutput]?
     public let createdAt: Date
@@ -1123,6 +1127,10 @@ public struct CompositionTrack: Identifiable, Codable {
     public let trimEndS: Double?
     public let sortOrder: Int
     public let hasAudio: Bool
+    /// Per-segment transcript of this reference track. Optional; populated by
+    /// the transcription worker. Used by the AI publish helper to build the
+    /// stitched-composition transcript prompt.
+    public let transcriptJson: [TranscriptSegment]?
     public let createdAt: Date
     public let updatedAt: Date
 }
@@ -1137,6 +1145,11 @@ public struct CompositionOutput: Identifiable, Codable {
     public let renderError: String?
     public let durationMs: Int?
     public let fileSizeBytes: Int64?
+    /// Transcript of the actual rendered output, produced by a post-render
+    /// transcription job (server-side renders only). Preferred over the
+    /// per-source concatenation when present because it captures the audio-mode
+    /// mixing that the per-source concatenation can't reproduce.
+    public let transcript: String?
     public let createdAt: Date
     public let updatedAt: Date
 }

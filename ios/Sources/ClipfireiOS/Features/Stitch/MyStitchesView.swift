@@ -54,7 +54,8 @@ public struct MyStitchesView: View {
                         title: stitch.title,
                         durationS: stitch.durationS,
                         thumbnail: nil,
-                        localFileURL: store.localURL(for: stitch)
+                        localFileURL: store.localURL(for: stitch),
+                        serverCompositionId: stitch.serverCompositionId
                     ),
                     api: api
                 )

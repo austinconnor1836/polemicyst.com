@@ -28,16 +28,32 @@ public struct VideoPublishSheet: View {
         public let durationS: Double
         public let thumbnail: UIImage?
         public let localFileURL: URL?  // for preview playback before upload, when available
+        /// Server-side Composition id when known (stitches that have finished
+        /// their silent background upload). Used by the AI suggest path to
+        /// pull the per-track transcripts and build a stitched transcript
+        /// prompt — without it the LLM sees just the title and generates
+        /// generic copy. Optional because freshly-rendered stitches publish
+        /// before the upload finishes.
+        public let serverCompositionId: String?
 
         public enum Kind: String { case stitch, clip, reaction }
 
-        public init(id: String, kind: Kind, title: String, durationS: Double, thumbnail: UIImage? = nil, localFileURL: URL? = nil) {
+        public init(
+            id: String,
+            kind: Kind,
+            title: String,
+            durationS: Double,
+            thumbnail: UIImage? = nil,
+            localFileURL: URL? = nil,
+            serverCompositionId: String? = nil
+        ) {
             self.id = id
             self.kind = kind
             self.title = title
             self.durationS = durationS
             self.thumbnail = thumbnail
             self.localFileURL = localFileURL
+            self.serverCompositionId = serverCompositionId
         }
     }
 
@@ -312,9 +328,32 @@ public struct VideoPublishSheet: View {
         isGenerating = true
         defer { isGenerating = false }
         do {
-            let contextParts = [source.title, caption.trimmingCharacters(in: .whitespacesAndNewlines)]
-                .filter { !$0.isEmpty }
-                .joined(separator: "\n")
+            // For stitched compositions, pull the server Composition so we can
+            // build the per-source stitched transcript (creator + each track).
+            // Without this the LLM only sees the title and produces generic
+            // copy — the bug PR #296 fixed on the web side. Failure is silent;
+            // we just fall back to title-only context (same as before).
+            var stitchedTranscript: String? = nil
+            if source.kind == .stitch, let compId = source.serverCompositionId {
+                if let composition = try? await api.fetchComposition(id: compId) {
+                    let outputTranscript = composition.outputs?
+                        .compactMap { $0.transcript }
+                        .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                    stitchedTranscript = CompositionTranscript.buildStitched(
+                        composition: composition,
+                        fallback: outputTranscript
+                    )
+                }
+            }
+
+            let contextParts = [
+                source.title,
+                caption.trimmingCharacters(in: .whitespacesAndNewlines),
+                stitchedTranscript ?? "",
+            ]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+
             let request = GenerateMetaRequest(
                 context: contextParts.isEmpty ? "A short video the user wants to publish to social media." : contextParts,
                 platforms: selectedPlatforms.isEmpty ? ["youtube", "instagram", "twitter", "bluesky", "tiktok"] : Array(selectedPlatforms).sorted(),
