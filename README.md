@@ -158,8 +158,7 @@ private subnets. Idempotent.)
 
 ## Documentation map
 
-- [`docs/INVESTOR_READINESS.md`](docs/INVESTOR_READINESS.md) — the gap analysis
-  - work-item map that drove the 2026-06 readiness push.
+- [`docs/INVESTOR_READINESS.md`](docs/INVESTOR_READINESS.md) — gap analysis and work-item map that drove the 2026-06 readiness push.
 - [`docs/INVESTOR_READINESS_LOG.md`](docs/INVESTOR_READINESS_LOG.md) —
   execution record + known debt + what's left for a human.
 - [`docs/INVESTOR_METRICS.md`](docs/INVESTOR_METRICS.md) — always-on metrics
