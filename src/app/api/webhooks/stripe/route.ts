@@ -2,6 +2,13 @@ import { NextRequest } from 'next/server';
 import { prisma } from '../../../../../shared/lib/prisma';
 import { getStripeClient, planIdFromPriceId } from '@/lib/stripe';
 import { flushServerPostHog, getServerPostHog } from '@/lib/posthog';
+import {
+  applySubscriptionEnd,
+  applySubscriptionPlanChange,
+  applySubscriptionStart,
+  monthlyCentsForPlan,
+  monthlyEquivalentCents,
+} from '@shared/lib/subscription-metrics';
 
 function normalizeInterval(interval?: string | null): 'monthly' | 'annual' | 'unknown' {
   if (interval === 'month') return 'monthly';
@@ -84,6 +91,23 @@ export async function POST(req: NextRequest) {
           // Non-fatal.
         }
       }
+
+      // W017: subscription start rollup. We treat checkout.session.completed as
+      // the canonical "new paid subscription" signal — customer.subscription.created
+      // fires too but doesn't carry the checkout-amount in the same payload.
+      if (planId !== 'free') {
+        const monthlyCents = monthlyEquivalentCents(amount, interval);
+        await applySubscriptionStart({
+          planId: planId as 'creator' | 'pro' | 'agency',
+          // Fall back to the plan's display monthly price when Stripe didn't
+          // surface a usable amount on the session.
+          monthlyCents:
+            monthlyCents > 0
+              ? monthlyCents
+              : monthlyCentsForPlan(planId as 'creator' | 'pro' | 'agency'),
+          countAsNew: true,
+        });
+      }
       break;
     }
 
@@ -101,13 +125,69 @@ export async function POST(req: NextRequest) {
         });
         console.log(`Downgraded customer ${customerId} to free (status: ${subStatus})`);
       } else {
-        const priceId = subscription.items.data[0]?.price?.id;
+        const priceItem = subscription.items.data[0]?.price;
+        const priceId = priceItem?.id;
         const planId = priceId ? planIdFromPriceId(priceId) : 'free';
 
         await prisma.user.updateMany({
           where: { stripeCustomerId: customerId },
           data: { subscriptionPlan: planId },
         });
+
+        // W017: subscription-metrics rollup.
+        const interval = normalizeInterval(priceItem?.recurring?.interval ?? null);
+        const newMonthlyCents = monthlyEquivalentCents(priceItem?.unit_amount ?? 0, interval);
+        const safeNewMonthlyCents =
+          newMonthlyCents > 0
+            ? newMonthlyCents
+            : planId !== 'free'
+              ? monthlyCentsForPlan(planId as 'creator' | 'pro' | 'agency')
+              : 0;
+
+        if (event.type === 'customer.subscription.updated') {
+          // Detect plan change via previous_attributes (set by Stripe when an
+          // existing field changed). If items changed, the previous price ID
+          // is reachable via previous_attributes.items.data[0].price.id.
+          const previousAttributes = (event.data as { previous_attributes?: unknown })
+            .previous_attributes;
+          const prevItems = (
+            previousAttributes as
+              | {
+                  items?: {
+                    data?: Array<{
+                      price?: {
+                        id?: string;
+                        unit_amount?: number;
+                        recurring?: { interval?: string };
+                      };
+                    }>;
+                  };
+                }
+              | undefined
+          )?.items?.data;
+          const prevPrice = prevItems && prevItems[0]?.price ? prevItems[0].price : undefined;
+          if (prevPrice?.id) {
+            const oldPlanId = planIdFromPriceId(prevPrice.id);
+            const oldInterval = normalizeInterval(prevPrice.recurring?.interval ?? null);
+            const oldMonthlyCents = monthlyEquivalentCents(prevPrice.unit_amount ?? 0, oldInterval);
+            const safeOldMonthlyCents =
+              oldMonthlyCents > 0
+                ? oldMonthlyCents
+                : oldPlanId !== 'free'
+                  ? monthlyCentsForPlan(oldPlanId as 'creator' | 'pro' | 'agency')
+                  : 0;
+            if (oldPlanId !== 'free' && planId !== 'free') {
+              await applySubscriptionPlanChange({
+                oldPlanId: oldPlanId as 'creator' | 'pro' | 'agency',
+                newPlanId: planId as 'creator' | 'pro' | 'agency',
+                oldMonthlyCents: safeOldMonthlyCents,
+                newMonthlyCents: safeNewMonthlyCents,
+              });
+            }
+          }
+        }
+        // Note: customer.subscription.created is intentionally not double-counted
+        // here — checkout.session.completed already rolled up the start.
       }
       break;
     }
@@ -149,6 +229,19 @@ export async function POST(req: NextRequest) {
         } catch {
           // Non-fatal.
         }
+      }
+
+      // W017: subscription end rollup (churn).
+      if (previousPlan !== 'free') {
+        const interval = normalizeInterval(priceItem?.recurring?.interval ?? null);
+        const monthlyCents = monthlyEquivalentCents(priceItem?.unit_amount ?? 0, interval);
+        await applySubscriptionEnd({
+          planId: previousPlan as 'creator' | 'pro' | 'agency',
+          monthlyCents:
+            monthlyCents > 0
+              ? monthlyCents
+              : monthlyCentsForPlan(previousPlan as 'creator' | 'pro' | 'agency'),
+        });
       }
       break;
     }
