@@ -104,6 +104,21 @@ SENTRY_AUTH_TOKEN=
 SENTRY_ORG=
 SENTRY_PROJECT=
 
+# --- Analytics (PostHog) ---
+# Both keys are optional — when unset, all PostHog calls are no-ops so dev/test
+# environments never touch PostHog. The cookie banner (clipfire-cookie-consent
+# localStorage key) ALSO gates the JS SDK: without `accepted`, posthog-js is
+# never loaded.
+#
+# Server-side project API key (used by posthog-node in route handlers).
+POSTHOG_API_KEY=
+# Server host override (defaults to https://us.i.posthog.com).
+POSTHOG_HOST=
+# Client-side project key (loaded into the browser bundle).
+NEXT_PUBLIC_POSTHOG_KEY=
+# Client-side host override (defaults to https://us.i.posthog.com).
+NEXT_PUBLIC_POSTHOG_HOST=
+
 # --- iOS Crashlytics (Firebase) ---
 # The iOS app loads `GoogleService-Info.plist` from the app bundle at startup. The file
 # is NOT committed to the repo — download it from the Firebase console for the
