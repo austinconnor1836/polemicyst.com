@@ -17,6 +17,34 @@ export interface ClientTrackInfo {
   height: number;
   hasAudio: boolean;
   sortOrder: number;
+  /** When set, the track is a landscape video with embedded portrait content.
+   *  The crop rect extracts the portrait region before scaling. */
+  sourceCrop?: { w: number; h: number; x: number; y: number } | null;
+}
+
+/** A pre-computed caption segment in output timeline coordinates. */
+export interface CaptionSegment {
+  startS: number;
+  endS: number;
+  text: string;
+}
+
+export interface CaptionOptions {
+  segments: CaptionSegment[];
+  fontSizePx?: number; // Default: 36 (medium)
+}
+
+/** A detected quote to overlay on the video during rendering. */
+export interface QuoteOverlaySegment {
+  text: string;
+  attribution: string | null;
+  startS: number;
+  endS: number;
+  style: 'pull-quote' | 'lower-third' | 'highlight-card' | 'side-panel' | 'typewriter';
+}
+
+export interface QuoteOverlayOptions {
+  quotes: QuoteOverlaySegment[];
 }
 
 export interface ClientRenderOptions {
@@ -31,6 +59,8 @@ export interface ClientRenderOptions {
   audioMode: AudioMode;
   creatorVolume: number;
   referenceVolume: number;
+  captions?: CaptionOptions;
+  quoteOverlays?: QuoteOverlayOptions;
 }
 
 export type RenderPhase =

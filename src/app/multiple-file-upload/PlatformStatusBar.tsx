@@ -35,7 +35,7 @@ const PlatformStatusBar = () => {
       if (provider === 'bluesky') {
         router.push(`/auth/signin?provider=bluesky`);
       } else {
-        await signIn(provider, { callbackUrl: '/clips-genie' });
+        await signIn(provider, { callbackUrl: '/multiple-file-upload' });
       }
     }
 

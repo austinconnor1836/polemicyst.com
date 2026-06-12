@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@shared/lib/prisma';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { deleteFromS3 } from '@shared/lib/s3';
-import { checkLlmProviderAccess, checkAutoGenerateAccess } from '@/lib/plans';
+import { checkAutoGenerateAccess } from '@/lib/plans';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -32,23 +32,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  // Enforce LLM provider access if changing virality settings
-  if (viralitySettings?.llmProvider) {
-    const providerAccess = checkLlmProviderAccess(
-      viralitySettings.llmProvider,
-      user.subscriptionPlan
-    );
-    if (!providerAccess.allowed) {
-      return NextResponse.json(
-        {
-          error: providerAccess.message,
-          code: 'PLAN_RESTRICTED',
-          allowedProviders: providerAccess.allowedProviders,
-        },
-        { status: 403 }
-      );
-    }
-  }
+  // LLM provider access is no longer gated by plan — every tier gets the best
+  // available scoring. No plan check needed for viralitySettings.llmProvider.
 
   const updated = await prisma.videoFeed.update({
     where: { id },

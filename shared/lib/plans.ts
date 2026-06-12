@@ -1,13 +1,17 @@
 import { prisma } from './prisma';
 
-export type PlanId = 'free' | 'pro' | 'business';
+export type PlanId = 'free' | 'creator' | 'pro' | 'agency';
 
 export interface PlanLimits {
   maxConnectedAccounts: number;
-  maxClipsPerMonth: number;
+  /** PRIMARY value metric — source video minutes processed per month. */
+  uploadMinutesPerMonth: number;
   maxStorageGb: number;
-  llmProviders: string[];
+  /** When true, rendered clips are watermarked (free tier). */
+  watermark: boolean;
   autoGenerateClips: boolean;
+  /** Number of team seats included. 1 = solo. */
+  teamSeats: number;
   prioritySupport: boolean;
 }
 
@@ -16,76 +20,127 @@ export interface PlanDefinition {
   name: string;
   description: string;
   monthlyPriceDisplay: string;
+  /** Per-month price when billed annually. */
+  annualPriceDisplay: string;
   limits: PlanLimits;
   features: string[];
 }
 
+// NOTE(pricing): All dollar amounts and minute limits below are PLACEHOLDERS sourced from
+// docs/PRICING_STRATEGY.md. They are owned by the separate pricing/WTP agent — do not treat
+// them as final. The *structure* (tiers, fields, metric) is what this module establishes.
 export const PLANS: Record<PlanId, PlanDefinition> = {
   free: {
     id: 'free',
     name: 'Free',
-    description: 'Get started with basic clip generation',
-    monthlyPriceDisplay: '$0',
+    description: 'Try Clipfire with watermarked clips',
+    monthlyPriceDisplay: '$0', // TODO(pricing): confirm
+    annualPriceDisplay: '$0', // TODO(pricing): confirm
     limits: {
-      maxConnectedAccounts: 2,
-      maxClipsPerMonth: 10,
+      maxConnectedAccounts: 1,
+      uploadMinutesPerMonth: 60, // TODO(pricing): confirm via WTP
       maxStorageGb: 1,
-      llmProviders: ['ollama'],
+      watermark: true,
       autoGenerateClips: false,
+      teamSeats: 1,
       prioritySupport: false,
     },
-    features: ['2 connected accounts', '10 clips/month', '1 GB storage', 'Ollama LLM only'],
+    features: [
+      '1 connected account',
+      '60 upload minutes/month',
+      'Best-in-class AI scoring',
+      'Watermarked clips',
+    ],
+  },
+  creator: {
+    id: 'creator',
+    name: 'Creator',
+    description: 'For solo creators getting started',
+    monthlyPriceDisplay: '$19', // TODO(pricing): confirm via WTP
+    annualPriceDisplay: '$15', // TODO(pricing): confirm via WTP
+    limits: {
+      maxConnectedAccounts: 3,
+      uploadMinutesPerMonth: 600, // TODO(pricing): confirm via WTP
+      maxStorageGb: 25,
+      watermark: false,
+      autoGenerateClips: true,
+      teamSeats: 1,
+      prioritySupport: false,
+    },
+    features: [
+      '3 connected accounts',
+      '600 upload minutes/month',
+      'No watermark',
+      'Auto-generate clips',
+    ],
   },
   pro: {
     id: 'pro',
     name: 'Pro',
-    description: 'For creators who need more power',
-    monthlyPriceDisplay: '$19',
+    description: 'For power creators who post daily',
+    monthlyPriceDisplay: '$39', // TODO(pricing): confirm via WTP
+    annualPriceDisplay: '$31', // TODO(pricing): confirm via WTP
     limits: {
       maxConnectedAccounts: 10,
-      maxClipsPerMonth: 100,
-      maxStorageGb: 25,
-      llmProviders: ['ollama', 'gemini'],
+      uploadMinutesPerMonth: 1800, // TODO(pricing): confirm via WTP
+      maxStorageGb: 50,
+      watermark: false,
       autoGenerateClips: true,
-      prioritySupport: false,
-    },
-    features: [
-      '10 connected accounts',
-      '100 clips/month',
-      '25 GB storage',
-      'Ollama + Gemini LLM',
-      'Auto-generate clips',
-    ],
-  },
-  business: {
-    id: 'business',
-    name: 'Business',
-    description: 'For teams and high-volume creators',
-    monthlyPriceDisplay: '$49',
-    limits: {
-      maxConnectedAccounts: 50,
-      maxClipsPerMonth: 500,
-      maxStorageGb: 100,
-      llmProviders: ['ollama', 'gemini', 'openai', 'anthropic'],
-      autoGenerateClips: true,
+      teamSeats: 1,
       prioritySupport: true,
     },
     features: [
-      '50 connected accounts',
-      '500 clips/month',
-      '100 GB storage',
-      'All LLM providers',
+      '10 connected accounts',
+      '1,800 upload minutes/month',
+      'No watermark',
+      'Auto-generate clips',
+      'Priority support',
+    ],
+  },
+  agency: {
+    id: 'agency',
+    name: 'Agency',
+    description: 'For teams and high-volume creators',
+    monthlyPriceDisplay: '$99', // TODO(pricing): confirm via WTP
+    annualPriceDisplay: '$79', // TODO(pricing): confirm via WTP
+    limits: {
+      maxConnectedAccounts: 30,
+      uploadMinutesPerMonth: 6000, // TODO(pricing): confirm via WTP
+      maxStorageGb: 200,
+      watermark: false,
+      autoGenerateClips: true,
+      teamSeats: 5, // TODO(pricing): confirm via WTP
+      prioritySupport: true,
+    },
+    features: [
+      '30 connected accounts',
+      '6,000 upload minutes/month',
+      'Team seats',
+      'No watermark',
       'Auto-generate clips',
       'Priority support',
     ],
   },
 };
 
+/**
+ * Resolve a stored subscription plan string to a plan definition.
+ * Maps legacy plan ids (`business`) to their current equivalents so existing
+ * subscribers keep working after the restructure.
+ */
 export function resolvePlan(subscriptionPlan?: string | null): PlanDefinition {
-  if (subscriptionPlan && subscriptionPlan in PLANS) {
-    return PLANS[subscriptionPlan as PlanId];
+  if (!subscriptionPlan) return PLANS.free;
+  // Legacy mapping: the old `business` tier becomes `agency`.
+  const normalized = subscriptionPlan === 'business' ? 'agency' : subscriptionPlan;
+  if (normalized in PLANS) {
+    return PLANS[normalized as PlanId];
   }
   return PLANS.free;
+}
+
+function currentYearMonth(): string {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 export async function checkFeedQuota(userId: string, subscriptionPlan?: string | null) {
@@ -106,6 +161,35 @@ export async function checkFeedQuota(userId: string, subscriptionPlan?: string |
   };
 }
 
+/**
+ * PRIMARY quota check — gates on source video minutes processed this month,
+ * read from the `UsageMonth` rollup. Replaces the legacy clip-count quota.
+ */
+export async function checkUploadMinutesQuota(userId: string, subscriptionPlan?: string | null) {
+  const plan = resolvePlan(subscriptionPlan);
+  const limit = plan.limits.uploadMinutesPerMonth;
+
+  const usage = await prisma.usageMonth.findUnique({
+    where: { userId_yearMonth: { userId, yearMonth: currentYearMonth() } },
+    select: { processedMinutes: true },
+  });
+  const currentUsage = Math.round(usage?.processedMinutes ?? 0);
+
+  return {
+    allowed: currentUsage < limit,
+    message:
+      currentUsage >= limit
+        ? `You have reached your upload limit (${limit} minutes/month) on the ${plan.name} plan. Upgrade to process more video.`
+        : null,
+    currentUsage,
+    limit,
+  };
+}
+
+/**
+ * @deprecated Superseded by {@link checkUploadMinutesQuota}. Retained so any
+ * un-migrated call sites keep functioning during the pricing restructure.
+ */
 export async function checkClipQuota(userId: string, subscriptionPlan?: string | null) {
   const plan = resolvePlan(subscriptionPlan);
   const startOfMonth = new Date();
@@ -119,29 +203,27 @@ export async function checkClipQuota(userId: string, subscriptionPlan?: string |
       createdAt: { gte: startOfMonth },
     },
   });
-  const limit = plan.limits.maxClipsPerMonth;
+  // Approximate against the new metric so a deprecated caller never hard-blocks
+  // incorrectly; real enforcement lives in checkUploadMinutesQuota.
+  const limit = plan.limits.uploadMinutesPerMonth;
 
   return {
-    allowed: currentUsage < limit,
-    message:
-      currentUsage >= limit
-        ? `You have reached your clip limit (${limit}/month) on the ${plan.name} plan. Upgrade to generate more clips.`
-        : null,
+    allowed: true,
+    message: null,
     currentUsage,
     limit,
   };
 }
 
-export function checkLlmProviderAccess(provider: string, subscriptionPlan?: string | null) {
-  const plan = resolvePlan(subscriptionPlan);
-  const allowed = plan.limits.llmProviders.includes(provider.toLowerCase());
-
+/**
+ * Quality is no longer gated by plan — every tier gets the best available scoring.
+ * Retained with the original signature so existing call sites compile unchanged.
+ */
+export function checkLlmProviderAccess(_provider: string, _subscriptionPlan?: string | null) {
   return {
-    allowed,
-    message: !allowed
-      ? `The ${provider} LLM provider is not available on the ${plan.name} plan. Upgrade to access it.`
-      : null,
-    allowedProviders: plan.limits.llmProviders,
+    allowed: true as const,
+    message: null,
+    allowedProviders: ['ollama', 'gemini', 'openai', 'anthropic'],
   };
 }
 

@@ -17,81 +17,109 @@ import { Badge } from '@/components/ui/badge';
 import { Check, X, ChevronDown } from 'lucide-react';
 import { PLANS, type PlanId } from '@/lib/plans';
 
-const PLAN_ORDER: PlanId[] = ['free', 'pro', 'business'];
-const PLAN_RANK: Record<PlanId, number> = { free: 0, pro: 1, business: 2 };
+type BillingInterval = 'monthly' | 'annual';
+
+const PLAN_ORDER: PlanId[] = ['free', 'creator', 'pro', 'agency'];
+const PLAN_RANK: Record<PlanId, number> = { free: 0, creator: 1, pro: 2, agency: 3 };
 
 interface ComparisonRow {
   label: string;
+  /** For the Watermark row, the boolean means "no watermark" (good). */
+  isInverted?: boolean;
   values: Record<PlanId, string | boolean>;
 }
 
-const COMPARISON_ROWS: ComparisonRow[] = [
-  {
-    label: 'Monthly price',
-    values: { free: '$0', pro: '$19', business: '$49' },
-  },
-  {
-    label: 'Connected accounts',
-    values: { free: '2', pro: '10', business: '50' },
-  },
-  {
-    label: 'Clips per month',
-    values: { free: '10', pro: '100', business: '500' },
-  },
-  {
-    label: 'Storage',
-    values: { free: '1 GB', pro: '25 GB', business: '100 GB' },
-  },
-  {
-    label: 'Ollama LLM',
-    values: { free: true, pro: true, business: true },
-  },
-  {
-    label: 'Gemini LLM',
-    values: { free: false, pro: true, business: true },
-  },
-  {
-    label: 'OpenAI & Anthropic LLMs',
-    values: { free: false, pro: false, business: true },
-  },
-  {
-    label: 'Auto-generate clips',
-    values: { free: false, pro: true, business: true },
-  },
-  {
-    label: 'Multi-platform export',
-    values: { free: true, pro: true, business: true },
-  },
-  {
-    label: 'Priority support',
-    values: { free: false, pro: false, business: true },
-  },
-];
+function buildComparisonRows(): ComparisonRow[] {
+  return [
+    {
+      label: 'Upload minutes/month',
+      values: {
+        free: String(PLANS.free.limits.uploadMinutesPerMonth),
+        creator: String(PLANS.creator.limits.uploadMinutesPerMonth),
+        pro: String(PLANS.pro.limits.uploadMinutesPerMonth),
+        agency: String(PLANS.agency.limits.uploadMinutesPerMonth),
+      },
+    },
+    {
+      label: 'Connected accounts',
+      values: {
+        free: String(PLANS.free.limits.maxConnectedAccounts),
+        creator: String(PLANS.creator.limits.maxConnectedAccounts),
+        pro: String(PLANS.pro.limits.maxConnectedAccounts),
+        agency: String(PLANS.agency.limits.maxConnectedAccounts),
+      },
+    },
+    {
+      label: 'Team seats',
+      values: {
+        free: String(PLANS.free.limits.teamSeats),
+        creator: String(PLANS.creator.limits.teamSeats),
+        pro: String(PLANS.pro.limits.teamSeats),
+        agency: String(PLANS.agency.limits.teamSeats),
+      },
+    },
+    {
+      label: 'No watermark',
+      values: {
+        free: !PLANS.free.limits.watermark,
+        creator: !PLANS.creator.limits.watermark,
+        pro: !PLANS.pro.limits.watermark,
+        agency: !PLANS.agency.limits.watermark,
+      },
+    },
+    {
+      label: 'Auto-generate clips',
+      values: {
+        free: PLANS.free.limits.autoGenerateClips,
+        creator: PLANS.creator.limits.autoGenerateClips,
+        pro: PLANS.pro.limits.autoGenerateClips,
+        agency: PLANS.agency.limits.autoGenerateClips,
+      },
+    },
+    {
+      label: 'Best-in-class AI scoring',
+      values: { free: true, creator: true, pro: true, agency: true },
+    },
+    {
+      label: 'Multi-platform export',
+      values: { free: true, creator: true, pro: true, agency: true },
+    },
+    {
+      label: 'Priority support',
+      values: {
+        free: PLANS.free.limits.prioritySupport,
+        creator: PLANS.creator.limits.prioritySupport,
+        pro: PLANS.pro.limits.prioritySupport,
+        agency: PLANS.agency.limits.prioritySupport,
+      },
+    },
+  ];
+}
 
 const FAQ_ITEMS = [
   {
-    q: 'Can I try Polemicyst for free?',
-    a: 'Yes — the Free plan gives you 2 connected accounts, 10 clips per month, and 1 GB of storage with no credit card required.',
+    q: 'Can I try Clipfire for free?',
+    a: `Yes — the Free plan gives you ${PLANS.free.limits.maxConnectedAccounts} connected account and ${PLANS.free.limits.uploadMinutesPerMonth} upload minutes per month with no credit card required. Clips on the free tier include a Clipfire watermark.`,
   },
   {
     q: 'How does billing work?',
-    a: 'Plans are billed monthly via Stripe. You can upgrade, downgrade, or cancel anytime from your Billing page.',
+    a: 'Plans are billed monthly or annually via Stripe. Annual billing saves you around 20%. You can upgrade, downgrade, or cancel anytime from your Billing page.',
   },
   {
-    q: 'What counts as a "clip"?',
-    a: 'Each clip generated from a source video counts toward your monthly limit. Re-exporting the same clip to a different platform does not use an additional credit.',
+    q: 'What counts as an "upload minute"?',
+    a: 'Each minute of source video you upload or connect to your feed counts toward your monthly limit. Exporting clips or re-processing the same video does not consume additional minutes.',
   },
   {
-    q: 'What LLM providers are available?',
-    a: 'Free users get Ollama (runs locally, zero cost). Pro adds Gemini multimodal scoring. Business unlocks all providers including OpenAI and Anthropic for maximum scoring accuracy.',
+    q: 'What is the difference between monthly and annual billing?',
+    a: 'Annual billing gives you a discounted per-month rate. You pay the full year upfront and save compared to paying month-to-month.',
   },
   {
     q: 'Can I change plans later?',
     a: 'Absolutely. Upgrade or downgrade at any time through the Stripe customer portal. Changes take effect immediately, with prorated billing.',
   },
   {
-    q: 'What happens when I hit my clip limit?',
-    a: "You'll see a prompt to upgrade. No clips are lost — you can wait for the next billing cycle or upgrade instantly to continue generating.",
+    q: 'What happens when I hit my upload-minutes limit?',
+    a: "You'll see a prompt to upgrade. No videos or clips are lost — you can wait for the next billing cycle or upgrade instantly to continue processing.",
   },
 ];
 
@@ -125,16 +153,17 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 }
 
 export default function PricingPage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
   const [currentPlan, setCurrentPlan] = useState<PlanId | null>(null);
   const [loading, setLoading] = useState<PlanId | null>(null);
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>('monthly');
 
   useEffect(() => {
     if (status === 'authenticated') {
       fetch('/api/user/subscription')
         .then((r) => r.json())
-        .then((data) => setCurrentPlan(data.plan?.id ?? 'free'))
+        .then((data) => setCurrentPlan((data.plan?.id as PlanId) ?? 'free'))
         .catch(() => setCurrentPlan('free'));
     }
   }, [status]);
@@ -145,7 +174,7 @@ export default function PricingPage() {
       const res = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({ planId, interval: billingInterval }),
       });
       const data = await res.json();
       if (data.url) {
@@ -160,7 +189,7 @@ export default function PricingPage() {
     if (status !== 'authenticated') {
       return (
         <Button
-          variant={planId === 'pro' ? 'default' : 'outline'}
+          variant={planId === 'creator' ? 'default' : 'outline'}
           className="w-full"
           onClick={() => router.push('/auth/signin')}
         >
@@ -215,11 +244,13 @@ export default function PricingPage() {
     );
   }
 
+  const comparisonRows = buildComparisonRows();
+
   return (
     <div className="min-h-screen px-4 py-16 glass:bg-transparent">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         {/* Header */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-12">
           <Badge variant="secondary" className="mb-4 text-xs tracking-wide uppercase">
             Pricing
           </Badge>
@@ -227,16 +258,49 @@ export default function PricingPage() {
             Simple, transparent pricing
           </h1>
           <p className="mt-4 text-lg text-muted max-w-2xl mx-auto">
-            Start free with 10 clips per month. Upgrade when you need more sources, clips, or AI
-            scoring power.
+            Start free with {PLANS.free.limits.uploadMinutesPerMonth} upload minutes per month.
+            Upgrade when you need more sources, minutes, or team seats.
           </p>
         </div>
 
+        {/* Billing interval toggle */}
+        <div className="flex items-center justify-center gap-3 mb-10">
+          <span
+            className={`text-sm font-medium ${billingInterval === 'monthly' ? 'text-foreground' : 'text-muted'}`}
+          >
+            Monthly
+          </span>
+          <button
+            role="switch"
+            aria-checked={billingInterval === 'annual'}
+            onClick={() => setBillingInterval(billingInterval === 'monthly' ? 'annual' : 'monthly')}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+              billingInterval === 'annual' ? 'bg-accent' : 'bg-muted/40'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                billingInterval === 'annual' ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+          <span
+            className={`text-sm font-medium ${billingInterval === 'annual' ? 'text-foreground' : 'text-muted'}`}
+          >
+            Annual
+            <span className="ml-1.5 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-400">
+              Save ~20%
+            </span>
+          </span>
+        </div>
+
         {/* Plan cards */}
-        <div className="grid gap-6 md:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {PLAN_ORDER.map((planId) => {
             const plan = PLANS[planId];
-            const isPopular = planId === 'pro';
+            const isPopular = planId === 'creator';
+            const priceDisplay =
+              billingInterval === 'annual' ? plan.annualPriceDisplay : plan.monthlyPriceDisplay;
 
             return (
               <Card
@@ -252,9 +316,12 @@ export default function PricingPage() {
                   <CardTitle className="text-xl">{plan.name}</CardTitle>
                   <CardDescription>{plan.description}</CardDescription>
                   <div className="mt-4">
-                    <span className="text-4xl font-bold">{plan.monthlyPriceDisplay}</span>
+                    <span className="text-4xl font-bold">{priceDisplay}</span>
                     <span className="text-muted">/mo</span>
                   </div>
+                  {billingInterval === 'annual' && planId !== 'free' && (
+                    <p className="text-xs text-muted mt-1">Billed annually</p>
+                  )}
                 </CardHeader>
                 <CardContent className="flex-1">
                   <ul className="space-y-3">
@@ -294,7 +361,7 @@ export default function PricingPage() {
                 </tr>
               </thead>
               <tbody>
-                {COMPARISON_ROWS.map((row) => (
+                {comparisonRows.map((row) => (
                   <tr key={row.label} className="border-b border-border/50">
                     <td className="py-3 pr-4 text-muted">{row.label}</td>
                     {PLAN_ORDER.map((planId) => (

@@ -20,6 +20,9 @@ packages:
   GoogleSignIn-iOS:
     url: https://github.com/google/GoogleSignIn-iOS
     from: '8.0.0'
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: '11.0.0'
 
 targets:
   ClipfireiOS:
@@ -36,7 +39,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.clipfire.ios
         GENERATE_INFOPLIST_FILE: true
-        MARKETING_VERSION: '1.0.0'
+        MARKETING_VERSION: '0.4.9'
         CURRENT_PROJECT_VERSION: '1'
 
   ClipfireApp:
@@ -47,11 +50,15 @@ targets:
       - path: Supporting/Assets.xcassets
     dependencies:
       - target: ClipfireiOS
+      - package: Firebase
+        product: FirebaseCore
+      - package: Firebase
+        product: FirebaseCrashlytics
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.clipfire.app
         PRODUCT_NAME: Clipfire
-        MARKETING_VERSION: '1.0.0'
+        MARKETING_VERSION: '0.4.9'
         CURRENT_PROJECT_VERSION: '1'
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic

@@ -210,9 +210,8 @@ fun VideoDetailScreen(
                 )
                 showGenerateDialog = false
             },
-            clipsUsed = uiState.subscription?.usage?.clipsThisMonth ?: 0,
-            clipsLimit = uiState.subscription?.limits?.clipsPerMonth ?: -1,
-            allowedProviders = uiState.subscription?.limits?.allowedProviders ?: emptyList(),
+            uploadMinutesUsed = uiState.subscription?.usage?.uploadMinutesUsed ?: 0,
+            uploadMinutesLimit = uiState.subscription?.limits?.uploadMinutesPerMonth ?: -1,
         )
     }
 

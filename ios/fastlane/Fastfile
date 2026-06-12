@@ -156,6 +156,12 @@ platform :ios do
 
   desc "Submit latest build for App Store review"
   lane :promote do
+    # Sync MARKETING_VERSION / CURRENT_PROJECT_VERSION into project.yml from
+    # version.json + GITHUB_RUN_NUMBER, mirroring the Android pattern. The
+    # promote lane skips the binary upload, but stamping keeps project.yml
+    # in lockstep with the release that produced the build being submitted.
+    sh("../scripts/sync-version.sh")
+
     api_key = app_store_connect_api_key(
       key_id: ENV["ASC_KEY_ID"],
       issuer_id: ENV["ASC_ISSUER_ID"],

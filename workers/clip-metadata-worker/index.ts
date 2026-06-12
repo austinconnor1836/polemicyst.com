@@ -4,6 +4,15 @@ dotenv.config({ path: '.env' });
 // For containers, respect already-set env (e.g., DATABASE_URL pointing at service DNS)
 dotenv.config({ path: '.env.local', override: false });
 
+// Initialize Sentry as early as possible so it can capture errors from subsequent imports.
+// Sentry.init is a no-op when DSN is unset, so no extra guard required.
+import * as Sentry from '@sentry/node';
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  tracesSampleRate: 0.1,
+  environment: process.env.NODE_ENV,
+});
+
 import { Worker, Job, Queue } from 'bullmq';
 import { prisma } from '@shared/lib/prisma';
 import { getRedisConnection } from '@shared/queues';
@@ -15,7 +24,7 @@ import {
 } from '@shared/lib/scoring/viral-scoring';
 import { generateClipFromS3 } from '@shared/util/ffmpegUtils';
 import { scorePhilosophicalRhetoric } from '@shared/lib/scoring/philosophy-ranker';
-import { checkClipQuota } from '@shared/lib/plans';
+import { checkClipQuota, resolvePlan } from '@shared/lib/plans';
 import { CostTracker, estimateS3Cost } from '@shared/lib/cost-tracking';
 import { TrainingCollector } from '@shared/lib/training-collector';
 import { logJob } from '@shared/lib/job-logger';
@@ -26,7 +35,18 @@ import type {
 } from '@shared/queues';
 import { queueGenericTranscriptionJob } from '@shared/queues';
 import { renderComposition } from '@shared/util/reactionCompose';
-import { transcribeFromS3Url } from '@shared/lib/transcription';
+import { transcribeFromS3Url, transcribeLocalFile } from '@shared/lib/transcription';
+import { downloadFeedVideoToTemp } from '@shared/util/download';
+import {
+  detectSilenceFFmpeg,
+  analyzeForAutoEdit,
+  type TranscriptSegment,
+} from '@shared/util/auto-edit-analyzer';
+import {
+  mergeAutoEditSettings,
+  getAggressivenessConfig,
+  type AutoEditSettings,
+} from '@shared/auto-edit';
 
 console.log('[clip-metadata-worker] Starting with static reactionCompose import...');
 const redisConnection = getRedisConnection();
@@ -87,6 +107,8 @@ new Worker(
       );
       return;
     }
+    const userPlan = resolvePlan(quotaUser?.subscriptionPlan);
+    const applyWatermark = userPlan.limits.watermark;
 
     let localVideoPath: string | null = null;
 
@@ -280,6 +302,7 @@ new Worker(
                       fontSize: captionFontSize,
                     }
                   : undefined,
+                watermark: applyWatermark,
               }
             ),
           (result) => {
@@ -327,6 +350,37 @@ new Worker(
         });
 
         console.log(`✅ Clip created and registered: ${s3Url}`);
+      }
+
+      // Upsert usage metering (non-fatal). Derive source video duration from the last
+      // transcript segment end time (already available, no extra I/O needed).
+      try {
+        const lastSegmentEnd =
+          transcriptSegments.length > 0
+            ? (transcriptSegments[transcriptSegments.length - 1].end ?? 0)
+            : 0;
+        const sourceDurationMinutes = lastSegmentEnd / 60;
+        const clipsGenerated = philosophyWeightedCandidates.length;
+        const now = new Date();
+        const yearMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+        await prisma.usageMonth.upsert({
+          where: { userId_yearMonth: { userId, yearMonth } },
+          create: {
+            userId,
+            yearMonth,
+            processedMinutes: sourceDurationMinutes,
+            clipCount: clipsGenerated,
+          },
+          update: {
+            processedMinutes: { increment: sourceDurationMinutes },
+            clipCount: { increment: clipsGenerated },
+          },
+        });
+        console.log(
+          `📊 Usage metered: +${sourceDurationMinutes.toFixed(2)} min, +${clipsGenerated} clips (${yearMonth})`
+        );
+      } catch (meterErr) {
+        console.error('⚠️ Usage metering upsert failed (non-fatal):', meterErr);
       }
 
       await logJob({
@@ -560,7 +614,15 @@ new Worker<ReactionComposeJob>(
         },
       });
 
-      if (!composition || !composition.creatorS3Url) {
+      // Split tracks by type
+      const allTracks = composition?.tracks ?? [];
+      const creatorTracks = allTracks.filter(
+        (t: any) => (t.trackType ?? 'reference') === 'creator'
+      );
+      const refTracks = allTracks.filter((t: any) => (t.trackType ?? 'reference') === 'reference');
+
+      const hasCreator = !!composition?.creatorS3Url || creatorTracks.length > 0;
+      if (!composition || !hasCreator) {
         console.error(`❌ Composition ${compositionId} not found or missing creator video`);
         await prisma.composition.update({
           where: { id: compositionId },
@@ -572,24 +634,101 @@ new Worker<ReactionComposeJob>(
       // 2. Download all inputs
       const { downloadFeedVideoToTemp } = await import('../../shared/util/download');
 
-      console.log('⬇️ Downloading creator video...');
-      const creatorPath = await costTracker.track(
-        'download',
-        () => downloadFeedVideoToTemp(composition.creatorS3Url!),
-        (resultPath) => {
-          let fileSizeBytes: number | undefined;
-          try {
-            const fsSync = require('fs');
-            fileSizeBytes = fsSync.statSync(resultPath).size;
-          } catch {}
-          return {
-            provider: 's3',
-            fileSizeBytes,
-            estimatedCostUsd: fileSizeBytes ? estimateS3Cost(fileSizeBytes) : 0,
-          };
+      let creatorPath: string;
+
+      if (creatorTracks.length > 0) {
+        // Multi-creator-track: download each creator track and concatenate with FFmpeg
+        console.log(`⬇️ Downloading ${creatorTracks.length} creator track(s)...`);
+        const creatorPaths: string[] = [];
+        for (const ct of creatorTracks) {
+          console.log(`⬇️ Downloading creator track: ${ct.label || ct.id}`);
+          const ctPath = await costTracker.track(
+            'download',
+            () => downloadFeedVideoToTemp(ct.s3Url),
+            (resultPath) => {
+              let fileSizeBytes: number | undefined;
+              try {
+                const fsSync = require('fs');
+                fileSizeBytes = fsSync.statSync(resultPath).size;
+              } catch {}
+              return {
+                provider: 's3',
+                fileSizeBytes,
+                estimatedCostUsd: fileSizeBytes ? estimateS3Cost(fileSizeBytes) : 0,
+              };
+            }
+          );
+          tempFiles.push(ctPath);
+          creatorPaths.push(ctPath);
         }
-      );
-      tempFiles.push(creatorPath);
+
+        if (creatorPaths.length === 1) {
+          creatorPath = creatorPaths[0];
+        } else {
+          // Concatenate creator tracks using FFmpeg concat demuxer
+          const fsSync = require('fs');
+          const pathModule = require('path');
+          const osModule = require('os');
+          const concatListPath = pathModule.join(
+            osModule.tmpdir(),
+            `concat_creator_${compositionId}_${Date.now()}.txt`
+          );
+          const concatOutputPath = pathModule.join(
+            osModule.tmpdir(),
+            `creator_combined_${compositionId}_${Date.now()}.mp4`
+          );
+          tempFiles.push(concatListPath, concatOutputPath);
+
+          // Write concat list file — each line: file '/path/to/file'
+          const concatContent = creatorPaths
+            .map((p: string) => `file '${p.replace(/'/g, "'\\''")}'`)
+            .join('\n');
+          fsSync.writeFileSync(concatListPath, concatContent);
+
+          console.log(`🔗 Concatenating ${creatorPaths.length} creator tracks...`);
+          const { execFileSync } = require('child_process');
+          execFileSync(
+            'ffmpeg',
+            [
+              '-y',
+              '-f',
+              'concat',
+              '-safe',
+              '0',
+              '-i',
+              concatListPath,
+              '-c',
+              'copy',
+              '-movflags',
+              '+faststart',
+              concatOutputPath,
+            ],
+            { stdio: 'pipe', timeout: 300_000 }
+          );
+          creatorPath = concatOutputPath;
+          console.log('✅ Creator tracks concatenated');
+        }
+      } else {
+        // Legacy single-creator path
+        console.log('⬇️ Downloading creator video...');
+        creatorPath = await costTracker.track(
+          'download',
+          () => downloadFeedVideoToTemp(composition.creatorS3Url!),
+          (resultPath) => {
+            let fileSizeBytes: number | undefined;
+            try {
+              const fsSync = require('fs');
+              fileSizeBytes = fsSync.statSync(resultPath).size;
+            } catch {}
+            return {
+              provider: 's3',
+              fileSizeBytes,
+              estimatedCostUsd: fileSizeBytes ? estimateS3Cost(fileSizeBytes) : 0,
+            };
+          }
+        );
+        tempFiles.push(creatorPath);
+      }
 
       const trackInfos: Array<{
         localPath: string;
@@ -601,9 +740,10 @@ new Worker<ReactionComposeJob>(
         height: number | null;
         hasAudio: boolean;
         sortOrder: number;
+        sourceCrop?: { w: number; h: number; x: number; y: number } | null;
       }> = [];
 
-      for (const track of composition.tracks) {
+      for (const track of refTracks) {
         console.log(`⬇️ Downloading reference track: ${track.label || track.id}`);
         const trackPath = await costTracker.track(
           'download',
@@ -623,6 +763,15 @@ new Worker<ReactionComposeJob>(
         );
         tempFiles.push(trackPath);
 
+        // Detect embedded portrait content in landscape references
+        const { detectSourceAspectRatio } = await import('../../shared/util/cropDetect');
+        const cropResult = await detectSourceAspectRatio(trackPath, track.width, track.height);
+        if (cropResult.crop) {
+          console.log(
+            `🔍 Detected ${cropResult.sourceAspectRatio} source in reference "${track.label || track.id}"`
+          );
+        }
+
         trackInfos.push({
           localPath: trackPath,
           startAtS: track.startAtS,
@@ -633,6 +782,7 @@ new Worker<ReactionComposeJob>(
           height: track.height,
           hasAudio: track.hasAudio,
           sortOrder: track.sortOrder,
+          sourceCrop: cropResult.crop,
         });
       }
 
@@ -664,15 +814,15 @@ new Worker<ReactionComposeJob>(
             },
           });
 
-          const hasCreator = !!fresh?.creatorTranscriptJson;
-          const hasAllTracks = fresh?.tracks.every((t) => !!t.transcriptJson) ?? false;
+          const hasCreatorTranscript = !!fresh?.creatorTranscriptJson;
+          const hasAllTracks = fresh?.tracks.every((t: any) => !!t.transcriptJson) ?? false;
 
-          if (hasCreator && hasAllTracks) {
+          if (hasCreatorTranscript && hasAllTracks) {
             transcriptsReady = true;
             // Update composition reference with fresh transcript data
             composition.creatorTranscriptJson = fresh!.creatorTranscriptJson;
             for (const freshTrack of fresh!.tracks) {
-              const track = composition.tracks.find((t) => t.id === freshTrack.id);
+              const track = composition.tracks.find((t: any) => t.id === freshTrack.id);
               if (track) track.transcriptJson = freshTrack.transcriptJson;
             }
             break;
@@ -680,7 +830,7 @@ new Worker<ReactionComposeJob>(
 
           const elapsed = ((Date.now() - pollStart) / 1000).toFixed(0);
           console.log(
-            `⏳ Waiting for transcripts (${elapsed}s) — creator=${hasCreator}, tracks=${fresh?.tracks.map((t) => !!t.transcriptJson).join(',')}`
+            `⏳ Waiting for transcripts (${elapsed}s) — creator=${hasCreatorTranscript}, tracks=${fresh?.tracks.map((t: any) => !!t.transcriptJson).join(',')}`
           );
           await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
         }
@@ -693,7 +843,7 @@ new Worker<ReactionComposeJob>(
             font: vs.captionFont || 'DejaVu Sans',
             fontSize: vs.captionFontSize || 'medium',
             creatorSegments: (composition.creatorTranscriptJson as any[]) || [],
-            trackSegments: composition.tracks.map((t) => ({
+            trackSegments: refTracks.map((t: any) => ({
               segments: (t.transcriptJson as any[]) || [],
               startAtS: t.startAtS,
               trimStartS: t.trimStartS,
@@ -708,15 +858,84 @@ new Worker<ReactionComposeJob>(
         }
       }
 
-      // 4. Parse cuts from composition
-      const compositionCuts: Array<{ startS: number; endS: number; targets: string[] }> =
-        Array.isArray(composition.cuts) ? (composition.cuts as any[]) : [];
-      const trackIds = composition.tracks.map((t) => t.id);
+      // 4. Parse cuts from composition (global — no per-target filtering)
+      const compositionCuts: Array<{ startS: number; endS: number }> = Array.isArray(
+        composition.cuts
+      )
+        ? (composition.cuts as any[]).map((c: any) => ({ startS: c.startS, endS: c.endS }))
+        : [];
 
-      // 5. Render each layout
+      // 4b. Quote overlay generation (if enabled)
+      const quoteOverlaysByLayout: Record<
+        string,
+        import('@shared/util/reactionCompose').QuoteOverlayInfo[]
+      > = {};
+      if (composition.quoteGraphicsEnabled && composition.detectedQuotes) {
+        try {
+          const quotes = composition.detectedQuotes as any[];
+          if (quotes.length > 0) {
+            const { generateAllQuoteGraphics, cleanupQuoteGraphics } =
+              await import('../../shared/util/quoteGraphics');
+            const quoteStyle = (composition.quoteGraphicStyle as any) || 'pull-quote';
+            const trimOffset = composition.creatorTrimStartS || 0;
 
+            for (const layout of layouts) {
+              const isMobile = layout === 'mobile';
+              const canvasW = isMobile ? 720 : 1280;
+              const canvasH = isMobile ? 1280 : 720;
+
+              const adjustedQuotes = quotes
+                .map((q: any) => ({
+                  ...q,
+                  startS: q.startS - trimOffset,
+                  endS: q.endS - trimOffset,
+                }))
+                .filter((q: any) => q.endS > 0);
+
+              const overlays = await generateAllQuoteGraphics(
+                adjustedQuotes,
+                quoteStyle,
+                canvasW,
+                canvasH
+              );
+              quoteOverlaysByLayout[layout] = overlays.map((ov) => ({
+                imagePath: ov.imagePath,
+                startS: ov.quote.startS,
+                endS: ov.quote.endS,
+              }));
+
+              // Track temp files for cleanup
+              for (const ov of overlays) {
+                tempFiles.push(ov.imagePath);
+              }
+            }
+
+            console.log(`📖 Generated quote overlays for ${quotes.length} detected quotes`);
+          }
+        } catch (quoteErr) {
+          console.warn(
+            '⚠️ Quote overlay generation failed (non-fatal):',
+            quoteErr instanceof Error ? quoteErr.message : quoteErr
+          );
+        }
+      }
+
+      // 5. Compute effective creator duration for multi-track
+      let effectiveCreatorDurationS = composition.creatorDurationS || 60;
+      if (creatorTracks.length > 0) {
+        effectiveCreatorDurationS = creatorTracks.reduce((sum: number, ct: any) => {
+          const dur = (ct.trimEndS ?? ct.durationS) - ct.trimStartS;
+          return sum + Math.max(0, dur);
+        }, 0);
+        if (effectiveCreatorDurationS <= 0) effectiveCreatorDurationS = 60;
+        console.log(
+          `📏 Effective creator duration from ${creatorTracks.length} tracks: ${effectiveCreatorDurationS.toFixed(1)}s`
+        );
+      }
+
+      // 6. Render each layout
       for (const layout of layouts) {
-        const output = composition.outputs.find((o) => o.layout === layout);
+        const output = composition.outputs.find((o: any) => o.layout === layout);
         if (!output) continue;
 
         await prisma.compositionOutput.update({
@@ -735,16 +954,16 @@ new Worker<ReactionComposeJob>(
                 {
                   layout: layout as 'mobile' | 'landscape',
                   creatorPath,
-                  creatorDurationS: composition.creatorDurationS || 60,
-                  creatorTrimStartS: composition.creatorTrimStartS,
-                  creatorTrimEndS: composition.creatorTrimEndS,
+                  creatorDurationS: effectiveCreatorDurationS,
+                  creatorTrimStartS: creatorTracks.length > 0 ? 0 : composition.creatorTrimStartS,
+                  creatorTrimEndS: creatorTracks.length > 0 ? null : composition.creatorTrimEndS,
                   tracks: trackInfos,
                   audioMode: composition.audioMode as 'creator' | 'reference' | 'both',
                   creatorVolume: composition.creatorVolume,
                   referenceVolume: composition.referenceVolume,
                   captions: captionOpts,
                   cuts: compositionCuts.length > 0 ? compositionCuts : undefined,
-                  trackIds: compositionCuts.length > 0 ? trackIds : undefined,
+                  quoteOverlays: quoteOverlaysByLayout[layout],
                 },
                 s3Key
               ),
@@ -801,8 +1020,8 @@ new Worker<ReactionComposeJob>(
       const updatedOutputs = await prisma.compositionOutput.findMany({
         where: { compositionId },
       });
-      const allCompleted = updatedOutputs.every((o) => o.status === 'completed');
-      const anyFailed = updatedOutputs.some((o) => o.status === 'failed');
+      const allCompleted = updatedOutputs.every((o: any) => o.status === 'completed');
+      const anyFailed = updatedOutputs.some((o: any) => o.status === 'failed');
 
       await prisma.composition.update({
         where: { id: compositionId },
@@ -818,8 +1037,9 @@ new Worker<ReactionComposeJob>(
       // 5. Auto-generate thumbnail assets (non-fatal)
       if (allCompleted) {
         try {
-          const referenceTrack = composition.tracks[0];
-          if (referenceTrack?.s3Url && composition.creatorS3Url) {
+          const referenceTrack = refTracks[0];
+          const creatorS3Url = composition.creatorS3Url || (creatorTracks[0]?.s3Url ?? null);
+          if (referenceTrack?.s3Url && creatorS3Url) {
             console.log('🖼️ Auto-generating thumbnail assets...');
             const { generateThumbnailAssets, compositeThumbnailSharp } =
               await import('../../shared/util/thumbnailGenerator');
@@ -827,9 +1047,9 @@ new Worker<ReactionComposeJob>(
             const { referenceFrames, cutouts } = await generateThumbnailAssets({
               compositionId,
               referenceS3Url: referenceTrack.s3Url,
-              creatorS3Url: composition.creatorS3Url,
-              creatorTrimStartS: composition.creatorTrimStartS,
-              creatorDurationS: composition.creatorDurationS || undefined,
+              creatorS3Url,
+              creatorTrimStartS: creatorTracks.length > 0 ? 0 : composition.creatorTrimStartS,
+              creatorDurationS: effectiveCreatorDurationS,
             });
 
             if (referenceFrames.length > 0 || cutouts.length > 0) {
@@ -985,6 +1205,157 @@ new Worker<GenericTranscriptionJob>(
 
     console.log(`📝 [generic-transcription] ${targetModel}:${targetId}`);
 
+    // For Composition: download once, transcribe locally, then run auto-edit on same file
+    if (targetModel === 'Composition') {
+      let tempPath: string | null = null;
+      try {
+        tempPath = await downloadFeedVideoToTemp(s3Url);
+        const result = await transcribeLocalFile(tempPath);
+
+        await prisma.composition.update({
+          where: { id: targetId },
+          data: {
+            creatorTranscript: result.transcript,
+            creatorTranscriptJson: result.segments as any,
+          },
+        });
+
+        console.log(
+          `✅ [generic-transcription] Saved transcript for Composition:${targetId} (${result.transcript.length} chars)`
+        );
+
+        // Eager auto-edit: run silencedetect + analysis on the same downloaded file
+        try {
+          const comp = await prisma.composition.findUnique({
+            where: { id: targetId },
+            select: { creatorDurationS: true, userId: true, cuts: true },
+          });
+
+          if (comp?.creatorDurationS && comp.userId) {
+            const rule = await prisma.automationRule.findUnique({
+              where: { userId: comp.userId },
+              select: { autoEditSettings: true },
+            });
+
+            const settings = mergeAutoEditSettings(
+              rule?.autoEditSettings as Partial<AutoEditSettings> | null
+            );
+            const aggrConfig = getAggressivenessConfig(settings.aggressiveness);
+
+            const silenceRegions = await detectSilenceFFmpeg(
+              tempPath,
+              aggrConfig.silenceThresholdDb,
+              aggrConfig.minSilenceDurationS
+            );
+
+            console.log(
+              `[generic-transcription] silencedetect found ${silenceRegions.length} regions for Composition:${targetId}`
+            );
+
+            const segments = result.segments as unknown as TranscriptSegment[];
+            const autoEditResult = analyzeForAutoEdit(
+              segments,
+              settings,
+              comp.creatorDurationS,
+              silenceRegions
+            );
+
+            const updateData: Record<string, any> = {
+              silenceRegions: silenceRegions as any,
+              autoEditResult: autoEditResult as any,
+            };
+
+            // Auto-apply cuts only if no manual cuts exist
+            if (!comp.cuts && autoEditResult.cuts.length > 0) {
+              updateData.cuts = autoEditResult.cuts.map((c) => ({
+                id: c.id,
+                startS: c.startS,
+                endS: c.endS,
+              }));
+            }
+
+            await prisma.composition.update({
+              where: { id: targetId },
+              data: updateData,
+            });
+
+            console.log(
+              `[generic-transcription] Auto-edit: ${autoEditResult.summary.totalCuts} cuts ` +
+                `(${autoEditResult.summary.totalRemovedS}s removed) for Composition:${targetId}`
+            );
+          }
+        } catch (autoEditErr) {
+          console.warn(
+            `[generic-transcription] Auto-edit failed for Composition:${targetId} (non-fatal):`,
+            autoEditErr instanceof Error ? autoEditErr.message : autoEditErr
+          );
+        }
+
+        // Eager quote detection: analyze transcript for cited/quoted material
+        try {
+          const comp2 = await prisma.composition.findUnique({
+            where: { id: targetId },
+            select: { quoteGraphicsEnabled: true, userId: true },
+          });
+
+          // Check user's automation rule for quote graphics preference
+          const rule2 = comp2?.userId
+            ? await prisma.automationRule.findUnique({
+                where: { userId: comp2.userId },
+                select: { quoteGraphicsEnabled: true, quoteGraphicStyle: true },
+              })
+            : null;
+
+          const shouldDetect = comp2?.quoteGraphicsEnabled || rule2?.quoteGraphicsEnabled;
+
+          if (shouldDetect && result.segments.length > 0) {
+            const { detectQuotes } = await import('../../shared/lib/quote-detection');
+            const quoteResult = await detectQuotes(result.segments as any[]);
+
+            if (quoteResult.quotes.length > 0) {
+              const quoteUpdateData: Record<string, any> = {
+                detectedQuotes: quoteResult.quotes as any,
+              };
+
+              // Apply user's default quote style if composition doesn't have one
+              if (!comp2?.quoteGraphicsEnabled && rule2?.quoteGraphicStyle) {
+                quoteUpdateData.quoteGraphicStyle = rule2.quoteGraphicStyle;
+                quoteUpdateData.quoteGraphicsEnabled = true;
+              }
+
+              await prisma.composition.update({
+                where: { id: targetId },
+                data: quoteUpdateData,
+              });
+
+              console.log(
+                `[generic-transcription] Quote detection: found ${quoteResult.quotes.length} quotes for Composition:${targetId}`
+              );
+            }
+          }
+        } catch (quoteErr) {
+          console.warn(
+            `[generic-transcription] Quote detection failed for Composition:${targetId} (non-fatal):`,
+            quoteErr instanceof Error ? quoteErr.message : quoteErr
+          );
+        }
+      } catch (err) {
+        console.error(
+          `❌ [generic-transcription] Failed for Composition:${targetId}:`,
+          err instanceof Error ? err.message : err
+        );
+      } finally {
+        if (tempPath) {
+          const fs = await import('fs');
+          try {
+            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+          } catch {}
+        }
+      }
+      return;
+    }
+
+    // Non-Composition targets: use original download+transcribe+cleanup flow
     try {
       const result = await transcribeFromS3Url(s3Url);
 
@@ -1007,15 +1378,6 @@ new Worker<GenericTranscriptionJob>(
             },
           });
           break;
-        case 'Composition':
-          await prisma.composition.update({
-            where: { id: targetId },
-            data: {
-              creatorTranscript: result.transcript,
-              creatorTranscriptJson: result.segments as any,
-            },
-          });
-          break;
       }
 
       console.log(
@@ -1026,7 +1388,6 @@ new Worker<GenericTranscriptionJob>(
         `❌ [generic-transcription] Failed for ${targetModel}:${targetId}:`,
         err instanceof Error ? err.message : err
       );
-      // Non-fatal — don't rethrow so the job doesn't retry
     }
   },
   { connection: redisConnection as any }
@@ -1106,3 +1467,7 @@ new Worker<ThumbnailGenerationJob>(
   },
   { connection: redisConnection as any }
 );
+
+// --- HTTP Server for direct transcription requests ---
+import { startHttpServer } from './http-server';
+startHttpServer();

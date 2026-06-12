@@ -55,10 +55,45 @@ export async function GET(req: NextRequest) {
     LIMIT 60
   `;
 
+  // Cost-per-upload-minute rollup.
+  // Primary: total pipeline cost in the window / total processed minutes from
+  // UsageMonth (which aggregates source-video minutes processed per user/month).
+  // Fallback: when UsageMonth has no rows in the window (e.g. fresh deploy,
+  // pre-rollup data), estimate using CostEvent.durationMs converted to minutes
+  // as a rough proxy. Worse signal but keeps the page useful until data lands.
+  const totalCostUsd = totalAgg._sum.estimatedCostUsd ?? 0;
+
+  // Sum processedMinutes across all users whose UsageMonth row was touched in window.
+  const usageAgg = await prisma.usageMonth.aggregate({
+    where: { updatedAt: { gte: since } },
+    _sum: { processedMinutes: true },
+  });
+  const processedMinutes = usageAgg._sum.processedMinutes ?? 0;
+
+  let avgCostPerMinute = 0;
+  let costPerMinuteSource: 'usage_month' | 'duration_fallback' | 'none' = 'none';
+  if (processedMinutes > 0) {
+    avgCostPerMinute = totalCostUsd / processedMinutes;
+    costPerMinuteSource = 'usage_month';
+  } else {
+    const durationAgg = await prisma.costEvent.aggregate({
+      where: { createdAt: { gte: since } },
+      _sum: { durationMs: true },
+    });
+    const totalDurationMin = (durationAgg._sum.durationMs ?? 0) / 60_000;
+    if (totalDurationMin > 0) {
+      avgCostPerMinute = totalCostUsd / totalDurationMin;
+      costPerMinuteSource = 'duration_fallback';
+    }
+  }
+
   return NextResponse.json({
-    totalUsd: totalAgg._sum.estimatedCostUsd ?? 0,
+    totalUsd: totalCostUsd,
     totalEvents: totalAgg._count,
     days,
+    avgCostPerMinute,
+    processedMinutes,
+    costPerMinuteSource,
     byStage: byStage.map((s) => ({
       stage: s.stage,
       totalCostUsd: s._sum.estimatedCostUsd ?? 0,

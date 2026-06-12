@@ -63,6 +63,66 @@ NEXT_PUBLIC_ADMIN_EMAIL=aconnor731@gmail.com
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
-# Price IDs from your Stripe dashboard (Products → Pricing)
+#
+# Per-plan, per-interval price IDs (Stripe dashboard → Products → Pricing).
+# Set both MONTHLY and ANNUAL for each paid tier to enable annual billing.
+# Creator tier
+STRIPE_CREATOR_MONTHLY_PRICE_ID=
+STRIPE_CREATOR_ANNUAL_PRICE_ID=
+# Pro tier
+STRIPE_PRO_MONTHLY_PRICE_ID=
+STRIPE_PRO_ANNUAL_PRICE_ID=
+# Agency tier
+STRIPE_AGENCY_MONTHLY_PRICE_ID=
+STRIPE_AGENCY_ANNUAL_PRICE_ID=
+#
+# DEPRECATED — legacy single-price vars (still read as fallback for existing subscribers).
+# Prefer the per-interval vars above for new deployments.
 STRIPE_PRO_PRICE_ID=
 STRIPE_BUSINESS_PRICE_ID=
+
+# --- Rate limiting (Upstash Redis) ---
+# When both are set, the rate limiter uses Upstash (shared across instances).
+# When unset, falls back to an in-memory per-process limiter — fine for dev,
+# NOT safe in multi-instance production deployments.
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+
+# --- Error tracking (Sentry) ---
+# DSN for client-side (browser) Sentry. Safe to expose — Sentry DSNs are public by design.
+# When unset, Sentry.init is a runtime no-op and no events are reported.
+NEXT_PUBLIC_SENTRY_DSN=
+# DSN for server-side (Next.js server runtime + workers) Sentry. Falls back to NEXT_PUBLIC_SENTRY_DSN
+# in the Next.js config; workers read SENTRY_DSN directly. Same project as the client DSN is fine.
+SENTRY_DSN=
+# Auth token used by the build-time Sentry webpack plugin to upload source maps to Sentry.
+# Required only for production builds where you want symbolicated stack traces. Get from
+# https://sentry.io/orgredirect/organizations/:orgslug/settings/auth-tokens/. When unset,
+# source-map upload is skipped so local/dev builds never fail on missing credentials.
+SENTRY_AUTH_TOKEN=
+# Sentry org + project slugs used by the webpack plugin. Required only when SENTRY_AUTH_TOKEN is set.
+SENTRY_ORG=
+SENTRY_PROJECT=
+
+# --- Analytics (PostHog) ---
+# Both keys are optional — when unset, all PostHog calls are no-ops so dev/test
+# environments never touch PostHog. The cookie banner (clipfire-cookie-consent
+# localStorage key) ALSO gates the JS SDK: without `accepted`, posthog-js is
+# never loaded.
+#
+# Server-side project API key (used by posthog-node in route handlers).
+POSTHOG_API_KEY=
+# Server host override (defaults to https://us.i.posthog.com).
+POSTHOG_HOST=
+# Client-side project key (loaded into the browser bundle).
+NEXT_PUBLIC_POSTHOG_KEY=
+# Client-side host override (defaults to https://us.i.posthog.com).
+NEXT_PUBLIC_POSTHOG_HOST=
+
+# --- iOS Crashlytics (Firebase) ---
+# The iOS app loads `GoogleService-Info.plist` from the app bundle at startup. The file
+# is NOT committed to the repo — download it from the Firebase console for the
+# `com.clipfire.app` iOS app and place it at `ios/Supporting/GoogleService-Info.plist` for
+# local builds, and ship it via CI secrets (base64-encoded) for TestFlight/App Store builds.
+# When the plist is absent, FirebaseApp.configure() logs a warning and Crashlytics stays disabled —
+# the app still launches and runs normally.

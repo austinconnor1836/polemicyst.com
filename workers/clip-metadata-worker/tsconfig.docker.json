@@ -26,9 +26,19 @@
     "../../shared/lib/innertube.ts",
     "../../shared/lib/youtube-captions.ts",
     "../../shared/lib/scoring/**/*.ts",
+    "../../shared/lib/quote-detection.ts",
+    "../../shared/lib/publishing/rasterize.ts",
     "../../shared/queues/**/*.ts",
     "../../shared/util/ffmpegUtils.ts",
-    "../../shared/util/thumbnailGenerator.ts"
+    "../../shared/util/thumbnailGenerator.ts",
+    "../../shared/util/reactionCompose.ts",
+    "../../shared/util/quoteGraphics.ts",
+    "../../shared/util/quoteScreenshot.ts",
+    "../../shared/util/cropDetect.ts",
+    "../../shared/util/download.ts",
+    "../../shared/util/auto-edit-analyzer.ts",
+    "../../shared/auto-edit.ts",
+    "../../shared/virality.ts"
   ],
   "exclude": ["node_modules", "scripts"]
 }

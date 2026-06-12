@@ -27,6 +27,7 @@ interface EditOutputModalProps {
   outputs: Array<{ id: string; layout: string; s3Url: string }>;
   outputBlobs: Map<string, Blob>;
   onSpliceComplete: (blobs: Map<string, Blob>, urls: Map<string, string>) => void;
+  initialCuts?: CompositionCut[];
 }
 
 function formatTime(s: number): string {
@@ -52,8 +53,9 @@ export function EditOutputModal({
   outputs,
   outputBlobs,
   onSpliceComplete,
+  initialCuts,
 }: EditOutputModalProps) {
-  const [localCuts, setLocalCuts] = useState<CompositionCut[]>([]);
+  const [localCuts, setLocalCuts] = useState<CompositionCut[]>(initialCuts ?? []);
   const [pendingStartS, setPendingStartS] = useState<number | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState<number>(0);
@@ -222,16 +224,6 @@ export function EditOutputModal({
         durationS,
         localCuts.map((c) => ({ startS: c.startS, endS: c.endS }))
       );
-
-      console.log('[EditOutputModal] Apply Cuts:', {
-        durationS,
-        localCuts: localCuts.map((c) => ({ startS: c.startS, endS: c.endS })),
-        keptSegments,
-        outputBlobs: Array.from(outputBlobs.entries()).map(([k, v]) => [
-          k,
-          `${(v.size / 1024 / 1024).toFixed(1)}MB`,
-        ]),
-      });
 
       if (keptSegments.length === 0) {
         toast.error('Cannot cut the entire video');

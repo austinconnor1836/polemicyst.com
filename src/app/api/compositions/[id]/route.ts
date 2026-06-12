@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@shared/lib/auth-helpers';
 import { prisma } from '@shared/lib/prisma';
+import { deleteFromS3 } from '@shared/lib/s3';
 import { queueGenericTranscriptionJob } from '@shared/queues';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -71,9 +72,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
-    // Auto-clear cuts when creator video is removed (stale cuts for old content)
-    if (data.creatorS3Key === null && data.cuts === undefined) {
-      data.cuts = null;
+    // Auto-clear cuts and cached auto-edit data when creator video is removed or replaced
+    if (data.creatorS3Key === null) {
+      if (data.cuts === undefined) data.cuts = null;
+      data.silenceRegions = null;
+      data.autoEditResult = null;
+      data.creatorTranscript = null;
+      data.creatorTranscriptJson = null;
+      data.detectedQuotes = null;
+    } else if (data.creatorS3Url && data.creatorS3Url !== existing.creatorS3Url) {
+      // New creator video — clear stale cached analysis
+      data.silenceRegions = null;
+      data.autoEditResult = null;
+      data.creatorTranscript = null;
+      data.creatorTranscriptJson = null;
+      data.detectedQuotes = null;
+      if (data.cuts === undefined) data.cuts = null;
     }
 
     // Validate cuts if provided
@@ -93,12 +107,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
         if (cut.endS <= cut.startS) {
           return NextResponse.json({ error: 'Cut endS must be > startS' }, { status: 400 });
-        }
-        if (!Array.isArray(cut.targets) || cut.targets.length === 0) {
-          return NextResponse.json(
-            { error: 'Each cut must have non-empty targets' },
-            { status: 400 }
-          );
         }
       }
       // Check for overlapping cuts (sorted by startS)
@@ -149,12 +157,43 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const { id } = await params;
 
-    const existing = await prisma.composition.findFirst({
+    const composition = await prisma.composition.findFirst({
       where: { id, userId: user.id },
+      include: {
+        tracks: { select: { s3Key: true } },
+        outputs: { select: { s3Key: true } },
+        thumbnails: { select: { s3Key: true } },
+        thumbnailAssets: { select: { s3Key: true } },
+      },
     });
-    if (!existing) {
+    if (!composition) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
+
+    // Collect all S3 keys to delete
+    const s3Keys: string[] = [];
+    if (composition.creatorS3Key) s3Keys.push(composition.creatorS3Key);
+    for (const track of composition.tracks) {
+      if (track.s3Key) s3Keys.push(track.s3Key);
+    }
+    for (const output of composition.outputs) {
+      if (output.s3Key) s3Keys.push(output.s3Key);
+    }
+    for (const thumb of composition.thumbnails) {
+      if (thumb.s3Key) s3Keys.push(thumb.s3Key);
+    }
+    for (const asset of composition.thumbnailAssets) {
+      if (asset.s3Key) s3Keys.push(asset.s3Key);
+    }
+
+    // Best-effort S3 cleanup — don't block DB deletion on S3 failures
+    await Promise.allSettled(
+      s3Keys.map((key) =>
+        deleteFromS3(key).catch((err) =>
+          console.error(`[DELETE composition] Failed to delete S3 object ${key}:`, err)
+        )
+      )
+    );
 
     await prisma.composition.delete({ where: { id } });
 

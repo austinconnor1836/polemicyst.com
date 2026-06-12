@@ -27,7 +27,7 @@ import {
 import { PLANS, type PlanId } from '@/lib/plans';
 import Particles from './_components/particles';
 
-const PLAN_ORDER: PlanId[] = ['free', 'pro', 'business'];
+const PLAN_ORDER: PlanId[] = ['free', 'creator', 'pro', 'agency'];
 
 const FEATURES = [
   {
@@ -137,7 +137,7 @@ export default function Home() {
           </h1>
 
           <p className="mx-auto mt-6 max-w-2xl text-lg text-muted sm:text-xl">
-            Polemicyst monitors your video sources, finds the most share-worthy moments using AI
+            Clipfire monitors your video sources, finds the most share-worthy moments using AI
             scoring, and exports platform-ready clips in seconds.
           </p>
 
@@ -220,13 +220,13 @@ export default function Home() {
             Simple, transparent pricing
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-center text-muted">
-            Start free. Upgrade when you need more clips, feeds, or AI power.
+            Start free. Upgrade when you need more sources, minutes, or team seats.
           </p>
 
-          <div className="mt-14 grid gap-6 md:grid-cols-3">
+          <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {PLAN_ORDER.map((planId) => {
               const plan = PLANS[planId];
-              const isPopular = planId === 'pro';
+              const isPopular = planId === 'creator';
 
               return (
                 <Card
@@ -320,7 +320,7 @@ export default function Home() {
       <footer className="border-t border-border px-4 py-8">
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 sm:flex-row">
           <p className="text-sm text-muted">
-            &copy; {new Date().getFullYear()} Polemicyst. All rights reserved.
+            &copy; {new Date().getFullYear()} Clipfire. All rights reserved.
           </p>
           <div className="flex gap-6">
             <Link

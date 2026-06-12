@@ -38,6 +38,9 @@ export interface TrackInfo {
   height: number | null;
   hasAudio: boolean;
   sortOrder: number;
+  /** When set, the track is a landscape video with embedded portrait content.
+   *  The crop rect extracts the portrait region before scaling. */
+  sourceCrop?: { w: number; h: number; x: number; y: number } | null;
 }
 
 export interface CutInfo {
@@ -137,6 +140,15 @@ export interface ComposeCaptionOptions {
   }>;
 }
 
+export interface QuoteOverlayInfo {
+  /** Path to the PNG overlay image */
+  imagePath: string;
+  /** Start time in the output timeline (seconds) */
+  startS: number;
+  /** End time in the output timeline (seconds) */
+  endS: number;
+}
+
 export interface ComposeOptions {
   layout: Layout;
   creatorPath: string;
@@ -148,10 +160,10 @@ export interface ComposeOptions {
   creatorVolume: number;
   referenceVolume: number;
   captions?: ComposeCaptionOptions;
-  /** Cuts to apply (output-timeline coordinates). Each cut has targets[] specifying which tracks. */
-  cuts?: Array<{ startS: number; endS: number; targets: string[] }>;
-  /** Map of track index to track ID (for matching cut targets to track indices) */
-  trackIds?: string[];
+  /** Cuts to apply (output-timeline coordinates). Applied globally to all tracks. */
+  cuts?: Array<{ startS: number; endS: number }>;
+  /** Pre-generated quote graphic overlays to composite during rendering */
+  quoteOverlays?: QuoteOverlayInfo[];
 }
 
 /**
@@ -176,10 +188,22 @@ const MOBILE_CREATOR_H = 405;
  * Returns true if the reference track has portrait aspect ratio (taller than wide).
  */
 function isPortrait(track: TrackInfo): boolean {
+  // If cropdetect found embedded portrait content, treat as portrait
+  if (track.sourceCrop) {
+    return true;
+  }
   if (track.width && track.height) {
     return track.height > track.width;
   }
   return false; // Default to landscape if dimensions unknown
+}
+
+/** Effective width/height for layout calculations, accounting for sourceCrop. */
+function effectiveDimensions(track: TrackInfo): { w: number; h: number } {
+  if (track.sourceCrop) {
+    return { w: track.sourceCrop.w, h: track.sourceCrop.h };
+  }
+  return { w: track.width ?? 1920, h: track.height ?? 1080 };
 }
 
 /**
@@ -244,7 +268,8 @@ export function buildFilterComplex(opts: ComposeOptions): {
       if (!isPortrait(track)) return;
       const dur = effectiveDuration(track);
       if (dur <= 0) return;
-      const refScaledW = Math.round((track.width! * canvasH) / track.height!);
+      const dims = effectiveDimensions(track);
+      const refScaledW = Math.round((dims.w * canvasH) / dims.h);
       const creatorFillW = canvasW - refScaledW;
       if (creatorFillW > 0) {
         filters.push(
@@ -272,6 +297,10 @@ export function buildFilterComplex(opts: ComposeOptions): {
     const refStart = track.startAtS;
     const enableExpr = `gte(t,${refStart.toFixed(3)})`;
     const trimFilter = `trim=start=${track.trimStartS.toFixed(3)}:end=${(track.trimEndS ?? track.durationS).toFixed(3)},setpts=PTS-STARTPTS`;
+    // When sourceCrop is set, extract the portrait content region before scaling
+    const cropFilter = track.sourceCrop
+      ? `crop=${track.sourceCrop.w}:${track.sourceCrop.h}:${track.sourceCrop.x}:${track.sourceCrop.y},`
+      : '';
 
     if (isMobile) {
       // Mobile: reference scaled to full width (720), aspect ratio preserved.
@@ -281,11 +310,13 @@ export function buildFilterComplex(opts: ComposeOptions): {
       if (refIsPortrait) {
         // Portrait reference — fill entire frame, creator overlaid at bottom
         filters.push(
-          `[${inputIdx}:v]${trimFilter},scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1[ref${i}]`
+          `[${inputIdx}:v]${trimFilter},${cropFilter}scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1[ref${i}]`
         );
       } else {
         // Landscape reference — scale to full width, keep aspect ratio
-        filters.push(`[${inputIdx}:v]${trimFilter},scale=${canvasW}:-2,setsar=1[ref${i}]`);
+        filters.push(
+          `[${inputIdx}:v]${trimFilter},${cropFilter}scale=${canvasW}:-2,setsar=1[ref${i}]`
+        );
       }
 
       if (refIsPortrait) {
@@ -309,7 +340,7 @@ export function buildFilterComplex(opts: ComposeOptions): {
         // Create blurred background: scale ref to cover full canvas, blur heavily
         const blurLabel = `refblur${i}`;
         filters.push(
-          `[${inputIdx}:v]${trimFilter},scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1,boxblur=20:20[${blurLabel}]`
+          `[${inputIdx}:v]${trimFilter},${cropFilter}scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1,boxblur=20:20[${blurLabel}]`
         );
 
         // Overlay blurred background over current canvas (hides creator_full base)
@@ -319,10 +350,8 @@ export function buildFilterComplex(opts: ComposeOptions): {
         );
         prevLabel = labelBlur;
 
-        const refH =
-          track.width && track.height
-            ? Math.round((canvasW * track.height) / track.width)
-            : Math.round((canvasW * 9) / 16); // fallback 16:9
+        const dims = effectiveDimensions(track);
+        const refH = Math.round((canvasW * dims.h) / dims.w);
         const availableH = canvasH - MOBILE_CREATOR_H;
         const refY = Math.round((availableH - refH) / 2);
 
@@ -343,12 +372,13 @@ export function buildFilterComplex(opts: ComposeOptions): {
       // Landscape + portrait reference:
       // Reference scaled to full height, flush-right
       // Creator fills remaining left space
-      const refScaledW = Math.round((track.width! * canvasH) / track.height!);
+      const dims = effectiveDimensions(track);
+      const refScaledW = Math.round((dims.w * canvasH) / dims.h);
       const creatorFillW = canvasW - refScaledW;
       const refX = canvasW - refScaledW;
 
       filters.push(
-        `[${inputIdx}:v]${trimFilter},scale=${refScaledW}:${canvasH}:force_original_aspect_ratio=increase,crop=${refScaledW}:${canvasH},setsar=1[ref${i}]`
+        `[${inputIdx}:v]${trimFilter},${cropFilter}scale=${refScaledW}:${canvasH}:force_original_aspect_ratio=increase,crop=${refScaledW}:${canvasH},setsar=1[ref${i}]`
       );
 
       // Step 1: overlay left-fill creator
@@ -370,7 +400,7 @@ export function buildFilterComplex(opts: ComposeOptions): {
       // Landscape + landscape reference:
       // Reference fills entire frame, creator PIP in bottom-right corner
       filters.push(
-        `[${inputIdx}:v]${trimFilter},scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1[ref${i}]`
+        `[${inputIdx}:v]${trimFilter},${cropFilter}scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1[ref${i}]`
       );
 
       // Step 1: overlay full-frame reference (eof_action=repeat freezes last frame)
@@ -733,39 +763,25 @@ export async function renderComposition(
   const trimStartS = opts.creatorTrimStartS ?? 0;
   const trimEndS = opts.creatorTrimEndS ?? opts.creatorDurationS;
 
-  // Normalize cuts: default missing targets to all sources
-  const normalizedCuts = (opts.cuts ?? []).map((c) => ({
-    ...c,
-    targets: c.targets ?? ['creator', ...(opts.trackIds ?? [])],
-  }));
-
-  // Extract creator-targeted cuts (output-timeline coords)
-  const creatorCuts: CutInfo[] = normalizedCuts
-    .filter((c) => c.targets.includes('creator'))
-    .map((c) => ({ startS: c.startS, endS: c.endS }));
+  // All cuts apply globally to every track
+  const allCuts: CutInfo[] = (opts.cuts ?? []).map((c) => ({ startS: c.startS, endS: c.endS }));
 
   const trimResult = await preTrimCreator(
     opts.creatorPath,
     trimStartS,
     trimEndS,
     opts.creatorDurationS,
-    creatorCuts.length > 0 ? creatorCuts : undefined
+    allCuts.length > 0 ? allCuts : undefined
   );
 
-  // Pre-trim reference tracks that have cuts
+  // Pre-trim reference tracks with global cuts
   const preTrimmedTracks: TrackInfo[] = [];
   const trackTempFiles: string[] = [];
   for (let i = 0; i < opts.tracks.length; i++) {
     const track = opts.tracks[i];
-    const trackId = opts.trackIds?.[i];
-    const trackCuts: CutInfo[] = trackId
-      ? normalizedCuts
-          .filter((c) => c.targets.includes(trackId))
-          .map((c) => ({ startS: c.startS, endS: c.endS }))
-      : [];
 
-    if (trackCuts.length > 0) {
-      const result = await preTrimTrack(track.localPath, track, trackCuts);
+    if (allCuts.length > 0) {
+      const result = await preTrimTrack(track.localPath, track, allCuts);
       trackTempFiles.push(result.path);
       preTrimmedTracks.push({
         ...track,
@@ -876,6 +892,41 @@ export async function renderComposition(
     }
   }
 
+  // --- Quote graphic overlays ---
+  const quoteInputs: string[] = [];
+  if (opts.quoteOverlays && opts.quoteOverlays.length > 0) {
+    const baseInputCount = 1 + opts.tracks.length; // creator + ref tracks
+    let currentLabel = outputMap[0].replace(/[\[\]]/g, '');
+
+    for (let qi = 0; qi < opts.quoteOverlays.length; qi++) {
+      const qo = opts.quoteOverlays[qi];
+      const inputIdx = baseInputCount + qi;
+      quoteInputs.push(qo.imagePath);
+
+      const fadeInStart = qo.startS;
+      const fadeOutStart = Math.max(qo.startS, qo.endS - 0.5);
+      const enableExpr = `between(t,${fadeInStart.toFixed(3)},${qo.endS.toFixed(3)})`;
+
+      const alphaExpr =
+        `if(lt(t,${(fadeInStart + 0.3).toFixed(3)}),` +
+        `(t-${fadeInStart.toFixed(3)})/0.3,` +
+        `if(gt(t,${fadeOutStart.toFixed(3)}),` +
+        `(${qo.endS.toFixed(3)}-t)/0.5,1))`;
+
+      const nextLabel = `qoverlay${qi}`;
+      filterComplex +=
+        `;\n[${inputIdx}:v]format=rgba,colorchannelmixer=aa=${alphaExpr.length > 100 ? '1' : '1'}[qimg${qi}]` +
+        `;\n[${currentLabel}][qimg${qi}]overlay=x=0:y=0:enable='${enableExpr}':format=auto[${nextLabel}]`;
+      currentLabel = nextLabel;
+    }
+
+    outputMap[0] = `[${currentLabel}]`;
+
+    console.log(
+      `[renderComposition] Quote overlays: ${opts.quoteOverlays.length} graphics added to filter graph`
+    );
+  }
+
   console.log(`[renderComposition] layout=${opts.layout} filter_complex:\n${filterComplex}`);
   console.log(`[renderComposition] outputMap: ${JSON.stringify(outputMap)}`);
 
@@ -888,6 +939,11 @@ export async function renderComposition(
   // Inputs: reference tracks
   for (const track of opts.tracks) {
     ffmpegArgs.push('-i', track.localPath);
+  }
+
+  // Inputs: quote overlay images (each as a looping image input)
+  for (const qImgPath of quoteInputs) {
+    ffmpegArgs.push('-loop', '1', '-i', qImgPath);
   }
 
   // Filter complex

@@ -4,9 +4,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { VideoCard } from '@/components/ui/video-card';
-import { Loader2, Download, Share2, Sparkles, Monitor, X } from 'lucide-react';
+import { Loader2, Download, Share2, Sparkles, Monitor } from 'lucide-react';
 import { LayoutPreview } from './LayoutPreview';
-import { PublishModal } from '@/components/PublishModal';
+import { VideoPublishModal } from '@/components/VideoPublishModal';
 import {
   supportsClientRender,
   renderCompositionClient,
@@ -14,6 +14,7 @@ import {
   type RenderProgress,
   type ClientTrackInfo,
 } from '@/lib/client-render';
+import type { CaptionSegment, QuoteOverlaySegment } from '@/lib/client-render/types';
 import toast from 'react-hot-toast';
 
 interface Output {
@@ -36,6 +37,19 @@ interface CompositionData {
   creatorHeight?: number | null;
   creatorTrimStartS: number;
   creatorTrimEndS?: number | null;
+  creatorTranscriptJson?: Array<{ start: number; end: number; text: string }> | null;
+  cuts?: Array<{ id: string; startS: number; endS: number }> | null;
+  detectedQuotes?: Array<{
+    text: string;
+    attribution: string | null;
+    startS: number;
+    endS: number;
+    confidence: number;
+    sourceUrl?: string | null;
+    displayMode?: string | null;
+  }> | null;
+  quoteGraphicStyle?: string | null;
+  quoteGraphicsEnabled?: boolean;
   tracks: Array<{
     id: string;
     durationS: number;
@@ -46,6 +60,8 @@ interface CompositionData {
     trimEndS: number | null;
     sortOrder: number;
     hasAudio: boolean;
+    transcriptJson?: Array<{ start: number; end: number; text: string }> | null;
+    sourceCrop?: { w: number; h: number; x: number; y: number } | null;
   }>;
 }
 
@@ -63,18 +79,22 @@ interface RenderControlsProps {
   trackLabels?: string[];
   uploadsInProgress?: boolean;
   uploadProgress?: number;
-  renderRequested?: boolean;
-  onRenderRequested?: () => void;
-  onCancelRenderRequest?: () => void;
-  serverRenderReady?: boolean;
   // Client-side render props
   creatorFile?: File | null;
+  creatorFiles?: Map<string, File>;
   refFiles?: Map<string, File>;
   composition?: CompositionData | null;
   /** Externally managed blob state for client-rendered outputs */
   clientOutputBlobs: Map<string, Blob>;
   clientOutputUrls: Map<string, string>;
   onBlobReady: (layout: string, blob: Blob, url: string) => void;
+  captionsEnabled?: boolean;
+  captionFontSizePx?: number;
+  autoEditing?: boolean;
+  transcribing?: boolean;
+  onWaitForTranscripts?: () => Promise<any>;
+  /** Ref exposing the upload function so the parent can trigger S3 uploads externally. */
+  uploadOutputRef?: React.MutableRefObject<((layout: string) => Promise<void>) | null>;
 }
 
 const LAYOUT_LABELS: Record<string, string> = {
@@ -96,21 +116,26 @@ export function RenderControls({
   trackLabels,
   uploadsInProgress,
   uploadProgress,
-  renderRequested,
-  onRenderRequested,
-  onCancelRenderRequest,
-  serverRenderReady,
   creatorFile,
+  creatorFiles,
   refFiles,
   composition,
   clientOutputBlobs,
   clientOutputUrls,
   onBlobReady,
+  captionsEnabled,
+  captionFontSizePx,
+  autoEditing,
+  transcribing,
+  onWaitForTranscripts,
+  uploadOutputRef,
 }: RenderControlsProps) {
   const [rendering, setRendering] = useState(compositionStatus === 'rendering');
   const [publishTarget, setPublishTarget] = useState<{
+    outputId: string;
     s3Url: string;
     layout: string;
+    hasS3Key: boolean;
     transcript?: string | null;
   } | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
@@ -124,7 +149,8 @@ export function RenderControls({
   );
   const [uploadingOutput, setUploadingOutput] = useState<string | null>(null);
   const [uploadOutputProgress, setUploadOutputProgress] = useState(0);
-  const canClientRender = supportsClientRender() && !!creatorFile;
+  const canClientRender =
+    supportsClientRender() && (!!creatorFile || (creatorFiles && creatorFiles.size > 0));
   const clientRenderingRef = useRef(false);
 
   const onStatusChangeRef = useRef(onStatusChange);
@@ -248,11 +274,19 @@ export function RenderControls({
   /** Build ClientRenderOptions from composition state */
   const buildClientRenderOptions = useCallback(
     (layout: 'mobile' | 'landscape'): ClientRenderOptions | null => {
-      if (!creatorFile || !composition) return null;
+      // Determine the effective creator file (legacy single or first from multi-track)
+      const effectiveCreatorFile =
+        creatorFile ||
+        (creatorFiles && creatorFiles.size > 0 ? creatorFiles.values().next().value : null);
+      if (!effectiveCreatorFile || !composition) return null;
+
+      const refTracks = composition.tracks.filter(
+        (t) => ((t as any).trackType ?? 'reference') === 'reference'
+      );
 
       const tracks: ClientTrackInfo[] = [];
 
-      for (const track of composition.tracks) {
+      for (const track of refTracks) {
         const file = refFiles?.get(track.id);
         if (!file) continue;
 
@@ -266,12 +300,13 @@ export function RenderControls({
           height: track.height ?? 1080,
           hasAudio: track.hasAudio,
           sortOrder: track.sortOrder,
+          sourceCrop: track.sourceCrop,
         });
       }
 
-      return {
+      const opts: ClientRenderOptions = {
         layout,
-        creatorFile,
+        creatorFile: effectiveCreatorFile,
         creatorDurationS: composition.creatorDurationS ?? 0,
         creatorTrimStartS: composition.creatorTrimStartS,
         creatorTrimEndS: composition.creatorTrimEndS ?? null,
@@ -282,17 +317,103 @@ export function RenderControls({
         creatorVolume: composition.creatorVolume,
         referenceVolume: composition.referenceVolume,
       };
+
+      // Build caption segments if captions are enabled
+      if (captionsEnabled) {
+        const creatorTrimOffset = composition.creatorTrimStartS;
+        const creatorTrimEnd =
+          composition.creatorTrimEndS ?? (composition.creatorDurationS || Infinity);
+        const outputDurationS = creatorTrimEnd - creatorTrimOffset;
+        const segments: CaptionSegment[] = [];
+        const audioMode = composition.audioMode;
+
+        if (
+          (audioMode === 'creator' || audioMode === 'both') &&
+          composition.creatorTranscriptJson
+        ) {
+          for (const seg of composition.creatorTranscriptJson) {
+            const start = seg.start - creatorTrimOffset;
+            const end = seg.end - creatorTrimOffset;
+            if (end > 0 && start < outputDurationS) {
+              segments.push({
+                startS: Math.max(0, start),
+                endS: Math.min(outputDurationS, end),
+                text: seg.text,
+              });
+            }
+          }
+        }
+
+        if (audioMode === 'reference' || audioMode === 'both') {
+          for (const track of refTracks) {
+            if (!track.transcriptJson) continue;
+            for (const seg of track.transcriptJson) {
+              const start = seg.start - track.trimStartS + track.startAtS;
+              const end = seg.end - track.trimStartS + track.startAtS;
+              if (end > 0 && start < outputDurationS) {
+                segments.push({
+                  startS: Math.max(0, start),
+                  endS: Math.min(outputDurationS, end),
+                  text: seg.text,
+                });
+              }
+            }
+          }
+        }
+
+        if (segments.length > 0) {
+          segments.sort((a, b) => a.startS - b.startS);
+          opts.captions = {
+            segments,
+            fontSizePx: captionFontSizePx,
+          };
+        }
+      }
+
+      // Build quote overlays if enabled
+      if (
+        composition.quoteGraphicsEnabled &&
+        composition.detectedQuotes &&
+        composition.detectedQuotes.length > 0
+      ) {
+        const creatorTrimOffset = composition.creatorTrimStartS;
+        const quoteSegments: QuoteOverlaySegment[] = composition.detectedQuotes
+          .map((q) => ({
+            text: q.text,
+            attribution: q.attribution,
+            startS: q.startS - creatorTrimOffset,
+            endS: q.endS - creatorTrimOffset,
+            style: (composition.quoteGraphicStyle || 'pull-quote') as QuoteOverlaySegment['style'],
+          }))
+          .filter((q) => q.endS > 0);
+
+        if (quoteSegments.length > 0) {
+          opts.quoteOverlays = { quotes: quoteSegments };
+        }
+      }
+
+      return opts;
     },
-    [creatorFile, refFiles, composition]
+    [creatorFile, creatorFiles, refFiles, composition, captionsEnabled, captionFontSizePx]
   );
 
   /** Client-side render: render all layouts in parallel */
   const handleClientRender = useCallback(async () => {
-    if (!creatorFile || !composition) return;
+    const hasCreatorFile = !!creatorFile || (creatorFiles && creatorFiles.size > 0);
+    if (!hasCreatorFile || !composition) return;
 
     clientRenderingRef.current = true;
     setRendering(true);
     setClientRenderProgress(new Map());
+
+    // Wait for transcripts if captions enabled and transcription is in progress
+    if (captionsEnabled && transcribing && onWaitForTranscripts) {
+      toast('Waiting for transcription to finish…', { icon: '⏳' });
+      const fresh = await onWaitForTranscripts();
+      if (!fresh) {
+        toast.error('Transcription timed out — rendering without captions');
+      }
+    }
 
     // Create placeholder outputs — show "rendering" cards immediately
     const outputsByLayout: Record<string, Output> = {};
@@ -363,11 +484,15 @@ export function RenderControls({
     onStatusChange(allSucceeded ? 'completed' : 'failed', finalOutputs);
   }, [
     creatorFile,
+    creatorFiles,
     composition,
     autoLayouts,
     onStatusChange,
     buildClientRenderOptions,
     onBlobReady,
+    captionsEnabled,
+    transcribing,
+    onWaitForTranscripts,
   ]);
 
   /** Upload a client-rendered blob to S3 and save to the composition */
@@ -452,10 +577,34 @@ export function RenderControls({
     [clientOutputBlobs, compositionId]
   );
 
-  /** Server-side render: POST to API and begin polling */
-  const handleServerRender = useCallback(async () => {
+  // Expose upload function to parent via ref
+  useEffect(() => {
+    if (uploadOutputRef) {
+      uploadOutputRef.current = handleUploadOutput;
+    }
+    return () => {
+      if (uploadOutputRef) uploadOutputRef.current = null;
+    };
+  }, [uploadOutputRef, handleUploadOutput]);
+
+  const handleRender = async () => {
+    if (!hasCreator || !hasTracks) return;
+
+    if (uploadsInProgress) {
+      toast(`Finishing upload… ${uploadProgress ?? 0}%`, { icon: '⏳' });
+      return;
+    }
+
+    // Use client-side rendering if supported and files are available
+    if (canClientRender) {
+      handleClientRender();
+      return;
+    }
+
+    // Fall back to server-side rendering
     setRendering(true);
 
+    // Optimistically reset outputs to pending so spinners show immediately
     const resetOutputs = outputs.map((o) => ({
       ...o,
       status: 'pending',
@@ -476,45 +625,18 @@ export function RenderControls({
         const data = await res.json();
         toast.error(data.error || 'Failed to start render');
         setRendering(false);
+        // Restore original outputs on failure
         onStatusChange(compositionStatus, outputs);
         return;
       }
 
       toast.success('Render started!');
-    } catch {
+    } catch (err) {
       toast.error('Failed to start render');
       setRendering(false);
       onStatusChange(compositionStatus, outputs);
     }
-  }, [compositionId, autoLayouts, outputs, onStatusChange, compositionStatus]);
-
-  const handleRender = async () => {
-    if (!hasCreator || !hasTracks) return;
-
-    if (uploadsInProgress) {
-      if (!canClientRender) {
-        onRenderRequested?.();
-        toast.success('Render queued — will start when uploads finish');
-      } else {
-        toast(`Finishing upload… ${uploadProgress ?? 0}%`, { icon: '⏳' });
-      }
-      return;
-    }
-
-    if (canClientRender) {
-      handleClientRender();
-      return;
-    }
-
-    handleServerRender();
   };
-
-  // Auto-trigger server render when uploads finish and render was queued
-  useEffect(() => {
-    if (!renderRequested || !serverRenderReady || rendering) return;
-    onCancelRenderRequest?.();
-    handleServerRender();
-  }, [renderRequested, serverRenderReady, rendering, onCancelRenderRequest, handleServerRender]);
 
   const statusBadge = (status: string) => {
     switch (status) {
@@ -560,55 +682,35 @@ export function RenderControls({
     ? aggregatePercent > 0
       ? `Rendering... ${aggregatePercent}%`
       : 'Rendering...'
-    : renderRequested && uploadsInProgress
-      ? `Render queued — uploading ${uploadProgress ?? 0}%`
-      : uploadsInProgress
-        ? `Uploading… ${uploadProgress ?? 0}%`
-        : outputs.some((o) => o.s3Url) || clientOutputUrls.size > 0
-          ? 'Re-render'
-          : 'Render';
+    : uploadsInProgress
+      ? `Uploading… ${uploadProgress ?? 0}%`
+      : outputs.some((o) => o.s3Url) || clientOutputUrls.size > 0
+        ? 'Re-render'
+        : 'Render';
 
   return (
     <div className="space-y-4">
       {/* Render button */}
-      <div className="flex items-center gap-2">
+      <div className="flex gap-2">
         {rendering && !canClientRender && (
-          <Button variant="outline" size="sm" onClick={handleCancel}>
+          <Button variant="outline" onClick={handleCancel}>
             Cancel
           </Button>
         )}
-        {renderRequested && uploadsInProgress && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => {
-              onCancelRenderRequest?.();
-              toast('Render cancelled');
-            }}
-            title="Cancel queued render"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
-        <Button
-          onClick={handleRender}
-          disabled={rendering || !hasCreator || !hasTracks || renderRequested}
-        >
-          {(rendering || (renderRequested && uploadsInProgress)) && (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          )}
+        <Button onClick={handleRender} disabled={rendering || !hasCreator || !hasTracks}>
+          {rendering && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {renderButtonLabel}
         </Button>
-        {canClientRender && (
-          <Badge variant="secondary" className="gap-1 text-[10px] h-5">
-            <Monitor className="h-3 w-3" />
-            Local
-          </Badge>
-        )}
       </div>
 
-      {/* Client render progress bar */}
+      {/* Transcription hint */}
+      {transcribing && !rendering && (
+        <p className="text-xs text-muted-foreground">
+          Transcription in progress — captions will be included once ready.
+        </p>
+      )}
+
+      {/* Client render progress bar (aggregate) */}
       {rendering && clientRenderProgress.size > 0 && (
         <div className="space-y-1">
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -624,6 +726,36 @@ export function RenderControls({
           </p>
         </div>
       )}
+
+      {/* Auto-detected layout previews */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex gap-3">
+          {autoLayouts.map((layout) => (
+            <div
+              key={layout}
+              className="rounded-lg border border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950 p-2"
+            >
+              <LayoutPreview
+                layout={layout}
+                hasReference={hasTracks}
+                hasPortraitRef={hasPortraitRef}
+                hasLandscapeRef={hasLandscapeRef}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Detection summary */}
+      <div className="flex items-center gap-2">
+        <p className="text-xs text-muted-foreground">{detectionSummary}</p>
+        {canClientRender && (
+          <Badge variant="secondary" className="gap-1 text-[10px] h-5">
+            <Monitor className="h-3 w-3" />
+            Local
+          </Badge>
+        )}
+      </div>
 
       {/* Output cards — always show placeholders for expected layouts */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -684,8 +816,10 @@ export function RenderControls({
                           className="h-7 gap-1 text-xs"
                           onClick={() =>
                             setPublishTarget({
+                              outputId: output.id,
                               s3Url: output.s3Url!,
                               layout: output.layout,
+                              hasS3Key: !output.s3Url!.startsWith('blob:'),
                               transcript: output.transcript,
                             })
                           }
@@ -710,9 +844,21 @@ export function RenderControls({
                   )}
                 </>
               }
+              overlay={
+                autoEditing && !isActive ? (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-background/80 backdrop-blur-sm dark:bg-black/60">
+                    <div className="flex flex-col items-center gap-1.5">
+                      <Loader2 className="h-6 w-6 animate-spin text-foreground dark:text-white" />
+                      <span className="text-sm font-medium text-foreground dark:text-white">
+                        Auto-editing…
+                      </span>
+                    </div>
+                  </div>
+                ) : undefined
+              }
               className="max-w-none"
             >
-              {isActive ? (
+              {isActive && !autoEditing ? (
                 <div className="flex h-full flex-col items-center justify-center gap-1.5">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   {clientRenderProgress.has(layout) && (
@@ -740,20 +886,34 @@ export function RenderControls({
         })}
       </div>
 
-      <PublishModal
+      <VideoPublishModal
         open={!!publishTarget}
         onOpenChange={(open) => {
           if (!open) setPublishTarget(null);
         }}
-        mediaUrl={publishTarget?.s3Url}
-        mediaLabel={publishTarget?.layout}
+        compositionId={compositionId}
+        compositionTitle={compositionTitle}
+        outputs={
+          publishTarget
+            ? [
+                {
+                  id: publishTarget.outputId,
+                  layout: publishTarget.layout,
+                  s3Url: publishTarget.s3Url,
+                  hasS3Key: publishTarget.hasS3Key,
+                },
+              ]
+            : []
+        }
+        trackLabels={trackLabels}
         generationContext={{
           title: compositionTitle,
           trackLabels,
           layouts: publishTarget ? [publishTarget.layout] : [],
           transcript: publishTarget?.transcript || undefined,
         }}
-        preGeneratedContent={publishTarget ? preGenDescriptions[publishTarget.layout] : undefined}
+        onRequestUpload={handleUploadOutput}
+        uploadingLayout={uploadingOutput}
       />
     </div>
   );

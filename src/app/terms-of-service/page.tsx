@@ -7,7 +7,7 @@ const TermsOfService: React.FC = () => {
         Terms of Service for Clipfire
       </h1>
       <p className="text-gray-700 dark:text-gray-300 mb-4">
-        <strong>Last Updated: March 9, 2026</strong>
+        <strong>Last Updated: June 11, 2026</strong>
       </p>
 
       <section className="mb-6">
@@ -77,7 +77,35 @@ const TermsOfService: React.FC = () => {
 
       <section className="mb-6">
         <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
-          7. Changes to These Terms
+          7. Copyright and DMCA
+        </h2>
+        <p className="text-gray-700 dark:text-gray-300 mb-3">
+          Clipfire respects intellectual-property rights and complies with the Digital Millennium
+          Copyright Act (DMCA). If you believe content on Clipfire infringes your copyright, you may
+          submit a takedown notice via our{' '}
+          <a href="/legal/dmca" className="text-blue-500 hover:underline">
+            DMCA notice page
+          </a>{' '}
+          or by emailing{' '}
+          <a href="mailto:dmca@clipfire.app" className="text-blue-500 hover:underline">
+            dmca@clipfire.app
+          </a>
+          . Your notice must include the information required by 17 U.S.C. § 512(c)(3).
+        </p>
+        <p className="text-gray-700 dark:text-gray-300 mb-3">
+          If you believe your content was removed in error, you may submit a counter-notice using
+          the same contact channels. We will forward valid counter-notices to the original
+          complainant and may restore the content if no court action is filed within the statutory
+          window.
+        </p>
+        <p className="text-gray-700 dark:text-gray-300">
+          We terminate accounts of users who are determined to be repeat infringers.
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+          8. Changes to These Terms
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
           We may update these Terms of Service from time to time. Users will be notified of
@@ -87,7 +115,7 @@ const TermsOfService: React.FC = () => {
 
       <section className="mb-6">
         <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
-          8. Contact Information
+          9. Contact Information
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
           If you have any questions about these Terms of Service, please contact us:

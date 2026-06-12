@@ -37,6 +37,8 @@ clip-worker/node_modules
 # misc
 .DS_Store
 *.pem
+*.crt
+*.key
 test_output.json
 
 # debug
@@ -106,6 +108,7 @@ ios/build/
 ios/.build/
 ios/.derived/
 ios/Supporting/Info.plist
+ios/Supporting/GoogleService-Info.plist
 ios/fastlane/cert.p12
 ios/fastlane/profile.mobileprovision
 ios/fastlane/report.xml

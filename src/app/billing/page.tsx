@@ -9,16 +9,61 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
+import { PLANS, type PlanId } from '@/lib/plans';
 
+/**
+ * Shape returned by GET /api/user/subscription. The route reads the current
+ * month's `UsageMonth.processedMinutes` row and returns `uploadMinutesUsed`
+ * + `uploadMinutesLimit` for the upload-minutes pricing meter.
+ */
 interface SubscriptionData {
   plan: {
     id: string;
     name: string;
-    limits: { maxConnectedAccounts: number; maxClipsPerMonth: number };
+    limits: {
+      maxConnectedAccounts: number;
+      uploadMinutesPerMonth: number;
+      // Legacy field kept until the API migration is complete.
+      maxClipsPerMonth?: number;
+    };
     features: string[];
   };
-  usage: { feeds: number; clipsThisMonth: number };
+  usage: {
+    feeds: number;
+    uploadMinutesUsed: number;
+    /** Plan limit echoed by the API; fall back to PLANS lookup if missing. */
+    uploadMinutesLimit?: number;
+    // Legacy field kept for backward compat during the transition.
+    clipsThisMonth?: number;
+  };
   hasStripeCustomer: boolean;
+}
+
+function UsageMeter({ label, used, limit }: { label: string; used: number; limit: number }) {
+  const percent = limit > 0 ? Math.min(used / limit, 1) : 0;
+  const isWarning = percent >= 0.8 && percent < 1;
+  const isExceeded = percent >= 1;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-sm text-muted">{label}</p>
+      </div>
+      <p
+        className={`text-lg font-medium ${isExceeded ? 'text-red-500' : isWarning ? 'text-yellow-500' : ''}`}
+      >
+        {used.toLocaleString()} / {limit.toLocaleString()}
+      </p>
+      <div className="mt-1.5 h-1.5 rounded-full bg-muted/20 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${
+            isExceeded ? 'bg-red-500' : isWarning ? 'bg-yellow-500' : 'bg-accent'
+          }`}
+          style={{ width: `${percent * 100}%` }}
+        />
+      </div>
+    </div>
+  );
 }
 
 function BillingContent() {
@@ -73,6 +118,16 @@ function BillingContent() {
   const plan = data.plan;
   const isFree = plan.id === 'free';
 
+  // Prefer the API-echoed `uploadMinutesLimit`; fall back to the plan response,
+  // then to the PLANS constant for older clients hitting newer servers (or vice
+  // versa during a deploy).
+  const minuteLimit =
+    data.usage.uploadMinutesLimit ??
+    plan.limits.uploadMinutesPerMonth ??
+    (plan.id in PLANS ? PLANS[plan.id as PlanId].limits.uploadMinutesPerMonth : 0);
+
+  const minutesUsed = data.usage.uploadMinutesUsed ?? 0;
+
   return (
     <div className="min-h-screen px-4 py-16 glass:bg-transparent">
       <ThemedToaster position="top-center" />
@@ -87,19 +142,13 @@ function BillingContent() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <p className="text-sm text-muted">Connected accounts</p>
-              <p className="text-lg font-medium">
-                {data.usage.feeds} / {plan.limits.maxConnectedAccounts}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-muted">Clips this month</p>
-              <p className="text-lg font-medium">
-                {data.usage.clipsThisMonth} / {plan.limits.maxClipsPerMonth}
-              </p>
-            </div>
-            <ul className="space-y-1">
+            <UsageMeter label="Upload minutes this month" used={minutesUsed} limit={minuteLimit} />
+            <UsageMeter
+              label="Connected accounts"
+              used={data.usage.feeds}
+              limit={plan.limits.maxConnectedAccounts}
+            />
+            <ul className="space-y-1 pt-2">
               {plan.features.map((f) => (
                 <li key={f} className="text-sm">
                   {f}

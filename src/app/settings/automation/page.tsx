@@ -24,7 +24,14 @@ import {
 } from '@shared/virality';
 import { ThemedToaster } from '@/components/themed-toaster';
 import toast from 'react-hot-toast';
-import { Zap, Captions, Crop, Send, Share2, Loader2, Save, Info } from 'lucide-react';
+import {
+  DEFAULT_AUTO_EDIT_SETTINGS,
+  mergeAutoEditSettings,
+  getAggressivenessConfig,
+  type AutoEditSettings,
+  type Aggressiveness,
+} from '@shared/auto-edit';
+import { Zap, Captions, Crop, Send, Share2, Loader2, Save, Info, Wand2, Quote } from 'lucide-react';
 
 type AutomationState = {
   enabled: boolean;
@@ -36,6 +43,9 @@ type AutomationState = {
   cropTemplateId: string | null;
   autoPublish: boolean;
   publishPlatforms: string[];
+  autoEditSettings: AutoEditSettings;
+  quoteGraphicsEnabled: boolean;
+  quoteGraphicStyle: string;
 };
 
 const INITIAL_STATE: AutomationState = {
@@ -48,6 +58,9 @@ const INITIAL_STATE: AutomationState = {
   cropTemplateId: null,
   autoPublish: false,
   publishPlatforms: [],
+  autoEditSettings: DEFAULT_AUTO_EDIT_SETTINGS,
+  quoteGraphicsEnabled: false,
+  quoteGraphicStyle: 'pull-quote',
 };
 
 type SocialPlatformInfo = {
@@ -93,6 +106,9 @@ export default function AutomationSettingsPage() {
           cropTemplateId: data.cropTemplateId ?? null,
           autoPublish: data.autoPublish ?? false,
           publishPlatforms: data.publishPlatforms ?? [],
+          autoEditSettings: mergeAutoEditSettings(data.autoEditSettings),
+          quoteGraphicsEnabled: data.quoteGraphicsEnabled ?? false,
+          quoteGraphicStyle: data.quoteGraphicStyle ?? 'pull-quote',
         };
         setState(merged);
         setServerState(merged);
@@ -160,6 +176,9 @@ export default function AutomationSettingsPage() {
         cropTemplateId: data.cropTemplateId,
         autoPublish: data.autoPublish,
         publishPlatforms: data.publishPlatforms ?? [],
+        autoEditSettings: mergeAutoEditSettings(data.autoEditSettings),
+        quoteGraphicsEnabled: data.quoteGraphicsEnabled ?? false,
+        quoteGraphicStyle: data.quoteGraphicStyle ?? 'pull-quote',
       };
       setState(saved);
       setServerState(saved);
@@ -347,6 +366,65 @@ export default function AutomationSettingsPage() {
           )}
         </Card>
 
+        {/* Quote Graphics */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary glass:bg-white/10 glass:text-white">
+                  <Quote className="h-4 w-4" />
+                </div>
+                <div>
+                  <CardTitle>Quote Graphics</CardTitle>
+                  <CardDescription>
+                    Auto-detect and overlay cited excerpts in reaction videos
+                  </CardDescription>
+                </div>
+              </div>
+              <Switch
+                checked={state.quoteGraphicsEnabled}
+                onCheckedChange={(checked) =>
+                  setState((p) => ({ ...p, quoteGraphicsEnabled: !!checked }))
+                }
+              />
+            </div>
+          </CardHeader>
+          {state.quoteGraphicsEnabled && (
+            <CardContent>
+              <div className="space-y-2">
+                <Label>Graphic style</Label>
+                <Select
+                  value={state.quoteGraphicStyle}
+                  onValueChange={(v) => setState((p) => ({ ...p, quoteGraphicStyle: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a style" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pull-quote">
+                      Pull Quote — large quotation marks with centered text
+                    </SelectItem>
+                    <SelectItem value="lower-third">
+                      Lower Third — text bar across the bottom
+                    </SelectItem>
+                    <SelectItem value="highlight-card">
+                      Highlight Card — rounded card with accent border
+                    </SelectItem>
+                    <SelectItem value="side-panel">
+                      Side Panel — styled panel on one side
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted">
+                  When you read or cite a quote in your reaction video, a styled graphic of the
+                  excerpt will automatically appear on screen. The system uses AI to detect when
+                  you&apos;re quoting external material.
+                </p>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+
         {/* Aspect Ratio */}
         <Card>
           <CardHeader>
@@ -380,6 +458,104 @@ export default function AutomationSettingsPage() {
               <p className="text-xs text-muted">
                 Clips will be cropped to this ratio. You can override per-clip after generation.
               </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Auto-Edit Defaults */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary glass:bg-white/10 glass:text-white">
+                <Wand2 className="h-4 w-4" />
+              </div>
+              <div>
+                <CardTitle>Auto-Edit Defaults</CardTitle>
+                <CardDescription>
+                  Default settings when using Auto-Edit on reaction compositions
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Aggressiveness</Label>
+                <Select
+                  value={state.autoEditSettings.aggressiveness}
+                  onValueChange={(v) => {
+                    const aggressiveness = v as Aggressiveness;
+                    const config = getAggressivenessConfig(aggressiveness);
+                    setState((p) => ({
+                      ...p,
+                      autoEditSettings: {
+                        ...p.autoEditSettings,
+                        aggressiveness,
+                        minSilenceToKeepS: config.minSilenceToKeepS,
+                      },
+                    }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="conservative">Conservative (keep more pauses)</SelectItem>
+                    <SelectItem value="balanced">Balanced</SelectItem>
+                    <SelectItem value="aggressive">Aggressive (tighter cuts)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted">
+                  Controls how aggressively silence and dead space are removed.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Minimum pause to keep</Label>
+                  <span className="text-xs text-muted tabular-nums">
+                    {state.autoEditSettings.minSilenceToKeepS.toFixed(2)}s
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1.5}
+                  step={0.25}
+                  value={state.autoEditSettings.minSilenceToKeepS}
+                  onChange={(e) =>
+                    setState((p) => ({
+                      ...p,
+                      autoEditSettings: {
+                        ...p.autoEditSettings,
+                        minSilenceToKeepS: parseFloat(e.target.value),
+                      },
+                    }))
+                  }
+                  className="w-full accent-primary"
+                />
+                <p className="text-xs text-muted">
+                  Buffer kept on each side of a silence cut for natural pacing.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Bad take detection</Label>
+                  <p className="text-xs text-muted">
+                    Detect and remove repeated phrases and false starts
+                  </p>
+                </div>
+                <Switch
+                  checked={state.autoEditSettings.badTakeDetection}
+                  onCheckedChange={(checked) =>
+                    setState((p) => ({
+                      ...p,
+                      autoEditSettings: { ...p.autoEditSettings, badTakeDetection: !!checked },
+                    }))
+                  }
+                />
+              </div>
             </div>
           </CardContent>
         </Card>

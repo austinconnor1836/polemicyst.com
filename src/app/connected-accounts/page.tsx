@@ -57,12 +57,15 @@ import {
 } from 'lucide-react';
 import { BrandSection } from '@/app/connected-accounts/_components/BrandSection';
 import { BrandDialog } from '@/app/connected-accounts/_components/BrandDialog';
+import { OnboardingChecklist } from '@/app/connected-accounts/_components/OnboardingChecklist';
+import { PollingStatusBanner } from '@/app/connected-accounts/_components/PollingStatusBanner';
 import toast from 'react-hot-toast';
 import { ThemedToaster } from '@/components/themed-toaster';
 import { useSubscription } from '@/hooks/useSubscription';
 import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
 import { UpgradePromptDialog } from '@/components/UpgradePromptDialog';
 import { parseApiError, type ApiQuotaError } from '@/lib/api-error';
+import { captureClientEvent } from '@/lib/posthog-client';
 
 export default function FeedsPage() {
   const videosHeaderRef = useRef<HTMLDivElement | null>(null);
@@ -107,6 +110,10 @@ export default function FeedsPage() {
 
   const [selectedFeedSettings, setSelectedFeedSettings] = useState<VideoFeed | null>(null);
   const [isFeedSettingsOpen, setIsFeedSettingsOpen] = useState(false);
+
+  // W015 — feeds the user just connected; PollingStatusBanner watches each one
+  // until the first FeedVideo lands, then removes itself.
+  const [recentlyConnectedFeedIds, setRecentlyConnectedFeedIds] = useState<string[]>([]);
   const [defaultLLMProvider, setDefaultLLMProvider] = useState<LLMProvider>(
     DEFAULT_VIRALITY_SETTINGS.llmProvider
   );
@@ -228,12 +235,10 @@ export default function FeedsPage() {
         const file = await idbGet('pending-upload-file');
 
         if (file && file.name === meta.filename && file.size === meta.size) {
-          console.log('🔄 Found pending upload, resuming automatically...', meta);
           // Trigger resumption
           resumeUpload(file, meta);
         } else {
           // Invalid state, clear it
-          console.log('⚠️ Pending upload metadata found but file missing or mismatched. Clearing.');
           localStorage.removeItem('pending-upload-meta');
           await idbDel('pending-upload-file');
         }
@@ -418,6 +423,9 @@ export default function FeedsPage() {
       return;
     }
 
+    // W013: upload_started — file source.
+    void captureClientEvent('upload_started', { source_type: 'file' });
+
     const tempId = `upload-${Date.now()}`;
     setActiveUploads((prev) => {
       const next = new Map(prev);
@@ -433,7 +441,6 @@ export default function FeedsPage() {
 
     try {
       // 0. Persistence Hook: Save File and Metadata
-      console.log('💾 Persisting file for auto-resume...');
       await idbSet('pending-upload-file', file);
 
       // 1. Initiate Multipart Upload
@@ -471,6 +478,12 @@ export default function FeedsPage() {
 
   const handleUrlImport = async () => {
     if (!importUrl) return;
+
+    // W013: upload_started — distinguish youtube URLs from other URLs.
+    const isYouTubeUrl = /(?:youtube\.com|youtu\.be)/i.test(importUrl);
+    void captureClientEvent('upload_started', {
+      source_type: isYouTubeUrl ? 'youtube' : 'url',
+    });
 
     const tempId = `import-${Date.now()}`;
     setActiveUploads((prev) => {
@@ -537,7 +550,15 @@ export default function FeedsPage() {
         }
         throw new Error('Failed to connect channel');
       }
+      const newFeed: { id?: string } = await res.json().catch(() => ({}));
       await fetchFeeds();
+      if (newFeed?.id) {
+        // W015 — show polling status banner for this newly connected feed.
+        // Cap at 2 to avoid stacking when the user connects several in a row.
+        setRecentlyConnectedFeedIds((prev) =>
+          prev.includes(newFeed.id!) ? prev : [...prev, newFeed.id!].slice(-2)
+        );
+      }
       toast.success('YouTube channel connected');
       setIsAddFeedOpen(false);
       setSelectedPlatform(null);
@@ -811,6 +832,31 @@ export default function FeedsPage() {
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/85 via-background/20 to-transparent" />
         </div>
       </div>
+
+      <OnboardingChecklist
+        hasConnectedAccount={feeds.length > 0}
+        hasFeedVideos={videos.some((v) => !v.clipSourceVideoId)}
+        hasClips={videos.some((v) => Boolean(v.clipSourceVideoId))}
+      />
+
+      {recentlyConnectedFeedIds.map((feedId) => {
+        const feed = feeds.find((f) => f.id === feedId);
+        return (
+          <PollingStatusBanner
+            key={feedId}
+            feedId={feedId}
+            feedName={feed?.name}
+            onFirstVideo={() => {
+              setRecentlyConnectedFeedIds((prev) => prev.filter((id) => id !== feedId));
+              // Refresh ingested videos so the new clip appears immediately.
+              fetchVideos();
+              toast.success(
+                feed?.name ? `First video ingested from ${feed.name}` : 'First video ingested'
+              );
+            }}
+          />
+        );
+      })}
 
       {pageError && (
         <div className="mb-6">

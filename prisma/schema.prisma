@@ -25,6 +25,7 @@ model User {
   image                    String?
   defaultLLMProvider       String               @default("ollama")
   defaultPublishPlatforms  Json?                // string[] of platform identifiers for social posting defaults
+  acceptedAgeGate          Boolean?             // COPPA defense (W008): null=grandfathered legacy user, true=explicit 13+ consent at signup
   accounts                 Account[]
   sessions                 Session[]
   videos                   Video[]
@@ -39,6 +40,25 @@ model User {
   uploadLogs               UploadLog[]
   socialPosts              SocialPost[]
   compositions             Composition[]
+  usageMonths              UsageMonth[]
+}
+
+/// Per-user, per-month usage rollup. Canonical meter for the upload-minutes
+/// pricing model: the clip pipeline increments `processedMinutes` once per
+/// processed source video, and `checkUploadMinutesQuota` reads it.
+model UsageMonth {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 'YYYY-MM' (UTC) bucket.
+  yearMonth        String
+  processedMinutes Float    @default(0)
+  clipCount        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, yearMonth])
+  @@index([userId])
 }
 
 model TemplatePreferences {
@@ -263,6 +283,29 @@ model CostEvent {
   @@index([createdAt])
 }
 
+/// Daily subscription rollup used by the /admin/metrics dashboard (W017).
+/// One row per UTC day; updated incrementally by the Stripe webhook handler
+/// when subscriptions are created / changed / canceled.
+model SubscriptionMetric {
+  id                    String   @id @default(cuid())
+  /// UTC midnight of the calendar day this row covers.
+  date                  DateTime @unique
+  /// Sum of monthly-equivalent active subscription cents (annual / 12).
+  mrrCents              Int      @default(0)
+  /// mrrCents * 12.
+  arrCents              Int      @default(0)
+  activeSubscriptions   Int      @default(0)
+  creatorCount          Int      @default(0)
+  proCount              Int      @default(0)
+  agencyCount           Int      @default(0)
+  newSubscriptions      Int      @default(0)
+  churnedSubscriptions  Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([date])
+}
+
 model JobLog {
   id          String   @id @default(cuid())
   feedVideoId String
@@ -338,6 +381,9 @@ model AutomationRule {
   cropTemplateId   String?
   autoPublish      Boolean  @default(false)
   publishPlatforms Json?
+  autoEditSettings     Json?
+  quoteGraphicsEnabled Boolean  @default(false)
+  quoteGraphicStyle    String   @default("pull-quote") // pull-quote | lower-third | highlight-card | side-panel | typewriter
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -638,7 +684,7 @@ model Composition {
   title            String
   mode             String   @default("pre-synced") // pre-synced | timeline
   status           String   @default("draft") // draft | rendering | completed | failed
-  audioMode        String   @default("creator") // creator | reference | both
+  audioMode        String   @default("both") // creator | reference | both
   creatorVolume    Float    @default(1.0)
   referenceVolume  Float    @default(1.0)
   creatorS3Key     String?
@@ -650,9 +696,16 @@ model Composition {
   creatorTrimEndS     Float?
   creatorTranscript      String?  @db.Text
   creatorTranscriptJson  Json?
-  cuts                    Json?    // Array<{ id: string; startS: number; endS: number; targets: string[] }>
+  cuts                    Json?    // Array<{ id: string; startS: number; endS: number }> — applied globally to all tracks
+  silenceRegions          Json?    // Array<{ startS: number; endS: number }> — cached FFmpeg silencedetect output
+  autoEditResult          Json?    // { cuts: AutoEditCut[]; summary: AutoEditSummary } — cached auto-edit analysis
+  detectedQuotes          Json?    // Array<DetectedQuote> — LLM-detected cited/quoted passages
+  quoteGraphicStyle       String?  // pull-quote | lower-third | highlight-card | side-panel | typewriter
+  quoteGraphicsEnabled    Boolean  @default(false)
   thumbnailCutoutPosition String  @default("right") // left | right
   thumbnailCutoutSize     String  @default("large")  // small | medium | large
+  thumbnailBgMode         String  @default("frame") // "frame" | "ai"
+  thumbnailBgCrop         String?               // JSON: {x,y,w,h} crop rect for thumbnail background
   createdAt           DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -669,6 +722,7 @@ model CompositionTrack {
   id            String      @id @default(cuid())
   compositionId String
   composition   Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
+  trackType     String      @default("reference") // reference | creator
   label         String?
   s3Key         String
   s3Url         String
@@ -732,6 +786,7 @@ model ThumbnailAsset {
   s3Url           String
   frameTimestampS Float
   visionScore     Float?
+  styleVariant    String?     // null for reference/cutout; "cinematic" | "vivid" | "gradient" | "warm" for ai_background
   createdAt       DateTime    @default(now())
 
   @@index([compositionId, type])

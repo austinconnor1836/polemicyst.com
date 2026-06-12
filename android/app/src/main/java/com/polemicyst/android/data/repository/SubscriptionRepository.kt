@@ -11,6 +11,21 @@ import retrofit2.http.GET
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Canonical plan IDs — must match backend PlanId strings exactly:
+ * free | creator | pro | agency
+ */
+enum class PlanId(val id: String) {
+    FREE("free"),
+    CREATOR("creator"),
+    PRO("pro"),
+    AGENCY("agency");
+
+    companion object {
+        fun fromString(value: String): PlanId = entries.firstOrNull { it.id == value } ?: FREE
+    }
+}
+
 @JsonClass(generateAdapter = true)
 data class SubscriptionInfo(
     val plan: String = "free",
@@ -18,19 +33,42 @@ data class SubscriptionInfo(
     val usage: PlanUsage = PlanUsage(),
     val stripeCustomerId: String? = null,
     val billingPortalUrl: String? = null,
-)
+) {
+    val planId: PlanId get() = PlanId.fromString(plan)
+}
 
+/**
+ * Plan limits mirroring backend shared/lib/plans.ts.
+ * - uploadMinutesPerMonth: -1 = unlimited
+ * - maxConnectedAccounts: -1 = unlimited
+ * - teamSeats: number of team member seats included
+ * - watermark: true if clips show a Clipfire watermark
+ * - autoGenerateClips: whether auto-generate is available
+ * - prioritySupport: whether plan includes priority support
+ * TODO(pricing): keep in sync with backend PLANS constant when final prices are confirmed.
+ */
 @JsonClass(generateAdapter = true)
 data class PlanLimits(
-    val feeds: Int = 3,
-    val clipsPerMonth: Int = 10,
-    val allowedProviders: List<String> = listOf("openai"),
+    val feeds: Int = 2,
+    val uploadMinutesPerMonth: Int = 60, // TODO(pricing): mirror backend free-tier value
+    val maxConnectedAccounts: Int = 2,
+    val watermark: Boolean = true,
+    val teamSeats: Int = 1,
+    val autoGenerateClips: Boolean = false,
+    val prioritySupport: Boolean = false,
 )
 
+/**
+ * Per-month usage rollup returned by `GET /api/user/subscription`.
+ * - uploadMinutesUsed: from `UsageMonth.processedMinutes` for the current month.
+ * - uploadMinutesLimit: plan limit echoed by the API (optional for older servers;
+ *   callers should fall back to `PlanLimits.uploadMinutesPerMonth` when null).
+ */
 @JsonClass(generateAdapter = true)
 data class PlanUsage(
     val feeds: Int = 0,
-    val clipsThisMonth: Int = 0,
+    val uploadMinutesUsed: Int = 0,
+    val uploadMinutesLimit: Int? = null,
 )
 
 interface SubscriptionApi {
@@ -49,8 +87,8 @@ class SubscriptionRepository @Inject constructor(
     val subscription: StateFlow<SubscriptionInfo?> = _subscription.asStateFlow()
 
     val currentPlan: String get() = _subscription.value?.plan ?: "free"
-    val isFreeUser: Boolean get() = currentPlan == "free"
-    val allowedProviders: List<String> get() = _subscription.value?.limits?.allowedProviders ?: listOf("openai")
+    val currentPlanId: PlanId get() = PlanId.fromString(currentPlan)
+    val isFreeUser: Boolean get() = currentPlanId == PlanId.FREE
 
     suspend fun refresh(): Result<SubscriptionInfo> {
         val result = safeApiCall(moshi) { api.getSubscription() }

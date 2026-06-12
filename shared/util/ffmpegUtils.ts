@@ -50,9 +50,21 @@ export type CaptionOptions = {
   fontSize?: CaptionFontSize;
 };
 
+export interface QuoteOverlayInfo {
+  /** Path to the PNG overlay image */
+  imagePath: string;
+  /** Start time relative to clip start (seconds) */
+  startS: number;
+  /** End time relative to clip start (seconds) */
+  endS: number;
+}
+
 export type ClipGenerationOptions = {
   showTimestamp?: boolean;
   captions?: CaptionOptions;
+  /** When true, a "Clipfire" watermark is stamped in the bottom-right corner. */
+  watermark?: boolean;
+  quoteOverlays?: QuoteOverlayInfo[];
 };
 
 export function generateAssSubtitles(
@@ -100,6 +112,12 @@ export function formatAssTime(seconds: number): string {
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 }
 
+function buildWatermarkFilter(): string {
+  // Semi-transparent "Clipfire" label in the bottom-right corner.
+  // Uses drawtext with a dark background box for readability across varied footage.
+  return "drawtext=text='Clipfire':fontsize=24:fontcolor=white@0.75:borderw=1:bordercolor=black@0.5:x=w-tw-16:y=h-th-16:box=1:boxcolor=black@0.35:boxborderw=4";
+}
+
 function buildTimestampFilter(startTimeStr: string): string {
   const startSeconds = parseTimeToSeconds(startTimeStr);
   const hh = Math.floor(startSeconds / 3600);
@@ -125,9 +143,14 @@ export async function generateClipFromS3(
   const startSeconds = parseTimeToSeconds(start);
   const endSeconds = parseTimeToSeconds(end);
 
+  const hasQuoteOverlays = options?.quoteOverlays && options.quoteOverlays.length > 0;
+
   let vf = aspectRatioFilter;
   if (options?.showTimestamp) {
     vf += ',' + buildTimestampFilter(start);
+  }
+  if (options?.watermark) {
+    vf += ',' + buildWatermarkFilter();
   }
 
   let assFilePath: string | null = null;
@@ -149,25 +172,67 @@ export async function generateClipFromS3(
     vf += `,ass='${escapedPath}'`;
   }
 
-  const ffmpegArgs = [
-    '-ss',
-    start,
-    '-i',
-    isUrl ? 'pipe:0' : inputPath,
-    '-t',
-    duration.toString(),
-    '-vf',
-    vf,
-    '-c:v',
-    'libx264',
-    '-c:a',
-    'aac',
-    '-movflags',
-    'frag_keyframe+empty_moov',
-    '-f',
-    'mp4',
-    'pipe:1',
-  ];
+  const ffmpegArgs: string[] = [];
+
+  if (hasQuoteOverlays) {
+    ffmpegArgs.push('-ss', start, '-i', isUrl ? 'pipe:0' : inputPath);
+
+    for (const qo of options!.quoteOverlays!) {
+      ffmpegArgs.push('-loop', '1', '-i', qo.imagePath);
+    }
+
+    let filterComplex = `[0:v]${vf}[base]`;
+    let prevLabel = 'base';
+
+    for (let qi = 0; qi < options!.quoteOverlays!.length; qi++) {
+      const qo = options!.quoteOverlays![qi];
+      const inputIdx = qi + 1;
+      const enableExpr = `between(t,${qo.startS.toFixed(3)},${qo.endS.toFixed(3)})`;
+      const nextLabel = `qov${qi}`;
+      filterComplex += `;[${prevLabel}][${inputIdx}:v]overlay=x=0:y=0:enable='${enableExpr}':format=auto[${nextLabel}]`;
+      prevLabel = nextLabel;
+    }
+
+    ffmpegArgs.push(
+      '-t',
+      duration.toString(),
+      '-filter_complex',
+      filterComplex,
+      '-map',
+      `[${prevLabel}]`,
+      '-map',
+      '0:a',
+      '-c:v',
+      'libx264',
+      '-c:a',
+      'aac',
+      '-movflags',
+      'frag_keyframe+empty_moov',
+      '-f',
+      'mp4',
+      'pipe:1'
+    );
+  } else {
+    ffmpegArgs.push(
+      '-ss',
+      start,
+      '-i',
+      isUrl ? 'pipe:0' : inputPath,
+      '-t',
+      duration.toString(),
+      '-vf',
+      vf,
+      '-c:v',
+      'libx264',
+      '-c:a',
+      'aac',
+      '-movflags',
+      'frag_keyframe+empty_moov',
+      '-f',
+      'mp4',
+      'pipe:1'
+    );
+  }
 
   const ffmpeg = spawn('ffmpeg', ffmpegArgs);
 
