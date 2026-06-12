@@ -306,6 +306,23 @@ model SubscriptionMetric {
   @@index([date])
 }
 
+/// Per-snapshot bank balance + revenue rollup used by /admin/runway to compute
+/// burn / runway. Founder records this monthly (manual for MVP — Plaid integration
+/// is future work).
+model RunwayBalance {
+  id                   String   @id @default(cuid())
+  userId               String   // admin/founder who recorded the snapshot
+  asOfDate             DateTime @unique
+  bankBalanceCents     Int
+  revenueLast30dCents  Int      @default(0)
+  source               String   @default("manual") // manual | plaid | stripe
+  notes                String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([asOfDate])
+}
+
 model JobLog {
   id          String   @id @default(cuid())
   feedVideoId String
