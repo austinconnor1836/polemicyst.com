@@ -199,6 +199,13 @@ Once the user has done W022 / W026 / W027 / SNS confirm / pushed
    loop" gap noted in `OPS.md`.
 6. **Container Insights on prod** — adds RunningCount + DesiredCount metrics,
    lets us alarm on task crash loops natively. Costs ~$1/container/month.
+7. **Demo seed for `/admin/metrics` + `/admin/costs`** — DONE. Shipped as
+   `scripts/seed-investor-demo.ts` (run via `npm run seed:demo`). Beyond the
+   original W001-W028 scope; plugs the empty-dashboard demo gap by populating
+   N synthetic users with realistic plan distribution, 3 months of
+   UsageMonth rows, 200-500 CostEvents, and 90 days of SubscriptionMetric
+   rows. Synthetic data is scoped to `demo-investor-*@clipfire.local` emails
+   so it can never collide with real users; `--reset` flag wipes + reseeds.
 
 ---
 
