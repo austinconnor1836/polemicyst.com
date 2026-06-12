@@ -33,9 +33,13 @@ struct ClipfireApp: App {
 
     init() {
         // Configure Firebase (Crashlytics) before anything else so early crashes are captured.
-        // When GoogleService-Info.plist is missing (e.g. local dev without secrets), FirebaseApp.configure()
-        // logs a warning and returns — it does not crash. Crashlytics simply stays disabled.
-        if FirebaseApp.app() == nil {
+        // GoogleService-Info.plist is intentionally not in the repo (gitignored, secret-bearing).
+        // FirebaseApp.configure() calls fatalError() when the plist is missing/invalid, so we
+        // gate the call on the plist actually being present in the bundle. CI builds (and any
+        // local checkout without the plist) skip Firebase entirely; Crashlytics simply stays
+        // disabled in that case. TestFlight/Release builds always have it via Fastlane match.
+        if FirebaseApp.app() == nil,
+           Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist") != nil {
             FirebaseApp.configure()
         }
 
