@@ -1,5 +1,21 @@
 name: Prepare Release
 
+# Trunk-based release flow (post-v0.5.0).
+#
+# Develop branch was retired with v0.5.0. This workflow now cuts a release
+# straight from main:
+#
+#   1. Branch from main → release/vX.Y.Z
+#   2. Bump version.json on that branch
+#   3. Open a PR to main with the generated changelog
+#   4. After the PR merges, post-release.yml creates the tag + GitHub Release
+#
+# Auth: gh pr create with GITHUB_TOKEN does NOT trigger downstream CI workflows
+# (GitHub suppresses to prevent loops). To get CI on the release PR, we need a
+# real user token. RELEASE_TOKEN must be a repo or fine-grained PAT (or GH App
+# token) with `contents: write` + `pull-requests: write`. Falls back to
+# RELEASE_PAT for backwards compatibility with the pre-trunk workflow.
+
 on:
   workflow_dispatch:
     inputs:
@@ -32,10 +48,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout develop
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
-          ref: develop
+          ref: main
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -130,60 +146,30 @@ jobs:
           cat /tmp/release-body.md >> $GITHUB_STEP_SUMMARY
           git checkout -- version.json
 
-      - name: Create version bump branch and PR
+      - name: Push release branch and open PR to main
         if: ${{ !inputs.dry_run }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # gh pr create with GITHUB_TOKEN does not trigger downstream CI
+          # workflows (GitHub suppresses to prevent loops). Use a PAT or GH App
+          # token so the release PR gets CI runs that gate the merge.
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.RELEASE_PAT }}
         run: |
-          BRANCH="release/v${{ steps.bump.outputs.version }}"
+          RELEASE_BRANCH="release/v${{ steps.bump.outputs.version }}"
 
-          # Delete stale release branch if it exists from a previous failed run
-          git push origin --delete "$BRANCH" 2>/dev/null || true
+          # Delete stale release branch from a previous failed run
+          git push origin --delete "$RELEASE_BRANCH" 2>/dev/null || true
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
+          git checkout -b "$RELEASE_BRANCH"
           git add version.json
           git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}"
-          git push origin "$BRANCH"
-
-          # Create PR to develop for the version bump
-          BUMP_PR_URL=$(gh pr create \
-            --base develop \
-            --head "$BRANCH" \
-            --title "chore: bump version to ${{ steps.bump.outputs.version }}" \
-            --body "Automated version bump for release v${{ steps.bump.outputs.version }}. Auto-merge will merge this once CI passes, then the release PR will be created.")
-          echo "### Version bump PR created" >> $GITHUB_STEP_SUMMARY
-          echo "$BUMP_PR_URL" >> $GITHUB_STEP_SUMMARY
-
-          # Save release body for the next step
-          cp /tmp/release-body.md /tmp/release-body-saved.md
-
-      - name: Create or update release PR
-        if: ${{ !inputs.dry_run }}
-        env:
-          # Must use RELEASE_PAT (not GITHUB_TOKEN) so the PR creation
-          # triggers CI workflows. GITHUB_TOKEN events are suppressed by
-          # GitHub to prevent infinite loops.
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: |
-          RELEASE_BRANCH="release-pr/v${{ steps.bump.outputs.version }}"
-
-          # Clean up stale release-pr branch if it exists
-          git push origin --delete "$RELEASE_BRANCH" 2>/dev/null || true
-
-          # Create a temporary branch from the release branch (which has
-          # the version bump commit). Using develop directly as PR head
-          # causes GitHub's auto-delete head branches to delete develop on merge.
-          BUMP_BRANCH="release/v${{ steps.bump.outputs.version }}"
-          git checkout "$BUMP_BRANCH"
-          git checkout -b "$RELEASE_BRANCH"
           git push origin "$RELEASE_BRANCH"
 
-          # Close any existing release PRs from previous runs
+          # Close any stale release PRs from previous runs
           EXISTING=$(gh pr list --base main --state open \
             --json number,headRefName \
-            --jq '.[] | select(.headRefName | startswith("release-pr/")) | .number' \
+            --jq '.[] | select(.headRefName | startswith("release/")) | .number' \
             | head -1 || true)
           if [ -n "$EXISTING" ]; then
             echo "Closing stale release PR #$EXISTING"
