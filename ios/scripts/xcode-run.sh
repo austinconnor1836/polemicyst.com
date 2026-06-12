@@ -40,10 +40,25 @@ fi
 echo "Found: $APP_PATH"
 
 echo "$(date '+%H:%M:%S') ==> Installing on device..."
-xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH" 2>&1
+INSTALL_PATH=""
+if xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH" 2>&1; then
+    INSTALL_PATH="devicectl"
+else
+    echo "$(date '+%H:%M:%S') ==> devicectl install failed (CoreDevice tunnel wedged); falling back to ideviceinstaller..."
+    if ! command -v ideviceinstaller >/dev/null 2>&1; then
+        echo "ERROR: ideviceinstaller not installed. Run: arch -arm64 brew install ideviceinstaller"
+        exit 1
+    fi
+    ideviceinstaller install "$APP_PATH" 2>&1
+    INSTALL_PATH="ideviceinstaller"
+fi
 
 echo "$(date '+%H:%M:%S') ==> Launching..."
-xcrun devicectl device process launch --device "$DEVICE_ID" com.clipfire.app 2>&1
+if [ "$INSTALL_PATH" = "devicectl" ]; then
+    xcrun devicectl device process launch --device "$DEVICE_ID" com.clipfire.app 2>&1
+else
+    echo "(devicectl tunnel unavailable — tap Clipfire on your phone to launch)"
+fi
 
 echo "$(date '+%H:%M:%S') ==> Done!"
 } > "$LOG" 2>&1
