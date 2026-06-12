@@ -1,8 +1,6 @@
 'use client';
 import { useEffect, useRef } from 'react';
-import { Provider } from 'react-redux';
 import { useSession } from 'next-auth/react';
-import { makeStore, AppStore } from '../lib/store';
 import { identifyClientPostHog, initClientPostHog } from '../lib/posthog-client';
 
 // PostHog bootstrap: gated on cookie consent + NEXT_PUBLIC_POSTHOG_KEY env var.
@@ -49,17 +47,14 @@ function PostHogBootstrap() {
   return null;
 }
 
+// Historically wrapped a Redux store provider; the Redux store was unused and
+// has been removed. The component is retained as the mount point for the
+// PostHog bootstrap hook (which must run client-side, above the auth tree).
 export default function StoreProvider({ children }: { children: React.ReactNode }) {
-  const storeRef = useRef<AppStore>();
-  if (!storeRef.current) {
-    // Create the store instance the first time this renders
-    storeRef.current = makeStore();
-  }
-
   return (
-    <Provider store={storeRef.current}>
+    <>
       <PostHogBootstrap />
       {children}
-    </Provider>
+    </>
   );
 }
