@@ -283,6 +283,29 @@ model CostEvent {
   @@index([createdAt])
 }
 
+/// Daily subscription rollup used by the /admin/metrics dashboard (W017).
+/// One row per UTC day; updated incrementally by the Stripe webhook handler
+/// when subscriptions are created / changed / canceled.
+model SubscriptionMetric {
+  id                    String   @id @default(cuid())
+  /// UTC midnight of the calendar day this row covers.
+  date                  DateTime @unique
+  /// Sum of monthly-equivalent active subscription cents (annual / 12).
+  mrrCents              Int      @default(0)
+  /// mrrCents * 12.
+  arrCents              Int      @default(0)
+  activeSubscriptions   Int      @default(0)
+  creatorCount          Int      @default(0)
+  proCount              Int      @default(0)
+  agencyCount           Int      @default(0)
+  newSubscriptions      Int      @default(0)
+  churnedSubscriptions  Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([date])
+}
+
 model JobLog {
   id          String   @id @default(cuid())
   feedVideoId String
