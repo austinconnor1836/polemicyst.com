@@ -24,8 +24,6 @@ function getSiteLabel(host: string): string {
 const PRODUCT_TITLE = 'Clipfire — Turn long-form video into viral clips, automatically';
 const PRODUCT_DESCRIPTION =
   'Turn long-form video into viral, platform-ready clips — automatically, with AI scoring tuned for Reels, Shorts, and TikTok.';
-// TODO: replace public/og-image.jpg placeholder with a designed 1200x630 social card.
-const OG_IMAGE = '/og-image.jpg';
 
 export async function generateMetadata(): Promise<Metadata> {
   const headersList = await headers();
@@ -34,6 +32,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const isProd = siteLabel === 'Clipfire';
 
   return {
+    metadataBase: new URL('https://polemicyst.com'),
     title: {
       default: isProd ? PRODUCT_TITLE : siteLabel,
       template: `%s | ${siteLabel}`,
@@ -46,14 +45,6 @@ export async function generateMetadata(): Promise<Metadata> {
       siteName: 'Clipfire',
       locale: 'en-US',
       type: 'website',
-      images: [
-        {
-          url: OG_IMAGE,
-          width: 1200,
-          height: 630,
-          alt: 'Clipfire — AI-powered viral clip generation',
-        },
-      ],
     },
     robots: {
       index: true,
@@ -70,7 +61,6 @@ export async function generateMetadata(): Promise<Metadata> {
       title: PRODUCT_TITLE,
       description: PRODUCT_DESCRIPTION,
       card: 'summary_large_image',
-      images: [OG_IMAGE],
     },
     icons: {
       icon: '/favicon/favicon.png',
