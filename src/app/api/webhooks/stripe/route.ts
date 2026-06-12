@@ -1,6 +1,13 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '../../../../../shared/lib/prisma';
 import { getStripeClient, planIdFromPriceId } from '@/lib/stripe';
+import { flushServerPostHog, getServerPostHog } from '@/lib/posthog';
+
+function normalizeInterval(interval?: string | null): 'monthly' | 'annual' | 'unknown' {
+  if (interval === 'month') return 'monthly';
+  if (interval === 'year') return 'annual';
+  return 'unknown';
+}
 
 export async function POST(req: NextRequest) {
   const stripe = getStripeClient();
@@ -27,15 +34,22 @@ export async function POST(req: NextRequest) {
       const userEmail = session.customer_details?.email;
 
       // Safety net: link customer and set plan from the checkout session
+      let planId = 'free';
+      let interval: 'monthly' | 'annual' | 'unknown' = 'unknown';
+      let amount = session.amount_total ?? 0;
       if (userEmail && customerId) {
         const subscriptionId = session.subscription as string | null;
-        let planId = 'free';
 
         if (subscriptionId) {
           const sub = await stripe.subscriptions.retrieve(subscriptionId);
-          const priceId = sub.items.data[0]?.price?.id;
+          const priceItem = sub.items.data[0]?.price;
+          const priceId = priceItem?.id;
           if (priceId) {
             planId = planIdFromPriceId(priceId);
+          }
+          interval = normalizeInterval(priceItem?.recurring?.interval ?? null);
+          if (!amount && priceItem?.unit_amount) {
+            amount = priceItem.unit_amount;
           }
         }
 
@@ -43,6 +57,32 @@ export async function POST(req: NextRequest) {
           where: { email: userEmail },
           data: { stripeCustomerId: customerId, subscriptionPlan: planId },
         });
+      }
+
+      // W013: paid_conversion. Use the Clipfire user.id as distinctId so it
+      // ties back to the same identity the client-side identify() set.
+      const posthog = getServerPostHog();
+      if (posthog && userEmail) {
+        try {
+          const user = await prisma.user.findUnique({
+            where: { email: userEmail },
+            select: { id: true },
+          });
+          if (user) {
+            posthog.capture({
+              distinctId: user.id,
+              event: 'paid_conversion',
+              properties: {
+                plan: planId,
+                interval,
+                amount,
+              },
+            });
+            await flushServerPostHog();
+          }
+        } catch {
+          // Non-fatal.
+        }
       }
       break;
     }
@@ -76,10 +116,40 @@ export async function POST(req: NextRequest) {
       const subscription = event.data.object;
       const customerId = subscription.customer as string;
 
+      // Capture the plan + reason BEFORE we downgrade the row.
+      const priceItem = subscription.items.data[0]?.price;
+      const priceId = priceItem?.id;
+      const previousPlan = priceId ? planIdFromPriceId(priceId) : 'free';
+      const cancellationReason =
+        (subscription as { cancellation_details?: { reason?: string | null } | null })
+          .cancellation_details?.reason ?? null;
+
+      const previousUser = await prisma.user.findFirst({
+        where: { stripeCustomerId: customerId },
+        select: { id: true },
+      });
+
       await prisma.user.updateMany({
         where: { stripeCustomerId: customerId },
         data: { subscriptionPlan: 'free' },
       });
+
+      const posthog = getServerPostHog();
+      if (posthog && previousUser) {
+        try {
+          posthog.capture({
+            distinctId: previousUser.id,
+            event: 'subscription_canceled',
+            properties: {
+              plan: previousPlan,
+              cancellation_reason: cancellationReason ?? undefined,
+            },
+          });
+          await flushServerPostHog();
+        } catch {
+          // Non-fatal.
+        }
+      }
       break;
     }
 

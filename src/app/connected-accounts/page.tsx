@@ -65,6 +65,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { QuotaWarningBanner } from '@/components/QuotaWarningBanner';
 import { UpgradePromptDialog } from '@/components/UpgradePromptDialog';
 import { parseApiError, type ApiQuotaError } from '@/lib/api-error';
+import { captureClientEvent } from '@/lib/posthog-client';
 
 export default function FeedsPage() {
   const videosHeaderRef = useRef<HTMLDivElement | null>(null);
@@ -422,6 +423,9 @@ export default function FeedsPage() {
       return;
     }
 
+    // W013: upload_started — file source.
+    void captureClientEvent('upload_started', { source_type: 'file' });
+
     const tempId = `upload-${Date.now()}`;
     setActiveUploads((prev) => {
       const next = new Map(prev);
@@ -474,6 +478,12 @@ export default function FeedsPage() {
 
   const handleUrlImport = async () => {
     if (!importUrl) return;
+
+    // W013: upload_started — distinguish youtube URLs from other URLs.
+    const isYouTubeUrl = /(?:youtube\.com|youtu\.be)/i.test(importUrl);
+    void captureClientEvent('upload_started', {
+      source_type: isYouTubeUrl ? 'youtube' : 'url',
+    });
 
     const tempId = `import-${Date.now()}`;
     setActiveUploads((prev) => {
