@@ -31,9 +31,9 @@ If you only read one other doc with this one, read
 ## Per-item disposition
 
 | Item                               | Disposition          | Where it lives                                                                                                                                   |
-| ---------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| ---------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | W001 brand + SEO                   | MERGED #259          | `src/app/page.tsx`, `src/app/layout.tsx`, `src/app/pricing/page.tsx`                                                                             |
-| W002 cleanup (console + localhost) | MERGED #261          | various — search `git log --oneline                                                                                                              | grep W002` |
+| W002 cleanup (console + localhost) | MERGED #261          | various — see commit a15567e0                                                                                                                    |
 | W003 delete dead routes            | MERGED #265          | `/clips-genie`, `/sushi-go`, `/donation-splitter` removed; `/design-system` admin-gated                                                          |
 | W004 GDPR delete + export          | MERGED #262          | `src/app/api/user/delete/route.ts`, `src/app/api/user/export/route.ts`                                                                           |
 | W005 legal pages                   | MERGED #260          | `src/app/privacy-policy/page.tsx`, `src/app/terms-of-service/page.tsx`, `src/app/legal/dmca/page.tsx`                                            |
