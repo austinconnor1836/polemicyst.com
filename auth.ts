@@ -11,6 +11,7 @@ import type { JWT } from 'next-auth/jwt';
 import axios from 'axios';
 import { cookies } from 'next/headers';
 import { prisma } from '@shared/lib/prisma';
+import { flushServerPostHog, getServerPostHog } from '@/lib/posthog';
 
 /**
  * COPPA defense (W008): the sign-in page sets a short-lived `clipfire_age_gate=1`
@@ -389,11 +390,46 @@ export const authOptions: NextAuthOptions = {
     // `signIn` callback already blocks creation when consent is absent, so reaching
     // here implies the user ticked the box.
     async createUser({ user }: { user: any }) {
-      if (!(await hasAgeGateConsent())) return;
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { acceptedAgeGate: true },
-      });
+      if (await hasAgeGateConsent()) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { acceptedAgeGate: true },
+        });
+      }
+
+      // W013: fire signup conversion event. No-op when POSTHOG_API_KEY is unset.
+      const posthog = getServerPostHog();
+      if (posthog && user?.id) {
+        try {
+          // Best-effort provider detection — the PrismaAdapter `createUser`
+          // event doesn't surface the provider directly, but for any
+          // non-credentials sign-in (the only path that creates DB users in
+          // prod) the most recent Account row holds it.
+          let provider: string | undefined;
+          try {
+            const account = await prisma.account.findFirst({
+              where: { userId: user.id },
+              orderBy: { id: 'desc' },
+              select: { provider: true },
+            });
+            provider = account?.provider ?? undefined;
+          } catch {
+            // Best-effort — fall through with provider undefined.
+          }
+
+          posthog.capture({
+            distinctId: user.id,
+            event: 'signup',
+            properties: {
+              provider: provider ?? 'unknown',
+              email: user.email ?? undefined,
+            },
+          });
+          await flushServerPostHog();
+        } catch {
+          // Non-fatal — analytics must never break sign-up.
+        }
+      }
     },
   },
 };
