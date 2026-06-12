@@ -1,281 +1,180 @@
-# Polemicyst
+# Clipfire
 
-A Next.js-based viral clip generation platform for content creators. Automatically identifies and extracts engaging moments from long-form video content.
+Turn long-form video into short, postable clips. Creators connect a YouTube
+channel or upload a file; Clipfire transcribes, scores the moments most likely
+to go viral, renders portrait/landscape variants, and publishes them out to
+the platforms creators already post to.
 
-## 🚀 Features
+The same pipeline powers a separate truth-analysis surface: AI scores video
+transcripts for credibility, surfaces fallacies and biases, and lets users chat
+with the analysis.
 
-- **Automated Clip Detection**: AI-powered identification of viral moments in video content
-- **Multi-Environment Support**: Separate production and development environments
-- **RSS Feed Integration**: Automatic video ingestion from YouTube RSS feeds
-- **LLM-Based Scoring**: Gemini/Ollama integration for content analysis
-- **Cloud Infrastructure**: AWS ECS Fargate deployment with auto-scaling
-- **OAuth Authentication**: Google OAuth with allowlist support
+- **Web:** [polemicyst.com](https://polemicyst.com) (`main` → prod) /
+  [dev.polemicyst.com](https://dev.polemicyst.com) (`develop` → dev). The web
+  app brand is mid-migration from "Polemicyst" to "Clipfire" — the domain hasn't
+  cut over yet; the iOS and Android apps already ship as "Clipfire."
+- **iOS:** TestFlight + App Store ([`ios/`](ios/)) — ships as Clipfire
+  (`com.clipfire.app`).
+- **Android:** Firebase App Distribution + Play Store ([`android/`](android/)) —
+  ships as Clipfire.
 
-## 🏗️ Architecture
+---
 
-### Multi-Environment Setup
+## What it does
 
-The application supports two environments sharing cost-effective infrastructure:
+**For creators.**
 
-- **Production**: `main` branch → [polemicyst.com](https://polemicyst.com)
-- **Development**: `develop` branch → [dev.polemicyst.com](https://dev.polemicyst.com)
+1. **Ingest** — connect a YouTube channel, paste a URL, or upload a file. New
+   videos auto-ingest via RSS-style polling.
+2. **Transcribe** — YouTube captions first (~100 ms), Whisper fallback
+   (`shared/lib/scoring`).
+3. **Score** — every transcript window scored by a council-style LLM
+   (Gemini multimodal as the teacher model; Ollama local as the replacement
+   target — see [`docs/DISTILLATION_ROADMAP.md`](docs/DISTILLATION_ROADMAP.md)).
+   Scores include hook strength, context, captionability, and risk; aggregated
+   with platform-specific weights (Reels vs Shorts vs YouTube).
+4. **Render** — FFmpeg trims, applies captions, person-cutout overlays, and
+   optional quote-graphic overlays. Portrait and landscape variants.
+5. **Publish** — generic publish endpoints + per-platform OAuth (currently
+   stubbed for Twitter / Bluesky / YouTube / Instagram / TikTok; each is its
+   own follow-on integration).
 
-**Shared Resources** (~$109/month):
+**For everyone (truth analysis).** Drop a video URL into the app; get a structured
+breakdown of claims, fallacies, biases, and a credibility score. Multi-turn AI
+chat against the analysis. Same scoring infra; different prompts and surfaces.
 
-- VPC with NAT Gateways
-- RDS PostgreSQL instance (separate databases per environment)
-- S3 bucket (environment-specific prefixes: `prod/`, `dev/`)
-- Application Load Balancer with host-based routing
-- ECS Cluster
+---
 
-**Environment-Specific** (~$16/month for dev):
+## Why the unit economics work
 
-- ECS Services and Task Definitions
-- ALB Target Groups
-- Redis instances
-- DNS records
+Every Gemini call writes a training example into `TrainingExample` (clip scoring)
+or `TruthTrainingExample` (truth/chat). The roadmap is to fine-tune a 7-8B model
+on the collected examples, deploy it via Ollama, and switch `LLM_PROVIDER=gemini`
+to `ollama` — a config change, not a re-architecture (the
+`ScoringProvider` port already abstracts the provider). Inference cost goes
+from ~$X/minute of source video to $0.
 
-**Total Cost**: ~$178/month
+Live cost-per-minute and margin-per-plan ship in `/admin/costs`. Live MRR / ARR /
+churn / cohort ship in `/admin/metrics`. See
+[`docs/INVESTOR_METRICS.md`](docs/INVESTOR_METRICS.md) for the snapshot template
+and [`docs/PRICING_STRATEGY.md`](docs/PRICING_STRATEGY.md) for the pricing
+rationale.
 
-### Tech Stack
+---
 
-**Frontend**:
+## Architecture (one screen)
 
-- Next.js 14 (App Router)
-- React 18
-- TypeScript
-- Tailwind CSS
-- NextAuth.js for authentication
+Modular monolith. Single Next.js deploy + independently-scaled BullMQ workers
+on AWS ECS Fargate. PostgreSQL via Prisma, Redis for queues, S3 for video
+storage. Ports & adapters used only where provider replaceability genuinely
+matters: `ScoringProvider` (Gemini / Ollama) and `StorageProvider` (S3).
 
-**Backend**:
+Full system topology, queue architecture, and data flow in
+[`ARCHITECTURE.md`](ARCHITECTURE.md). Conventions for code changes in
+[`CLAUDE.md`](CLAUDE.md).
 
-- Node.js
-- Prisma ORM
-- PostgreSQL (AWS RDS)
-- Redis (BullMQ for job queues)
-- AWS S3 for video storage
+---
 
-**Workers**:
+## Operating posture
 
-- Clip Worker: Video processing and clip extraction (FFmpeg)
-- LLM Workers: Content scoring (Gemini API, Ollama)
-- Transcription Worker: Video-to-text conversion
-- Feed Poller: RSS feed monitoring
+- **Error tracking.** Sentry on Next.js + workers (`@sentry/nextjs`); Firebase
+  Crashlytics on iOS and Android.
+- **Uptime.** `/api/health` checks DB + Redis + S3 with 2.5 s timeouts; returns
+  503 on any failure.
+- **CloudWatch alarms.** 10 prod alarms on ALB 5xx, ECS CPU/memory, RDS
+  connections/storage. All fan-out via a single SNS topic. See
+  [`docs/OPS.md`](docs/OPS.md).
+- **Per-clip cost tracking.** Every billable stage (download, transcription,
+  LLM scoring, render, S3 upload) writes a `CostEvent` row. Non-fatal — flush
+  failures never block the pipeline.
+- **CI gates** (PR #257). Web + Android + iOS lint/build/test gates run on every
+  PR to `develop` and `main`.
 
-**Infrastructure**:
+---
 
-- AWS ECS Fargate
-- Terraform for infrastructure as code
-- GitHub Actions for CI/CD
-- Route53 for DNS
-- ACM for SSL certificates
+## Repository layout
 
-## 🛠️ Local Development
+```
+polemicyst.com/
+  src/                Next.js App Router (web)
+  shared/             Cross-cutting libs (Prisma client, scoring port, storage port, cost tracking)
+  prisma/             Schema + migrations
+  backend/            Express services
+  workers/            BullMQ workers (clip-metadata, transcription, poller, download)
+  scripts/            One-shot utilities (incl. scripts/run-prod-migrate.sh)
+  ios/                Native iOS (XcodeGen + Fastlane)
+  android/            Native Android (Gradle + Fastlane)
+  infrastructure/     Terraform module set (state lives in S3, not committed)
+  docs/               INVESTOR_READINESS, INVESTOR_METRICS, DISTILLATION_ROADMAP, OPS, ARCHITECTURE, PRICING_STRATEGY, ...
+```
 
-### Prerequisites
+---
 
-- Node.js 18+
-- PostgreSQL
-- Redis
-- FFmpeg
-- AWS credentials (for S3 access)
+## Local development
 
-### Setup
-
-1. **Clone the repository**:
-
-   ```bash
-   git clone https://github.com/austinconnor1836/polemicyst.com.git
-   cd polemicyst.com
-   ```
-
-2. **Install dependencies**:
-
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**:
-
-   ```bash
-   cp ENV_VARS.template .env.local
-   # Edit .env.local with your configuration
-   ```
-
-4. **Set up database**:
-
-   ```bash
-   npx prisma migrate dev
-   npx prisma generate
-   ```
-
-5. **Start Redis** (required for workers):
-
-   ```bash
-   # Using Docker
-   docker run -d -p 6379:6379 redis:alpine
-
-   # Or using docker-compose
-   docker-compose up -d redis
-   ```
-
-6. **Run the development server**:
-
-   ```bash
-   npm run dev
-   ```
-
-7. **Open your browser**:
-   - Visit [http://localhost:3000](http://localhost:3000)
-
-### Running Workers Locally
+Prereqs: Node 18+, Docker (for Postgres + Redis), FFmpeg, AWS creds for S3.
 
 ```bash
-# Clip worker
-cd workers/clip-worker
+git clone git@github.com:austinconnor1836/polemicyst.com.git
+cd polemicyst.com
 npm install
-npm run dev
-
-# LLM worker
-cd workers/llm-worker
-npm install
-npm run dev
-
-# Feed poller
-cd workers/poller-worker
-npm install
-npm run dev
+cp ENV_VARS.template .env.local        # fill in DATABASE_URL, S3_*, NEXTAUTH_SECRET, etc.
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+npx prisma migrate dev --schema=prisma/schema.prisma
+npm run dev                            # https://localhost:3000 (self-signed)
 ```
 
-## 📦 Deployment
+Background workers (clip-metadata-worker, etc.) run automatically via docker
+compose. To iterate on a worker, see [`DEV.md`](DEV.md).
 
-The application uses automated GitHub Actions deployment:
+---
 
-### Deploy to Development
+## Branch + release flow
+
+- Feature branches → `develop` (PR with auto-merge).
+- `develop` → `main` only via a release PR. Versioning is semver; tagging is
+  automated by `.github/workflows/finalize-release.yml`. See `CLAUDE.md` →
+  "Release process" for the full workflow.
+- Production `main`: [polemicyst.com](https://polemicyst.com)
+- Development `develop`: [dev.polemicyst.com](https://dev.polemicyst.com)
+
+---
+
+## Deployment
+
+Push to `develop` → dev environment; merge to `main` → prod. Both happen via
+GitHub Actions (`.github/workflows/deploy.yml`).
+
+Pending DB migrations apply via:
 
 ```bash
-git checkout develop
-git add .
-git commit -m "Your changes"
-git push origin develop
+bash scripts/run-prod-migrate.sh
 ```
 
-Automatically deploys to [dev.polemicyst.com](https://dev.polemicyst.com)
+(Runs `prisma migrate deploy` from a one-shot ECS Fargate task in the prod
+private subnets. Idempotent.)
 
-### Deploy to Production
+---
 
-```bash
-git checkout main
-git merge develop
-git push origin main
-```
+## Documentation map
 
-Automatically deploys to [polemicyst.com](https://polemicyst.com)
+- [`docs/INVESTOR_READINESS.md`](docs/INVESTOR_READINESS.md) — gap analysis and work-item map that drove the 2026-06 readiness push.
+- [`docs/INVESTOR_READINESS_LOG.md`](docs/INVESTOR_READINESS_LOG.md) —
+  execution record + known debt + what's left for a human.
+- [`docs/INVESTOR_METRICS.md`](docs/INVESTOR_METRICS.md) — always-on metrics
+  snapshot template (numbers pulled from `/admin/metrics`).
+- [`docs/DISTILLATION_ROADMAP.md`](docs/DISTILLATION_ROADMAP.md) — Gemini →
+  private model timeline, A/B gate, rollback.
+- [`docs/PRICING_STRATEGY.md`](docs/PRICING_STRATEGY.md) — pricing rationale,
+  competitor positioning.
+- [`docs/OPS.md`](docs/OPS.md) — alarm table, on-page response, coverage gaps.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — system topology, queue architecture,
+  data flow.
+- [`CLAUDE.md`](CLAUDE.md) — coding conventions, Prisma rules, cost
+  instrumentation architecture, AI cost strategy.
 
-### Manual Deployment
+---
 
-For manual infrastructure updates:
+## License
 
-```bash
-cd infrastructure
-terraform init
-terraform plan
-terraform apply
-```
-
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instructions.
-
-## 📚 Documentation
-
-- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)**: Complete deployment guide including infrastructure setup
-- **[DEPLOYMENT_STATUS.md](docs/DEPLOYMENT_STATUS.md)**: Current deployment status and pending tasks
-- **[CLAUDE.md](CLAUDE.md)**: LLM system architecture and scoring implementation
-
-## 🔧 Configuration
-
-### Environment Variables
-
-Key environment variables (see `ENV_VARS.template` for complete list):
-
-```bash
-# Database
-DATABASE_URL=postgresql://user:pass@host:5432/dbname
-
-# S3 Storage
-S3_BUCKET=your-bucket-name
-S3_REGION=us-east-1
-S3_PREFIX=prod  # or 'dev'
-
-# Authentication
-NEXTAUTH_URL=https://your-domain.com
-NEXTAUTH_SECRET=your-secret-here
-GOOGLE_CLIENT_ID=your-client-id
-GOOGLE_CLIENT_SECRET=your-client-secret
-
-# Redis
-REDIS_HOST=localhost  # or redis-prod.polemicyst.local in AWS
-
-# Environment
-ENVIRONMENT=prod  # or 'dev'
-NODE_ENV=production  # or 'development'
-```
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-npm test
-
-# Run tests in watch mode
-npm run test:watch
-
-# Run linter
-npm run lint
-
-# Run type checking
-npm run type-check
-```
-
-## 📊 Monitoring
-
-### Check Service Status
-
-```bash
-# ECS services
-aws ecs describe-services --cluster polemicyst-cluster --services polemicyst-prod-web polemicyst-dev-web
-
-# CloudWatch logs
-aws logs tail /ecs/polemicyst-prod-web --follow
-aws logs tail /ecs/polemicyst-dev-web --follow
-```
-
-### Cost Monitoring
-
-Monitor AWS costs in Cost Explorer, filtered by:
-
-- Environment tags (prod/dev)
-- Service types (ECS, RDS, S3, etc.)
-
-## 🤝 Contributing
-
-1. Create a feature branch from `develop`
-2. Make your changes
-3. Test locally
-4. Push to `develop` branch
-5. Verify deployment on dev.polemicyst.com
-6. Merge to `main` for production deployment
-
-## 📝 License
-
-This project is proprietary software.
-
-## 🐛 Issues and Support
-
-For issues and feature requests, please use the GitHub issue tracker or contact the development team.
-
-## 🔗 Links
-
-- **Production**: [https://polemicyst.com](https://polemicyst.com)
-- **Development**: [https://dev.polemicyst.com](https://dev.polemicyst.com)
-- **GitHub**: [https://github.com/austinconnor1836/polemicyst.com](https://github.com/austinconnor1836/polemicyst.com)
-- **GitHub Actions**: [View Deployments](https://github.com/austinconnor1836/polemicyst.com/actions)
+Proprietary. Contact the founder via the email on the website.
