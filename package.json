@@ -19,7 +19,8 @@
     "backend:build": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build",
     "openapi:generate": "cd android && ./gradlew openApiGenerate",
     "tokens": "node scripts/generate-tokens.mjs",
-    "version:bump": "node scripts/bump-version.mjs"
+    "version:bump": "node scripts/bump-version.mjs",
+    "seed:demo": "tsx scripts/seed-investor-demo.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
