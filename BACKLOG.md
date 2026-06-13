@@ -79,10 +79,12 @@ Generated 2026-06-12. Update on every dispatcher tick.
 
 ### W006 — Unit test: `shared/lib/plans.ts` tier→limit lookup
 
-- Status: pending
+- Status: in-progress
 - Track: afk-safe
 - Priority: P1
 - Deps: W003 done (so vitest config on main is the canonical one)
+- claimed_by: afk-20260613T003927Z
+- claimed_at: 2026-06-13T00:41:01Z
 - AC:
   - Add `tests/lib/plans.test.ts` (note: `tests/lib/plans.test.ts` MAY already exist per `git ls-tree main tests/lib` — check first, extend rather than duplicate).
   - Cover: free/pro/business/agency each map to the expected `uploadMinutesLimit`, `watermarkEnabled`, `annualDiscountPercent`. Cover the unknown-tier fallback path (should not throw; should return free).
