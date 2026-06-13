@@ -163,4 +163,126 @@ describe('buildStitchedTranscript', () => {
   it('returns the fallback when composition is null but fallback is provided', () => {
     expect(buildStitchedTranscript(null, 'hi')).toBe('hi');
   });
+
+  // W007 — edge cases that the helper must survive in production.
+
+  describe('buildStitchedTranscript — edge cases (W007)', () => {
+    it('resolves sortOrder ties deterministically (stable order by array index)', () => {
+      const transcript = buildStitchedTranscript({
+        creatorTranscriptJson: null,
+        // Three tracks with the same sortOrder — stable sort means whichever
+        // appeared first in the array stays first in the concat. The exact tie
+        // breaker is an implementation detail; the contract is that the result
+        // is deterministic (no randomization) and contains every text exactly
+        // once.
+        tracks: [
+          { sortOrder: 0, transcriptJson: [{ text: 'alpha' }] },
+          { sortOrder: 0, transcriptJson: [{ text: 'beta' }] },
+          { sortOrder: 0, transcriptJson: [{ text: 'gamma' }] },
+        ],
+      });
+
+      expect(transcript).toBeDefined();
+      expect(transcript).toContain('alpha');
+      expect(transcript).toContain('beta');
+      expect(transcript).toContain('gamma');
+
+      // Same input → same output, twice in a row.
+      const second = buildStitchedTranscript({
+        creatorTranscriptJson: null,
+        tracks: [
+          { sortOrder: 0, transcriptJson: [{ text: 'alpha' }] },
+          { sortOrder: 0, transcriptJson: [{ text: 'beta' }] },
+          { sortOrder: 0, transcriptJson: [{ text: 'gamma' }] },
+        ],
+      });
+      expect(transcript).toBe(second);
+    });
+
+    it('treats missing sortOrder (undefined/null) as 0 and tie-breaks stably', () => {
+      const transcript = buildStitchedTranscript({
+        creatorTranscriptJson: null,
+        tracks: [
+          { transcriptJson: [{ text: 'no-sort-order' }] },
+          { sortOrder: null, transcriptJson: [{ text: 'null-sort-order' }] },
+          { sortOrder: 5, transcriptJson: [{ text: 'explicit-five' }] },
+        ],
+      });
+
+      expect(transcript).toBeDefined();
+      // The two "0-equivalent" tracks come before the explicit 5.
+      expect(transcript!.indexOf('no-sort-order')).toBeLessThan(
+        transcript!.indexOf('explicit-five')
+      );
+      expect(transcript!.indexOf('null-sort-order')).toBeLessThan(
+        transcript!.indexOf('explicit-five')
+      );
+    });
+
+    it('skips a malformed transcriptJson without throwing', () => {
+      // The worker can in theory write garbage if a Whisper response gets
+      // partially corrupted (e.g. a non-array body, segments without `text`,
+      // wrong-typed entries). The helper should treat each malformed track
+      // as "no transcript yet" and keep going — never bubble up an error.
+      const transcript = buildStitchedTranscript({
+        creatorTranscriptJson: [{ text: 'creator is fine' }],
+        tracks: [
+          { sortOrder: 0, transcriptJson: [{ text: 'normal track' }] },
+          // @ts-expect-error — intentionally wrong shape for the test
+          { sortOrder: 1, transcriptJson: 'not an array' },
+          // @ts-expect-error — intentionally wrong shape for the test
+          { sortOrder: 2, transcriptJson: [{ wrongField: 'nope' }] },
+          // @ts-expect-error — intentionally wrong shape for the test
+          { sortOrder: 3, transcriptJson: [42, null, { text: 'survivor' }] },
+          { sortOrder: 4, transcriptJson: [{ text: 'last good track' }] },
+        ],
+      });
+
+      expect(transcript).toBeDefined();
+      expect(transcript).toContain('creator is fine');
+      expect(transcript).toContain('normal track');
+      expect(transcript).toContain('last good track');
+      // No exception was raised — that's the contract.
+    });
+
+    it('handles a very long single-track transcript (>= 10k chars) without crashing', () => {
+      // Whisper output for a 60-minute podcast clip can easily be >100k chars.
+      // The helper should be a simple concatenation; no surprise N^2 explosion,
+      // no stack overflow from recursion.
+      const words = Array.from({ length: 2000 }, (_, i) => `word${i}`);
+      const longSegments = words.map((w) => ({ text: w }));
+      const transcript = buildStitchedTranscript({
+        creatorTranscriptJson: longSegments,
+        tracks: [],
+      });
+
+      expect(transcript).toBeDefined();
+      expect(transcript!.length).toBeGreaterThanOrEqual(10_000);
+      expect(transcript).toContain('word0');
+      expect(transcript).toContain('word1999');
+    });
+
+    it('handles many tracks with long transcripts without crashing', () => {
+      // 20 tracks * 1000 words each = 20k segments. Production stitches
+      // routinely hit 5–10 tracks; this is a generous safety margin.
+      const tracks = Array.from({ length: 20 }, (_, t) => ({
+        sortOrder: t,
+        transcriptJson: Array.from({ length: 1000 }, (_, i) => ({
+          text: `t${t}w${i}`,
+        })),
+      }));
+
+      const transcript = buildStitchedTranscript({
+        creatorTranscriptJson: [{ text: 'creator' }],
+        tracks,
+      });
+
+      expect(transcript).toBeDefined();
+      expect(transcript).toContain('creator');
+      expect(transcript).toContain('t0w0');
+      expect(transcript).toContain('t19w999');
+      // Conservative lower bound; actual is well above this.
+      expect(transcript!.length).toBeGreaterThanOrEqual(50_000);
+    });
+  });
 });

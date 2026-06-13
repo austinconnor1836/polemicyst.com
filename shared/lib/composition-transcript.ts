@@ -43,9 +43,17 @@ export interface CompositionForTranscript {
 export function flattenTranscriptSegments(
   segments: TranscriptSegment[] | null | undefined
 ): string {
-  if (!segments || segments.length === 0) return '';
+  // Defensive: the transcription worker can write malformed JSON to the DB
+  // (e.g. a partial Whisper response stored as a string, segments missing
+  // `text`, non-object entries). The helper's contract is "treat malformed
+  // input as no transcript" — never throw, since this runs in the LLM-prompt
+  // assembly hot path and a throw kills AI Suggest for every clip in the stitch.
+  if (!Array.isArray(segments) || segments.length === 0) return '';
   return segments
-    .map((s) => (s?.text ?? '').trim())
+    .map((s) => {
+      const text = s != null && typeof s === 'object' ? (s as TranscriptSegment).text : undefined;
+      return typeof text === 'string' ? text.trim() : '';
+    })
     .filter((t) => t.length > 0)
     .join(' ')
     .trim();
