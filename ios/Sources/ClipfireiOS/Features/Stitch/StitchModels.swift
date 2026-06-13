@@ -34,6 +34,11 @@ public struct StitchClip: Identifiable, Equatable, Codable {
     public var durationS: Double
     public var trimStartS: Double
     public var trimEndS: Double
+    /// Server-side `CompositionTrack` id assigned once the side-channel upload that
+    /// kicks off transcription has completed. Nil while the upload is in flight (or
+    /// failed silently). Used by the editor to fire `DELETE /tracks/<id>` when the
+    /// user removes this clip from the stitch. Local-only — the renderer ignores it.
+    public var serverTrackId: String?
 
     public var effectiveDurationS: Double { max(0, trimEndS - trimStartS) }
     public var isFileReady: Bool { sourceURL != nil }
@@ -44,7 +49,8 @@ public struct StitchClip: Identifiable, Equatable, Codable {
         photoAssetIdentifier: String? = nil,
         durationS: Double,
         trimStartS: Double = 0,
-        trimEndS: Double? = nil
+        trimEndS: Double? = nil,
+        serverTrackId: String? = nil
     ) {
         self.id = id
         self.sourceURL = sourceURL
@@ -52,6 +58,7 @@ public struct StitchClip: Identifiable, Equatable, Codable {
         self.durationS = durationS
         self.trimStartS = trimStartS
         self.trimEndS = trimEndS ?? durationS
+        self.serverTrackId = serverTrackId
     }
 }
 

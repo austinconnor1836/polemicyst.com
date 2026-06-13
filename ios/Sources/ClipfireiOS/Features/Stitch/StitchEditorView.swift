@@ -45,6 +45,14 @@ public final class StitchEditorViewModel: ObservableObject {
     private var timelineSubscription: AnyCancellable?
     /// Umbrella task that copies all picked clips' files in the background. Render awaits this.
     private var copyTask: Task<Void, Never>?
+    /// Tasks that upload each clip as a server-side `CompositionTrack` so transcription
+    /// kicks off WHILE the user is still editing. Keyed by the local clip id so we can
+    /// cancel them if the user removes the clip before the upload finishes.
+    private var trackUploadTasks: [UUID: Task<Void, Never>] = [:]
+    /// Serializes lazy creation of the server `Composition`. The first clip-add (or the
+    /// first reopen of a draft without a stored composition id) races a single create
+    /// against itself otherwise.
+    private var ensureCompositionTask: Task<String?, Never>?
 
     public init(api: APIClient) {
         self.api = api
@@ -63,6 +71,15 @@ public final class StitchEditorViewModel: ObservableObject {
         if let draft = StitchDraftStore.load() {
             timeline.applyDraft(draft)
             title = draft.title
+            // If the draft restored clips that already have local files but never got a
+            // server CompositionTrack (eg. they were added in an older app version, or
+            // the side-channel failed last session), kick off the uploads now so the
+            // user's eventual AI Suggest tap gets transcript-backed copy.
+            for clip in timeline.clips {
+                if clip.serverTrackId == nil, let url = clip.sourceURL, clip.durationS > 0 {
+                    startServerTrackUpload(clipId: clip.id, localURL: url, durationS: clip.durationS)
+                }
+            }
         }
     }
 
@@ -129,6 +146,139 @@ public final class StitchEditorViewModel: ObservableObject {
         let durationS = (try? await avAsset.load(.duration)).map { CMTimeGetSeconds($0) } ?? 0
         timeline.updateClipSourceURL(id: clipId, url: url)
         timeline.updateClipDuration(id: clipId, durationS: durationS)
+
+        // Side-channel: upload this clip to the server as a CompositionTrack now so
+        // transcription kicks off while the user is still editing. By the time they
+        // tap Publish → AI Suggest, the per-track transcripts are populated and the
+        // suggestion can be content-aware. Local preview/render is unaffected — the
+        // renderer reads `sourceURL` (local file) for the actual composition.
+        startServerTrackUpload(clipId: clipId, localURL: url, durationS: durationS)
+    }
+
+    // MARK: Server side-channel (composition + tracks)
+
+    /// Returns the server `Composition` id for the current draft, creating it on first
+    /// call. Subsequent calls return the cached id. Safe to call concurrently — all
+    /// callers share the same in-flight task. Returns nil if creation failed.
+    private func ensureServerComposition() async -> String? {
+        if let id = timeline.serverCompositionId { return id }
+        if let task = ensureCompositionTask {
+            return await task.value
+        }
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = CreateCompositionRequest(
+            title: trimmedTitle.isEmpty ? nil : trimmedTitle,
+            mode: "stitch"
+        )
+        let api = self.api
+        let task = Task<String?, Never> { [weak self] in
+            let result = try? await api.createComposition(body: body)
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                if let result {
+                    self.timeline.serverCompositionId = result.id
+                }
+                self.ensureCompositionTask = nil
+            }
+            return result?.id
+        }
+        ensureCompositionTask = task
+        return await task.value
+    }
+
+    /// Fire-and-forget background upload of a single clip to the server as a
+    /// CompositionTrack. Stores the resulting server track id on the timeline clip so
+    /// removal can fire DELETE later. Silent on failure — local editing isn't blocked.
+    private func startServerTrackUpload(clipId: UUID, localURL: URL, durationS: Double) {
+        trackUploadTasks[clipId]?.cancel()
+        let api = self.api
+        let uploader = self.uploader
+        let task = Task<Void, Never> { [weak self] in
+            guard let self else { return }
+            // Lazy-create the composition before the upload so we have somewhere to attach.
+            guard let compositionId = await self.ensureServerComposition() else { return }
+            // Resolve dimensions + hasAudio from the local asset (cheap; no extra probe roundtrip).
+            let (width, height, hasAudio) = await Self.probeLocalAsset(url: localURL)
+            do {
+                let upload = try await uploader.upload(
+                    fileURL: localURL,
+                    prefix: "compositions/\(compositionId)/raw/",
+                    contentType: "video/mp4",
+                    deleteAfterUpload: false,
+                    progress: nil
+                )
+                if Task.isCancelled { return }
+                let track = try await api.addTrack(
+                    compositionId: compositionId,
+                    body: CreateTrackRequest(
+                        s3Key: upload.s3Key,
+                        s3Url: upload.s3Url,
+                        durationS: durationS,
+                        label: nil,
+                        width: width,
+                        height: height,
+                        hasAudio: hasAudio,
+                        trackType: "reference"
+                    )
+                )
+                await MainActor.run { [weak self] in
+                    self?.timeline.updateClipServerTrackId(id: clipId, serverTrackId: track.id)
+                }
+            } catch {
+                // Silent failure — transcription side-channel is best-effort. The render
+                // path still works; AI suggest just falls back to title-only context for
+                // this clip. Logged so it's visible in the Xcode console during dev.
+                #if DEBUG
+                print("[StitchEditor] track upload failed for clip \(clipId): \(error)")
+                #endif
+            }
+        }
+        trackUploadTasks[clipId] = task
+    }
+
+    /// Probes a local video file for width/height/hasAudio. Returns nils on failure —
+    /// the track endpoint accepts null for these fields.
+    private static func probeLocalAsset(url: URL) async -> (Int?, Int?, Bool?) {
+        let asset = AVURLAsset(url: url)
+        let videoTracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
+        let audioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+        var width: Int? = nil
+        var height: Int? = nil
+        if let videoTrack = videoTracks.first {
+            if let size = try? await videoTrack.load(.naturalSize),
+               let transform = try? await videoTrack.load(.preferredTransform) {
+                let applied = size.applying(transform)
+                width = Int(abs(applied.width).rounded())
+                height = Int(abs(applied.height).rounded())
+            }
+        }
+        return (width, height, !audioTracks.isEmpty)
+    }
+
+    /// Remove a clip from the timeline AND fire DELETE /tracks/<id> for its server-side
+    /// counterpart if one exists. Cancels any in-flight upload task for the clip first
+    /// so we don't race the delete against a still-pending POST.
+    public func removeClip(id: UUID) {
+        // Look up the server track id BEFORE the timeline drops the clip.
+        let serverTrackId = timeline.clips.first(where: { $0.id == id })?.serverTrackId
+        let compositionId = timeline.serverCompositionId
+
+        // Cancel any in-flight upload for this clip.
+        trackUploadTasks[id]?.cancel()
+        trackUploadTasks.removeValue(forKey: id)
+
+        timeline.removeClip(id: id)
+        timeline.previewImages.removeValue(forKey: id)
+
+        if let serverTrackId, let compositionId {
+            let api = self.api
+            Task.detached { @Sendable in
+                try? await api.deleteTrack(
+                    compositionId: compositionId,
+                    trackId: serverTrackId
+                )
+            }
+        }
     }
 
     /// Called by render() before taking a snapshot — awaits the umbrella copyTask so every
@@ -178,6 +328,11 @@ public final class StitchEditorViewModel: ObservableObject {
                 // these off in the background so the grid populates instantly).
                 await self.waitForPendingFileLoads()
                 let snap = self.timeline.snapshot()
+                // Snapshot the server composition id BEFORE we reset the timeline below.
+                // This may be nil if no clip-add ever triggered the side-channel create
+                // (eg. the user picked clips before sign-in succeeded). Fall back to
+                // creating one in the post-render upload path in that case.
+                let existingCompositionId = self.timeline.serverCompositionId
                 let outputURL = try await self.renderer.render(snapshot: snap) { p in
                     Task { @MainActor [weak self] in
                         switch p.phase {
@@ -203,12 +358,17 @@ public final class StitchEditorViewModel: ObservableObject {
 
                 let durationS = snap.clips.reduce(0) { $0 + $1.effectiveDurationS }
                 let layoutKey = snap.layout == .mobile ? "mobile" : "landscape"
+                // Wire the LocalStitch up to its server Composition NOW (if we have one
+                // from the side-channel). That way the publish sheet sees a non-nil
+                // serverCompositionId from the moment the stitch lands in My Stitches —
+                // no race against the post-render upload.
                 let stitch = LocalStitch(
                     id: stitchId,
                     title: chosenTitle.isEmpty ? "Untitled stitch" : chosenTitle,
                     layoutKey: layoutKey,
                     durationS: durationS,
-                    localFilename: filename
+                    localFilename: filename,
+                    serverCompositionId: existingCompositionId
                 )
                 LocalStitchStore.shared.add(stitch)
 
@@ -216,11 +376,14 @@ public final class StitchEditorViewModel: ObservableObject {
                 StitchDraftStore.clear()
                 self.timeline = StitchTimeline()
                 self.title = ""
+                // The render task is done; drop any leftover side-channel handles too.
+                self.trackUploadTasks.removeAll()
 
                 // From the user's perspective this is done. Surface success and dismiss.
                 self.stage = .completed(stitchId.uuidString)
 
-                // Fire-and-forget background upload. Failures are silent; we retry on next launch.
+                // Fire-and-forget background upload of the FINAL rendered MP4. Failures
+                // are silent; we retry on next launch.
                 let uploader = self.uploader
                 Task.detached { @Sendable in
                     await Self.uploadInBackground(
@@ -229,6 +392,7 @@ public final class StitchEditorViewModel: ObservableObject {
                         durationS: durationS,
                         layoutKey: layoutKey,
                         title: chosenTitle,
+                        existingCompositionId: existingCompositionId,
                         api: api,
                         uploader: uploader
                     )
@@ -241,14 +405,16 @@ public final class StitchEditorViewModel: ObservableObject {
         }
     }
 
-    /// Silent background upload: pushes the MP4 to S3, creates the server-side Composition,
-    /// records the composition id back into the LocalStitch. No UI is shown for any step.
+    /// Silent background upload: pushes the rendered MP4 to S3, attaches it to the
+    /// server-side Composition (creating one only if the side-channel didn't already),
+    /// records the composition id back into the LocalStitch. No UI is shown.
     private static func uploadInBackground(
         stitch: LocalStitch,
         localURL: URL,
         durationS: Double,
         layoutKey: String,
         title: String,
+        existingCompositionId: String?,
         api: APIClient,
         uploader: VideoUploadService
     ) async {
@@ -260,14 +426,22 @@ public final class StitchEditorViewModel: ObservableObject {
                 deleteAfterUpload: false,
                 progress: nil
             )
-            let composition = try await api.createComposition(
-                body: CreateCompositionRequest(
-                    title: title.isEmpty ? nil : title,
-                    mode: "stitch"
+            let compositionId: String
+            if let existingCompositionId {
+                compositionId = existingCompositionId
+            } else {
+                // Fallback: side-channel never created one (eg. first clip-add raced a
+                // network outage). Create now so the rendered output has somewhere to go.
+                let composition = try await api.createComposition(
+                    body: CreateCompositionRequest(
+                        title: title.isEmpty ? nil : title,
+                        mode: "stitch"
+                    )
                 )
-            )
+                compositionId = composition.id
+            }
             try await api.saveClientRender(
-                compositionId: composition.id,
+                compositionId: compositionId,
                 body: ClientCompleteRenderRequest(
                     layout: layoutKey,
                     s3Key: upload.s3Key,
@@ -277,7 +451,7 @@ public final class StitchEditorViewModel: ObservableObject {
             )
             await MainActor.run {
                 var updated = stitch
-                updated.serverCompositionId = composition.id
+                updated.serverCompositionId = compositionId
                 LocalStitchStore.shared.update(updated)
             }
         } catch {
@@ -290,6 +464,27 @@ public final class StitchEditorViewModel: ObservableObject {
         currentRenderTask?.cancel()
         currentRenderTask = nil
         stage = .idle
+    }
+
+    // MARK: - Test-only hooks
+    //
+    // These thin wrappers expose the side-channel internals to the unit-test bundle.
+    // They're `internal` (default access) so they're only callable from this module
+    // via `@testable import ClipfireiOS` — not part of the public API.
+
+    func ensureServerCompositionForTesting() async -> String? {
+        await ensureServerComposition()
+    }
+
+    func startServerTrackUploadForTesting(clipId: UUID, localURL: URL, durationS: Double) {
+        startServerTrackUpload(clipId: clipId, localURL: localURL, durationS: durationS)
+    }
+
+    func awaitPendingTrackUploadsForTesting() async {
+        let tasks = Array(trackUploadTasks.values)
+        for task in tasks {
+            await task.value
+        }
     }
 }
 
@@ -395,7 +590,7 @@ public struct StitchEditorView: View {
                             order: index + 1,
                             clip: clip,
                             cachedPreview: viewModel.timeline.previewImages[clip.id],
-                            onRemove: { viewModel.timeline.removeClip(id: clip.id) }
+                            onRemove: { viewModel.removeClip(id: clip.id) }
                         )
                     }
                     ForEach(0..<pending, id: \.self) { offset in

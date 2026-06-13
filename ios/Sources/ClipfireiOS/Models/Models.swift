@@ -1251,10 +1251,20 @@ public struct CreateTrackRequest: Encodable {
     public let width: Int?
     public let height: Int?
     public let hasAudio: Bool?
+    public let startAtS: Double?
+    public let trimStartS: Double?
+    public let trimEndS: Double?
+    /// "creator" or "reference". Omitted = server default ("reference"), which is what
+    /// stitch tracks want — the server worker auto-enqueues a transcription job for
+    /// reference tracks, populating `compositionTrack.transcript` by the time the
+    /// publish sheet calls AI suggest.
+    public let trackType: String?
 
     public init(s3Key: String, s3Url: String, durationS: Double,
                 label: String? = nil, width: Int? = nil, height: Int? = nil,
-                hasAudio: Bool? = nil) {
+                hasAudio: Bool? = nil,
+                startAtS: Double? = nil, trimStartS: Double? = nil, trimEndS: Double? = nil,
+                trackType: String? = nil) {
         self.s3Key = s3Key
         self.s3Url = s3Url
         self.durationS = durationS
@@ -1262,6 +1272,10 @@ public struct CreateTrackRequest: Encodable {
         self.width = width
         self.height = height
         self.hasAudio = hasAudio
+        self.startAtS = startAtS
+        self.trimStartS = trimStartS
+        self.trimEndS = trimEndS
+        self.trackType = trackType
     }
 }
 

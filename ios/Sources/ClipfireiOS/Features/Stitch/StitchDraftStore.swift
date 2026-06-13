@@ -10,19 +10,26 @@ public struct StitchDraft: Codable, Equatable {
     public var cutoutOverlay: CutoutOverlay?
     public var layout: StitchLayout
     public var title: String
+    /// Server-side `Composition` id created the first time a clip is added (or the
+    /// editor opens with existing clips). Persisting it on the draft means a draft
+    /// re-opened in a new session can keep adding tracks to the SAME composition,
+    /// rather than orphaning the previously-uploaded tracks.
+    public var serverCompositionId: String?
 
     public init(
         clips: [StitchClip] = [],
         textOverlays: [TextOverlay] = [],
         cutoutOverlay: CutoutOverlay? = nil,
         layout: StitchLayout = .mobile,
-        title: String = ""
+        title: String = "",
+        serverCompositionId: String? = nil
     ) {
         self.clips = clips
         self.textOverlays = textOverlays
         self.cutoutOverlay = cutoutOverlay
         self.layout = layout
         self.title = title
+        self.serverCompositionId = serverCompositionId
     }
 
     public var isEmpty: Bool {
@@ -69,7 +76,8 @@ public enum StitchDraftStore {
                 return co
             }(),
             layout: draft.layout,
-            title: draft.title
+            title: draft.title,
+            serverCompositionId: draft.serverCompositionId
         )
         return remapped
     }
@@ -92,7 +100,8 @@ public enum StitchDraftStore {
                 return co
             }(),
             layout: draft.layout,
-            title: draft.title
+            title: draft.title,
+            serverCompositionId: draft.serverCompositionId
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
