@@ -15,6 +15,7 @@ import {
   type ClientTrackInfo,
 } from '@/lib/client-render';
 import type { CaptionSegment, QuoteOverlaySegment } from '@/lib/client-render/types';
+import { buildStitchedTranscript } from '@shared/lib/composition-transcript';
 import toast from 'react-hot-toast';
 
 interface Output {
@@ -162,6 +163,14 @@ export function RenderControls({
       generatedForRef.current.add(layout);
       setGeneratingDesc((prev) => new Set(prev).add(layout));
       try {
+        // For stitched compositions, the per-output `transcript` field is
+        // populated by a background transcription of the rendered MP4 — it's
+        // null for client-side renders and not yet ready when the poll loop
+        // first sees `status: 'completed'` on server-side renders. Fall back to
+        // concatenating the creator + reference track transcripts we already
+        // have, so the AI sees the actual spoken content of every clip in the
+        // stitch instead of being prompted with an empty transcript.
+        const stitchedTranscript = buildStitchedTranscript(composition, transcript);
         const res = await fetch('/api/social-posts/generate-description', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -169,7 +178,7 @@ export function RenderControls({
             title: compositionTitle,
             trackLabels,
             layouts: [layout],
-            transcript: transcript || undefined,
+            transcript: stitchedTranscript,
           }),
         });
         if (res.ok) {
@@ -186,7 +195,7 @@ export function RenderControls({
         });
       }
     },
-    [compositionTitle, trackLabels]
+    [compositionTitle, trackLabels, composition]
   );
 
   useEffect(() => {

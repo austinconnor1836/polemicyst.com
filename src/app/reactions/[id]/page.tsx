@@ -18,6 +18,7 @@ import { TrimModal } from '../_components/TrimModal';
 import { CropAdjustModal } from '../_components/CropAdjustModal';
 import { EditOutputModal, type CompositionCut } from '../_components/EditOutputModal';
 import { VideoPublishModal } from '@/components/VideoPublishModal';
+import { buildStitchedTranscript } from '@shared/lib/composition-transcript';
 import { supportsClientRender } from '@/lib/client-render';
 import { detectCropFromVideo } from '@/lib/client-render/detect-crop';
 import {
@@ -1866,29 +1867,10 @@ export default function CompositionEditorPage() {
           title: composition.title,
           trackLabels: referenceTracks.map((t) => t.label || '').filter(Boolean),
           layouts: completedOutputs.map((o) => o.layout),
-          transcript: (() => {
-            const parts: string[] = [];
-            if (composition.creatorTranscriptJson) {
-              parts.push(
-                composition.creatorTranscriptJson.map((s: { text: string }) => s.text).join(' ')
-              );
-            }
-            for (const t of creatorTracks) {
-              if (t.transcriptJson) {
-                parts.push(
-                  (t.transcriptJson as Array<{ text: string }>).map((s) => s.text).join(' ')
-                );
-              }
-            }
-            for (const t of referenceTracks) {
-              if (t.transcriptJson) {
-                parts.push(
-                  (t.transcriptJson as Array<{ text: string }>).map((s) => s.text).join(' ')
-                );
-              }
-            }
-            return parts.join('\n\n') || undefined;
-          })(),
+          transcript: buildStitchedTranscript({
+            creatorTranscriptJson: composition.creatorTranscriptJson,
+            tracks: [...creatorTracks, ...referenceTracks],
+          }),
         }}
         onRequestUpload={handleRequestUpload}
         uploadingLayout={uploadingLayout}
