@@ -13,6 +13,11 @@ public final class StitchTimeline: ObservableObject {
     /// Cached preview thumbnails per clip id, populated by NSItemProvider.loadPreviewImage
     /// the moment the picker closes. Excluded from `StitchTimelineSnapshot` — it's UI-only.
     @Published public var previewImages: [UUID: UIImage] = [:]
+    /// Server-side `Composition` id created the first time a clip is added. Persisted on
+    /// the draft so a closed-and-reopened editor keeps adding tracks to the same composition
+    /// (so the by-the-time-you-tap-AI-Suggest transcripts are populated). Local-only —
+    /// the renderer doesn't read it; the side-channel `ensureServerComposition` flow does.
+    @Published public var serverCompositionId: String?
 
     public init() {}
 
@@ -54,6 +59,13 @@ public final class StitchTimeline: ObservableObject {
         if wasFullDuration {
             clips[idx].trimEndS = durationS
         }
+    }
+
+    /// Set the server-side `CompositionTrack` id on a clip once the side-channel upload
+    /// completes. Used by `removeClip(id:)` callers to fire `DELETE /tracks/<id>`.
+    public func updateClipServerTrackId(id: UUID, serverTrackId: String?) {
+        guard let idx = clips.firstIndex(where: { $0.id == id }) else { return }
+        clips[idx].serverTrackId = serverTrackId
     }
 
     // MARK: - Text overlay operations
@@ -104,7 +116,8 @@ public final class StitchTimeline: ObservableObject {
             textOverlays: textOverlays,
             cutoutOverlay: cutoutOverlay,
             layout: layout,
-            title: title
+            title: title,
+            serverCompositionId: serverCompositionId
         )
     }
 
@@ -113,6 +126,7 @@ public final class StitchTimeline: ObservableObject {
         textOverlays = draft.textOverlays
         cutoutOverlay = draft.cutoutOverlay
         layout = draft.layout
+        serverCompositionId = draft.serverCompositionId
     }
 }
 
