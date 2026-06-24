@@ -39,6 +39,11 @@ public struct StitchClip: Identifiable, Equatable, Codable {
     /// failed silently). Used by the editor to fire `DELETE /tracks/<id>` when the
     /// user removes this clip from the stitch. Local-only — the renderer ignores it.
     public var serverTrackId: String?
+    /// If true, the renderer runs `VNGeneratePersonSegmentationRequest` on this clip's
+    /// frames — for a base-track clip the video plays segmented over black for its slot;
+    /// for the freezeReveal creator (cutout track) the segmented person is composited
+    /// over the frozen reference frame. Default false so old drafts decode unchanged.
+    public var removeBackground: Bool
 
     public var effectiveDurationS: Double { max(0, trimEndS - trimStartS) }
     public var isFileReady: Bool { sourceURL != nil }
@@ -50,7 +55,8 @@ public struct StitchClip: Identifiable, Equatable, Codable {
         durationS: Double,
         trimStartS: Double = 0,
         trimEndS: Double? = nil,
-        serverTrackId: String? = nil
+        serverTrackId: String? = nil,
+        removeBackground: Bool = false
     ) {
         self.id = id
         self.sourceURL = sourceURL
@@ -59,6 +65,25 @@ public struct StitchClip: Identifiable, Equatable, Codable {
         self.trimStartS = trimStartS
         self.trimEndS = trimEndS ?? durationS
         self.serverTrackId = serverTrackId
+        self.removeBackground = removeBackground
+    }
+
+    // Custom Decodable so drafts written before `removeBackground` existed still decode
+    // — the field defaults to false. Encode stays synthesized.
+    private enum CodingKeys: String, CodingKey {
+        case id, sourceURL, photoAssetIdentifier, durationS, trimStartS, trimEndS, serverTrackId, removeBackground
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(UUID.self, forKey: .id)
+        self.sourceURL = try c.decodeIfPresent(URL.self, forKey: .sourceURL)
+        self.photoAssetIdentifier = try c.decodeIfPresent(String.self, forKey: .photoAssetIdentifier)
+        self.durationS = try c.decode(Double.self, forKey: .durationS)
+        self.trimStartS = try c.decode(Double.self, forKey: .trimStartS)
+        self.trimEndS = try c.decode(Double.self, forKey: .trimEndS)
+        self.serverTrackId = try c.decodeIfPresent(String.self, forKey: .serverTrackId)
+        self.removeBackground = try c.decodeIfPresent(Bool.self, forKey: .removeBackground) ?? false
     }
 }
 
@@ -126,6 +151,41 @@ public struct CutoutOverlay: Identifiable, Equatable, Codable {
         self.sourceDurationS = sourceDurationS
         self.position = position
         self.scale = scale
+    }
+}
+
+/// Composition style. `freeform` (default) is the original "concatenate N clips with
+/// optional per-clip text + one segmented cutout overlay" flow. `freezeReveal` is a
+/// preset: clip 1 plays through, its last frame freezes, and clip 2 plays segmented
+/// (background-removed) over that frozen frame.
+public enum StitchStyle: String, CaseIterable, Identifiable, Codable {
+    case freeform
+    case freezeReveal
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .freeform: return "Freeform"
+        case .freezeReveal: return "Freeze + Reveal"
+        }
+    }
+
+    public var summary: String {
+        switch self {
+        case .freeform:
+            return "Stack clips in order with optional text and one cutout overlay."
+        case .freezeReveal:
+            return "Reference plays, its last frame freezes, then your creator video appears over it with the background removed."
+        }
+    }
+
+    /// Maximum number of base-track clips the style supports.
+    public var maxClips: Int {
+        switch self {
+        case .freeform: return Int.max
+        case .freezeReveal: return 2
+        }
     }
 }
 

@@ -58,7 +58,9 @@ struct ClipfireApp: App {
                                 .tag(0)
 
                             NavigationStack {
-                                MyStitchesView(api: apiClient)
+                                MyStitchesView(api: apiClient, onRetry: { stitchId in
+                                    StitchEditorViewModel.retryGenerateMeta(stitchId: stitchId, api: apiClient)
+                                })
                             }
                                 .tabItem {
                                     Label("Stitches", systemImage: "rectangle.split.3x1")
@@ -135,7 +137,12 @@ struct ClipfireApp: App {
                         )
                     }
                     .sheet(isPresented: $showStitchEditor) {
-                        StitchEditorView(api: apiClient)
+                        StitchEditorView(api: apiClient, onRenderDispatched: {
+                            // W025: fire-and-forget render — switch to the
+                            // Stitches tab so the user lands on MyStitchesView
+                            // with their freshly-queued (Processing…) row.
+                            tabSelection = 6
+                        })
                     }
                     .sheet(isPresented: $showAddVideo) {
                         AddVideoView(api: apiClient, onVideoAdded: {

@@ -37,6 +37,12 @@ public final class StitchEditorViewModel: ObservableObject {
     @Published public var title: String = ""
     @Published public var stage: Stage = .idle
 
+    /// Fired the moment a render is queued (LocalStitch inserted into the store
+    /// with `.rendering(0)`). The parent presenter uses this to dismiss the
+    /// editor sheet and switch to the Stitches tab — the render itself keeps
+    /// running in the background.
+    public var onRenderDispatched: (() -> Void)?
+
     private let api: APIClient
     public var apiClient: APIClient { api }
     private let uploader: VideoUploadService
@@ -67,19 +73,11 @@ public final class StitchEditorViewModel: ObservableObject {
             self.persistDraft()
         }
 
-        // Restore an in-progress draft, if any.
+        // Restore an in-progress draft, if any. Editor stays fully local — no eager
+        // server upload on restore. Raw clips only hit S3 at render/publish time.
         if let draft = StitchDraftStore.load() {
             timeline.applyDraft(draft)
             title = draft.title
-            // If the draft restored clips that already have local files but never got a
-            // server CompositionTrack (eg. they were added in an older app version, or
-            // the side-channel failed last session), kick off the uploads now so the
-            // user's eventual AI Suggest tap gets transcript-backed copy.
-            for clip in timeline.clips {
-                if clip.serverTrackId == nil, let url = clip.sourceURL, clip.durationS > 0 {
-                    startServerTrackUpload(clipId: clip.id, localURL: url, durationS: clip.durationS)
-                }
-            }
         }
     }
 
@@ -106,12 +104,20 @@ public final class StitchEditorViewModel: ObservableObject {
 
         let clipIds: [UUID] = providers.map { _ in UUID() }
         // 1) Insert skeleton cells RIGHT NOW so the user sees something instantly.
-        for clipId in clipIds {
+        //    In freezeReveal mode the second clip (the "creator" slot) defaults to
+        //    background-removed on so the preset works without any extra taps. The
+        //    reference clip defaults to off (its full frame is the backdrop).
+        let existingClipCount = timeline.clips.count
+        let isFreezeReveal = timeline.style == .freezeReveal
+        for (offset, clipId) in clipIds.enumerated() {
+            let finalIndex = existingClipCount + offset
+            let bgOnByDefault = isFreezeReveal && finalIndex == 1
             timeline.addClip(StitchClip(
                 id: clipId,
                 sourceURL: nil,
                 photoAssetIdentifier: nil,
-                durationS: 0
+                durationS: 0,
+                removeBackground: bgOnByDefault
             ))
         }
 
@@ -131,28 +137,36 @@ public final class StitchEditorViewModel: ObservableObject {
 
     /// Loads the preview image (fast, sets `previewImages[clipId]`) and the underlying
     /// file (slow, sets the clip's `sourceURL` + `durationS`) for one picked item.
+    /// Local-only: the file is copied into the draft directory and that's it. The raw
+    /// clip is NOT uploaded to the server here — that only happens at render/publish
+    /// time, so editing stays offline and instant.
     private func loadFromProvider(clipId: UUID, provider: NSItemProvider) async {
         // Preview thumbnail — typically a few hundred milliseconds, no file copy.
         if let preview = await ItemProviderLoader.loadPreviewImage(provider) {
             timeline.previewImages[clipId] = preview
         }
         // Actual file — required by the renderer, blocks render but not the grid.
-        guard let url = await ItemProviderLoader.loadMovieFile(provider) else {
+        let result = await ItemProviderLoader.loadMovieFile(provider)
+        switch result {
+        case .failure(let error):
+            // Drop the skeleton cell and surface why. Common cause for long videos:
+            // the file lives in iCloud and Photos times out the download.
             timeline.removeClip(id: clipId)
             timeline.previewImages.removeValue(forKey: clipId)
-            return
+            stage = .failed(error.localizedDescription)
+            // POST to local Mac so Claude can see exactly which UTI / load API failed.
+            StitchRemoteLogger.log("clip-load-failed", payload: [
+                "clipId": clipId.uuidString,
+                "registeredTypes": provider.registeredTypeIdentifiers,
+                "message": error.localizedDescription,
+                "error": StitchRemoteLogger.flatten(error),
+            ])
+        case .success(let url):
+            let avAsset = AVURLAsset(url: url)
+            let durationS = (try? await avAsset.load(.duration)).map { CMTimeGetSeconds($0) } ?? 0
+            timeline.updateClipSourceURL(id: clipId, url: url)
+            timeline.updateClipDuration(id: clipId, durationS: durationS)
         }
-        let avAsset = AVURLAsset(url: url)
-        let durationS = (try? await avAsset.load(.duration)).map { CMTimeGetSeconds($0) } ?? 0
-        timeline.updateClipSourceURL(id: clipId, url: url)
-        timeline.updateClipDuration(id: clipId, durationS: durationS)
-
-        // Side-channel: upload this clip to the server as a CompositionTrack now so
-        // transcription kicks off while the user is still editing. By the time they
-        // tap Publish → AI Suggest, the per-track transcripts are populated and the
-        // suggestion can be content-aware. Local preview/render is unaffected — the
-        // renderer reads `sourceURL` (local file) for the actual composition.
-        startServerTrackUpload(clipId: clipId, localURL: url, durationS: durationS)
     }
 
     // MARK: Server side-channel (composition + tracks)
@@ -289,6 +303,63 @@ public final class StitchEditorViewModel: ObservableObject {
         }
     }
 
+    // MARK: Style switching + auto-seeding
+
+    /// Switches the composition style. When moving to `.freezeReveal`, drops any clips
+    /// past the second so the wizard's 2-slot UI matches state. Doesn't auto-seed the
+    /// text overlay or the cutout — those happen lazily as the user reaches steps 2 and 3.
+    public func setStyle(_ newStyle: StitchStyle) {
+        guard timeline.style != newStyle else { return }
+        timeline.style = newStyle
+        if newStyle == .freezeReveal && timeline.clips.count > 2 {
+            // Snapshot ids first — removeClip mutates `timeline.clips`, so iterating
+            // a slice of it while removing would be undefined.
+            let extraIds = timeline.clips.dropFirst(2).map(\.id)
+            for id in extraIds {
+                removeClip(id: id)
+            }
+        }
+    }
+
+    /// Lazily seed the "STITCH INCOMING" text overlay on the reference clip the first time
+    /// the user reaches the text step in `.freezeReveal` mode. Idempotent — if the user has
+    /// already deleted the auto-seeded overlay (or replaced its text), do nothing.
+    public func ensureFreezeRevealTextOverlay() {
+        guard timeline.style == .freezeReveal,
+              let referenceClip = timeline.clips.first else { return }
+        let alreadyHasOverlay = timeline.textOverlays.contains { $0.clipId == referenceClip.id }
+        if alreadyHasOverlay { return }
+        let overlay = TextOverlay(
+            clipId: referenceClip.id,
+            text: "STITCH INCOMING",
+            backgroundColor: Color.black.opacity(0.75),
+            textColor: .white,
+            fontSize: 96,
+            position: CGPoint(x: 0.5, y: 0.18)
+        )
+        timeline.addTextOverlay(overlay)
+    }
+
+    /// Lazily seed the cutout the first time the user reaches the cutout step in
+    /// `.freezeReveal` mode. The cutout points to the reference clip (so removal cascades
+    /// correctly via the existing logic) and uses the creator clip's video file as the
+    /// segmented source. Idempotent.
+    public func ensureFreezeRevealCutout() {
+        guard timeline.style == .freezeReveal,
+              timeline.clips.count >= 2,
+              let referenceClip = timeline.clips.first,
+              let creatorClip = timeline.clips.dropFirst().first,
+              let creatorURL = creatorClip.sourceURL else { return }
+        if timeline.cutoutOverlay != nil { return }
+        timeline.setCutout(CutoutOverlay(
+            clipId: referenceClip.id,
+            sourceURL: creatorURL,
+            sourceDurationS: creatorClip.effectiveDurationS,
+            position: CGPoint(x: 0.5, y: 0.55),
+            scale: 0.9
+        ))
+    }
+
     public func setCutoutSource(from item: PhotosPickerItem, clipId: UUID) async {
         stage = .loading
         do {
@@ -316,125 +387,197 @@ public final class StitchEditorViewModel: ObservableObject {
 
     // MARK: Render
 
+    /// Fire-and-forget render dispatch (W025).
+    ///
+    /// The editor returns control to the caller in milliseconds — a placeholder
+    /// `LocalStitch` is inserted into the store with `.rendering(0)`, the
+    /// editor's `onRenderDispatched` closure fires (the parent uses it to
+    /// dismiss + switch tabs), and the entire render → upload → transcript-wait
+    /// → generate-meta chain runs in a detached background task that mutates
+    /// the stitch's `processingState` as it progresses.
     public func render() {
         currentRenderTask?.cancel()
         let chosenTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let api = self.api
-        currentRenderTask = Task { [weak self] in
+        let uploader = self.uploader
+
+        // STEP 1 (synchronous from the UI's POV): seed a placeholder stitch in
+        // the store and dismiss the editor. We need the snapshot — and that
+        // needs the in-flight clip copies finished — so we still await
+        // briefly. The vast majority of the time those tasks are already done
+        // by the time the user makes it to the render step.
+        Task { [weak self] in
             guard let self else { return }
-            do {
-                self.stage = .rendering(0)
-                // Wait for any clip file copies still in flight (fast-path additions kick
-                // these off in the background so the grid populates instantly).
-                await self.waitForPendingFileLoads()
-                let snap = self.timeline.snapshot()
-                // Snapshot the server composition id BEFORE we reset the timeline below.
-                // This may be nil if no clip-add ever triggered the side-channel create
-                // (eg. the user picked clips before sign-in succeeded). Fall back to
-                // creating one in the post-render upload path in that case.
-                let existingCompositionId = self.timeline.serverCompositionId
-                let outputURL = try await self.renderer.render(snapshot: snap) { p in
-                    Task { @MainActor [weak self] in
-                        switch p.phase {
-                        case .composing: self?.stage = .rendering(0)
-                        case .exporting: self?.stage = .rendering(p.fraction)
-                        case .completed: self?.stage = .rendering(1)
-                        case .failed: break
-                        }
-                    }
-                }
+            await self.waitForPendingFileLoads()
+            let snap = self.timeline.snapshot()
+            guard !snap.clips.isEmpty else {
+                self.stage = .failed("No clips to render")
+                return
+            }
+            let existingCompositionId = self.timeline.serverCompositionId
+            let durationS = snap.clips.reduce(0) { $0 + $1.effectiveDurationS }
+            let layoutKey = snap.layout == .mobile ? "mobile" : "landscape"
 
-                // Move the rendered MP4 into the persistent local stitches directory.
-                let stitchId = UUID()
-                let filename = "\(stitchId.uuidString).mp4"
-                let stitchesDir = LocalStitchStore.stitchesDir
-                try? FileManager.default.createDirectory(
-                    at: stitchesDir,
-                    withIntermediateDirectories: true
-                )
-                let destURL = stitchesDir.appendingPathComponent(filename)
-                try? FileManager.default.removeItem(at: destURL)
-                try FileManager.default.moveItem(at: outputURL, to: destURL)
+            let stitchId = UUID()
+            let filename = "\(stitchId.uuidString).mp4"
+            let stitchesDir = LocalStitchStore.stitchesDir
+            try? FileManager.default.createDirectory(
+                at: stitchesDir,
+                withIntermediateDirectories: true
+            )
+            let destURL = stitchesDir.appendingPathComponent(filename)
 
-                let durationS = snap.clips.reduce(0) { $0 + $1.effectiveDurationS }
-                let layoutKey = snap.layout == .mobile ? "mobile" : "landscape"
-                // Wire the LocalStitch up to its server Composition NOW (if we have one
-                // from the side-channel). That way the publish sheet sees a non-nil
-                // serverCompositionId from the moment the stitch lands in My Stitches —
-                // no race against the post-render upload.
-                let stitch = LocalStitch(
-                    id: stitchId,
-                    title: chosenTitle.isEmpty ? "Untitled stitch" : chosenTitle,
-                    layoutKey: layoutKey,
+            let stitch = LocalStitch(
+                id: stitchId,
+                title: chosenTitle.isEmpty ? "Untitled stitch" : chosenTitle,
+                caption: nil,
+                layoutKey: layoutKey,
+                durationS: durationS,
+                localFilename: filename,
+                serverCompositionId: existingCompositionId,
+                processingState: .rendering(0)
+            )
+            LocalStitchStore.shared.add(stitch)
+
+            // Reset editor + dismiss BEFORE the heavy work kicks off. Crucial: clear ONLY
+            // the JSON manifest here — the detached renderer below still holds URLs to the
+            // clip files via its snapshot. Deleting them now causes -11800/-17913 at export
+            // time (the snapshot's URLs point at vanished files). Files are removed in
+            // runRenderPipeline once Phase 1 reads them.
+            StitchDraftStore.clearManifestOnly()
+            self.timeline = StitchTimeline()
+            self.title = ""
+            self.trackUploadTasks.removeAll()
+            self.stage = .completed(stitchId.uuidString)
+            self.onRenderDispatched?()
+
+            // STEP 2: heavy lifting in a detached background task. The editor
+            // is gone at this point; all UI updates happen via the store
+            // mutating `processingState` on the LocalStitch row in
+            // MyStitchesView.
+            self.currentRenderTask = Task.detached { @Sendable in
+                await Self.runRenderPipeline(
+                    stitchId: stitchId,
+                    snapshot: snap,
+                    destURL: destURL,
                     durationS: durationS,
-                    localFilename: filename,
-                    serverCompositionId: existingCompositionId
+                    layoutKey: layoutKey,
+                    chosenTitle: chosenTitle,
+                    existingCompositionId: existingCompositionId,
+                    api: api,
+                    uploader: uploader
                 )
-                LocalStitchStore.shared.add(stitch)
-
-                // Stitch shipped — drop the in-progress draft so the next session starts fresh.
-                StitchDraftStore.clear()
-                self.timeline = StitchTimeline()
-                self.title = ""
-                // The render task is done; drop any leftover side-channel handles too.
-                self.trackUploadTasks.removeAll()
-
-                // From the user's perspective this is done. Surface success and dismiss.
-                self.stage = .completed(stitchId.uuidString)
-
-                // Fire-and-forget background upload of the FINAL rendered MP4. Failures
-                // are silent; we retry on next launch.
-                let uploader = self.uploader
-                Task.detached { @Sendable in
-                    await Self.uploadInBackground(
-                        stitch: stitch,
-                        localURL: destURL,
-                        durationS: durationS,
-                        layoutKey: layoutKey,
-                        title: chosenTitle,
-                        existingCompositionId: existingCompositionId,
-                        api: api,
-                        uploader: uploader
-                    )
-                }
-            } catch is CancellationError {
-                self.stage = .idle
-            } catch {
-                self.stage = .failed(error.localizedDescription)
             }
         }
     }
 
-    /// Silent background upload: pushes the rendered MP4 to S3, attaches it to the
-    /// server-side Composition (creating one only if the side-channel didn't already),
-    /// records the composition id back into the LocalStitch. No UI is shown.
-    private static func uploadInBackground(
-        stitch: LocalStitch,
-        localURL: URL,
+    /// The full post-dispatch pipeline. Lives on the type (not the instance)
+    /// because the editor view-model is gone by the time most of these phases
+    /// run. Every phase boundary updates the store on the main actor.
+    private static func runRenderPipeline(
+        stitchId: UUID,
+        snapshot: StitchTimelineSnapshot,
+        destURL: URL,
         durationS: Double,
         layoutKey: String,
-        title: String,
+        chosenTitle: String,
         existingCompositionId: String?,
         api: APIClient,
         uploader: VideoUploadService
     ) async {
+        let renderer = StitchRenderer()
+        // PHASE 1: render locally.
+        do {
+            StitchRemoteLogger.log("render-phase", payload: [
+                "phase": "phase-1-start",
+                "stitchId": stitchId.uuidString,
+            ])
+            let outputURL = try await renderer.render(snapshot: snapshot) { p in
+                Task { @MainActor in
+                    switch p.phase {
+                    case .composing:
+                        LocalStitchStore.shared.setProcessingState(id: stitchId, .rendering(0))
+                    case .exporting:
+                        LocalStitchStore.shared.setProcessingState(id: stitchId, .rendering(p.fraction))
+                    case .completed:
+                        LocalStitchStore.shared.setProcessingState(id: stitchId, .rendering(1))
+                    case .failed:
+                        break
+                    }
+                }
+            }
+            try? FileManager.default.removeItem(at: destURL)
+            try FileManager.default.moveItem(at: outputURL, to: destURL)
+            // Phase 1 done — safe to delete the source clip files now. (Keeping the
+            // earlier no-op `clearManifestOnly()` in dispatch means these files weren't
+            // already nuked out from under us mid-render.)
+            let sourceURLs = snapshot.clips.compactMap(\.sourceURL)
+            StitchDraftStore.removeFiles(urls: sourceURLs)
+            StitchRemoteLogger.log("render-succeeded", payload: [
+                "stitchId": stitchId.uuidString,
+                "durationS": durationS,
+                "style": snapshot.style.rawValue,
+                "clipCount": snapshot.clips.count,
+                "textOverlayCount": snapshot.textOverlays.count,
+            ])
+        } catch is CancellationError {
+            await MainActor.run {
+                LocalStitchStore.shared.setProcessingState(id: stitchId, .failed("Render was cancelled"))
+            }
+            return
+        } catch {
+            let msg = Self.describeRenderError(error)
+            NSLog("[Stitch] render pipeline failed: %@", msg)
+            // Best-effort POST to the local Mac backend so Claude can `cat` the log file
+            // and see the failure context without the user retyping the in-app alert.
+            StitchRemoteLogger.log("render-failed", payload: [
+                "stitchId": stitchId.uuidString,
+                "message": msg,
+                "title": chosenTitle,
+                "layoutKey": layoutKey,
+                "durationS": durationS,
+                "clipCount": snapshot.clips.count,
+                "style": snapshot.style.rawValue,
+                "textOverlayCount": snapshot.textOverlays.count,
+                "hasCutoutOverlay": snapshot.cutoutOverlay != nil,
+                "clips": snapshot.clips.map { clip -> [String: Any] in
+                    [
+                        "id": clip.id.uuidString,
+                        "durationS": clip.durationS,
+                        "trimStartS": clip.trimStartS,
+                        "trimEndS": clip.trimEndS,
+                        "removeBackground": clip.removeBackground,
+                        "hasSourceURL": clip.sourceURL != nil,
+                        "filename": clip.sourceURL?.lastPathComponent ?? "",
+                    ]
+                },
+                "error": StitchRemoteLogger.flatten(error),
+            ])
+            await MainActor.run {
+                LocalStitchStore.shared.setProcessingState(id: stitchId, .failed("Render failed: \(msg)"))
+            }
+            return
+        }
+
+        // PHASE 2: side-channel upload of the FINAL rendered MP4.
+        await MainActor.run {
+            LocalStitchStore.shared.setProcessingState(id: stitchId, .uploadingFinal)
+        }
+        let compositionId: String
         do {
             let upload = try await uploader.upload(
-                fileURL: localURL,
-                prefix: "stitch/\(stitch.id.uuidString)/",
+                fileURL: destURL,
+                prefix: "stitch/\(stitchId.uuidString)/",
                 contentType: "video/mp4",
                 deleteAfterUpload: false,
                 progress: nil
             )
-            let compositionId: String
             if let existingCompositionId {
                 compositionId = existingCompositionId
             } else {
-                // Fallback: side-channel never created one (eg. first clip-add raced a
-                // network outage). Create now so the rendered output has somewhere to go.
                 let composition = try await api.createComposition(
                     body: CreateCompositionRequest(
-                        title: title.isEmpty ? nil : title,
+                        title: chosenTitle.isEmpty ? nil : chosenTitle,
                         mode: "stitch"
                     )
                 )
@@ -450,13 +593,139 @@ public final class StitchEditorViewModel: ObservableObject {
                 )
             )
             await MainActor.run {
-                var updated = stitch
-                updated.serverCompositionId = compositionId
-                LocalStitchStore.shared.update(updated)
+                LocalStitchStore.shared.setServerCompositionId(id: stitchId, compositionId: compositionId)
             }
         } catch {
-            // Silent failure — the LocalStitch remains in `pendingUploads` and will be retried
-            // on the next app launch by whatever surface owns the retry loop.
+            // The local MP4 is fine — the user can still play it. We just can't
+            // run AI Suggest without a server-side composition.
+            await MainActor.run {
+                LocalStitchStore.shared.setProcessingState(
+                    id: stitchId,
+                    .failed("Couldn't upload to server — tap to retry")
+                )
+            }
+            return
+        }
+
+        // PHASE 3: poll for transcripts on every audio-bearing track.
+        await MainActor.run {
+            LocalStitchStore.shared.setProcessingState(id: stitchId, .awaitingTranscripts)
+        }
+        await Self.waitForTranscripts(compositionId: compositionId, api: api)
+
+        // PHASE 4: generate-meta. We continue even if transcripts weren't all
+        // ready in time — the LLM will produce SOMETHING from whatever
+        // transcripts exist plus the title. Better than leaving the pill
+        // spinning forever.
+        await MainActor.run {
+            LocalStitchStore.shared.setProcessingState(id: stitchId, .generatingMeta)
+        }
+        do {
+            let response = try await VideoPublishSheet.generateMeta(
+                api: api,
+                kind: .stitch,
+                seedTitle: chosenTitle,
+                seedCaption: "",
+                serverCompositionId: compositionId,
+                platforms: ["youtube", "instagram", "twitter", "bluesky", "tiktok"]
+            )
+            await MainActor.run {
+                LocalStitchStore.shared.setTitleAndCaption(
+                    id: stitchId,
+                    title: response.title,
+                    caption: response.caption
+                )
+            }
+        } catch {
+            await MainActor.run {
+                LocalStitchStore.shared.setProcessingState(
+                    id: stitchId,
+                    .failed("Couldn't generate copy — tap to retry")
+                )
+            }
+        }
+    }
+
+    /// Poll `/api/compositions/<id>` every 3s until every audio-bearing track
+    /// has a non-empty transcript OR a 90s budget elapses. Best-effort —
+    /// returns on timeout so the pipeline can still call generate-meta.
+    private static func waitForTranscripts(compositionId: String, api: APIClient) async {
+        let deadline = Date().addingTimeInterval(90)
+        while Date() < deadline {
+            if Task.isCancelled { return }
+            do {
+                let composition = try await api.fetchComposition(id: compositionId)
+                let audioTracks = (composition.tracks ?? []).filter { $0.hasAudio }
+                let allReady = !audioTracks.isEmpty && audioTracks.allSatisfy { track in
+                    if let segments = track.transcriptJson, !segments.isEmpty { return true }
+                    return false
+                }
+                if allReady || audioTracks.isEmpty { return }
+            } catch {
+                // Network blip — keep trying until the deadline.
+            }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+        }
+    }
+
+    /// Pretty-print any render error so the user-visible alert names the actual failure
+    /// instead of just "The operation could not be completed". `StitchRenderError` cases
+    /// already carry their own message; raw NSErrors get domain + code + reason + underlying
+    /// flattened into one line.
+    private static func describeRenderError(_ error: Error) -> String {
+        if let stitch = error as? StitchRenderError {
+            return stitch.errorDescription ?? "\(stitch)"
+        }
+        let ns = error as NSError
+        var parts: [String] = ["\(ns.domain) code=\(ns.code)"]
+        if !ns.localizedDescription.isEmpty {
+            parts.append(ns.localizedDescription)
+        }
+        if let reason = ns.localizedFailureReason, !reason.isEmpty {
+            parts.append("reason: \(reason)")
+        }
+        if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? NSError {
+            parts.append("underlying: \(underlying.domain) code=\(underlying.code) — \(underlying.localizedDescription)")
+        }
+        return parts.joined(separator: " | ")
+    }
+
+    /// Re-run JUST the generate-meta step for a previously-failed stitch.
+    /// Wired from `MyStitchesView`'s retry button. Static + standalone so the
+    /// retry surface doesn't need a live editor view-model. Safe to call
+    /// repeatedly.
+    public static func retryGenerateMeta(stitchId: UUID, api: APIClient) {
+        Task { @MainActor in
+            guard let stitch = LocalStitchStore.shared.stitches.first(where: { $0.id == stitchId }),
+                  let compositionId = stitch.serverCompositionId else { return }
+            let chosenTitle = stitch.title
+            LocalStitchStore.shared.setProcessingState(id: stitchId, .generatingMeta)
+            Task.detached { @Sendable in
+                do {
+                    let response = try await VideoPublishSheet.generateMeta(
+                        api: api,
+                        kind: .stitch,
+                        seedTitle: chosenTitle,
+                        seedCaption: "",
+                        serverCompositionId: compositionId,
+                        platforms: ["youtube", "instagram", "twitter", "bluesky", "tiktok"]
+                    )
+                    await MainActor.run {
+                        LocalStitchStore.shared.setTitleAndCaption(
+                            id: stitchId,
+                            title: response.title,
+                            caption: response.caption
+                        )
+                    }
+                } catch {
+                    await MainActor.run {
+                        LocalStitchStore.shared.setProcessingState(
+                            id: stitchId,
+                            .failed("Couldn't generate copy — tap to retry")
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -497,8 +766,15 @@ public struct StitchEditorView: View {
     @State private var showClipPicker = false
     @State private var showErrorAlert = false
 
-    public init(api: APIClient) {
+    /// Optional dispatch hook — fires when the user taps "Render Stitch" and
+    /// the placeholder LocalStitch has landed in the store. The parent uses it
+    /// to dismiss this sheet and switch to the Stitches tab so the user sees
+    /// the in-progress row right away (W025).
+    private let onRenderDispatched: (() -> Void)?
+
+    public init(api: APIClient, onRenderDispatched: (() -> Void)? = nil) {
         _viewModel = StateObject(wrappedValue: StitchEditorViewModel(api: api))
+        self.onRenderDispatched = onRenderDispatched
     }
 
     public var body: some View {
@@ -506,10 +782,13 @@ public struct StitchEditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignTokens.largeSpacing) {
                     StepHeader(current: 1, total: 3, label: "Select Clips")
+                    styleCard
                     clipsCard
                     nextButton(
                         label: "Next: Text Overlays",
                         enabled: !viewModel.timeline.clips.isEmpty
+                            && (viewModel.timeline.style != .freezeReveal
+                                || viewModel.timeline.clips.count >= 2)
                     ) {
                         path.append(StitchStep.text)
                     }
@@ -533,24 +812,35 @@ public struct StitchEditorView: View {
                 case .cutout:
                     StitchCutoutStepView(viewModel: viewModel)
                 case .myStitches:
-                    MyStitchesView(api: viewModel.apiClient)
+                    MyStitchesView(api: viewModel.apiClient, onRetry: { [api = viewModel.apiClient] stitchId in
+                        StitchEditorViewModel.retryGenerateMeta(stitchId: stitchId, api: api)
+                    })
                 }
             }
             .sheet(isPresented: $showClipPicker) {
-                StitchClipPicker(maxSelectionCount: 0) { providers in
+                // Cap selection to the remaining freeze-reveal slots so a multi-pick
+                // can't blow past Reference + Creator. `0` = unlimited (PHPicker semantics).
+                let remaining: Int = {
+                    guard viewModel.timeline.style == .freezeReveal else { return 0 }
+                    return max(0, 2 - viewModel.timeline.clips.count - viewModel.timeline.pendingClipCount)
+                }()
+                StitchClipPicker(maxSelectionCount: remaining) { providers in
                     showClipPicker = false
                     Task { await viewModel.addClips(from: providers) }
                 }
                 .ignoresSafeArea()
             }
+            .onAppear {
+                // Bridge the view-model's dispatch hook to the SwiftUI side. We
+                // dismiss the sheet AND forward to the parent so it can switch
+                // tabs (W025).
+                viewModel.onRenderDispatched = {
+                    onRenderDispatched?()
+                    dismiss()
+                }
+            }
             .onChange(of: viewModel.stage) { _, stage in
                 if case .failed = stage { showErrorAlert = true }
-                if case .completed = stage {
-                    // Replace the entire wizard stack with the My Stitches view so the user
-                    // can see their freshly rendered stitch (and any previous ones) without
-                    // dismissing the sheet.
-                    path = NavigationPath([StitchStep.myStitches])
-                }
             }
             .alert("Something went wrong", isPresented: $showErrorAlert) {
                 Button("OK", role: .cancel) { viewModel.stage = .idle }
@@ -560,23 +850,56 @@ public struct StitchEditorView: View {
         }
     }
 
+    private var styleCard: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.smallSpacing) {
+            Text("Style").font(.headline).foregroundStyle(DesignTokens.textPrimary)
+            Picker(
+                "Style",
+                selection: Binding(
+                    get: { viewModel.timeline.style },
+                    set: { viewModel.setStyle($0) }
+                )
+            ) {
+                ForEach(StitchStyle.allCases) { style in
+                    Text(style.label).tag(style)
+                }
+            }
+            .pickerStyle(.segmented)
+            Text(viewModel.timeline.style.summary)
+                .font(.caption)
+                .foregroundStyle(DesignTokens.muted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding()
+        .background(DesignTokens.surface)
+        .cornerRadius(DesignTokens.cornerRadius)
+    }
+
     private var clipsCard: some View {
         VStack(alignment: .leading, spacing: DesignTokens.spacing) {
             HStack {
                 Text("Clips").font(.headline).foregroundStyle(DesignTokens.textPrimary)
                 Spacer()
+                let canAdd: Bool = {
+                    guard viewModel.timeline.style == .freezeReveal else { return true }
+                    return viewModel.timeline.clips.count + viewModel.timeline.pendingClipCount < 2
+                }()
                 Button {
                     showClipPicker = true
                 } label: {
                     Label("Add", systemImage: "plus.circle.fill")
-                        .foregroundStyle(DesignTokens.accent)
+                        .foregroundStyle(canAdd ? DesignTokens.accent : DesignTokens.muted)
                 }
+                .disabled(!canAdd)
             }
 
             let pending = viewModel.timeline.pendingClipCount
             let hasContent = !viewModel.timeline.clips.isEmpty || pending > 0
+            let isFreezeReveal = viewModel.timeline.style == .freezeReveal
             if !hasContent {
-                Text("Pick videos from Photos in the order you want them to play.")
+                Text(isFreezeReveal
+                    ? "Pick your reference video first, then your creator video."
+                    : "Pick videos from Photos in the order you want them to play.")
                     .font(.subheadline)
                     .foregroundStyle(DesignTokens.muted)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -586,15 +909,36 @@ public struct StitchEditorView: View {
                     spacing: 6
                 ) {
                     ForEach(Array(viewModel.timeline.clips.enumerated()), id: \.element.id) { index, clip in
-                        ClipThumbCell(
-                            order: index + 1,
-                            clip: clip,
-                            cachedPreview: viewModel.timeline.previewImages[clip.id],
-                            onRemove: { viewModel.removeClip(id: clip.id) }
-                        )
+                        VStack(spacing: 4) {
+                            ClipThumbCell(
+                                order: index + 1,
+                                clip: clip,
+                                cachedPreview: viewModel.timeline.previewImages[clip.id],
+                                onRemove: { viewModel.removeClip(id: clip.id) },
+                                onToggleBackground: {
+                                    viewModel.timeline.setRemoveBackground(
+                                        id: clip.id,
+                                        enabled: !clip.removeBackground
+                                    )
+                                }
+                            )
+                            if let label = freezeRevealRoleLabel(forIndex: index) {
+                                Text(label)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(DesignTokens.muted)
+                            }
+                        }
                     }
                     ForEach(0..<pending, id: \.self) { offset in
-                        PendingClipCell(order: viewModel.timeline.clips.count + offset + 1)
+                        let pendingIndex = viewModel.timeline.clips.count + offset
+                        VStack(spacing: 4) {
+                            PendingClipCell(order: pendingIndex + 1)
+                            if let label = freezeRevealRoleLabel(forIndex: pendingIndex) {
+                                Text(label)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(DesignTokens.muted)
+                            }
+                        }
                     }
                 }
                 if !viewModel.timeline.clips.isEmpty {
@@ -608,6 +952,15 @@ public struct StitchEditorView: View {
         .padding()
         .background(DesignTokens.surface)
         .cornerRadius(DesignTokens.cornerRadius)
+    }
+
+    private func freezeRevealRoleLabel(forIndex index: Int) -> String? {
+        guard viewModel.timeline.style == .freezeReveal else { return nil }
+        switch index {
+        case 0: return "Reference"
+        case 1: return "Creator"
+        default: return nil
+        }
     }
 }
 
@@ -623,7 +976,9 @@ private struct StitchTextStepView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignTokens.largeSpacing) {
                 StepHeader(current: 2, total: 3, label: "Text Overlays")
-                Text("Tap a clip's Text button to add an overlay. Tap an existing chip to drag/pinch its position and size like Instagram. This step is optional.")
+                Text(viewModel.timeline.style == .freezeReveal
+                    ? "We've seeded a “STITCH INCOMING” overlay on the reference clip. Tap it to drag/resize, edit the text, or remove it."
+                    : "Tap a clip's Text button to add an overlay. Tap an existing chip to drag/pinch its position and size like Instagram. This step is optional.")
                     .font(.subheadline)
                     .foregroundStyle(DesignTokens.muted)
 
@@ -648,6 +1003,7 @@ private struct StitchTextStepView: View {
         .background(DesignTokens.background.ignoresSafeArea())
         .navigationTitle("Text Overlays")
         .navigationBarTitleDisplayMode(.inline)
+        .task { viewModel.ensureFreezeRevealTextOverlay() }
         .sheet(item: Binding(
             get: { addingTextForClipId.map { ClipIdWrapper(id: $0) } },
             set: { addingTextForClipId = $0?.id }
@@ -831,24 +1187,38 @@ private struct StitchCutoutStepView: View {
     @ObservedObject var viewModel: StitchEditorViewModel
     @State private var cutoutPickerItem: PhotosPickerItem?
     @State private var pickingForClipId: UUID?
+    @State private var editingFreezeRevealCutout = false
+
+    private var isFreezeReveal: Bool { viewModel.timeline.style == .freezeReveal }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignTokens.largeSpacing) {
-                StepHeader(current: 3, total: 3, label: "Cutout + Render")
-                Text("Optionally overlay a person-cutout (background removed) on top of one clip. Then set a title and render.")
+                StepHeader(
+                    current: 3,
+                    total: 3,
+                    label: isFreezeReveal ? "Position + Render" : "Cutout + Render"
+                )
+                Text(isFreezeReveal
+                    ? "We've set up the freeze + reveal layout for you. Drag the creator over the reference's last frame, then render."
+                    : "Optionally overlay a person-cutout (background removed) on top of one clip. Then set a title and render.")
                     .font(.subheadline)
                     .foregroundStyle(DesignTokens.muted)
 
-                cutoutCard
+                if isFreezeReveal {
+                    freezeRevealCutoutCard
+                } else {
+                    cutoutCard
+                }
                 titleCard
                 renderCard
             }
             .padding()
         }
         .background(DesignTokens.background.ignoresSafeArea())
-        .navigationTitle("Cutout + Render")
+        .navigationTitle(isFreezeReveal ? "Position + Render" : "Cutout + Render")
         .navigationBarTitleDisplayMode(.inline)
+        .task { viewModel.ensureFreezeRevealCutout() }
         .photosPicker(
             isPresented: Binding(
                 get: { pickingForClipId != nil },
@@ -864,6 +1234,85 @@ private struct StitchCutoutStepView: View {
             pickingForClipId = nil
             Task { await viewModel.setCutoutSource(from: item, clipId: clipId) }
         }
+        .fullScreenCover(isPresented: $editingFreezeRevealCutout) {
+            if let cutout = viewModel.timeline.cutoutOverlay,
+               let refClip = viewModel.timeline.clips.first {
+                CutoutPositionEditorView(
+                    referenceClip: refClip,
+                    referenceCachedPreview: viewModel.timeline.previewImages[refClip.id],
+                    layout: viewModel.timeline.layout,
+                    cutout: Binding(
+                        get: { viewModel.timeline.cutoutOverlay ?? cutout },
+                        set: { viewModel.timeline.updateCutout($0) }
+                    )
+                )
+            }
+        }
+    }
+
+    private var freezeRevealCutoutCard: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.spacing) {
+            Text("Creator over Frozen Frame")
+                .font(.headline)
+                .foregroundStyle(DesignTokens.textPrimary)
+
+            if viewModel.timeline.clips.count < 2 {
+                Text("Add a second clip on Step 1 to enable Freeze + Reveal.")
+                    .font(.subheadline)
+                    .foregroundStyle(DesignTokens.muted)
+            } else if let cutout = viewModel.timeline.cutoutOverlay,
+                      let refClip = viewModel.timeline.clips.first,
+                      let creatorClip = viewModel.timeline.clips.dropFirst().first {
+                HStack(spacing: DesignTokens.spacing) {
+                    StitchThumbnail(clip: refClip, cachedPreview: viewModel.timeline.previewImages[refClip.id])
+                        .cornerRadius(8)
+                        .frame(width: 80, height: 80)
+                        .overlay(alignment: .bottomTrailing) {
+                            StitchThumbnail(clip: creatorClip, cachedPreview: viewModel.timeline.previewImages[creatorClip.id])
+                                .frame(width: 36, height: 36)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.white, lineWidth: 2)
+                                )
+                                .padding(4)
+                        }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Position \(percentLabel(cutout.position.x)) × \(percentLabel(cutout.position.y))")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(DesignTokens.textPrimary)
+                        Text("Size \(Int(cutout.scale * 100))% of frame height")
+                            .font(.caption2)
+                            .foregroundStyle(DesignTokens.muted)
+                    }
+                    Spacer()
+                }
+                Button {
+                    editingFreezeRevealCutout = true
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                        Text("Position & Size")
+                            .font(.subheadline.weight(.medium))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .background(DesignTokens.accent)
+                    .cornerRadius(DesignTokens.cornerRadius)
+                }
+                .buttonStyle(.plain)
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+        .padding()
+        .background(DesignTokens.surface)
+        .cornerRadius(DesignTokens.cornerRadius)
+    }
+
+    private func percentLabel(_ value: CGFloat) -> String {
+        "\(Int((value * 100).rounded()))%"
     }
 
     private var cutoutCard: some View {
@@ -1190,6 +1639,7 @@ private struct ClipThumbCell: View {
     let clip: StitchClip
     let cachedPreview: UIImage?
     let onRemove: () -> Void
+    let onToggleBackground: () -> Void
 
     var body: some View {
         StitchThumbnail(clip: clip, cachedPreview: cachedPreview)
@@ -1216,6 +1666,10 @@ private struct ClipThumbCell: View {
                 .buttonStyle(.plain)
                 .padding(4)
             }
+            .overlay(alignment: .bottomLeading) {
+                BackgroundRemovalPill(isOn: clip.removeBackground, onToggle: onToggleBackground)
+                    .padding(4)
+            }
             .overlay(alignment: .bottomTrailing) {
                 if clip.effectiveDurationS > 0 {
                     Text(formatDuration(clip.effectiveDurationS))
@@ -1228,6 +1682,32 @@ private struct ClipThumbCell: View {
                         .padding(4)
                 }
             }
+    }
+}
+
+/// Small pill button on each clip thumbnail that toggles per-clip background removal.
+/// Off → translucent dark; On → accent fill. Same control surface in both states, so the
+/// user can flip it both directions without hunting for a different control.
+private struct BackgroundRemovalPill: View {
+    let isOn: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 3) {
+                Image(systemName: isOn ? "person.crop.rectangle.fill" : "person.crop.rectangle")
+                    .font(.system(size: 10, weight: .bold))
+                Text("BG")
+                    .font(.caption2.weight(.bold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(isOn ? DesignTokens.accent : Color.black.opacity(0.7))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isOn ? "Background removed — tap to disable" : "Remove background")
     }
 }
 

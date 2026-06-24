@@ -35,6 +35,11 @@ public struct VideoPublishSheet: View {
         /// generic copy. Optional because freshly-rendered stitches publish
         /// before the upload finishes.
         public let serverCompositionId: String?
+        /// Pre-populated caption (eg. from a LocalStitch's stored AI-generated
+        /// caption). The publish sheet seeds its `caption` state from this so
+        /// the auto-generated copy from the fire-and-forget render pipeline
+        /// shows up in the editor without a re-suggest.
+        public let initialCaption: String?
 
         public enum Kind: String { case stitch, clip, reaction }
 
@@ -45,7 +50,8 @@ public struct VideoPublishSheet: View {
             durationS: Double,
             thumbnail: UIImage? = nil,
             localFileURL: URL? = nil,
-            serverCompositionId: String? = nil
+            serverCompositionId: String? = nil,
+            initialCaption: String? = nil
         ) {
             self.id = id
             self.kind = kind
@@ -54,6 +60,7 @@ public struct VideoPublishSheet: View {
             self.thumbnail = thumbnail
             self.localFileURL = localFileURL
             self.serverCompositionId = serverCompositionId
+            self.initialCaption = initialCaption
         }
     }
 
@@ -62,6 +69,7 @@ public struct VideoPublishSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var title: String = ""
     @State private var caption: String = ""
+    @State private var didSeedFromSource = false
     @State private var selectedPlatforms: Set<String> = []
     @State private var isPublishing = false
     @State private var isGenerating = false
@@ -91,6 +99,20 @@ public struct VideoPublishSheet: View {
             .navigationTitle("Publish Video")
             .navigationBarTitleDisplayMode(.inline)
             .task {
+                // Seed the editable fields from the source ONCE. For stitches rendered
+                // via the W025 fire-and-forget pipeline this gives us the AI-generated
+                // title + caption without a re-suggest.
+                if !didSeedFromSource {
+                    didSeedFromSource = true
+                    if title.isEmpty, !source.title.isEmpty,
+                       source.title != "Untitled stitch" {
+                        title = source.title
+                    }
+                    if caption.isEmpty, let seed = source.initialCaption, !seed.isEmpty {
+                        caption = seed
+                    }
+                }
+
                 // Read the user's "auto-generate publish meta" preference and trigger the
                 // AI suggest on open if enabled. Failure is silent — the manual button is
                 // always available as fallback.
@@ -328,44 +350,73 @@ public struct VideoPublishSheet: View {
         isGenerating = true
         defer { isGenerating = false }
         do {
-            // For stitched compositions, pull the server Composition so we can
-            // build the per-source stitched transcript (creator + each track).
-            // Without this the LLM only sees the title and produces generic
-            // copy — the bug PR #296 fixed on the web side. Failure is silent;
-            // we just fall back to title-only context (same as before).
-            var stitchedTranscript: String? = nil
-            if source.kind == .stitch, let compId = source.serverCompositionId {
-                if let composition = try? await api.fetchComposition(id: compId) {
-                    let outputTranscript = composition.outputs?
-                        .compactMap { $0.transcript }
-                        .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                    stitchedTranscript = CompositionTranscript.buildStitched(
-                        composition: composition,
-                        fallback: outputTranscript
-                    )
-                }
-            }
-
-            let contextParts = [
-                source.title,
-                caption.trimmingCharacters(in: .whitespacesAndNewlines),
-                stitchedTranscript ?? "",
-            ]
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n\n")
-
-            let request = GenerateMetaRequest(
-                context: contextParts.isEmpty ? "A short video the user wants to publish to social media." : contextParts,
-                platforms: selectedPlatforms.isEmpty ? ["youtube", "instagram", "twitter", "bluesky", "tiktok"] : Array(selectedPlatforms).sorted(),
-                seedTitle: title.isEmpty ? nil : title
+            let response = try await Self.generateMeta(
+                api: api,
+                kind: source.kind,
+                seedTitle: title.isEmpty ? source.title : title,
+                seedCaption: caption,
+                serverCompositionId: source.serverCompositionId,
+                platforms: selectedPlatforms.isEmpty
+                    ? ["youtube", "instagram", "twitter", "bluesky", "tiktok"]
+                    : Array(selectedPlatforms).sorted()
             )
-            let response = try await api.generatePublishMeta(request)
             if !response.title.isEmpty { title = response.title }
             if !response.caption.isEmpty { caption = response.caption }
         } catch {
             resultMessage = "AI suggestion failed: \(error.localizedDescription)"
             showResult = true
         }
+    }
+
+    /// Shared "generate title + caption" helper. Callable from the sheet OR from
+    /// the fire-and-forget render pipeline (W025) so both paths feed the same
+    /// stitched-transcript context into `/api/publish/generate-meta`.
+    ///
+    /// Throws on network / decode failure so the caller can surface it (the
+    /// sheet shows an alert, the render pipeline marks the LocalStitch as
+    /// `.failed(...)`).
+    public static func generateMeta(
+        api: APIClient,
+        kind: VideoSource.Kind,
+        seedTitle: String,
+        seedCaption: String,
+        serverCompositionId: String?,
+        platforms: [String]
+    ) async throws -> GenerateMetaResponse {
+        // For stitched compositions, pull the server Composition so we can
+        // build the per-source stitched transcript (creator + each track).
+        // Without this the LLM only sees the title and produces generic
+        // copy — the bug PR #296 fixed on the web side. Failure is silent;
+        // we just fall back to title-only context (same as before).
+        var stitchedTranscript: String? = nil
+        if kind == .stitch, let compId = serverCompositionId {
+            if let composition = try? await api.fetchComposition(id: compId) {
+                let outputTranscript = composition.outputs?
+                    .compactMap { $0.transcript }
+                    .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                stitchedTranscript = CompositionTranscript.buildStitched(
+                    composition: composition,
+                    fallback: outputTranscript
+                )
+            }
+        }
+
+        let contextParts = [
+            seedTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+            seedCaption.trimmingCharacters(in: .whitespacesAndNewlines),
+            stitchedTranscript ?? "",
+        ]
+        .filter { !$0.isEmpty }
+        .joined(separator: "\n\n")
+
+        let request = GenerateMetaRequest(
+            context: contextParts.isEmpty
+                ? "A short video the user wants to publish to social media."
+                : contextParts,
+            platforms: platforms,
+            seedTitle: seedTitle.isEmpty ? nil : seedTitle
+        )
+        return try await api.generatePublishMeta(request)
     }
 }
 

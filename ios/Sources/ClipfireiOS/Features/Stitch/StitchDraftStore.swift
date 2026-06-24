@@ -15,6 +15,9 @@ public struct StitchDraft: Codable, Equatable {
     /// re-opened in a new session can keep adding tracks to the SAME composition,
     /// rather than orphaning the previously-uploaded tracks.
     public var serverCompositionId: String?
+    /// Composition style preset. Defaults to `.freeform` so old drafts written before
+    /// the field existed decode unchanged.
+    public var style: StitchStyle
 
     public init(
         clips: [StitchClip] = [],
@@ -22,7 +25,8 @@ public struct StitchDraft: Codable, Equatable {
         cutoutOverlay: CutoutOverlay? = nil,
         layout: StitchLayout = .mobile,
         title: String = "",
-        serverCompositionId: String? = nil
+        serverCompositionId: String? = nil,
+        style: StitchStyle = .freeform
     ) {
         self.clips = clips
         self.textOverlays = textOverlays
@@ -30,10 +34,29 @@ public struct StitchDraft: Codable, Equatable {
         self.layout = layout
         self.title = title
         self.serverCompositionId = serverCompositionId
+        self.style = style
     }
 
     public var isEmpty: Bool {
         clips.isEmpty && textOverlays.isEmpty && cutoutOverlay == nil && title.isEmpty
+    }
+
+    // Custom Decodable so drafts written before a field existed still decode (the new
+    // field falls back to its default). Drops the silent "old draft is lost on upgrade"
+    // failure mode the auto-synthesized decoder has on schema changes.
+    private enum CodingKeys: String, CodingKey {
+        case clips, textOverlays, cutoutOverlay, layout, title, serverCompositionId, style
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.clips = try c.decodeIfPresent([StitchClip].self, forKey: .clips) ?? []
+        self.textOverlays = try c.decodeIfPresent([TextOverlay].self, forKey: .textOverlays) ?? []
+        self.cutoutOverlay = try c.decodeIfPresent(CutoutOverlay.self, forKey: .cutoutOverlay)
+        self.layout = try c.decodeIfPresent(StitchLayout.self, forKey: .layout) ?? .mobile
+        self.title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        self.serverCompositionId = try c.decodeIfPresent(String.self, forKey: .serverCompositionId)
+        self.style = try c.decodeIfPresent(StitchStyle.self, forKey: .style) ?? .freeform
     }
 }
 
@@ -109,10 +132,31 @@ public enum StitchDraftStore {
         try? data.write(to: draftJSONURL, options: .atomic)
     }
 
+    /// Full nuke — JSON manifest AND every clip file. Use only when you're sure no
+    /// in-flight render is still pointing at the clip files. The editor's dispatch path
+    /// uses `clearManifestOnly()` instead so the detached renderer can still read the
+    /// clips it captured in its snapshot.
     public static func clear() {
         try? FileManager.default.removeItem(at: draftJSONURL)
         if let files = try? FileManager.default.contentsOfDirectory(at: clipsDir, includingPropertiesForKeys: nil) {
             for f in files { try? FileManager.default.removeItem(at: f) }
+        }
+    }
+
+    /// Clear just the JSON draft, leave the clip files alone. The renderer is detached
+    /// and still holds URLs to those files via its snapshot — deleting them out from
+    /// under it was the cause of the -11800/-17913 export crash. Files are cleaned up
+    /// after Phase 1 of `runRenderPipeline` completes (or after the user dismisses a
+    /// failed render).
+    public static func clearManifestOnly() {
+        try? FileManager.default.removeItem(at: draftJSONURL)
+    }
+
+    /// Delete the specific files referenced by a finished render's snapshot. Safe to
+    /// call after the renderer has read them.
+    public static func removeFiles(urls: [URL]) {
+        for url in urls {
+            try? FileManager.default.removeItem(at: url)
         }
     }
 }

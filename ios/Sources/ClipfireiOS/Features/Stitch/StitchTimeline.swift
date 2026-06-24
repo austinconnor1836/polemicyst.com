@@ -8,6 +8,7 @@ public final class StitchTimeline: ObservableObject {
     @Published public var textOverlays: [TextOverlay] = []
     @Published public var cutoutOverlay: CutoutOverlay?  // v1: at most one cutout
     @Published public var layout: StitchLayout = .mobile
+    @Published public var style: StitchStyle = .freeform
     /// Number of clips currently mid-load from Photos. Drives placeholder cells in the grid.
     @Published public var pendingClipCount: Int = 0
     /// Cached preview thumbnails per clip id, populated by NSItemProvider.loadPreviewImage
@@ -68,6 +69,14 @@ public final class StitchTimeline: ObservableObject {
         clips[idx].serverTrackId = serverTrackId
     }
 
+    /// Toggle per-clip background removal. The renderer reads this at export time —
+    /// segmented base-track clips play over black; the freezeReveal creator's flag
+    /// controls whether the cutout is masked to the person or rendered as a raw PIP.
+    public func setRemoveBackground(id: UUID, enabled: Bool) {
+        guard let idx = clips.firstIndex(where: { $0.id == id }) else { return }
+        clips[idx].removeBackground = enabled
+    }
+
     // MARK: - Text overlay operations
 
     public func addTextOverlay(_ overlay: TextOverlay) {
@@ -104,7 +113,8 @@ public final class StitchTimeline: ObservableObject {
             clips: clips,
             textOverlays: textOverlays,
             cutoutOverlay: cutoutOverlay,
-            layout: layout
+            layout: layout,
+            style: style
         )
     }
 
@@ -117,7 +127,8 @@ public final class StitchTimeline: ObservableObject {
             cutoutOverlay: cutoutOverlay,
             layout: layout,
             title: title,
-            serverCompositionId: serverCompositionId
+            serverCompositionId: serverCompositionId,
+            style: style
         )
     }
 
@@ -127,6 +138,7 @@ public final class StitchTimeline: ObservableObject {
         cutoutOverlay = draft.cutoutOverlay
         layout = draft.layout
         serverCompositionId = draft.serverCompositionId
+        style = draft.style
     }
 }
 
@@ -137,4 +149,5 @@ public struct StitchTimelineSnapshot: Sendable {
     public let textOverlays: [TextOverlay]
     public let cutoutOverlay: CutoutOverlay?
     public let layout: StitchLayout
+    public let style: StitchStyle
 }
