@@ -36,16 +36,22 @@ final class StitchEditorUploadOnAddTests: XCTestCase {
         super.setUp()
         StitchEditorMockProtocol.reset()
         // Register globally so it intercepts `URLSession.shared` requests too — the
-        // multipart S3 PUT in `VideoUploadService` uses `URLSession.shared` directly,
-        // and `URLSessionConfiguration.protocolClasses` only applies to sessions built
-        // from that config.
+        // multipart S3 PUT in `VideoUploadService` used to use `URLSession.shared`
+        // directly. It now uses a background URLSession (so uploads survive app
+        // suspension), and background sessions don't honor `URLProtocol`. The
+        // `testSessionOverride` seam below lets the test substitute a foreground
+        // session that DOES honor URLProtocol mocks.
         URLProtocol.registerClass(StitchEditorMockProtocol.self)
+        let mockConfig = URLSessionConfiguration.ephemeral
+        mockConfig.protocolClasses = [StitchEditorMockProtocol.self]
+        VideoUploadService.testSessionOverride = URLSession(configuration: mockConfig)
         // Wipe any persisted draft from a previous test run so the ViewModel starts clean.
         StitchDraftStore.clear()
     }
 
     override func tearDown() {
         URLProtocol.unregisterClass(StitchEditorMockProtocol.self)
+        VideoUploadService.testSessionOverride = nil
         StitchEditorMockProtocol.reset()
         StitchDraftStore.clear()
         super.tearDown()
@@ -359,5 +365,157 @@ extension StitchEditorViewModel {
     /// after the side-channel has settled.
     func testHook_awaitPendingTrackUploads() async {
         await awaitPendingTrackUploadsForTesting()
+    }
+}
+
+// MARK: - TaskStore bookkeeping tests
+//
+// Covers what's testable about the background-upload delegate plumbing without
+// having to spin up a real URLSession — namely the `TaskStore` actor's per-task
+// register/complete/duplicate-callback semantics. Background URLSession itself
+// is not testable in a unit-test environment, so we test the bookkeeping piece
+// in isolation.
+
+final class TaskStoreTests: XCTestCase {
+
+    /// A successful HTTP 200 + ETag header resolves the continuation with the
+    /// ETag string. The pending count returns to zero.
+    func testCompleteWithSuccessfulResponseReturnsETag() async throws {
+        let store = TaskStore()
+        let etag = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
+            Task {
+                await store.register(
+                    taskIdentifier: 1,
+                    partNumber: 1,
+                    totalParts: 1,
+                    progress: nil,
+                    continuation: cont
+                )
+                let response = HTTPURLResponse(
+                    url: URL(string: "https://s3.example/part")!,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["ETag": "\"abc123\""]
+                )!
+                await store.complete(taskIdentifier: 1, response: response, error: nil)
+            }
+        }
+        XCTAssertEqual(etag, "\"abc123\"")
+        let pending = await store.pendingCount()
+        XCTAssertEqual(pending, 0, "Pending bookkeeping should unwind on completion.")
+    }
+
+    /// A non-2xx response throws `partFailed(n)`.
+    func testCompleteWithErrorStatusThrowsPartFailed() async {
+        let store = TaskStore()
+        do {
+            _ = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
+                Task {
+                    await store.register(
+                        taskIdentifier: 7,
+                        partNumber: 3,
+                        totalParts: 5,
+                        progress: nil,
+                        continuation: cont
+                    )
+                    let response = HTTPURLResponse(
+                        url: URL(string: "https://s3.example/part")!,
+                        statusCode: 500,
+                        httpVersion: "HTTP/1.1",
+                        headerFields: nil
+                    )!
+                    await store.complete(taskIdentifier: 7, response: response, error: nil)
+                }
+            }
+            XCTFail("Expected partFailed to throw.")
+        } catch let VideoUploadError.partFailed(part) {
+            XCTAssertEqual(part, 3)
+        } catch {
+            XCTFail("Wrong error: \(error)")
+        }
+    }
+
+    /// A networking-layer error propagates verbatim.
+    func testCompleteWithNetworkErrorPropagates() async {
+        let store = TaskStore()
+        let sentinel = NSError(domain: NSURLErrorDomain, code: NSURLErrorNetworkConnectionLost)
+        do {
+            _ = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
+                Task {
+                    await store.register(
+                        taskIdentifier: 9,
+                        partNumber: 1,
+                        totalParts: 1,
+                        progress: nil,
+                        continuation: cont
+                    )
+                    await store.complete(taskIdentifier: 9, response: nil, error: sentinel)
+                }
+            }
+            XCTFail("Expected to throw.")
+        } catch {
+            let ns = error as NSError
+            XCTAssertEqual(ns.domain, NSURLErrorDomain)
+            XCTAssertEqual(ns.code, NSURLErrorNetworkConnectionLost)
+        }
+    }
+
+    /// Two terminal callbacks must NOT double-resume the continuation. The
+    /// second `complete()` should be a no-op.
+    func testDoubleCompleteIsNoOp() async throws {
+        let store = TaskStore()
+        let etag = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
+            Task {
+                await store.register(
+                    taskIdentifier: 11,
+                    partNumber: 1,
+                    totalParts: 1,
+                    progress: nil,
+                    continuation: cont
+                )
+                let response = HTTPURLResponse(
+                    url: URL(string: "https://s3.example/part")!,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["ETag": "etag-1"]
+                )!
+                await store.complete(taskIdentifier: 11, response: response, error: nil)
+                // Second terminal callback — the continuation MUST NOT be resumed
+                // a second time, or Swift will trap.
+                await store.complete(taskIdentifier: 11, response: response, error: nil)
+            }
+        }
+        XCTAssertEqual(etag, "etag-1")
+        let wasResolved = await store.wasResolved(11)
+        XCTAssertTrue(wasResolved, "Task should be marked resolved after first complete().")
+        let pending = await store.pendingCount()
+        XCTAssertEqual(pending, 0)
+    }
+
+    /// `appendResponseBody` is harmless before completion and doesn't affect
+    /// the eventual resolution.
+    func testAppendResponseBodyDoesNotInterfereWithCompletion() async throws {
+        let store = TaskStore()
+        let etag = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
+            Task {
+                await store.register(
+                    taskIdentifier: 21,
+                    partNumber: 1,
+                    totalParts: 1,
+                    progress: nil,
+                    continuation: cont
+                )
+                await store.appendResponseBody(taskIdentifier: 21, data: Data("partial".utf8))
+                await store.appendResponseBody(taskIdentifier: 21, data: Data(" body".utf8))
+                let response = HTTPURLResponse(
+                    url: URL(string: "https://s3.example/part")!,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["ETag": "the-etag"]
+                )!
+                await store.complete(taskIdentifier: 21, response: response, error: nil)
+            }
+        }
+        XCTAssertEqual(etag, "the-etag")
     }
 }

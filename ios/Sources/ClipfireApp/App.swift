@@ -11,7 +11,15 @@ class ClipfireAppDelegate: NSObject, UIApplicationDelegate {
         completionHandler: @escaping () -> Void
     ) {
         NSLog("[App] handleEventsForBackgroundURLSession: %@", identifier)
-        BackgroundUploadService.shared.systemCompletionHandler = completionHandler
+        // Two background URLSessions live in the app — route the wake to the
+        // one whose identifier matches.
+        //   `com.clipfire.upload`  — `BackgroundUploadService` (AddVideo flow)
+        //   `com.clipfire.uploads` — `VideoUploadService`      (Stitch / Reactions)
+        if identifier == "com.clipfire.uploads" {
+            VideoUploadService.shared.savedBackgroundCompletionHandler = completionHandler
+        } else {
+            BackgroundUploadService.shared.systemCompletionHandler = completionHandler
+        }
     }
 }
 
