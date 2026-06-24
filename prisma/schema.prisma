@@ -680,6 +680,7 @@ model Composition {
   silenceRegions          Json?    // Array<{ startS: number; endS: number }> — cached FFmpeg silencedetect output
   autoEditResult          Json?    // { cuts: AutoEditCut[]; summary: AutoEditSummary } — cached auto-edit analysis
   detectedQuotes          Json?    // Array<DetectedQuote> — LLM-detected cited/quoted passages
+  renderConfig            Json?    // StitchManifest — instruction set for the stitch-render worker (style, clip refs, text overlays, cutout)
   quoteGraphicStyle       String?  // pull-quote | lower-third | highlight-card | side-panel | typewriter
   quoteGraphicsEnabled    Boolean  @default(false)
   thumbnailCutoutPosition String  @default("right") // left | right

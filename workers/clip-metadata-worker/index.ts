@@ -23,9 +23,13 @@ import type {
   ReactionComposeJob,
   GenericTranscriptionJob,
   ThumbnailGenerationJob,
+  StitchRenderJob,
 } from '@shared/queues';
 import { queueGenericTranscriptionJob } from '@shared/queues';
 import { renderComposition } from '@shared/util/reactionCompose';
+import { renderStitch } from '@shared/util/stitchCompose';
+import { createSegmentationProvider } from '@shared/lib/segmentation/segmentation-provider';
+import { layoutCanvasSize } from '@shared/lib/stitch/manifest';
 import { transcribeFromS3Url, transcribeLocalFile } from '@shared/lib/transcription';
 import { downloadFeedVideoToTemp } from '@shared/util/download';
 import {
@@ -1454,6 +1458,273 @@ new Worker<ThumbnailGenerationJob>(
     } catch (err) {
       console.error(`❌ [thumbnail-generation] Failed:`, err instanceof Error ? err.message : err);
       // Non-fatal — don't rethrow
+    }
+  },
+  { connection: redisConnection as any }
+);
+
+// --- Stitch Render Worker ---
+// Server-side renderer for the iOS Clipfire stitch editor. iOS uploads each
+// clip as a CompositionTrack first, then fires this with a manifest. We
+// download the referenced tracks, run segmentation if needed (MediaPipe via
+// Python sidecar), composite + encode with FFmpeg (libx265), upload the
+// result to S3, and update the CompositionOutput row.
+//
+// On error: mark the output `failed`, mark the composition `failed`, and
+// rethrow so BullMQ records the failure. We don't auto-retry — the iOS
+// client will retry by re-firing the endpoint with a fresh manifest.
+
+new Worker<StitchRenderJob>(
+  'stitch-render',
+  async (job) => {
+    const { compositionId, userId, manifest } = job.data;
+    const costTracker = new CostTracker(userId, compositionId);
+    const startMs = Date.now();
+
+    await logJob({
+      feedVideoId: compositionId,
+      jobType: 'stitch-render',
+      status: 'started',
+      message: `Worker picked up stitch-render job (style=${manifest.style}, layout=${manifest.layout})`,
+    });
+
+    console.log(
+      `🎬 [stitch-render] Processing composition ${compositionId} (style=${manifest.style}, layout=${manifest.layout})`
+    );
+
+    const tempFiles: string[] = [];
+    let outputRowId: string | null = null;
+
+    try {
+      // 1. Load composition + the tracks referenced by the manifest.
+      const composition = await prisma.composition.findUnique({
+        where: { id: compositionId },
+        include: { tracks: true, outputs: true },
+      });
+      if (!composition) {
+        throw new Error(`Composition ${compositionId} not found`);
+      }
+
+      const tracksById = new Map(composition.tracks.map((t: any) => [t.id, t]));
+      for (const clip of manifest.clips) {
+        if (!tracksById.has(clip.trackId)) {
+          throw new Error(`Manifest references unknown trackId: ${clip.trackId}`);
+        }
+      }
+
+      const output = composition.outputs.find((o: any) => o.layout === manifest.layout);
+      if (!output) {
+        throw new Error(`No CompositionOutput row exists for layout=${manifest.layout}`);
+      }
+      outputRowId = output.id;
+
+      await prisma.compositionOutput.update({
+        where: { id: output.id },
+        data: { status: 'rendering' },
+      });
+
+      // 2. Download referenced tracks to disk.
+      const clipPaths: Record<string, string> = {};
+      for (const clip of manifest.clips) {
+        const track: any = tracksById.get(clip.trackId);
+        console.log(`⬇️ [stitch-render] Downloading track ${clip.trackId} (${track.label || ''})`);
+        const localPath = await costTracker.track(
+          'download',
+          () => downloadFeedVideoToTemp(track.s3Url),
+          (resultPath) => {
+            let fileSizeBytes: number | undefined;
+            try {
+              const fsSync = require('fs');
+              fileSizeBytes = fsSync.statSync(resultPath).size;
+            } catch {}
+            return {
+              provider: 's3',
+              fileSizeBytes,
+              estimatedCostUsd: fileSizeBytes ? estimateS3Cost(fileSizeBytes) : 0,
+            };
+          }
+        );
+        tempFiles.push(localPath);
+        clipPaths[clip.trackId] = localPath;
+      }
+
+      // 3. Segmentation pass for any clip that requested removeBackground.
+      const segPathByTrackId: Record<string, string> = {};
+      const needsSeg = manifest.clips.filter((c) => c.removeBackground);
+      if (needsSeg.length > 0) {
+        const segProvider = await createSegmentationProvider();
+        const fsSync = require('fs');
+        const pathSync = require('path');
+        const osSync = require('os');
+        for (const clip of needsSeg) {
+          const inputPath = clipPaths[clip.trackId];
+          const outPath = pathSync.join(
+            osSync.tmpdir(),
+            `stitch-mask-${clip.trackId}-${Date.now()}.mp4`
+          );
+          console.log(`🟣 [stitch-render] Segmenting ${clip.trackId} -> ${outPath}`);
+          const segResult = await costTracker.track(
+            'segmentation',
+            () => segProvider.segmentVideo(inputPath, outPath),
+            (r) => ({
+              provider: segProvider.name,
+              estimatedCostUsd: r._cost?.estimatedCostUsd ?? 0,
+              metadata: { framesProcessed: r.framesProcessed },
+            })
+          );
+          if (fsSync.existsSync(outPath)) {
+            tempFiles.push(outPath);
+            segPathByTrackId[clip.trackId] = outPath;
+            console.log(
+              `✅ [stitch-render] Segmentation done for ${clip.trackId} (${segResult.framesProcessed} frames)`
+            );
+          } else {
+            throw new Error(`Segmentation produced no output for ${clip.trackId}`);
+          }
+        }
+      }
+
+      // 4. Compose + encode with FFmpeg.
+      const outputLocalPath = (() => {
+        const pathSync = require('path');
+        const osSync = require('os');
+        return pathSync.join(osSync.tmpdir(), `stitch-${compositionId}-${Date.now()}.mp4`);
+      })();
+      tempFiles.push(outputLocalPath);
+
+      // For both styles, clip[0] is the "ref" slot and clip[1] (if present)
+      // is the "creator" slot. Freeform uses the same indexing.
+      const refClip = manifest.clips[0];
+      const creatorClip = manifest.clips[1] ?? manifest.clips[0];
+
+      const composeResult = await costTracker.track(
+        'ffmpeg_render',
+        () =>
+          renderStitch({
+            manifest,
+            refClipLocalPath: clipPaths[refClip.trackId],
+            creatorClipLocalPath: clipPaths[creatorClip.trackId],
+            refMaskLocalPath: segPathByTrackId[refClip.trackId],
+            creatorMaskLocalPath: segPathByTrackId[creatorClip.trackId],
+            outputLayout: manifest.layout,
+            outputPath: outputLocalPath,
+          }),
+        () => ({ provider: 'ffmpeg', estimatedCostUsd: 0 })
+      );
+
+      // 5. Upload result to S3.
+      const fsSync = require('fs');
+      const fileSizeBytes = fsSync.statSync(composeResult.outputPath).size;
+      const s3Key = `compositions/${compositionId}/stitch/${manifest.layout}.mp4`;
+      const region = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-2';
+      const bucket = process.env.S3_BUCKET || 'clips-genie-uploads';
+
+      await costTracker.track(
+        's3_upload',
+        async () => {
+          const { S3Client } = await import('@aws-sdk/client-s3');
+          const { Upload } = await import('@aws-sdk/lib-storage');
+          const s3 = new S3Client({ region });
+          const upload = new Upload({
+            client: s3,
+            params: {
+              Bucket: bucket,
+              Key: s3Key,
+              Body: fsSync.createReadStream(composeResult.outputPath),
+              ContentType: 'video/mp4',
+            },
+          });
+          await upload.done();
+        },
+        () => ({
+          provider: 's3',
+          fileSizeBytes,
+          estimatedCostUsd: estimateS3Cost(fileSizeBytes),
+          metadata: { s3Key },
+        })
+      );
+
+      const s3Url = `https://${bucket}.s3.${region}.amazonaws.com/${s3Key}`;
+
+      // 6. Mark CompositionOutput + Composition completed.
+      const durationMs = Date.now() - startMs;
+      await prisma.compositionOutput.update({
+        where: { id: output.id },
+        data: {
+          status: 'completed',
+          s3Key,
+          s3Url,
+          durationMs,
+          fileSizeBytes: BigInt(fileSizeBytes),
+        },
+      });
+      await prisma.composition.update({
+        where: { id: compositionId },
+        data: { status: 'completed' },
+      });
+
+      await logJob({
+        feedVideoId: compositionId,
+        jobType: 'stitch-render',
+        status: 'completed',
+        message: `Stitch render finished — ${manifest.layout}, ${fileSizeBytes} bytes`,
+        durationMs,
+        metadata: {
+          layout: manifest.layout,
+          style: manifest.style,
+          s3Url,
+          canvas: layoutCanvasSize(manifest.layout),
+        },
+      });
+
+      console.log(`🏁 [stitch-render] Completed ${compositionId} -> ${s3Url} (${durationMs}ms)`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('❌ [stitch-render] failed:', errorMessage);
+
+      if (outputRowId) {
+        try {
+          await prisma.compositionOutput.update({
+            where: { id: outputRowId },
+            data: { status: 'failed', renderError: errorMessage },
+          });
+        } catch (updateErr) {
+          console.error('⚠️ failed to mark CompositionOutput failed (non-fatal):', updateErr);
+        }
+      }
+      try {
+        await prisma.composition.update({
+          where: { id: compositionId },
+          data: { status: 'failed' },
+        });
+      } catch {}
+
+      await logJob({
+        feedVideoId: compositionId,
+        jobType: 'stitch-render',
+        status: 'failed',
+        message: 'Stitch render failed',
+        error: errorMessage,
+        durationMs: Date.now() - startMs,
+      });
+
+      throw err;
+    } finally {
+      try {
+        await costTracker.flush();
+      } catch (costErr) {
+        console.error('⚠️ Cost tracking flush failed (non-fatal):', costErr);
+      }
+
+      const fs = await import('fs');
+      for (const f of tempFiles) {
+        try {
+          if (fs.existsSync(f)) fs.unlinkSync(f);
+        } catch {}
+      }
+      if (tempFiles.length > 0) {
+        console.log(`🧹 [stitch-render] Cleaned up ${tempFiles.length} temp files.`);
+      }
     }
   },
   { connection: redisConnection as any }

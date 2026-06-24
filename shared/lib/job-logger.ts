@@ -1,10 +1,21 @@
 import { prisma } from './prisma';
 
-export type JobType = 'transcription' | 'speaker-transcription' | 'clip-generation' | 'download';
+export type JobType =
+  | 'transcription'
+  | 'speaker-transcription'
+  | 'clip-generation'
+  | 'download'
+  | 'stitch-render';
 
 export type JobStatus = 'queued' | 'started' | 'completed' | 'failed';
 
 interface LogJobParams {
+  /**
+   * The schema column is `feedVideoId` for legacy reasons but the field is used
+   * as a generic per-job correlation id. For `stitch-render` we pass the
+   * `compositionId` here so all rows for that render land together in the
+   * admin logs view.
+   */
   feedVideoId: string;
   jobType: JobType;
   status: JobStatus;

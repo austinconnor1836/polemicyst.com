@@ -1,5 +1,6 @@
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
+import type { StitchManifest } from './lib/stitch/manifest';
 
 let redis: Redis | null = null;
 let videoDownloadQueue: Queue | null = null;
@@ -10,6 +11,7 @@ let clipGenerationQueue: Queue | null = null;
 let reactionComposeQueue: Queue | null = null;
 let genericTranscriptionQueue: Queue | null = null;
 let thumbnailGenerationQueue: Queue | null = null;
+let stitchRenderQueue: Queue | null = null;
 
 export function getRedisConnection() {
   if (redis) return redis;
@@ -182,6 +184,33 @@ export function getThumbnailGenerationQueue() {
 export function queueThumbnailGenerationJob(data: ThumbnailGenerationJob) {
   return getThumbnailGenerationQueue().add('thumbnail-generation', data, {
     jobId: `thumb-${data.compositionId}`,
+    removeOnComplete: true,
+    removeOnFail: true,
+  });
+}
+
+// --- Stitch render queue ---
+// Server-side renderer for the iOS Clipfire stitch editor. iOS fires this
+// fire-and-forget so the export can complete while the app is backgrounded
+// (iOS would otherwise kill an AVAssetExportSession when the user leaves).
+
+export interface StitchRenderJob {
+  compositionId: string;
+  userId: string;
+  manifest: StitchManifest;
+}
+
+export function getStitchRenderQueue() {
+  if (stitchRenderQueue) return stitchRenderQueue;
+  stitchRenderQueue = new Queue('stitch-render', {
+    connection: getRedisConnection() as any,
+  });
+  return stitchRenderQueue;
+}
+
+export function queueStitchRenderJob(data: StitchRenderJob) {
+  return getStitchRenderQueue().add('stitch-render', data, {
+    jobId: data.compositionId,
     removeOnComplete: true,
     removeOnFail: true,
   });
