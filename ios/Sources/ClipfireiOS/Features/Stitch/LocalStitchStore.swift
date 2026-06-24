@@ -1,19 +1,27 @@
 import Foundation
 import SwiftUI
 
-/// Where a `LocalStitch` is in the fire-and-forget pipeline that runs AFTER the
-/// user taps "Render Stitch" in the editor.
+/// Where a `LocalStitch` is in the server-side render pipeline that runs AFTER
+/// the user taps "Render Stitch" in the editor.
 ///
-/// The editor dismisses immediately when render is dispatched (W025), so the
-/// stitch row appears in `MyStitchesView` while the pipeline below is still
-/// running in the background. The card binds to this state to show a generic
-/// "Processing…" pill until everything resolves to `.ready`.
+/// The editor dismisses immediately when render is dispatched, so the stitch
+/// row appears in `MyStitchesView` while the pipeline below runs in the
+/// background — first the local→S3 upload of every source clip, then the
+/// server worker doing the actual render. The card binds to this state to
+/// show what phase the user is waiting on.
 public enum ProcessingState: Codable, Equatable {
-    case rendering(Double)
-    case uploadingFinal
-    case awaitingTranscripts
-    case generatingMeta
+    /// Uploading source clip files to S3 so the server worker can render them.
+    /// `progress` is 0..1 across all clips.
+    case uploadingClips(progress: Double)
+    /// Manifest POSTed, server worker hasn't picked the job up yet.
+    case queued
+    /// Server worker is actively rendering. `progress` is nil — the server
+    /// doesn't currently stream a progress signal back, so the UI shows
+    /// indeterminate.
+    case renderingOnServer(progress: Double?)
+    /// Output S3 URL is present (and the local MP4 has been downloaded).
     case ready
+    /// Terminal failure. `message` is user-facing.
     case failed(String)
 
     public var isReady: Bool {
@@ -26,10 +34,26 @@ public enum ProcessingState: Codable, Equatable {
         return nil
     }
 
+    public var isWaitingOnServer: Bool {
+        switch self {
+        case .queued, .renderingOnServer:
+            return true
+        default:
+            return false
+        }
+    }
+
     // MARK: Codable
     //
-    // Hand-rolled so persisted JSON survives enum-shape changes and so old
-    // records (with no processingState field at all) decode to `.ready`.
+    // Hand-rolled so persisted JSON survives enum-shape changes and so previously
+    // persisted entries (which used the OLD on-device-render state names like
+    // `rendering` / `uploadingFinal` / `awaitingTranscripts` / `generatingMeta`)
+    // degrade gracefully:
+    //   - if the row had a serverCompositionId (graceful handler reads it from the
+    //     parent LocalStitch decoder, not here), we land on .ready
+    //   - otherwise we land on .failed("Migrate: old render flow no longer supported")
+    // The fallback handling lives in `LocalStitch.init(from:)` because only the
+    // parent decoder can correlate processingState with serverCompositionId.
 
     private enum CodingKeys: String, CodingKey {
         case type
@@ -40,15 +64,14 @@ public enum ProcessingState: Codable, Equatable {
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case .rendering(let p):
-            try c.encode("rendering", forKey: .type)
+        case .uploadingClips(let p):
+            try c.encode("uploadingClips", forKey: .type)
             try c.encode(p, forKey: .progress)
-        case .uploadingFinal:
-            try c.encode("uploadingFinal", forKey: .type)
-        case .awaitingTranscripts:
-            try c.encode("awaitingTranscripts", forKey: .type)
-        case .generatingMeta:
-            try c.encode("generatingMeta", forKey: .type)
+        case .queued:
+            try c.encode("queued", forKey: .type)
+        case .renderingOnServer(let p):
+            try c.encode("renderingOnServer", forKey: .type)
+            if let p { try c.encode(p, forKey: .progress) }
         case .ready:
             try c.encode("ready", forKey: .type)
         case .failed(let m):
@@ -61,28 +84,36 @@ public enum ProcessingState: Codable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let type = try c.decode(String.self, forKey: .type)
         switch type {
-        case "rendering":
+        case "uploadingClips":
             let p = try c.decodeIfPresent(Double.self, forKey: .progress) ?? 0
-            self = .rendering(p)
-        case "uploadingFinal":
-            self = .uploadingFinal
-        case "awaitingTranscripts":
-            self = .awaitingTranscripts
-        case "generatingMeta":
-            self = .generatingMeta
+            self = .uploadingClips(progress: p)
+        case "queued":
+            self = .queued
+        case "renderingOnServer":
+            let p = try c.decodeIfPresent(Double.self, forKey: .progress)
+            self = .renderingOnServer(progress: p)
         case "ready":
             self = .ready
         case "failed":
             let m = try c.decodeIfPresent(String.self, forKey: .message) ?? "Unknown error"
             self = .failed(m)
+
+        // Backward-compat: previous on-device-render state names. Treat them all as
+        // "we can't recover from here" — these rows predate server-side rendering and
+        // the actual local MP4 may not even exist on this device install. The parent
+        // `LocalStitch` decoder will upgrade these to `.ready` if a serverCompositionId
+        // is present (the local file made it to S3 at some point).
+        case "rendering", "uploadingFinal", "awaitingTranscripts", "generatingMeta":
+            self = .failed("Stitch was rendered with the previous build — please retry")
+
         default:
             self = .ready
         }
     }
 }
 
-/// A stitch that has been rendered on-device and saved to the app's Documents directory.
-/// The local file is the source of truth for the user; S3 upload state is invisible to them.
+/// A stitch the user kicked off. The actual render runs on the server; this row holds
+/// the local placeholder + the result MP4 URL once it's downloaded.
 public struct LocalStitch: Identifiable, Codable, Equatable {
     public let id: UUID
     public var title: String
@@ -91,13 +122,14 @@ public struct LocalStitch: Identifiable, Codable, Equatable {
     public var durationS: Double
     public var localFilename: String
     public var createdAt: Date
-    /// Set once the silent background upload + composition creation completes.
-    /// The user never sees this — it's only used so that taking other actions (publish, share)
-    /// can quietly resolve to the server-side composition.
+    /// Set once the server-side Composition has been created (which happens before
+    /// the manifest POST in the new flow). Required for the publish sheet to resolve
+    /// to the right server-side composition.
     public var serverCompositionId: String?
-    /// Where this stitch is in the post-render pipeline. Defaults to `.ready`
-    /// when missing from persisted JSON so previously-rendered stitches that
-    /// predate W025 don't appear stuck.
+    /// S3 URL of the server-rendered MP4 output. Populated once the render completes
+    /// — useful if the local file gets evicted (re-download from S3).
+    public var outputS3Url: String?
+    /// Where this stitch is in the post-dispatch pipeline.
     public var processingState: ProcessingState
 
     public init(
@@ -109,6 +141,7 @@ public struct LocalStitch: Identifiable, Codable, Equatable {
         localFilename: String,
         createdAt: Date = Date(),
         serverCompositionId: String? = nil,
+        outputS3Url: String? = nil,
         processingState: ProcessingState = .ready
     ) {
         self.id = id
@@ -119,13 +152,15 @@ public struct LocalStitch: Identifiable, Codable, Equatable {
         self.localFilename = localFilename
         self.createdAt = createdAt
         self.serverCompositionId = serverCompositionId
+        self.outputS3Url = outputS3Url
         self.processingState = processingState
     }
 
     // MARK: Codable — custom decoder defaults missing fields for old persisted JSON.
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, caption, layoutKey, durationS, localFilename, createdAt, serverCompositionId, processingState
+        case id, title, caption, layoutKey, durationS, localFilename, createdAt,
+             serverCompositionId, outputS3Url, processingState
     }
 
     public init(from decoder: Decoder) throws {
@@ -138,8 +173,19 @@ public struct LocalStitch: Identifiable, Codable, Equatable {
         self.localFilename = try c.decode(String.self, forKey: .localFilename)
         self.createdAt = try c.decode(Date.self, forKey: .createdAt)
         self.serverCompositionId = try c.decodeIfPresent(String.self, forKey: .serverCompositionId)
-        // Old persisted rows have no processingState — treat them as ready.
-        self.processingState = try c.decodeIfPresent(ProcessingState.self, forKey: .processingState) ?? .ready
+        self.outputS3Url = try c.decodeIfPresent(String.self, forKey: .outputS3Url)
+        let decoded = try c.decodeIfPresent(ProcessingState.self, forKey: .processingState) ?? .ready
+
+        // Backward-compat: old on-device-render entries that ProcessingState's decoder
+        // downgraded to a generic "previous build" failure. If we have a server
+        // composition id, the user can still publish from the server side — surface
+        // the row as ready rather than red. (If the local mp4 is missing playback
+        // will fail at tap time, but the row at least isn't permanently broken.)
+        if case .failed = decoded, self.serverCompositionId != nil {
+            self.processingState = .ready
+        } else {
+            self.processingState = decoded
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -152,6 +198,7 @@ public struct LocalStitch: Identifiable, Codable, Equatable {
         try c.encode(localFilename, forKey: .localFilename)
         try c.encode(createdAt, forKey: .createdAt)
         try c.encodeIfPresent(serverCompositionId, forKey: .serverCompositionId)
+        try c.encodeIfPresent(outputS3Url, forKey: .outputS3Url)
         try c.encode(processingState, forKey: .processingState)
     }
 }
@@ -256,8 +303,18 @@ public final class LocalStitchStore: ObservableObject {
         persist()
     }
 
-    /// Stitches that haven't yet been uploaded to S3 — used by the silent retry loop on app launch.
-    public var pendingUploads: [LocalStitch] {
-        stitches.filter { $0.serverCompositionId == nil }
+    /// Record the S3 URL of the server-rendered MP4 output. Stored so a future
+    /// install / cache-evicted run can re-download the file from S3.
+    public func setOutputS3Url(id: UUID, url: String) {
+        guard let idx = stitches.firstIndex(where: { $0.id == id }) else { return }
+        stitches[idx].outputS3Url = url
+        persist()
+    }
+
+    /// Stitches still in any pre-ready state — used by the resume-on-foreground
+    /// polling loop in MyStitchesView so a user who backgrounds during render comes
+    /// back to a live updating row.
+    public var inFlight: [LocalStitch] {
+        stitches.filter { !$0.processingState.isReady && $0.processingState.failureMessage == nil }
     }
 }

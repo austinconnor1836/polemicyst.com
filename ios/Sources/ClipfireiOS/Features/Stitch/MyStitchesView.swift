@@ -1,6 +1,7 @@
 import AVFoundation
 import AVKit
 import SwiftUI
+import UIKit
 
 public struct MyStitchesView: View {
     @StateObject private var store = LocalStitchStore.shared
@@ -90,6 +91,16 @@ public struct MyStitchesView: View {
         } message: { stitch in
             Text("\"\(stitch.title)\" will be removed from this device.")
         }
+        .onAppear {
+            // Rejoin any server renders that were already in flight (user
+            // backgrounded before the worker finished, then came back).
+            resumePollingForInflightStitches()
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIApplication.didBecomeActiveNotification
+        )) { _ in
+            resumePollingForInflightStitches()
+        }
     }
 
     private var emptyState: some View {
@@ -105,6 +116,98 @@ public struct MyStitchesView: View {
                 .foregroundStyle(DesignTokens.muted)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// For every locally-tracked stitch in `.queued` or `.renderingOnServer`,
+    /// kick off a poll task that updates its `processingState` as the server
+    /// progresses. Deduped via `StitchPollCoordinator.shared` so the same id
+    /// doesn't double-poll if we get foreground events back-to-back.
+    private func resumePollingForInflightStitches() {
+        guard let api else { return }
+        for stitch in store.stitches {
+            guard let compositionId = stitch.serverCompositionId else { continue }
+            switch stitch.processingState {
+            case .queued, .renderingOnServer:
+                StitchPollCoordinator.shared.beginPollIfNeeded(
+                    stitchId: stitch.id,
+                    compositionId: compositionId,
+                    layoutKey: stitch.layoutKey,
+                    api: api,
+                    destURL: store.localURL(for: stitch)
+                )
+            default:
+                break
+            }
+        }
+    }
+}
+
+// MARK: - Poll coordinator (foreground-only)
+
+/// Process-wide ledger of which stitches we already have a poll task running for,
+/// so a repeated `.onAppear` / foreground event doesn't spawn duplicate pollers.
+/// Tasks self-deregister on completion via the deferred cleanup in `beginPollIfNeeded`.
+@MainActor
+final class StitchPollCoordinator {
+    static let shared = StitchPollCoordinator()
+    private var active: [UUID: Task<Void, Never>] = [:]
+    private init() {}
+
+    /// Start polling for one stitch if not already polling. Idempotent.
+    func beginPollIfNeeded(
+        stitchId: UUID,
+        compositionId: String,
+        layoutKey: String,
+        api: APIClient,
+        destURL: URL
+    ) {
+        if active[stitchId] != nil { return }
+        let task = Task { @MainActor [weak self] in
+            defer { self?.active[stitchId] = nil }
+            let outcome = await StitchEditorViewModel.pollForServerRender(
+                compositionId: compositionId,
+                layoutKey: layoutKey,
+                stitchId: stitchId,
+                api: api
+            )
+            switch outcome {
+            case .completed(let output):
+                if let s3 = output.s3Url {
+                    LocalStitchStore.shared.setOutputS3Url(id: stitchId, url: s3)
+                    if let url = URL(string: s3) {
+                        do {
+                            try await StitchEditorViewModel.downloadOutput(from: url, to: destURL, api: api)
+                            LocalStitchStore.shared.setProcessingState(id: stitchId, .ready)
+                        } catch {
+                            LocalStitchStore.shared.setProcessingState(
+                                id: stitchId,
+                                .failed("Couldn't download the rendered video — tap to retry")
+                            )
+                        }
+                    } else {
+                        LocalStitchStore.shared.setProcessingState(
+                            id: stitchId,
+                            .failed("Server returned an invalid output URL")
+                        )
+                    }
+                } else {
+                    LocalStitchStore.shared.setProcessingState(
+                        id: stitchId,
+                        .failed("Server output is missing its S3 URL")
+                    )
+                }
+            case .failed(let message):
+                LocalStitchStore.shared.setProcessingState(id: stitchId, .failed(message))
+            case .timedOut:
+                // Leave the row in `.renderingOnServer` so the next foreground
+                // event picks it back up. Don't transition to .failed on a
+                // foreground-only timeout — the worker may still be running.
+                break
+            case .cancelled:
+                break
+            }
+        }
+        active[stitchId] = task
     }
 }
 
@@ -122,6 +225,22 @@ private struct StitchCard: View {
 
     private var isProcessing: Bool { !stitch.processingState.isReady }
     private var failureMessage: String? { stitch.processingState.failureMessage }
+
+    /// Human-readable status pill text for the current `processingState`.
+    private var processingLabel: String {
+        switch stitch.processingState {
+        case .uploadingClips(let p):
+            return "Uploading \(Int((p * 100).rounded()))%"
+        case .queued:
+            return "Queued"
+        case .renderingOnServer:
+            return "Rendering on server…"
+        case .ready:
+            return ""
+        case .failed:
+            return ""
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -156,7 +275,7 @@ private struct StitchCard: View {
                 }
                 .overlay(alignment: .bottomLeading) {
                     if isProcessing, failureMessage == nil {
-                        ProcessingPill()
+                        ProcessingPill(label: processingLabel)
                             .padding(6)
                     }
                 }
@@ -235,8 +354,8 @@ private struct StitchCard: View {
     }
 
     private func loadThumbnail() async {
-        // The local MP4 doesn't exist until the renderer finishes its move.
-        // Don't probe it during PHASE 1 of the fire-and-forget pipeline.
+        // The local MP4 doesn't exist until the server render has been downloaded.
+        // Don't probe it while we're still in any pre-ready state.
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         let asset = AVURLAsset(url: url)
         let gen = AVAssetImageGenerator(asset: asset)
@@ -304,12 +423,14 @@ private struct FailureDetailSheet: View {
 }
 
 private struct ProcessingPill: View {
+    let label: String
+
     var body: some View {
         HStack(spacing: 6) {
             ProgressView()
                 .tint(.white)
                 .scaleEffect(0.7)
-            Text("Processing…")
+            Text(label.isEmpty ? "Processing…" : label)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.white)
         }

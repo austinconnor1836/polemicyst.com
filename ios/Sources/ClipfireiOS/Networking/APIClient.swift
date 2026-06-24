@@ -446,6 +446,24 @@ public struct APIClient {
         )
     }
 
+    /// Server-side stitch render — POSTs the manifest to
+    /// `/api/compositions/<id>/stitch-render`. The endpoint persists the manifest
+    /// onto `Composition.renderConfig`, upserts a `CompositionOutput` row for the
+    /// requested layout in `pending` state, and enqueues a `stitch-render` BullMQ
+    /// job. The client can then close the app — the worker downloads tracks,
+    /// composites, uploads to S3, and stamps the output row to `completed`.
+    ///
+    /// Poll `fetchComposition(id:)` for status — see `CompositionOutput.status`.
+    public func startStitchRender(
+        compositionId: String,
+        manifest: StitchManifest
+    ) async throws -> StitchRenderResponse {
+        try await post(
+            path: "/api/compositions/\(compositionId)/stitch-render",
+            body: manifest
+        )
+    }
+
     public func cancelRender(compositionId: String) async throws {
         struct EmptyBody: Encodable {}
         let _: AnyCodable = try await post(path: "/api/compositions/\(compositionId)/render/cancel", body: EmptyBody())

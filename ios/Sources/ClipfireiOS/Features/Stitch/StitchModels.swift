@@ -196,9 +196,14 @@ public enum StitchLayout: String, CaseIterable, Identifiable, Codable {
     public var id: String { rawValue }
 
     public var renderSize: CGSize {
+        // 720p — full 1080×1920 + custom compositor + Vision per-frame + HEVC over
+        // long (90s+) renders thermal-throttled the iPhone 14 encoder and iOS killed
+        // the app silently. 720p portrait still looks sharp on the phone, and the
+        // encoder has 2.25× more headroom. Bump back up once we move per-frame Vision
+        // off the export's critical path.
         switch self {
-        case .mobile: return CGSize(width: 1080, height: 1920)
-        case .landscape: return CGSize(width: 1920, height: 1080)
+        case .mobile: return CGSize(width: 720, height: 1280)
+        case .landscape: return CGSize(width: 1280, height: 720)
         }
     }
 

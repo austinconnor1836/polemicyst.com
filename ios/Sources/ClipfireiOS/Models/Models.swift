@@ -1197,6 +1197,16 @@ public struct PublishVideoResponse: Codable {
     public let queuedPlatforms: [String]
 }
 
+/// Response from `POST /api/compositions/<id>/stitch-render`. The endpoint returns
+/// 202 Accepted with this body so the iOS client knows the worker has picked up
+/// the job and can begin polling `fetchComposition(id:)` for the output status.
+public struct StitchRenderResponse: Codable, Equatable {
+    public let status: String       // "queued"
+    public let compositionId: String
+    public let outputId: String
+    public let layout: String       // "mobile" | "landscape"
+}
+
 public struct GenerateMetaRequest: Encodable {
     public let context: String      // free-text context about the video (transcript, working title, etc.)
     public let platforms: [String]  // tailor tone to these

@@ -41,6 +41,13 @@ public final class StitchRenderer {
     public init() {}
 
     /// Render the stitch to a temp MP4 file. Returns the output URL.
+    ///
+    /// Deprecated: the production render pipeline runs server-side now. The
+    /// editor uploads source tracks + POSTs a `StitchManifest` to
+    /// `/api/compositions/<id>/stitch-render` and polls for the output. This
+    /// local renderer is kept as a reference implementation for a future
+    /// in-editor preview, but is no longer invoked by `runRenderPipeline`.
+    @available(*, deprecated, message: "Use server-side render via APIClient.startStitchRender(...)")
     public func render(
         snapshot: StitchTimelineSnapshot,
         progress: (@Sendable (StitchRenderProgress) -> Void)? = nil
@@ -360,14 +367,16 @@ public final class StitchRenderer {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("stitch-\(UUID().uuidString).mp4")
 
-        // DEBUG (2026-06-24): MediumQuality is more permissive than HighestQuality
-        // about heterogeneous input formats. Stick with this while diagnosing -17913;
-        // promote back to HighestQuality once root cause is identified + fixed.
         heartbeat("text-overlays-done", ["textOverlayCount": textOverlays.count])
 
+        // HEVCHighestQuality respects the full renderSize (1080×1920) AND uses the
+        // HEVC encoder, which is much more memory- and thermal-friendly than the H.264
+        // encoder HighestQuality picks. The H.264 path was getting interrupted with
+        // -11847 / -16101 on a 94-second portrait composition with the custom
+        // compositor (thermal throttling / encoder backpressure).
         guard let exporter = AVAssetExportSession(
             asset: mixComposition,
-            presetName: AVAssetExportPresetMediumQuality
+            presetName: AVAssetExportPresetHEVCHighestQuality
         ) else {
             throw StitchRenderError.exportFailed("Could not create export session")
         }
@@ -644,6 +653,17 @@ public final class StitchRenderer {
             segmentPerson: referenceClip.removeBackground
         )
 
+        // Decode the creator's display orientation from its preferredTransform. CIImage
+        // applies this via `.oriented(_:)` in compose — avoids the y-axis flip you get
+        // applying the AVFoundation transform directly in Core Image space.
+        let creatorAsset = AVURLAsset(url: creatorURL)
+        let creatorTrack = (try? await creatorAsset.loadTracks(withMediaType: .video).first)
+        var creatorOrientation: CGImagePropertyOrientation = .up
+        if let creatorTrack {
+            let preferred = (try? await creatorTrack.load(.preferredTransform)) ?? .identity
+            creatorOrientation = Self.orientation(fromPreferredTransform: preferred)
+        }
+
         // Single spanning instruction, single video track. No sparseness.
         let totalDuration = CMTimeAdd(referenceTimelineDuration, creatorTimelineDuration)
         let baseLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: baseVideoTrack)
@@ -678,6 +698,7 @@ public final class StitchRenderer {
             start: referenceTimelineDuration,
             duration: creatorTimelineDuration
         )
+        PersonSegmentationCompositor.freezeRevealCreatorOrientation = creatorOrientation
         // Reference BG → mask the ref's base-track playback for its full slot.
         if referenceClip.removeBackground {
             PersonSegmentationCompositor.segmentedBaseRanges = [
@@ -809,7 +830,14 @@ public final class StitchRenderer {
         let boxW = measured.width + padding * 2
         let boxH = measured.height + padding * 2
 
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: boxW, height: boxH))
+        // Render at scale = 1 so the CIImage's pixel extent equals the requested point
+        // size. The default screen scale (3 on iPhone) produces a bitmap 3× larger than
+        // expected, so positioning math (which uses the requested boxW/boxH) lands the
+        // text 3× too big in the render canvas.
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: boxW, height: boxH), format: format)
         let uiImage = renderer.image { ctx in
             if let bg = overlay.backgroundColor {
                 ctx.cgContext.setFillColor(UIColor(bg).cgColor)
@@ -828,6 +856,21 @@ public final class StitchRenderer {
         return (image, origin)
     }
 
+    /// Map AVFoundation's `preferredTransform` for a video track to the corresponding
+    /// `CGImagePropertyOrientation`. iPhone tracks use one of four standard rotations
+    /// (and optionally an x-flip for the front camera selfie path); anything that doesn't
+    /// match falls through to `.up`, which is correct for landscape-recorded tracks with
+    /// the identity transform.
+    static func orientation(fromPreferredTransform t: CGAffineTransform) -> CGImagePropertyOrientation {
+        // 90° clockwise (iPhone in portrait, home button at the bottom).
+        if t.a == 0 && t.b == 1 && t.c == -1 && t.d == 0 { return .right }
+        // 90° counter-clockwise (iPhone in portrait, home button at the top).
+        if t.a == 0 && t.b == -1 && t.c == 1 && t.d == 0 { return .left }
+        // 180° rotation (iPhone landscape inverted from natural sensor orientation).
+        if t.a == -1 && t.b == 0 && t.c == 0 && t.d == -1 { return .down }
+        return .up
+    }
+
     /// Standalone person segmentation that accepts a CGImage (the compositor's helper takes
     /// a CVPixelBuffer). Returns the source masked to the person on transparent background,
     /// or nil if Vision didn't find anyone. Used for the static freeze frame.
@@ -843,10 +886,17 @@ public final class StitchRenderer {
         let scaleX = source.extent.width / maskImage.extent.width
         let scaleY = source.extent.height / maskImage.extent.height
         let scaledMask = maskImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+        // Match the per-frame compositor's mask feathering so the freeze-frame ref's
+        // segmented person and the live creator's segmented person have visually
+        // identical edge softness.
+        let blur = CIFilter(name: "CIGaussianBlur")
+        blur?.setValue(scaledMask, forKey: kCIInputImageKey)
+        blur?.setValue(2.5, forKey: kCIInputRadiusKey)
+        let featheredMask = blur?.outputImage?.cropped(to: source.extent) ?? scaledMask
         let blend = CIFilter(name: "CIBlendWithMask")
         blend?.setValue(source, forKey: kCIInputImageKey)
         blend?.setValue(CIImage(color: .clear).cropped(to: source.extent), forKey: kCIInputBackgroundImageKey)
-        blend?.setValue(scaledMask, forKey: kCIInputMaskImageKey)
+        blend?.setValue(featheredMask, forKey: kCIInputMaskImageKey)
         return blend?.outputImage
     }
 }

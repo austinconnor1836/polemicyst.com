@@ -51,6 +51,11 @@ public final class PersonSegmentationCompositor: NSObject, AVVideoCompositing {
     /// and we scale/position it per `activeCutout` (with optional segmentation per
     /// `removeBackgroundForCutout`) on top of the backdrop.
     public static var freezeRevealCreatorRange: CMTimeRange?
+    /// Creator clip's display orientation. Applied via `CIImage.oriented(_:)` instead of
+    /// applying the raw `preferredTransform` directly — that AVFoundation transform is
+    /// defined in y-down image space and applying it in Core Image's y-up space flips
+    /// the result (creator video rendered upside-down).
+    public static var freezeRevealCreatorOrientation: CGImagePropertyOrientation = .up
 
     /// Text overlays drawn by the compositor itself instead of via
     /// `AVVideoCompositionCoreAnimationTool` — animationTool combined with a custom
@@ -135,35 +140,34 @@ public final class PersonSegmentationCompositor: NSObject, AVVideoCompositing {
             var composite = backdrop
             if let basePB = request.sourceFrame(byTrackID: Self.baseTrackID),
                let cutout = Self.activeCutout {
-                // Aspect-fill the creator into the render canvas first (so the user's
-                // scale + position values are expressed against full-frame space).
-                let creatorAspectFilled: CIImage
-                let aspectFill = transformForBase(at: time)
+                // 1. Source CIImage from the pixel buffer (optionally segmented).
+                let raw: CIImage
                 if Self.removeBackgroundForCutout,
                    let segmented = try? segmentPerson(pixelBuffer: basePB) {
-                    creatorAspectFilled = segmented
-                        .transformed(by: aspectFill)
-                        .cropped(to: renderRect)
+                    raw = segmented
                 } else {
-                    creatorAspectFilled = CIImage(cvPixelBuffer: basePB)
-                        .transformed(by: aspectFill)
-                        .cropped(to: renderRect)
+                    raw = CIImage(cvPixelBuffer: basePB)
                 }
-                // Shrink to cutout.scale and recenter at cutout.position.
-                let scale = cutout.scale
-                let scaledW = renderSize.width * scale
-                let scaledH = renderSize.height * scale
+                // 2. Apply display orientation via `.oriented(_:)`. We can't use the
+                //    AVFoundation preferredTransform directly here — it's defined in
+                //    y-down image space and applying it in CI's y-up space lands the
+                //    image upside-down.
+                let oriented = raw.oriented(Self.freezeRevealCreatorOrientation)
+                // 3. Scale so the creator's HEIGHT matches cutout.scale × canvas height,
+                //    preserving aspect ratio. A scale=1.0 cutout exactly fills the canvas
+                //    height; a portrait source matches portrait canvas and is letterboxed
+                //    on the sides; a landscape source extends beyond the canvas sides
+                //    (visible as cropping).
+                let targetH = renderSize.height * cutout.scale
+                let s = targetH / oriented.extent.height
+                let scaled = oriented.transformed(by: CGAffineTransform(scaleX: s, y: s))
+                // 4. Center it on cutout.position. `.position.y` is SwiftUI-style
+                //    (0 = top, 1 = bottom); flip for Core Image's y-up coords.
                 let targetCenterX = cutout.position.x * renderSize.width
                 let targetCenterY = (1 - cutout.position.y) * renderSize.height
-                let currentCenterX = renderSize.width * scale / 2
-                let currentCenterY = renderSize.height * scale / 2
-                let positioned = creatorAspectFilled
-                    .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-                    .transformed(by: CGAffineTransform(
-                        translationX: targetCenterX - currentCenterX,
-                        y: targetCenterY - currentCenterY
-                    ))
-                _ = (scaledW, scaledH) // keep computed sizes available for future hit-test work
+                let dx = targetCenterX - scaled.extent.midX
+                let dy = targetCenterY - scaled.extent.midY
+                let positioned = scaled.transformed(by: CGAffineTransform(translationX: dx, y: dy))
                 composite = positioned.composited(over: backdrop)
             }
             composite = applyTextOverlays(composite, at: time)
@@ -280,13 +284,14 @@ public final class PersonSegmentationCompositor: NSObject, AVVideoCompositing {
     // MARK: - Vision person segmentation
 
     /// Reused across frames — the request object holds the segmentation model. Re-creating
-    /// one per frame on a 77-second 1080×1920 video burns memory until iOS OOM-kills the
-    /// app. `.fast` quality level uses the smaller of Apple's three models (vs. .balanced
-    /// or .accurate); for a creator face-cam framed over a backdrop the mask is nearly
-    /// identical to the higher-quality models.
+    /// one per frame burns memory until iOS OOM-kills the app on long renders. `.balanced`
+    /// uses Apple's middle-tier model which gives noticeably cleaner contours (especially
+    /// around hair and shoulders) than `.fast`. We tolerate the higher per-frame cost
+    /// because we dropped the render canvas to 720×1280 — net workload is lower than
+    /// `.fast` at 1080×1920 was.
     private static let personSegmentationRequest: VNGeneratePersonSegmentationRequest = {
         let r = VNGeneratePersonSegmentationRequest()
-        r.qualityLevel = .fast
+        r.qualityLevel = .balanced
         r.outputPixelFormat = kCVPixelFormatType_OneComponent8
         return r
     }()
@@ -306,11 +311,19 @@ public final class PersonSegmentationCompositor: NSObject, AVVideoCompositing {
         let scaleY = source.extent.height / maskImage.extent.height
         let scaledMask = maskImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
 
+        // Feather the mask. Without this the alpha transition is one pixel wide and the
+        // cutout edge looks "stamped on." A small Gaussian blur turns it into a smooth
+        // falloff that reads as a real composited person.
+        let blur = CIFilter(name: "CIGaussianBlur")
+        blur?.setValue(scaledMask, forKey: kCIInputImageKey)
+        blur?.setValue(2.5, forKey: kCIInputRadiusKey)
+        let featheredMask = blur?.outputImage?.cropped(to: source.extent) ?? scaledMask
+
         // Apply mask as alpha: keep source RGB where mask is 1, transparent where mask is 0.
         let blend = CIFilter(name: "CIBlendWithMask")
         blend?.setValue(source, forKey: kCIInputImageKey)
         blend?.setValue(CIImage(color: .clear).cropped(to: source.extent), forKey: kCIInputBackgroundImageKey)
-        blend?.setValue(scaledMask, forKey: kCIInputMaskImageKey)
+        blend?.setValue(featheredMask, forKey: kCIInputMaskImageKey)
         return blend?.outputImage
     }
 }
