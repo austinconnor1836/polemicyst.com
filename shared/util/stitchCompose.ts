@@ -3,7 +3,7 @@
  *
  * Mirrors the iOS in-app renderer in `Features/Stitch/StitchRenderer.swift`
  * but runs the heavy lifting (segmentation + freeze frame extraction + final
- * HEVC encode) in FFmpeg + a Python MediaPipe sidecar so the user's phone
+ * H.264 encode) in FFmpeg + a Python MediaPipe sidecar so the user's phone
  * can background the app while the export completes.
  *
  * Two styles are supported:
@@ -13,8 +13,29 @@
  *   - `freeform`: concatenate the manifest's clips in array order (optionally
  *     each segmented) with text overlays burned in per clip's duration.
  *
- * The filter-graph builder is split into small pure functions so it can be
- * unit-tested without spawning FFmpeg.
+ * Two-pass architecture
+ * ---------------------
+ * Earlier revisions did everything in one ffmpeg invocation: alphamerge,
+ * scale, overlay, drawtext, concat, and H.264 encode all in one filter
+ * graph. That fused every per-frame op into a single serialized pipeline and
+ * a 94 s video took 1–3+ minutes to render.
+ *
+ * The current shape splits the work in two:
+ *
+ *   Pass 1 (prebake, once per BG-removed clip): take the raw video + mask,
+ *           `alphamerge` them, encode to a **transparent intermediate**
+ *           (QuickTime RLE in a `.mov`). RLE is lossless, supports alpha,
+ *           and encodes very fast. The expensive per-pixel alpha work
+ *           happens here, in isolation, with no downstream encode contention.
+ *
+ *   Pass 2 (composite, one invocation): consume the pre-baked transparent
+ *           `.mov`s (or raw clips when no BG removal) plus the freeze PNG,
+ *           do a simple `overlay` (no alphamerge — alpha is already in the
+ *           input), burn drawtext, concat, encode H.264. The filter graph
+ *           is dramatically simpler.
+ *
+ * The filter-graph builders are still split into small pure functions so they
+ * can be unit-tested without spawning FFmpeg.
  */
 
 import { spawn } from 'child_process';
@@ -55,9 +76,10 @@ export interface StitchComposeResult {
 }
 
 /**
- * Public entry point. Extracts the freeze frame (if needed), builds the
- * filter graph, and invokes ffmpeg. Caller is responsible for cleaning
- * up `outputPath` and any temp inputs.
+ * Public entry point. Extracts the freeze frame (if needed), prebakes
+ * transparent intermediates for any BG-removed clips, then runs the
+ * composite ffmpeg. Caller is responsible for cleaning up `outputPath`
+ * and the original temp inputs.
  */
 export async function renderStitch(opts: StitchComposeOptions): Promise<StitchComposeResult> {
   const { manifest } = opts;
@@ -96,13 +118,45 @@ async function renderFreezeReveal(
   const freezeAtS = Math.max(0, ref.trimEndS - 0.05);
   await extractFrame(opts.refClipLocalPath, freezeAtS, freezePath);
 
+  // 2. Prebake transparent intermediates for any BG-removed clips. This is
+  //    where the expensive `alphamerge` runs — in isolation, encoded fast to
+  //    qtrle .mov so the main composite below sees a simple alpha input.
+  const prebakedFiles: string[] = [];
+  let refCompositeInput = opts.refClipLocalPath;
+  let creatorCompositeInput = opts.creatorClipLocalPath;
+
   try {
+    if (ref.removeBackground && opts.refMaskLocalPath) {
+      const out = path.join(
+        os.tmpdir(),
+        `stitch-prebaked-${ref.trackId}-${Date.now()}-${randomUUID().slice(0, 8)}.mov`
+      );
+      await runPrebake({
+        clipPath: opts.refClipLocalPath,
+        maskPath: opts.refMaskLocalPath,
+        outputPath: out,
+      });
+      prebakedFiles.push(out);
+      refCompositeInput = out;
+    }
+    if (creator.removeBackground && opts.creatorMaskLocalPath) {
+      const out = path.join(
+        os.tmpdir(),
+        `stitch-prebaked-${creator.trackId}-${Date.now()}-${randomUUID().slice(0, 8)}.mov`
+      );
+      await runPrebake({
+        clipPath: opts.creatorClipLocalPath,
+        maskPath: opts.creatorMaskLocalPath,
+        outputPath: out,
+      });
+      prebakedFiles.push(out);
+      creatorCompositeInput = out;
+    }
+
     const inputs = buildFreezeRevealInputs({
-      refPath: opts.refClipLocalPath,
-      creatorPath: opts.creatorClipLocalPath,
+      refPath: refCompositeInput,
+      creatorPath: creatorCompositeInput,
       freezePath,
-      refMaskPath: ref.removeBackground ? opts.refMaskLocalPath : undefined,
-      creatorMaskPath: creator.removeBackground ? opts.creatorMaskLocalPath : undefined,
       creatorDurationS: creatorDur,
     });
 
@@ -113,8 +167,8 @@ async function renderFreezeReveal(
       refTrimEndS: ref.trimEndS,
       creatorTrimStartS: creator.trimStartS,
       creatorTrimEndS: creator.trimEndS,
-      refRemoveBg: ref.removeBackground,
-      creatorRemoveBg: creator.removeBackground,
+      refHasAlpha: ref.removeBackground && !!opts.refMaskLocalPath,
+      creatorHasAlpha: creator.removeBackground && !!opts.creatorMaskLocalPath,
       inputs,
     });
 
@@ -143,10 +197,77 @@ async function renderFreezeReveal(
     try {
       fs.unlinkSync(freezePath);
     } catch {}
+    for (const p of prebakedFiles) {
+      try {
+        fs.unlinkSync(p);
+      } catch {}
+    }
   }
 }
 
-// ----- freezeReveal filter graph builders (pure, testable) -----
+// ============================================================================
+// Pass 1: prebake — alphamerge a clip with its mask → transparent qtrle .mov
+// ============================================================================
+
+export interface PrebakeArgs {
+  clipPath: string;
+  maskPath: string;
+  outputPath: string;
+}
+
+/**
+ * Pure: build the filter_complex string for the prebake pass. The mask is
+ * assumed to be a grayscale video (the MediaPipe sidecar's output); we coerce
+ * it to `gray` for safety, then `alphamerge` into the clip stream. Output
+ * label is `[v]`.
+ */
+export function buildPrebakeFilter(): string {
+  return [
+    `[0:v]setsar=1[clipv]`,
+    `[1:v]format=gray,setsar=1[maskv]`,
+    `[clipv][maskv]alphamerge[v]`,
+  ].join(';');
+}
+
+/**
+ * Pure: build the full ffmpeg argv for a prebake pass. Encodes video with
+ * `qtrle` (QuickTime RLE) into a `.mov` container — lossless, supports
+ * alpha, and encodes ~10× faster than VP9/yuva420p alternatives in our
+ * worker environment.
+ *
+ * Audio is stream-copied from the source clip (`-map 0:a? -c:a copy`) so
+ * the composite pass can address audio via the same input slot the
+ * prebaked .mov occupies. The `?` makes the audio map optional — clips
+ * without an audio track (rare but possible) still produce a valid .mov.
+ */
+export function buildPrebakeArgv(args: PrebakeArgs): string[] {
+  return [
+    '-i',
+    args.clipPath,
+    '-i',
+    args.maskPath,
+    '-filter_complex',
+    buildPrebakeFilter(),
+    '-map',
+    '[v]',
+    '-map',
+    '0:a?',
+    '-c:v',
+    'qtrle',
+    '-c:a',
+    'copy',
+    '-y',
+    args.outputPath,
+  ];
+}
+
+async function runPrebake(args: PrebakeArgs): Promise<void> {
+  await spawnFfmpegPromise(buildPrebakeArgv(args));
+}
+
+// ============================================================================
+// Pass 2: freezeReveal filter graph builders (pure, testable)
+// ============================================================================
 
 export interface FreezeRevealInputs {
   /** Ordered list of `-i <path>` arguments. Indices below refer to the position here. */
@@ -155,16 +276,14 @@ export interface FreezeRevealInputs {
   refIdx: number;
   creatorIdx: number;
   freezeIdx: number;
-  refMaskIdx?: number;
-  creatorMaskIdx?: number;
 }
 
 export function buildFreezeRevealInputs(args: {
+  /** Either the raw reference clip or the prebaked transparent .mov. */
   refPath: string;
+  /** Either the raw creator clip or the prebaked transparent .mov. */
   creatorPath: string;
   freezePath: string;
-  refMaskPath?: string;
-  creatorMaskPath?: string;
   creatorDurationS: number;
 }): FreezeRevealInputs {
   const argv: string[] = [];
@@ -186,16 +305,7 @@ export function buildFreezeRevealInputs(args: {
     args.freezePath
   );
 
-  let refMaskIdx: number | undefined;
-  let creatorMaskIdx: number | undefined;
-  if (args.refMaskPath) {
-    refMaskIdx = push('-i', args.refMaskPath);
-  }
-  if (args.creatorMaskPath) {
-    creatorMaskIdx = push('-i', args.creatorMaskPath);
-  }
-
-  return { argv, refIdx, creatorIdx, freezeIdx, refMaskIdx, creatorMaskIdx };
+  return { argv, refIdx, creatorIdx, freezeIdx };
 }
 
 export interface FreezeRevealVideoFilterArgs {
@@ -205,22 +315,23 @@ export interface FreezeRevealVideoFilterArgs {
   refTrimEndS: number;
   creatorTrimStartS: number;
   creatorTrimEndS: number;
-  refRemoveBg: boolean;
-  creatorRemoveBg: boolean;
+  /** True when the ref input is a prebaked transparent .mov (already alpha). */
+  refHasAlpha: boolean;
+  /** True when the creator input is a prebaked transparent .mov (already alpha). */
+  creatorHasAlpha: boolean;
   inputs: FreezeRevealInputs;
 }
 
 /**
  * Builds the video portion of `-filter_complex`. Output label is `[vout]`.
  *
- * Structure:
- *   [refIdx:v] trim -> scale -> (alphamerge w/ ref mask if bg removed) -> [refv]
+ * Structure (no more alphamerge in this pass — alpha already baked in):
+ *   [refIdx:v]  trim -> scale -> (composite over black if has alpha) -> [refv]
  *   [freezeIdx:v] scale -> [freeze]
- *   [creatorIdx:v] trim -> scale -> (alphamerge w/ creator mask if bg removed)
- *                       -> scale to cutout size -> [crv]
- *   [freeze][crv] overlay at cutout position -> [revealSeg]
+ *   [creatorIdx:v] trim -> scale to cutout size -> [crv]
+ *   [freeze][crv] overlay at cutout position -> [revealRaw]
  *   [refv] drawtext (clip-0 overlays)
- *   [revealSeg] drawtext (clip-1 overlays)
+ *   [revealRaw] drawtext (clip-1 overlays)
  *   [refDrawn][revealDrawn] concat=v=1:a=0 -> [vout]
  */
 export function buildFreezeRevealVideoFilter(args: FreezeRevealVideoFilterArgs): string {
@@ -235,15 +346,11 @@ export function buildFreezeRevealVideoFilter(args: FreezeRevealVideoFilterArgs):
       `setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
       `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[refbase]`
   );
-  if (args.refRemoveBg && inputs.refMaskIdx !== undefined) {
-    parts.push(
-      `[${inputs.refMaskIdx}:v]trim=start=${args.refTrimStartS.toFixed(3)}:end=${args.refTrimEndS.toFixed(3)},` +
-        `setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
-        `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,format=gray,setsar=1[refmask]`
-    );
-    parts.push(`[refbase][refmask]alphamerge[refRGBA]`);
+  if (args.refHasAlpha) {
+    // Pre-baked input already has alpha. Composite over a solid black canvas
+    // so the final concat sees an opaque yuv420p stream.
     parts.push(`color=c=black:s=${W}x${H}[refbg]`);
-    parts.push(`[refbg][refRGBA]overlay=shortest=1:format=auto[refv]`);
+    parts.push(`[refbg][refbase]overlay=shortest=1:format=auto[refv]`);
   } else {
     parts.push(`[refbase]null[refv]`);
   }
@@ -263,18 +370,19 @@ export function buildFreezeRevealVideoFilter(args: FreezeRevealVideoFilterArgs):
   const cutoutPosY = manifest.cutout?.position.y ?? 0.5;
   const cutoutH = Math.round(H * cutoutScale);
   // Scale creator so its long edge matches cutoutH while preserving aspect.
-  parts.push(
-    `[${inputs.creatorIdx}:v]trim=start=${args.creatorTrimStartS.toFixed(3)}:end=${args.creatorTrimEndS.toFixed(3)},` +
-      `setpts=PTS-STARTPTS,scale=-2:${cutoutH},setsar=1[crraw]`
-  );
-  if (args.creatorRemoveBg && inputs.creatorMaskIdx !== undefined) {
+  // When the creator already has alpha (prebaked), pass it through unchanged.
+  // When it doesn't, coerce to yuva420p so the `overlay` below has a valid
+  // alpha channel even though there's nothing to make transparent.
+  if (args.creatorHasAlpha) {
     parts.push(
-      `[${inputs.creatorMaskIdx}:v]trim=start=${args.creatorTrimStartS.toFixed(3)}:end=${args.creatorTrimEndS.toFixed(3)},` +
-        `setpts=PTS-STARTPTS,scale=-2:${cutoutH},format=gray,setsar=1[crmask]`
+      `[${inputs.creatorIdx}:v]trim=start=${args.creatorTrimStartS.toFixed(3)}:end=${args.creatorTrimEndS.toFixed(3)},` +
+        `setpts=PTS-STARTPTS,scale=-2:${cutoutH},setsar=1[crv]`
     );
-    parts.push(`[crraw][crmask]alphamerge[crv]`);
   } else {
-    parts.push(`[crraw]format=yuva420p[crv]`);
+    parts.push(
+      `[${inputs.creatorIdx}:v]trim=start=${args.creatorTrimStartS.toFixed(3)}:end=${args.creatorTrimEndS.toFixed(3)},` +
+        `setpts=PTS-STARTPTS,scale=-2:${cutoutH},setsar=1,format=yuva420p[crv]`
+    );
   }
 
   // --- Overlay creator over freeze ---
@@ -324,6 +432,11 @@ export interface FreezeRevealAudioFilterArgs {
  * Audio: trim each clip to its slot, then concat. Mirrors the video timeline so
  * the final mp4 has uninterrupted audio across the freeze cut.
  * Output label is `[aout]`.
+ *
+ * Audio is pulled from inputs `refIdx` (0) and `creatorIdx` (1). When those
+ * inputs are prebaked .mov intermediates, the prebake pass stream-copies the
+ * source clip's audio into the .mov (see `buildPrebakeArgv`), so the audio
+ * is still addressable at the same input slot.
  */
 export function buildFreezeRevealAudioFilter(args: FreezeRevealAudioFilterArgs): string {
   const parts: string[] = [];
@@ -388,8 +501,6 @@ async function renderFreeform(
       `asetpts=PTS-STARTPTS[aout]`;
 
     const filterParts: string[] = [videoBase, ...drawFilters, audio];
-    // Rename the final label to [vout] for consistency.
-    filterParts[filterParts.length - 2 + (drawFilters.length === 0 ? 1 : 0)];
     const finalVideoLabel = label;
     const filterComplex = filterParts.join(';') + `;[${finalVideoLabel}]null[vout]`;
 
@@ -537,13 +648,13 @@ async function runFFmpeg(args: RunFFmpegArgs): Promise<void> {
     '-t',
     args.durationS.toFixed(3),
     '-c:v',
-    'libx265',
+    'libx264',
     '-preset',
-    'medium',
+    'veryfast',
     '-crf',
     '23',
-    '-tag:v',
-    'hvc1',
+    '-pix_fmt',
+    'yuv420p',
     '-c:a',
     'aac',
     '-b:a',
@@ -603,10 +714,20 @@ async function extractFrame(videoPath: string, atS: number, outPath: string): Pr
 /**
  * Reconstructs the FFmpeg argv for a manifest WITHOUT actually invoking ffmpeg.
  * Used by tests to snapshot the command. Pure: no spawn, no fs.
+ *
+ * With the two-pass refactor, this can produce EITHER:
+ *   - `mode: 'composite'` (default): the Pass 2 argv, assuming any BG-removed
+ *     clips have already been prebaked. The `refClipLocalPath` /
+ *     `creatorClipLocalPath` are taken as-is; in production these point at
+ *     the prebaked `.mov` when `removeBackground` is true.
+ *   - `mode: 'prebake'`: the Pass 1 argv for ONE clip's prebake. Caller picks
+ *     which clip with `prebakeFor: 'ref' | 'creator'`. Returns the argv for
+ *     that single ffmpeg invocation.
  */
 export function debugBuildFfmpegArgv(
   opts: StitchComposeOptions,
-  freezePath = '/tmp/freeze.png'
+  freezePath = '/tmp/freeze.png',
+  mode: { kind: 'composite' } | { kind: 'prebake'; clip: 'ref' | 'creator' } = { kind: 'composite' }
 ): { argv: string[]; videoFilter: string; audioFilter: string; totalDurationS: number } {
   const canvas = layoutCanvasSize(opts.outputLayout);
   if (opts.manifest.style !== 'freezeReveal') {
@@ -617,12 +738,29 @@ export function debugBuildFfmpegArgv(
   const refDur = Math.max(0.05, ref.trimEndS - ref.trimStartS);
   const creatorDur = Math.max(0.05, creator.trimEndS - creator.trimStartS);
 
+  if (mode.kind === 'prebake') {
+    const clipPath = mode.clip === 'ref' ? opts.refClipLocalPath : opts.creatorClipLocalPath;
+    const maskPath = mode.clip === 'ref' ? opts.refMaskLocalPath : opts.creatorMaskLocalPath;
+    if (!maskPath) {
+      throw new Error(`debugBuildFfmpegArgv prebake mode requires a mask for ${mode.clip}`);
+    }
+    const outputPath = `/tmp/prebaked-${mode.clip}.mov`;
+    const argv = buildPrebakeArgv({ clipPath, maskPath, outputPath });
+    return {
+      argv,
+      videoFilter: buildPrebakeFilter(),
+      audioFilter: '',
+      totalDurationS: mode.clip === 'ref' ? refDur : creatorDur,
+    };
+  }
+
+  // Composite (default): assume any BG-removed clips have been prebaked and
+  // the caller's `refClipLocalPath` / `creatorClipLocalPath` now point at the
+  // prebaked .mov. The composite filter doesn't need the mask inputs.
   const inputs = buildFreezeRevealInputs({
     refPath: opts.refClipLocalPath,
     creatorPath: opts.creatorClipLocalPath,
     freezePath,
-    refMaskPath: ref.removeBackground ? opts.refMaskLocalPath : undefined,
-    creatorMaskPath: creator.removeBackground ? opts.creatorMaskLocalPath : undefined,
     creatorDurationS: creatorDur,
   });
 
@@ -633,8 +771,8 @@ export function debugBuildFfmpegArgv(
     refTrimEndS: ref.trimEndS,
     creatorTrimStartS: creator.trimStartS,
     creatorTrimEndS: creator.trimEndS,
-    refRemoveBg: ref.removeBackground,
-    creatorRemoveBg: creator.removeBackground,
+    refHasAlpha: ref.removeBackground && !!opts.refMaskLocalPath,
+    creatorHasAlpha: creator.removeBackground && !!opts.creatorMaskLocalPath,
     inputs,
   });
 
@@ -661,13 +799,13 @@ export function debugBuildFfmpegArgv(
     '-t',
     totalDurationS.toFixed(3),
     '-c:v',
-    'libx265',
+    'libx264',
     '-preset',
-    'medium',
+    'veryfast',
     '-crf',
     '23',
-    '-tag:v',
-    'hvc1',
+    '-pix_fmt',
+    'yuv420p',
     '-c:a',
     'aac',
     '-b:a',

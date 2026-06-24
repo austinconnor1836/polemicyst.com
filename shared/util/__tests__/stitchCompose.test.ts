@@ -4,6 +4,8 @@ import {
   buildFreezeRevealAudioFilter,
   buildFreezeRevealInputs,
   buildFreezeRevealVideoFilter,
+  buildPrebakeArgv,
+  buildPrebakeFilter,
   debugBuildFfmpegArgv,
   escapeDrawtext,
   ffColor,
@@ -177,48 +179,99 @@ describe('buildDrawtextArgs', () => {
 });
 
 describe('buildFreezeRevealInputs', () => {
-  it('indexes ref, creator, freeze, then masks in order', () => {
+  it('indexes ref, creator, freeze with no mask inputs (composite pass only)', () => {
     const inputs = buildFreezeRevealInputs({
       refPath: '/r.mp4',
       creatorPath: '/c.mp4',
       freezePath: '/f.png',
-      refMaskPath: '/rm.mp4',
-      creatorMaskPath: '/cm.mp4',
       creatorDurationS: 3.5,
     });
     expect(inputs.refIdx).toBe(0);
     expect(inputs.creatorIdx).toBe(1);
     expect(inputs.freezeIdx).toBe(2);
-    expect(inputs.refMaskIdx).toBe(3);
-    expect(inputs.creatorMaskIdx).toBe(4);
+    // No mask indices exist on the composite pass — Pass 1 already consumed them.
     // freezeIdx is a -loop image with explicit -t duration.
     expect(inputs.argv).toContain('-loop');
     expect(inputs.argv).toContain('3.500');
+    expect(inputs.argv.filter((a) => a === '-i').length).toBe(3);
   });
 
-  it('omits mask inputs when paths are absent', () => {
+  it('takes prebaked paths transparently — same shape regardless of source', () => {
+    // When BG removal was active, refPath / creatorPath point at the .mov
+    // prebaked by Pass 1. The builder treats them identically.
     const inputs = buildFreezeRevealInputs({
-      refPath: '/r.mp4',
-      creatorPath: '/c.mp4',
+      refPath: '/tmp/prebaked-ref.mov',
+      creatorPath: '/tmp/prebaked-creator.mov',
       freezePath: '/f.png',
       creatorDurationS: 1,
     });
-    expect(inputs.refMaskIdx).toBeUndefined();
-    expect(inputs.creatorMaskIdx).toBeUndefined();
-    // 3 inputs × 2 args each + 2 -loop/-t pairs = 6 + 2 = 8
+    expect(inputs.argv).toContain('/tmp/prebaked-ref.mov');
+    expect(inputs.argv).toContain('/tmp/prebaked-creator.mov');
     expect(inputs.argv.filter((a) => a === '-i').length).toBe(3);
+  });
+});
+
+describe('buildPrebakeFilter', () => {
+  it('alphamerges clip + mask into [v]', () => {
+    const f = buildPrebakeFilter();
+    expect(f).toContain('[0:v]');
+    expect(f).toContain('[1:v]');
+    expect(f).toContain('format=gray');
+    expect(f).toContain('alphamerge');
+    expect(f).toMatch(/alphamerge\[v\]$/);
+  });
+});
+
+describe('buildPrebakeArgv', () => {
+  it('produces a two-input argv encoded with qtrle into a .mov', () => {
+    const argv = buildPrebakeArgv({
+      clipPath: '/tmp/creator.mp4',
+      maskPath: '/tmp/creator-mask.mp4',
+      outputPath: '/tmp/prebaked-creator.mov',
+    });
+    // Two -i inputs (clip, mask).
+    expect(argv.filter((a) => a === '-i').length).toBe(2);
+    expect(argv).toContain('/tmp/creator.mp4');
+    expect(argv).toContain('/tmp/creator-mask.mp4');
+    // qtrle codec — chosen for fast lossless alpha encoding in .mov.
+    expect(argv).toContain('qtrle');
+    expect(argv).toContain('/tmp/prebaked-creator.mov');
+    // Filter complex contains alphamerge and maps [v].
+    const fcIdx = argv.indexOf('-filter_complex');
+    expect(fcIdx).toBeGreaterThanOrEqual(0);
+    expect(argv[fcIdx + 1]).toContain('alphamerge');
+    expect(argv).toContain('[v]');
+  });
+
+  it('stream-copies source audio so the composite pass can still address it', () => {
+    const argv = buildPrebakeArgv({
+      clipPath: '/tmp/creator.mp4',
+      maskPath: '/tmp/creator-mask.mp4',
+      outputPath: '/tmp/prebaked-creator.mov',
+    });
+    // -map 0:a? (optional — clip may not have audio) and -c:a copy.
+    expect(argv).toContain('0:a?');
+    expect(argv).toContain('copy');
+  });
+
+  it('always overwrites the output (-y)', () => {
+    const argv = buildPrebakeArgv({
+      clipPath: '/a.mp4',
+      maskPath: '/b.mp4',
+      outputPath: '/o.mov',
+    });
+    expect(argv).toContain('-y');
   });
 });
 
 describe('buildFreezeRevealVideoFilter', () => {
   const canvas = layoutCanvasSize('mobile');
 
-  it('uses alphamerge when creatorRemoveBg is true', () => {
+  it('does NOT alphamerge in the composite pass (alpha is pre-baked)', () => {
     const inputs = buildFreezeRevealInputs({
-      refPath: '/r.mp4',
-      creatorPath: '/c.mp4',
+      refPath: '/tmp/prebaked-creator.mov',
+      creatorPath: '/tmp/prebaked-creator.mov',
       freezePath: '/f.png',
-      creatorMaskPath: '/cm.mp4',
       creatorDurationS: 3.5,
     });
     const f = buildFreezeRevealVideoFilter({
@@ -228,15 +281,16 @@ describe('buildFreezeRevealVideoFilter', () => {
       refTrimEndS: baseManifest.clips[0].trimEndS,
       creatorTrimStartS: baseManifest.clips[1].trimStartS,
       creatorTrimEndS: baseManifest.clips[1].trimEndS,
-      refRemoveBg: false,
-      creatorRemoveBg: true,
+      refHasAlpha: false,
+      creatorHasAlpha: true,
       inputs,
     });
-    expect(f).toContain('alphamerge');
+    expect(f).not.toContain('alphamerge');
+    // The cutout overlay positioning is still wired correctly.
     expect(f).toContain('overlay=x=(720*0.5-overlay_w/2)');
   });
 
-  it('skips alphamerge when removeBackground is false on both', () => {
+  it('skips the over-black composite step when neither clip has alpha', () => {
     const inputs = buildFreezeRevealInputs({
       refPath: '/r.mp4',
       creatorPath: '/c.mp4',
@@ -257,16 +311,18 @@ describe('buildFreezeRevealVideoFilter', () => {
       refTrimEndS: 5,
       creatorTrimStartS: 0,
       creatorTrimEndS: 3.5,
-      refRemoveBg: false,
-      creatorRemoveBg: false,
+      refHasAlpha: false,
+      creatorHasAlpha: false,
       inputs,
     });
     expect(f).not.toContain('alphamerge');
+    // No color=c=black step needed when alpha isn't in play.
+    expect(f).not.toContain('color=c=black');
   });
 
-  it('concats the reference and reveal segments', () => {
+  it('flattens a transparent ref over solid black when refHasAlpha is true', () => {
     const inputs = buildFreezeRevealInputs({
-      refPath: '/r.mp4',
+      refPath: '/tmp/prebaked-ref.mov',
       creatorPath: '/c.mp4',
       freezePath: '/f.png',
       creatorDurationS: 3.5,
@@ -278,8 +334,31 @@ describe('buildFreezeRevealVideoFilter', () => {
       refTrimEndS: 5,
       creatorTrimStartS: 0,
       creatorTrimEndS: 3.5,
-      refRemoveBg: false,
-      creatorRemoveBg: true,
+      refHasAlpha: true,
+      creatorHasAlpha: false,
+      inputs,
+    });
+    // A solid-black background is generated and the transparent ref is overlaid on it.
+    expect(f).toContain('color=c=black');
+    expect(f).toMatch(/\[refbg\]\[refbase\]overlay/);
+  });
+
+  it('concats the reference and reveal segments', () => {
+    const inputs = buildFreezeRevealInputs({
+      refPath: '/r.mp4',
+      creatorPath: '/tmp/prebaked-creator.mov',
+      freezePath: '/f.png',
+      creatorDurationS: 3.5,
+    });
+    const f = buildFreezeRevealVideoFilter({
+      manifest: baseManifest,
+      canvas,
+      refTrimStartS: 1,
+      refTrimEndS: 5,
+      creatorTrimStartS: 0,
+      creatorTrimEndS: 3.5,
+      refHasAlpha: false,
+      creatorHasAlpha: true,
       inputs,
     });
     expect(f).toMatch(/concat=n=2:v=1:a=0\[vout\]/);
@@ -299,8 +378,8 @@ describe('buildFreezeRevealVideoFilter', () => {
       refTrimEndS: 5,
       creatorTrimStartS: 0,
       creatorTrimEndS: 3.5,
-      refRemoveBg: false,
-      creatorRemoveBg: false,
+      refHasAlpha: false,
+      creatorHasAlpha: false,
       inputs,
     });
     expect(f).toContain("text='Hook line'");
@@ -332,7 +411,36 @@ describe('buildFreezeRevealAudioFilter', () => {
 });
 
 describe('debugBuildFfmpegArgv (snapshot)', () => {
-  it('produces a stable argv shape for a known manifest', () => {
+  it('produces a stable composite argv (default mode) for a known manifest', () => {
+    const out = debugBuildFfmpegArgv(
+      {
+        manifest: baseManifest,
+        refClipLocalPath: '/tmp/ref.mp4',
+        // In production this would be the prebaked .mov; for the snapshot we
+        // just confirm the argv shape, not the path semantics.
+        creatorClipLocalPath: '/tmp/creator.mp4',
+        creatorMaskLocalPath: '/tmp/creator-mask.mp4',
+        outputLayout: 'mobile',
+        outputPath: '/tmp/out.mp4',
+      },
+      '/tmp/freeze.png'
+    );
+    expect(out.totalDurationS).toBeCloseTo(7.5, 3);
+    // Encoder flags must include H.264 + faststart. Switched off libx265 because
+    // CPU-only HEVC encoding inside the Docker worker is ~20× too slow for a 90s
+    // portrait render; libx264 veryfast is still visually solid at crf 23.
+    expect(out.argv).toContain('libx264');
+    expect(out.argv).toContain('+faststart');
+    expect(out.argv).toContain('[vout]');
+    expect(out.argv).toContain('[aout]');
+    // Filter graph must end with a concat into [vout] and an [aout] tail.
+    expect(out.videoFilter).toMatch(/\[vout\]$/);
+    expect(out.audioFilter).toMatch(/\[aout\]$/);
+    // Composite pass no longer alphamerges — that's Pass 1's job.
+    expect(out.videoFilter).not.toContain('alphamerge');
+  });
+
+  it('produces a prebake argv when mode is prebake', () => {
     const out = debugBuildFfmpegArgv(
       {
         manifest: baseManifest,
@@ -342,16 +450,30 @@ describe('debugBuildFfmpegArgv (snapshot)', () => {
         outputLayout: 'mobile',
         outputPath: '/tmp/out.mp4',
       },
-      '/tmp/freeze.png'
+      '/tmp/freeze.png',
+      { kind: 'prebake', clip: 'creator' }
     );
-    expect(out.totalDurationS).toBeCloseTo(7.5, 3);
-    // Encoder flags must include HEVC + faststart per spec.
-    expect(out.argv).toContain('libx265');
-    expect(out.argv).toContain('+faststart');
-    expect(out.argv).toContain('[vout]');
-    expect(out.argv).toContain('[aout]');
-    // Filter graph must end with a concat into [vout] and an [aout] tail.
-    expect(out.videoFilter).toMatch(/\[vout\]$/);
-    expect(out.audioFilter).toMatch(/\[aout\]$/);
+    expect(out.argv).toContain('qtrle');
+    expect(out.argv).toContain('/tmp/creator.mp4');
+    expect(out.argv).toContain('/tmp/creator-mask.mp4');
+    expect(out.videoFilter).toContain('alphamerge');
+    expect(out.audioFilter).toBe('');
+  });
+
+  it('throws when prebake mode is requested for a clip without a mask', () => {
+    expect(() =>
+      debugBuildFfmpegArgv(
+        {
+          manifest: baseManifest,
+          refClipLocalPath: '/tmp/ref.mp4',
+          creatorClipLocalPath: '/tmp/creator.mp4',
+          // no refMaskLocalPath → ref prebake is invalid
+          outputLayout: 'mobile',
+          outputPath: '/tmp/out.mp4',
+        },
+        '/tmp/freeze.png',
+        { kind: 'prebake', clip: 'ref' }
+      )
+    ).toThrow(/mask/);
   });
 });
