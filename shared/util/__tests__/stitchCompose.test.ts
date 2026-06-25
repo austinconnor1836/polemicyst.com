@@ -220,10 +220,34 @@ describe('buildPrebakeFilter', () => {
     expect(f).toContain('alphamerge');
     expect(f).toMatch(/alphamerge\[v\]$/);
   });
+
+  it('pins both streams to CFR 30 fps with a reset PTS BEFORE alphamerge', () => {
+    const f = buildPrebakeFilter();
+    // Each stream is forced through `fps=30,setpts=PTS-STARTPTS` so the
+    // prores intermediate doesn't carry VFR timestamps into Pass 2.
+    // Without this the downstream concat duplicated millions of frames.
+    expect(f).toMatch(/\[0:v\]fps=30,setpts=PTS-STARTPTS/);
+    expect(f).toMatch(/\[1:v\]fps=30,setpts=PTS-STARTPTS/);
+  });
+
+  it('downscales the long edge to maxEdge when supplied', () => {
+    // The 1280-edge clamp keeps iPhone 4K source from producing a multi-GB
+    // ProRes intermediate that exceeds the worker container's memory budget.
+    const f = buildPrebakeFilter(1280);
+    expect(f).toContain('scale=');
+    expect(f).toContain('1280');
+    // Aspect is preserved (the -2 maps the other edge to an even number).
+    expect(f).toContain('-2');
+  });
+
+  it('skips the scale step when no maxEdge is supplied', () => {
+    const f = buildPrebakeFilter();
+    expect(f).not.toContain('scale=');
+  });
 });
 
 describe('buildPrebakeArgv', () => {
-  it('produces a two-input argv encoded with qtrle into a .mov', () => {
+  it('produces a two-input argv encoded with prores_ks (4444) into a .mov', () => {
     const argv = buildPrebakeArgv({
       clipPath: '/tmp/creator.mp4',
       maskPath: '/tmp/creator-mask.mp4',
@@ -233,8 +257,11 @@ describe('buildPrebakeArgv', () => {
     expect(argv.filter((a) => a === '-i').length).toBe(2);
     expect(argv).toContain('/tmp/creator.mp4');
     expect(argv).toContain('/tmp/creator-mask.mp4');
-    // qtrle codec — chosen for fast lossless alpha encoding in .mov.
-    expect(argv).toContain('qtrle');
+    // ProRes 4444 — visually lossless with alpha, dramatically smaller than
+    // qtrle (which was effectively uncompressed BGRA and OOM'd the worker
+    // on long clips).
+    expect(argv).toContain('prores_ks');
+    expect(argv).toContain('yuva444p10le');
     expect(argv).toContain('/tmp/prebaked-creator.mov');
     // Filter complex contains alphamerge and maps [v].
     const fcIdx = argv.indexOf('-filter_complex');
@@ -453,7 +480,7 @@ describe('debugBuildFfmpegArgv (snapshot)', () => {
       '/tmp/freeze.png',
       { kind: 'prebake', clip: 'creator' }
     );
-    expect(out.argv).toContain('qtrle');
+    expect(out.argv).toContain('prores_ks');
     expect(out.argv).toContain('/tmp/creator.mp4');
     expect(out.argv).toContain('/tmp/creator-mask.mp4');
     expect(out.videoFilter).toContain('alphamerge');

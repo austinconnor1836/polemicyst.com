@@ -125,6 +125,11 @@ async function renderFreezeReveal(
   let refCompositeInput = opts.refClipLocalPath;
   let creatorCompositeInput = opts.creatorClipLocalPath;
 
+  // Clamp prebake output to the canvas long edge so iPhone 4K source doesn't
+  // blow up the intermediate file (and the worker container's memory) with
+  // pixels we'd just throw away at composite time.
+  const prebakeMaxEdge = Math.max(canvas.width, canvas.height);
+
   try {
     if (ref.removeBackground && opts.refMaskLocalPath) {
       const out = path.join(
@@ -135,6 +140,7 @@ async function renderFreezeReveal(
         clipPath: opts.refClipLocalPath,
         maskPath: opts.refMaskLocalPath,
         outputPath: out,
+        maxEdge: prebakeMaxEdge,
       });
       prebakedFiles.push(out);
       refCompositeInput = out;
@@ -148,6 +154,7 @@ async function renderFreezeReveal(
         clipPath: opts.creatorClipLocalPath,
         maskPath: opts.creatorMaskLocalPath,
         outputPath: out,
+        maxEdge: prebakeMaxEdge,
       });
       prebakedFiles.push(out);
       creatorCompositeInput = out;
@@ -213,6 +220,15 @@ export interface PrebakeArgs {
   clipPath: string;
   maskPath: string;
   outputPath: string;
+  /**
+   * Optional max-edge clamp. When set, both streams are scaled so the LONG
+   * edge ≤ this many pixels (preserving aspect, even dims). For our 720×1280
+   * mobile canvas, capping at 1280 means the prebake intermediate never holds
+   * more pixels than the final composite needs — typically a 4-8× size drop
+   * on iPhone 4K source, which is what was blowing past the worker's memory
+   * budget. If undefined, no scaling is applied (raw resolution).
+   */
+  maxEdge?: number;
 }
 
 /**
@@ -220,20 +236,45 @@ export interface PrebakeArgs {
  * assumed to be a grayscale video (the MediaPipe sidecar's output); we coerce
  * it to `gray` for safety, then `alphamerge` into the clip stream. Output
  * label is `[v]`.
+ *
+ * Both streams are pinned to a constant 30 fps with a unified timebase via
+ * `fps=30,setpts=PTS-STARTPTS` BEFORE alphamerge. iPhone capture is
+ * variable-frame-rate; if we let VFR timestamps propagate into the qtrle .mov
+ * Pass 1 produces, Pass 2's downstream `concat` + libx264 encode reacts to the
+ * timestamp mismatch by duplicating frames into oblivion (we observed
+ * `dup=33,579,077` for a 33-second output, which OOM-killed ffmpeg). Pinning
+ * here keeps the intermediate strictly CFR so Pass 2 doesn't have to fix it.
+ *
+ * When `maxEdge` is provided we ALSO down-scale the clip + mask so their long
+ * edge ≤ maxEdge. iPhone 4K source through ProRes 4444 generates ~250 Mbps
+ * intermediates which OOM-killed the worker even after the fps fix. Scaling
+ * to the eventual canvas size before encode keeps the intermediate bounded.
  */
-export function buildPrebakeFilter(): string {
+export function buildPrebakeFilter(maxEdge?: number): string {
+  // Long-edge scale that preserves aspect AND keeps both dims even
+  // (yuv420 / yuva420 / yuva444 all need even dims).
+  const scale = maxEdge
+    ? `,scale=w='if(gt(iw,ih),min(iw\\,${maxEdge}),-2)':h='if(gt(iw,ih),-2,min(ih\\,${maxEdge}))'`
+    : '';
   return [
-    `[0:v]setsar=1[clipv]`,
-    `[1:v]format=gray,setsar=1[maskv]`,
+    `[0:v]fps=30,setpts=PTS-STARTPTS${scale},setsar=1[clipv]`,
+    `[1:v]fps=30,setpts=PTS-STARTPTS${scale},format=gray,setsar=1[maskv]`,
     `[clipv][maskv]alphamerge[v]`,
   ].join(';');
 }
 
 /**
  * Pure: build the full ffmpeg argv for a prebake pass. Encodes video with
- * `qtrle` (QuickTime RLE) into a `.mov` container — lossless, supports
- * alpha, and encodes ~10× faster than VP9/yuva420p alternatives in our
- * worker environment.
+ * `prores_ks` profile 4 (ProRes 4444) into a `.mov` container — visually
+ * lossless, supports alpha, and produces dramatically smaller intermediates
+ * than the previous `qtrle` choice.
+ *
+ * Why not qtrle: QuickTime RLE is essentially uncompressed BGRA for the
+ * non-static content we typically prebake. A 94 s portrait clip at 30 fps
+ * becomes ~8 GB on disk and the same in memory as ffmpeg buffers it, which
+ * SIGKILL'd the container during the prebake itself (`exit code null`).
+ * ProRes 4444 still has alpha, is hardware-fast to decode in Pass 2, and
+ * keeps the intermediate under a couple hundred MB.
  *
  * Audio is stream-copied from the source clip (`-map 0:a? -c:a copy`) so
  * the composite pass can address audio via the same input slot the
@@ -247,22 +288,44 @@ export function buildPrebakeArgv(args: PrebakeArgs): string[] {
     '-i',
     args.maskPath,
     '-filter_complex',
-    buildPrebakeFilter(),
+    buildPrebakeFilter(args.maxEdge),
     '-map',
     '[v]',
     '-map',
     '0:a?',
     '-c:v',
-    'qtrle',
+    'prores_ks',
+    // Profile 4 = ProRes 4444 (the alpha-supporting profile).
+    '-profile:v',
+    '4',
+    // Pixel format with alpha. yuva444p10le is the standard ProRes 4444 layout.
+    '-pix_fmt',
+    'yuva444p10le',
+    // Quality scale. Default is ~4 (near-lossless), which produces ~25–30 MB/s
+    // intermediates that exceed the worker's memory budget on long clips. 12
+    // is "proxy / draft" quality — still visually clean for the small fraction
+    // of pixels that survive the segmentation mask, half the file size.
+    '-qscale:v',
+    '12',
     '-c:a',
     'copy',
+    // Pin output to constant 30 fps. The filter chain already calls fps=30,
+    // but ffmpeg still consults the output's vsync policy when stamping the
+    // stream — without `cfr` we can end up with VFR durations baked into the
+    // .mov and the cascade resumes in Pass 2.
+    '-r',
+    '30',
+    '-fps_mode',
+    'cfr',
     '-y',
     args.outputPath,
   ];
 }
 
 async function runPrebake(args: PrebakeArgs): Promise<void> {
-  await spawnFfmpegPromise(buildPrebakeArgv(args));
+  const argv = buildPrebakeArgv(args);
+  console.log(`📼 [stitch-render] ffmpeg argv (prebake): ${argv.join(' ')}`);
+  await spawnFfmpegPromise(argv);
 }
 
 // ============================================================================
@@ -295,10 +358,17 @@ export function buildFreezeRevealInputs(args: {
 
   const refIdx = push('-i', args.refPath);
   const creatorIdx = push('-i', args.creatorPath);
-  // -loop 1 -t <dur> turns a still PNG into a video stream of the right duration.
+  // -loop 1 -framerate 30 -t <dur> turns a still PNG into a CFR 30 fps video
+  // stream of the right duration. **The `-framerate 30` matters**: without it
+  // ffmpeg defaults the looped image to 25 fps, which mismatches the 30 fps
+  // creator stream concat'd against it and causes massive frame duplication
+  // when the encoder tries to align timestamps (we saw `dup=33,579,077` →
+  // OOM). Must come BEFORE `-i` so it applies to that input demuxer.
   const freezeIdx = push(
     '-loop',
     '1',
+    '-framerate',
+    '30',
     '-t',
     args.creatorDurationS.toFixed(3),
     '-i',
@@ -340,24 +410,32 @@ export function buildFreezeRevealVideoFilter(args: FreezeRevealVideoFilterArgs):
   const W = canvas.width;
   const H = canvas.height;
 
+  // CFR pinning is applied to every stream entering the final concat. Without
+  // this, a VFR source (iPhone capture) or the looped PNG freeze input can
+  // hand mismatched timestamps to `concat` and the libx264 encoder reacts by
+  // duplicating frames to fill the gap (we saw `dup=33,579,077` for a ~33s
+  // output → `Cannot allocate memory`). `fps=30,setpts=PTS-STARTPTS`
+  // forces strictly monotonic 30 fps timestamps on a shared timebase.
+  const CFR = `fps=30,setpts=PTS-STARTPTS`;
+
   // --- Reference segment ---
   parts.push(
-    `[${inputs.refIdx}:v]trim=start=${args.refTrimStartS.toFixed(3)}:end=${args.refTrimEndS.toFixed(3)},` +
+    `[${inputs.refIdx}:v]${CFR},trim=start=${args.refTrimStartS.toFixed(3)}:end=${args.refTrimEndS.toFixed(3)},` +
       `setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
       `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[refbase]`
   );
   if (args.refHasAlpha) {
     // Pre-baked input already has alpha. Composite over a solid black canvas
     // so the final concat sees an opaque yuv420p stream.
-    parts.push(`color=c=black:s=${W}x${H}[refbg]`);
-    parts.push(`[refbg][refbase]overlay=shortest=1:format=auto[refv]`);
+    parts.push(`color=c=black:s=${W}x${H}:r=30[refbg]`);
+    parts.push(`[refbg][refbase]overlay=shortest=1:format=auto,fps=30[refv]`);
   } else {
     parts.push(`[refbase]null[refv]`);
   }
 
   // --- Freeze frame (background of reveal segment) ---
   parts.push(
-    `[${inputs.freezeIdx}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
+    `[${inputs.freezeIdx}:v]${CFR},scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
       `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p[freeze]`
   );
 
@@ -375,12 +453,12 @@ export function buildFreezeRevealVideoFilter(args: FreezeRevealVideoFilterArgs):
   // alpha channel even though there's nothing to make transparent.
   if (args.creatorHasAlpha) {
     parts.push(
-      `[${inputs.creatorIdx}:v]trim=start=${args.creatorTrimStartS.toFixed(3)}:end=${args.creatorTrimEndS.toFixed(3)},` +
+      `[${inputs.creatorIdx}:v]${CFR},trim=start=${args.creatorTrimStartS.toFixed(3)}:end=${args.creatorTrimEndS.toFixed(3)},` +
         `setpts=PTS-STARTPTS,scale=-2:${cutoutH},setsar=1[crv]`
     );
   } else {
     parts.push(
-      `[${inputs.creatorIdx}:v]trim=start=${args.creatorTrimStartS.toFixed(3)}:end=${args.creatorTrimEndS.toFixed(3)},` +
+      `[${inputs.creatorIdx}:v]${CFR},trim=start=${args.creatorTrimStartS.toFixed(3)}:end=${args.creatorTrimEndS.toFixed(3)},` +
         `setpts=PTS-STARTPTS,scale=-2:${cutoutH},setsar=1,format=yuva420p[crv]`
     );
   }
@@ -482,8 +560,10 @@ async function renderFreeform(
     const argv: string[] = ['-i', opts.refClipLocalPath];
     const W = canvas.width;
     const H = canvas.height;
+    // Pin to CFR 30 fps before any other filter — see Pass 2 freezeReveal for
+    // the diagnosis of why VFR sources caused frame-dup OOMs.
     const videoBase =
-      `[0:v]trim=start=${ref.trimStartS.toFixed(3)}:end=${ref.trimEndS.toFixed(3)},` +
+      `[0:v]fps=30,setpts=PTS-STARTPTS,trim=start=${ref.trimStartS.toFixed(3)}:end=${ref.trimEndS.toFixed(3)},` +
       `setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
       `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[base0]`;
 
@@ -529,9 +609,11 @@ async function renderFreeform(
   const argv: string[] = ['-i', opts.refClipLocalPath, '-i', opts.creatorClipLocalPath];
   const W = canvas.width;
   const H = canvas.height;
+  // CFR pinning is mandatory before concat — see Pass 2 freezeReveal comment.
+  const CFR = `fps=30,setpts=PTS-STARTPTS`;
   const filterComplex = [
-    `[0:v]trim=start=${ref.trimStartS.toFixed(3)}:end=${ref.trimEndS.toFixed(3)},setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[v0]`,
-    `[1:v]trim=start=${creator.trimStartS.toFixed(3)}:end=${creator.trimEndS.toFixed(3)},setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[v1]`,
+    `[0:v]${CFR},trim=start=${ref.trimStartS.toFixed(3)}:end=${ref.trimEndS.toFixed(3)},setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[v0]`,
+    `[1:v]${CFR},trim=start=${creator.trimStartS.toFixed(3)}:end=${creator.trimEndS.toFixed(3)},setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[v1]`,
     `[0:a]atrim=start=${ref.trimStartS.toFixed(3)}:end=${ref.trimEndS.toFixed(3)},asetpts=PTS-STARTPTS[a0]`,
     `[1:a]atrim=start=${creator.trimStartS.toFixed(3)}:end=${creator.trimEndS.toFixed(3)},asetpts=PTS-STARTPTS[a1]`,
     `[v0][a0][v1][a1]concat=n=2:v=1:a=1[vout][aout]`,
@@ -655,6 +737,14 @@ async function runFFmpeg(args: RunFFmpegArgs): Promise<void> {
     '23',
     '-pix_fmt',
     'yuv420p',
+    // Pin output to constant 30 fps. The filter graph forces 30 fps internally,
+    // but `-r 30 -fps_mode cfr` on the output guarantees the muxer doesn't
+    // synthesize duplicate frames to compensate for any leftover timestamp
+    // jitter. (Pre-fix this was missing and we saw `dup=33,579,077` → OOM.)
+    '-r',
+    '30',
+    '-fps_mode',
+    'cfr',
     '-c:a',
     'aac',
     '-b:a',
@@ -665,6 +755,7 @@ async function runFFmpeg(args: RunFFmpegArgs): Promise<void> {
     args.outputPath,
   ];
 
+  console.log(`📼 [stitch-render] ffmpeg argv: ${argv.join(' ')}`);
   await spawnFfmpegPromise(argv);
 }
 
@@ -680,7 +771,11 @@ function spawnFfmpegPromise(argv: string[]): Promise<void> {
       if (code === 0) {
         resolve();
       } else {
-        reject(new Error(`ffmpeg exited with code ${code}: ${stderr.slice(-2000)}`));
+        // Surface the LAST 8 KB of ffmpeg's stderr. The tail of the verbose
+        // banner can easily exceed 2 KB, hiding the actual error line that
+        // libavfilter prints at the bottom — 8 KB is enough to always include
+        // the diagnostic regardless of build flags.
+        reject(new Error(`ffmpeg exited with code ${code}: ${stderr.slice(-8000)}`));
       }
     });
   });
@@ -806,6 +901,10 @@ export function debugBuildFfmpegArgv(
     '23',
     '-pix_fmt',
     'yuv420p',
+    '-r',
+    '30',
+    '-fps_mode',
+    'cfr',
     '-c:a',
     'aac',
     '-b:a',
