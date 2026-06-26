@@ -1,6 +1,8 @@
 import SwiftUI
 import ClipfireiOS
 import GoogleSignIn
+import FirebaseCore
+import FirebaseCrashlytics
 
 // MARK: - AppDelegate (background upload session handling)
 
@@ -39,6 +41,17 @@ struct ClipfireApp: App {
     private let apiClient: APIClient
 
     init() {
+        // Configure Firebase (Crashlytics) before anything else so early crashes are captured.
+        // GoogleService-Info.plist is intentionally not in the repo (gitignored, secret-bearing).
+        // FirebaseApp.configure() calls fatalError() when the plist is missing/invalid, so we
+        // gate the call on the plist actually being present in the bundle. CI builds (and any
+        // local checkout without the plist) skip Firebase entirely; Crashlytics simply stays
+        // disabled in that case. TestFlight/Release builds always have it via Fastlane match.
+        if FirebaseApp.app() == nil,
+           Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist") != nil {
+            FirebaseApp.configure()
+        }
+
         let storage = TokenStorage()
         let client = APIClient(
             baseURL: AppConfiguration.apiBaseURL,

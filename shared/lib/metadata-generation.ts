@@ -4,15 +4,15 @@ export interface MetadataResult {
 }
 
 export async function generateMetadataWithOllama(transcript: string): Promise<MetadataResult> {
-  // Use OLLAMA_BASE_URL from env, or default depending on environment
-  // In Docker: http://ollama:11434
-  // Local host: http://localhost:11434
-  // We'll let the caller/env decide, or default to localhost if unset,
-  // but if running in docker without env, we might want 'http://ollama:11434'.
-  // Shared code shouldn't hardcode 'ollama' hostname unless we know we are in docker.
-  // Best to rely on env vars.
-
-  const baseUrl = (process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/$/, '');
+  // OLLAMA_BASE_URL must be provided by env (Docker compose sets it to the ollama
+  // service host; local dev sets it to the host loopback). We refuse to fall back to
+  // a default because a silent loopback call in prod would either hang or hit the
+  // wrong machine.
+  const ollamaBase = process.env.OLLAMA_BASE_URL;
+  if (!ollamaBase) {
+    throw new Error('OLLAMA_BASE_URL env var is required to use the Ollama metadata provider');
+  }
+  const baseUrl = ollamaBase.replace(/\/$/, '');
   const model = process.env.OLLAMA_MODEL || 'llama3';
 
   const prompt = `

@@ -78,14 +78,23 @@ if [ "$MODE" = "local" ]; then
             || echo "$(date '+%H:%M:%S') ==> Launch step failed (phone may be locked) — install OK, open Clipfire manually."
         return 0
     }
+    install_with_ideviceinstaller() {
+        command -v ideviceinstaller >/dev/null 2>&1 || return 1
+        echo "$(date '+%H:%M:%S') ==> Installing via ideviceinstaller (devicectl tunnel wedged fallback)..."
+        ideviceinstaller install "$APP_PATH" 2>&1 || return 1
+        echo "(devicectl tunnel unavailable — tap Clipfire on your phone to launch)"
+        return 0
+    }
 
     if install_with_pmd3; then
         echo "$(date '+%H:%M:%S') ==> Done (via pymobiledevice3)!"
     elif install_with_devicectl; then
         echo "$(date '+%H:%M:%S') ==> Done (via devicectl)!"
+    elif install_with_ideviceinstaller; then
+        echo "$(date '+%H:%M:%S') ==> Done (via ideviceinstaller)!"
     else
         echo ""
-        echo "ERROR: Both pymobiledevice3 and devicectl failed to reach the phone."
+        echo "ERROR: pymobiledevice3, devicectl, and ideviceinstaller all failed to reach the phone."
         echo "  The phone must be on the same Wi-Fi as this Mac, or plugged in via USB."
         echo "  For cross-network installs, re-run with: bash xcode-run.sh --testflight"
         exit 1

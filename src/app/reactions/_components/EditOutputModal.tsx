@@ -225,16 +225,6 @@ export function EditOutputModal({
         localCuts.map((c) => ({ startS: c.startS, endS: c.endS }))
       );
 
-      console.log('[EditOutputModal] Apply Cuts:', {
-        durationS,
-        localCuts: localCuts.map((c) => ({ startS: c.startS, endS: c.endS })),
-        keptSegments,
-        outputBlobs: Array.from(outputBlobs.entries()).map(([k, v]) => [
-          k,
-          `${(v.size / 1024 / 1024).toFixed(1)}MB`,
-        ]),
-      });
-
       if (keptSegments.length === 0) {
         toast.error('Cannot cut the entire video');
         setSplicing(false);

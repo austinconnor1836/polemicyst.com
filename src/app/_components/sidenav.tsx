@@ -12,6 +12,8 @@ import PaymentIcon from '@mui/icons-material/Payment';
 import SportsBasketballIcon from '@mui/icons-material/SportsBasketball';
 import WorkIcon from '@mui/icons-material/Work';
 import BarChartIcon from '@mui/icons-material/BarChart';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import ShowChartIcon from '@mui/icons-material/ShowChart';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import SettingsIcon from '@mui/icons-material/Settings';
 import VideoCallIcon from '@mui/icons-material/VideoCall';
@@ -58,6 +60,8 @@ const SidePanel: React.FC<SidePanelProps> = (props: SidePanelProps) => {
     navItems = [
       ...authenticatedNavItems,
       { label: 'Costs', element: <BarChartIcon />, href: '/admin/costs' },
+      { label: 'Metrics', element: <ShowChartIcon />, href: '/admin/metrics' },
+      { label: 'Runway', element: <TrendingUpIcon />, href: '/admin/runway' },
       { label: 'Logs', element: <ListAltIcon />, href: '/admin/logs' },
     ];
   } else {

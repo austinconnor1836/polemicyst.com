@@ -107,7 +107,11 @@ async function generateWithGemini(apiKey: string, prompt: string): Promise<Metad
 }
 
 async function generateWithOllama(prompt: string): Promise<MetadataResult> {
-  const baseUrl = (process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/$/, '');
+  const ollamaBase = process.env.OLLAMA_BASE_URL;
+  if (!ollamaBase) {
+    throw new Error('OLLAMA_BASE_URL env var is required to use the Ollama metadata provider');
+  }
+  const baseUrl = ollamaBase.replace(/\/$/, '');
   const model = process.env.OLLAMA_MODEL || 'llama3';
 
   const res = await fetch(`${baseUrl}/api/generate`, {

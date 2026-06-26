@@ -1,0 +1,16 @@
+Contact: mailto:aconnor731@gmail.com
+Expires: 2027-06-12T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://polemicyst.com/.well-known/security.txt
+
+# Reporting
+
+If you have discovered a security vulnerability in Clipfire (formerly
+Polemicyst), please email the address above with details. We commit to:
+
+- Acknowledging your report within 72 hours.
+- Investigating and confirming the issue.
+- Coordinating disclosure with you before publishing a fix.
+
+Please do not file public GitHub issues for vulnerabilities. Do not test
+against production user data.

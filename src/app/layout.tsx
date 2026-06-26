@@ -9,33 +9,40 @@ import { inter } from './ui/fonts';
 import StoreProvider from './StoreProvider';
 import SharedLayout from './SharedLayout';
 import SessionProviderWrapper from './_components/SessionProviderWrapper'; // ✅ Import the wrapper
+import CookieBanner from '@/components/CookieBanner';
 
 function getSiteLabel(host: string): string {
   if (host.startsWith('localhost') || host.startsWith('127.0.0.1')) {
-    return 'local:polemicyst';
+    return 'local:clipfire';
   }
   if (host.startsWith('dev.')) {
-    return 'dev:polemicyst';
+    return 'dev:clipfire';
   }
-  return 'polemicyst.com';
+  return 'Clipfire';
 }
+
+const PRODUCT_TITLE = 'Clipfire — Turn long-form video into viral clips, automatically';
+const PRODUCT_DESCRIPTION =
+  'Turn long-form video into viral, platform-ready clips — automatically, with AI scoring tuned for Reels, Shorts, and TikTok.';
 
 export async function generateMetadata(): Promise<Metadata> {
   const headersList = await headers();
   const host = headersList.get('host') ?? '';
   const siteLabel = getSiteLabel(host);
+  const isProd = siteLabel === 'Clipfire';
 
   return {
+    metadataBase: new URL('https://polemicyst.com'),
     title: {
-      default: siteLabel,
+      default: isProd ? PRODUCT_TITLE : siteLabel,
       template: `%s | ${siteLabel}`,
     },
-    description: 'Founder of Polemicyst.',
+    description: PRODUCT_DESCRIPTION,
     openGraph: {
-      title: siteLabel,
-      description: 'Founder of Tyromaniac.',
+      title: PRODUCT_TITLE,
+      description: PRODUCT_DESCRIPTION,
       url: 'https://polemicyst.com',
-      siteName: 'polemicyst.com',
+      siteName: 'Clipfire',
       locale: 'en-US',
       type: 'website',
     },
@@ -51,7 +58,8 @@ export async function generateMetadata(): Promise<Metadata> {
       },
     },
     twitter: {
-      title: siteLabel,
+      title: PRODUCT_TITLE,
+      description: PRODUCT_DESCRIPTION,
       card: 'summary_large_image',
     },
     icons: {
@@ -92,6 +100,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </SessionProviderWrapper>
           </HamburgerProvider>
         </StoreProvider>
+        <CookieBanner />
       </body>
     </html>
   );

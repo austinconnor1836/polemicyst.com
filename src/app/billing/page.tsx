@@ -12,11 +12,9 @@ import { ThemedToaster } from '@/components/themed-toaster';
 import { PLANS, type PlanId } from '@/lib/plans';
 
 /**
- * Shape returned by GET /api/user/subscription.
- *
- * NOTE(T010-followup): The backend API does not yet return `uploadMinutesUsed`.
- * Once T010 (pricing-backend) lands and wires `UsageMonth.processedMinutes` into
- * the response, replace the `?` with a required field and remove this comment.
+ * Shape returned by GET /api/user/subscription. The route reads the current
+ * month's `UsageMonth.processedMinutes` row and returns `uploadMinutesUsed`
+ * + `uploadMinutesLimit` for the upload-minutes pricing meter.
  */
 interface SubscriptionData {
   plan: {
@@ -32,25 +30,16 @@ interface SubscriptionData {
   };
   usage: {
     feeds: number;
-    /** Available once T010 adds UsageMonth.processedMinutes to the response. */
-    uploadMinutesUsed?: number;
+    uploadMinutesUsed: number;
+    /** Plan limit echoed by the API; fall back to PLANS lookup if missing. */
+    uploadMinutesLimit?: number;
     // Legacy field kept for backward compat during the transition.
     clipsThisMonth?: number;
   };
   hasStripeCustomer: boolean;
 }
 
-function UsageMeter({
-  label,
-  used,
-  limit,
-  isApproximate,
-}: {
-  label: string;
-  used: number;
-  limit: number;
-  isApproximate?: boolean;
-}) {
+function UsageMeter({ label, used, limit }: { label: string; used: number; limit: number }) {
   const percent = limit > 0 ? Math.min(used / limit, 1) : 0;
   const isWarning = percent >= 0.8 && percent < 1;
   const isExceeded = percent >= 1;
@@ -59,9 +48,6 @@ function UsageMeter({
     <div>
       <div className="flex items-center justify-between mb-1">
         <p className="text-sm text-muted">{label}</p>
-        {isApproximate && (
-          <span className="text-xs text-muted italic">(live data coming soon)</span>
-        )}
       </div>
       <p
         className={`text-lg font-medium ${isExceeded ? 'text-red-500' : isWarning ? 'text-yellow-500' : ''}`}
@@ -132,14 +118,15 @@ function BillingContent() {
   const plan = data.plan;
   const isFree = plan.id === 'free';
 
-  // Resolve the minute limit from the PLANS constant as a safe fallback if the API
-  // returns the old shape without `uploadMinutesPerMonth`.
+  // Prefer the API-echoed `uploadMinutesLimit`; fall back to the plan response,
+  // then to the PLANS constant for older clients hitting newer servers (or vice
+  // versa during a deploy).
   const minuteLimit =
+    data.usage.uploadMinutesLimit ??
     plan.limits.uploadMinutesPerMonth ??
     (plan.id in PLANS ? PLANS[plan.id as PlanId].limits.uploadMinutesPerMonth : 0);
 
   const minutesUsed = data.usage.uploadMinutesUsed ?? 0;
-  const isMinutesApproximate = data.usage.uploadMinutesUsed === undefined;
 
   return (
     <div className="min-h-screen px-4 py-16 glass:bg-transparent">
@@ -155,12 +142,7 @@ function BillingContent() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <UsageMeter
-              label="Upload minutes this month"
-              used={minutesUsed}
-              limit={minuteLimit}
-              isApproximate={isMinutesApproximate}
-            />
+            <UsageMeter label="Upload minutes this month" used={minutesUsed} limit={minuteLimit} />
             <UsageMeter
               label="Connected accounts"
               used={data.usage.feeds}

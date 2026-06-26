@@ -100,11 +100,12 @@ public struct SubscriptionView: View {
                 maximum: sub.plan.limits.maxConnectedAccounts
             )
 
-            // Upload-minutes meter (replaces clip count) // TODO(pricing)
+            // Upload-minutes meter (replaces clip count). Prefer the API-echoed
+            // `uploadMinutesLimit`; fall back to the plan limits for older servers.
             QuotaBar(
                 label: "Upload Minutes",
-                current: sub.usage.uploadMinutesThisMonth,
-                maximum: sub.plan.limits.uploadMinutesPerMonth
+                current: sub.usage.uploadMinutesUsed,
+                maximum: sub.usage.uploadMinutesLimit ?? sub.plan.limits.uploadMinutesPerMonth
             )
 
             HStack {

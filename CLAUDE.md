@@ -10,10 +10,13 @@
 
 ## Git workflow
 
-- **Always create a new branch from `develop`** before starting work on a new task. Run `git checkout develop && git pull origin develop && git checkout -b <branch-name>` first.
-- PRs should target `develop`, not `main`.
+**Trunk-based (post-v0.5.0).** The `develop` branch was retired with the v0.5.0
+investor-readiness release (PR #291). `main` is the single integration branch.
+
+- **Always create a new branch from `main`** before starting a task. Run `git checkout main && git pull origin main && git checkout -b <branch-name>` first.
+- PRs target `main`.
 - Use descriptive branch names: `feature/<name>`, `fix/<name>`, `chore/<name>`.
-- When creating a PR, **enable auto-merge by default** (`gh pr merge <PR_NUMBER> --auto --squash`). Only skip if the user explicitly says `--no-auto-merge`.
+- When creating a PR, **enable auto-merge by default with squash** (`gh pr merge <PR_NUMBER> --auto --squash`). Only skip if the user explicitly says `--no-auto-merge`.
 
 ## Release process
 
@@ -24,21 +27,25 @@ We follow **semantic versioning** (`vMAJOR.MINOR.PATCH`) and use GitHub Releases
 Use the **Prepare Release** GitHub Actions workflow (`Actions → Prepare Release → Run workflow`) or the `/release` slash command:
 
 1. Select bump type (`patch` / `minor` / `major`) or enter an explicit version.
-2. The workflow creates two PRs:
-   - **Version bump PR** (`release/vX.Y.Z` → `develop`) — auto-merges once CI passes.
-   - **Release PR** (`release-pr/vX.Y.Z` → `main`) — contains a generated changelog.
-3. Review the release PR, wait for CI, then merge with a **merge commit** (not squash): `gh pr merge <number> --merge`
-4. The **Finalize Release** workflow auto-fires on merge — creates the GitHub Release + git tag, and fast-forwards `develop` to `main`.
+2. The workflow branches `release/vX.Y.Z` from `main`, bumps `version.json`, and opens **one PR straight to `main`** with the generated changelog.
+3. Review the release PR, wait for CI, then merge. Squash-merge is fine — there's no second hop to preserve.
+4. The **Finalize Release** workflow auto-fires on merge — creates the GitHub Release + git tag on `main`.
 
 Use the **dry run** checkbox to preview without making changes.
 
+> **Token requirement.** `Prepare Release` opens the PR with `RELEASE_TOKEN`
+> (falls back to legacy `RELEASE_PAT`). The default `GITHUB_TOKEN` is suppressed
+> by GitHub from triggering downstream CI workflows on `gh pr create`, so
+> without a PAT/GH-App token the release PR has no CI runs to gate the merge.
+> Add `RELEASE_TOKEN` to repo secrets with `contents: write` +
+> `pull-requests: write`.
+
 ### Manual fallback
 
-1. Create a branch from `develop`, update `version.json`, and open a PR to `develop`.
-2. After merge, create a temporary branch from `develop` (e.g. `release-pr/vX.Y.Z`) and open a PR to `main` titled `Release vX.Y.Z`. **Never use `develop` directly as the PR head** — GitHub's auto-delete will remove it.
-3. Merge with a merge commit, then:
+1. Branch from `main`, bump `version.json`, open a PR to `main` titled `Release vX.Y.Z`.
+2. Merge it, then:
    ```
-   gh release create v0.2.0 --target main --title "v0.2.0" --notes "..."
+   gh release create v0.X.Y --target main --title "v0.X.Y" --notes "..."
    ```
 
 ### Versioning guidelines
@@ -49,10 +56,8 @@ Use the **dry run** checkbox to preview without making changes.
 
 ### What NOT to do
 
-- Don't push directly to `main` or `develop` — always go through a PR.
-- Don't create PRs with `develop` as the head branch targeting `main` — GitHub's auto-delete will remove `develop` on merge. Use a temporary branch instead.
+- Don't push directly to `main` — always go through a PR.
 - Don't create tags manually — let the workflow or `gh release create` handle it.
-- Don't squash-merge release PRs — merge commits keep history traceable.
 
 ---
 

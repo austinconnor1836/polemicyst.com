@@ -9,7 +9,25 @@ import { PrismaAdapter } from '@next-auth/prisma-adapter';
 import { BskyAgent } from '@atproto/api';
 import type { JWT } from 'next-auth/jwt';
 import axios from 'axios';
+import { cookies } from 'next/headers';
 import { prisma } from '@shared/lib/prisma';
+import { flushServerPostHog, getServerPostHog } from '@/lib/posthog';
+
+/**
+ * COPPA defense (W008): the sign-in page sets a short-lived `clipfire_age_gate=1`
+ * cookie when the user ticks the "I am 13 or older" checkbox. The NextAuth signIn
+ * callback consults it to (a) reject new signups missing consent and (b) stamp
+ * `User.acceptedAgeGate=true` so we have a per-user audit trail. Existing users
+ * with `acceptedAgeGate=null` are grandfathered.
+ */
+async function hasAgeGateConsent(): Promise<boolean> {
+  try {
+    const store = await cookies();
+    return store.get('clipfire_age_gate')?.value === '1';
+  } catch {
+    return false;
+  }
+}
 
 interface ExtendedJWT extends JWT {
   googleAccessToken?: string;
@@ -102,8 +120,10 @@ const devCredentialsProvider = IS_DEV
 
         let user = await prisma.user.findUnique({ where: { email } });
         if (!user) {
+          // COPPA defense (W008): refuse to create a new dev user without consent.
+          if (!(await hasAgeGateConsent())) return null;
           user = await prisma.user.create({
-            data: { email, name: email.split('@')[0] },
+            data: { email, name: email.split('@')[0], acceptedAgeGate: true },
           });
         }
         return user;
@@ -175,10 +195,15 @@ export const authOptions: NextAuthOptions = {
           });
 
           if (!user) {
+            // COPPA defense (W008): refuse to create a new Bluesky user without consent.
+            if (!(await hasAgeGateConsent())) {
+              throw new Error('Age confirmation required to create an account.');
+            }
             user = await prisma.user.create({
               data: {
                 email: credentials.username,
                 name: credentials.username,
+                acceptedAgeGate: true,
               },
             });
           }
@@ -280,7 +305,21 @@ export const authOptions: NextAuthOptions = {
         where: { email: user.email },
       });
 
+      // COPPA defense (W008): block new signups without the age-gate consent cookie.
+      // Existing users skip the check (grandfathered).
+      const ageGateOk = await hasAgeGateConsent();
+      if (!existingUser && !ageGateOk) {
+        return false;
+      }
+
       if (existingUser) {
+        // Backfill consent on existing users who tick the box on a later sign-in.
+        if (ageGateOk && existingUser.acceptedAgeGate !== true) {
+          await prisma.user.update({
+            where: { id: existingUser.id },
+            data: { acceptedAgeGate: true },
+          });
+        }
         await prisma.account.upsert({
           where: {
             provider_providerAccountId: {
@@ -343,6 +382,54 @@ export const authOptions: NextAuthOptions = {
       }
 
       return session;
+    },
+  },
+  events: {
+    // COPPA defense (W008): when the PrismaAdapter (OAuth flow) creates a brand-new
+    // User row, stamp `acceptedAgeGate=true` if the sign-in cookie is present. The
+    // `signIn` callback already blocks creation when consent is absent, so reaching
+    // here implies the user ticked the box.
+    async createUser({ user }: { user: any }) {
+      if (await hasAgeGateConsent()) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { acceptedAgeGate: true },
+        });
+      }
+
+      // W013: fire signup conversion event. No-op when POSTHOG_API_KEY is unset.
+      const posthog = getServerPostHog();
+      if (posthog && user?.id) {
+        try {
+          // Best-effort provider detection — the PrismaAdapter `createUser`
+          // event doesn't surface the provider directly, but for any
+          // non-credentials sign-in (the only path that creates DB users in
+          // prod) the most recent Account row holds it.
+          let provider: string | undefined;
+          try {
+            const account = await prisma.account.findFirst({
+              where: { userId: user.id },
+              orderBy: { id: 'desc' },
+              select: { provider: true },
+            });
+            provider = account?.provider ?? undefined;
+          } catch {
+            // Best-effort — fall through with provider undefined.
+          }
+
+          posthog.capture({
+            distinctId: user.id,
+            event: 'signup',
+            properties: {
+              provider: provider ?? 'unknown',
+              email: user.email ?? undefined,
+            },
+          });
+          await flushServerPostHog();
+        } catch {
+          // Non-fatal — analytics must never break sign-up.
+        }
+      }
     },
   },
 };

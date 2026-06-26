@@ -326,7 +326,6 @@ export function ThumbnailPanel({
         }
 
         // Polling will pick up results once the worker processes the frames
-        console.log('[ThumbnailPanel] Frames uploaded, waiting for server processing...');
       } catch (err) {
         console.error('[ThumbnailPanel] Local frame extraction/upload failed:', err);
         toast.error('Failed to extract frames');

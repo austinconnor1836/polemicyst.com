@@ -4,7 +4,10 @@ on:
   push:
     branches:
       - main
-      - develop
+  # Post-trunk: develop branch is retired. Pushes to main are the only deploy
+  # trigger. Build-{android,ios}-dev steps below (gated on `refs/heads/develop`)
+  # are now dead code kept for reference until a PR-based dev-distribution
+  # pipeline replaces them.
 
 env:
   AWS_REGION: us-east-1

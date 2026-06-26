@@ -174,6 +174,32 @@ Auxiliary containers (Faster-Whisper, Ollama) run as ECS services or sidecars de
 - **TrainingExample** — LLM clip-scoring input/output pairs for model distillation.
 - **TruthTrainingExample** — Truth analysis and chat LLM input/output pairs for model distillation.
 
+## Stitched-transcript helper (AI Suggest)
+
+When a user taps "AI Suggest" on a stitched composition (`POST /api/publish/generate-meta`), the LLM needs the **full spoken content of every clip in the stitch**, not just whatever transcript happens to live on the rendered output. The rendered-output transcript is often null or stale:
+
+- **Client-side renders** (the iOS Stitch editor, the web reaction renderer) never transcribe the rendered MP4 — they ship the file straight to S3 and exit.
+- **Server-side renders** transcribe the rendered MP4 asynchronously; the worker can lag behind the UI auto-firing AI Suggest.
+- Either way, sending an empty / null transcript to the LLM produces generic, content-disconnected titles + captions — a bug we hit in production.
+
+`shared/lib/composition-transcript.ts` (pure, framework-agnostic, unit-tested) solves this by assembling the prompt-side transcript from the per-source transcripts the workers have already produced for each clip:
+
+```
+buildStitchedTranscript(composition, fallback?) → string | undefined
+
+Order: creator transcript first (spine of the stitch), then each
+       reference track in sortOrder ascending, joined with blank lines.
+
+Fallback: if the rendered-output transcript is available and non-empty,
+          prefer it (it captures the actual stitched audio + audio-mode mixing).
+```
+
+Inputs are tolerant by design — malformed `transcriptJson` (non-array, missing `text` fields, wrong-typed segments) is treated as "no transcript yet" for that source. The helper never throws, because it runs on the AI-Suggest hot path and a single bad row would otherwise nuke generate-meta for the whole stitch.
+
+The transcription that _populates_ the per-track `transcriptJson` is enqueued at clip-add time by `POST /api/compositions/[id]/tracks`, which fires a `generic-transcription` job per track. The job downloads from a server-derived direct S3 URL (`https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${s3Key}`) — the client-supplied `s3Url` is ignored because iOS sends a dev-server proxy URL that workers in Docker / on ECS can't reach.
+
+Test coverage: `tests/lib/composition-transcript.test.ts` covers sortOrder ordering + tie-breaking, fallback preference, skipping in-flight tracks, malformed JSON tolerance, and large-input safety (20 tracks × 1000 segments).
+
 ## Key Design Decisions
 
 1. **Idempotent transcription** — `transcribeFeedVideo()` checks for existing transcript before doing any work. Safe to call multiple times.
@@ -183,6 +209,8 @@ Auxiliary containers (Faster-Whisper, Ollama) run as ECS services or sidecars de
 5. **Non-fatal cost tracking** — `CostTracker` accumulates events in memory and flushes once at job end. Flush failures don't block the pipeline.
 6. **YouTube-first transcription** — Always tries fetching YouTube captions (~100ms) before falling back to Whisper (~5-30min), saving significant processing time and cost.
 7. **Training data collection** — Every LLM call (clip scoring, truth analysis, analysis chat) is logged for model distillation. Two separate tables: `TrainingExample` (clip scoring) and `TruthTrainingExample` (truth/chat). Goal: fine-tune a local model to replace Gemini at zero inference cost.
+8. **Server-derived S3 URLs for worker fetches** — `CompositionTrack.s3Url` is always built server-side from `s3Key` + the canonical bucket/region, never trusted from the client. iOS / web clients may construct convenience URLs (proxy, signed) for their own playback; those forms aren't fetchable from inside the Docker workers.
+9. **Stitched-transcript fallback chain** — AI Suggest reads transcripts in this order: rendered-output transcript (if present + non-empty) → concatenated per-track transcripts via `buildStitchedTranscript` → undefined (the prompt omits the transcript block entirely instead of sending an empty string).
 
 ## AI Cost Strategy
 

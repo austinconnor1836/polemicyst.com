@@ -19,7 +19,11 @@
     "backend:build": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build",
     "openapi:generate": "cd android && ./gradlew openApiGenerate",
     "tokens": "node scripts/generate-tokens.mjs",
-    "version:bump": "node scripts/bump-version.mjs"
+    "version:bump": "node scripts/bump-version.mjs",
+    "seed:demo": "tsx scripts/seed-investor-demo.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
@@ -40,8 +44,10 @@
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-switch": "^1.2.6",
-    "@reduxjs/toolkit": "^2.2.7",
+    "@sentry/nextjs": "^10.57.0",
     "@types/node-fetch": "^2.6.13",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.0",
     "autoprefixer": "^10.4.19",
     "aws-sdk": "^2.1692.0",
     "axios": "^1.8.2",
@@ -70,12 +76,13 @@
     "nodemailer": "^7.0.13",
     "openai": "^4.58.1",
     "pg": "^8.14.1",
+    "posthog-js": "^1.386.6",
+    "posthog-node": "^5.21.2",
     "puppeteer-core": "^24.39.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.5.2",
     "react-icons": "^5.2.1",
-    "react-redux": "^9.1.2",
     "rehype-highlight": "^7.0.2",
     "rehype-raw": "^7.0.0",
     "rehype-stringify": "^10.0.1",
@@ -114,7 +121,9 @@
     "ts-node": "^10.9.2",
     "tsx": "^4.19.2",
     "typescript": "^5.8.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "@vitest/coverage-v8": "^4.0.18",
+    "happy-dom": "^15.11.0"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
