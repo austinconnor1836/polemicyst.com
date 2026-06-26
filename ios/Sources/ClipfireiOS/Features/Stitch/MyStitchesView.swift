@@ -57,7 +57,11 @@ public struct MyStitchesView: View {
         .navigationTitle("My Stitches")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $playingStitch) { stitch in
-            StitchPlayerSheet(url: store.localURL(for: stitch))
+            // Prefer the local file; if it's missing (devicectl reinstall wiped
+            // Documents, or download never completed), fall back to streaming
+            // directly from the server's S3 URL so the user isn't left staring
+            // at the AVPlayer "video unavailable" placeholder.
+            StitchPlayerSheet(url: bestPlaybackURL(for: stitch))
         }
         .sheet(item: $publishingStitch) { stitch in
             if let api {
@@ -244,56 +248,61 @@ private struct StitchCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Button(action: onTap) {
-                ZStack {
-                    Color.black
-                    if let thumbnail {
-                        Image(uiImage: thumbnail)
-                            .resizable()
-                            .scaledToFill()
-                    }
-                    if isProcessing {
-                        // Soft dim over the thumbnail while the pipeline is mid-flight.
-                        Color.black.opacity(0.35)
-                    } else {
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 36))
-                            .foregroundStyle(.white.opacity(0.9))
-                    }
+            // Thumbnail stack — uses a tap gesture (not a Button wrapper) so the X
+            // overlay's Button can hit-test correctly. Nesting Buttons here made
+            // the outer one swallow every tap, so a failed-stitch X became dead.
+            ZStack {
+                Color.black
+                if let thumbnail {
+                    Image(uiImage: thumbnail)
+                        .resizable()
+                        .scaledToFill()
                 }
-                .aspectRatio(stitch.layoutKey == "landscape" ? 16.0 / 9.0 : 9.0 / 16.0, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(alignment: .topTrailing) {
-                    Button(action: onDelete) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title3)
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(.white, .black.opacity(0.7))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(6)
-                }
-                .overlay(alignment: .bottomLeading) {
-                    if isProcessing, failureMessage == nil {
-                        ProcessingPill(label: processingLabel)
-                            .padding(6)
-                    }
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    if !isProcessing {
-                        Text(formatStitchDuration(stitch.durationS))
-                            .font(.caption2)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.black.opacity(0.7))
-                            .clipShape(Capsule())
-                            .padding(6)
-                    }
+                if isProcessing {
+                    // Soft dim over the thumbnail while the pipeline is mid-flight.
+                    Color.black.opacity(0.35)
+                } else {
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.white.opacity(0.9))
                 }
             }
-            .buttonStyle(.plain)
-            .disabled(isProcessing)
+            .aspectRatio(stitch.layoutKey == "landscape" ? 16.0 / 9.0 : 9.0 / 16.0, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .onTapGesture {
+                guard !isProcessing else { return }
+                onTap()
+            }
+            .overlay(alignment: .topTrailing) {
+                Button(action: onDelete) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, .black.opacity(0.7))
+                        .padding(8)  // expand hit target
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+            .overlay(alignment: .bottomLeading) {
+                if isProcessing, failureMessage == nil {
+                    ProcessingPill(label: processingLabel)
+                        .padding(6)
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if !isProcessing {
+                    Text(formatStitchDuration(stitch.durationS))
+                        .font(.caption2)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.black.opacity(0.7))
+                        .clipShape(Capsule())
+                        .padding(6)
+                }
+            }
 
             if !isProcessing {
                 Text(stitch.title)
@@ -481,6 +490,22 @@ private struct StitchPlayerSheet: View {
             }
         }
     }
+}
+
+/// Choose the best URL to hand to AVPlayer. Local file if it's actually on disk;
+/// otherwise the server's `outputS3Url` (streams over the network). If neither
+/// is reachable, the local URL is returned so AVPlayer's native "video unavailable"
+/// placeholder fires — at least the path is correct in the inevitable bug report.
+@MainActor
+private func bestPlaybackURL(for stitch: LocalStitch) -> URL {
+    let local = LocalStitchStore.shared.localURL(for: stitch)
+    if FileManager.default.fileExists(atPath: local.path) {
+        return local
+    }
+    if let remote = stitch.outputS3Url, let url = URL(string: remote) {
+        return url
+    }
+    return local
 }
 
 private func formatStitchDuration(_ s: Double) -> String {

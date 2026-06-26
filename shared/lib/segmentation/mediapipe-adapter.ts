@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import fs from 'fs';
 import path from 'path';
 import type { SegmentationProvider, SegmentationResult } from './segmentation-provider';
 
@@ -20,9 +21,22 @@ export class MediaPipeSegmentationAdapter implements SegmentationProvider {
     if (process.env.SEGMENT_VIDEO_SCRIPT) {
       return process.env.SEGMENT_VIDEO_SCRIPT;
     }
-    // In the worker container: /app/workers/clip-metadata-worker/tools/segment_video.py
-    // In dev:                   <repo>/workers/clip-metadata-worker/tools/segment_video.py
-    return path.resolve(process.cwd(), 'workers/clip-metadata-worker/tools/segment_video.py');
+    // `process.cwd()` is the WORKDIR of whatever process imported us. In the
+    // worker container that's `/app/workers/clip-metadata-worker`, so the
+    // original `cwd + 'workers/clip-metadata-worker/...'` resolution produced
+    // a doubled path. Probe a few candidate paths instead; first existing wins.
+    const candidates = [
+      // Docker container (worker WORKDIR is the worker dir itself)
+      path.resolve(process.cwd(), 'tools/segment_video.py'),
+      // Dev: tsx running from repo root
+      path.resolve(process.cwd(), 'workers/clip-metadata-worker/tools/segment_video.py'),
+      // Hard-coded fallback when worker is built into the standard /app layout
+      '/app/workers/clip-metadata-worker/tools/segment_video.py',
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    return candidates[0];
   }
 
   async segmentVideo(inputPath: string, outputPath: string): Promise<SegmentationResult> {
