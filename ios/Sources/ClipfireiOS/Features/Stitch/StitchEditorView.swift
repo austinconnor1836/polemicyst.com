@@ -856,28 +856,51 @@ public final class StitchEditorViewModel: ObservableObject {
         return .timedOut
     }
 
-    /// Download the server-rendered MP4 to the local stitches directory. We hit
-    /// the S3 URL directly — the server returns either a presigned URL or a
-    /// public-bucket URL via the same field, and both stream the bytes fine
-    /// without an auth header.
+    /// Dedicated URLSession for fetching external (non-API) resources like the
+    /// CompositionOutput S3 URL. Critically: NO auth-injecting delegate, and
+    /// NOT the APIClient's session. AWS S3 returns HTTP 400 InvalidArgument if
+    /// the request carries `Authorization: Bearer <jwt>` (it tries to parse it
+    /// as a SigV4 signature) — so we never let our app's bearer token leak to
+    /// arbitrary external hosts. Composition `cmqvebb7w0077ydya2ma141fy`
+    /// reproduced this bug in production.
+    private static let externalDownloadSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 120
+        return URLSession(configuration: config)
+    }()
+
+    /// Download the server-rendered MP4 to the local stitches directory.
+    ///
+    /// `CompositionOutput.s3Url` is a fully-qualified S3 URL (e.g.
+    /// `https://clips-genie-uploads.s3.us-east-2.amazonaws.com/...`) — these
+    /// must be fetched WITHOUT our auth bearer (S3 rejects it as a malformed
+    /// SigV4 signature with HTTP 400). The fallback "relative proxy URL" path
+    /// hits our own API and still needs the bearer.
     static func downloadOutput(from url: URL, to destURL: URL, api: APIClient) async throws {
         // If the server returned a relative proxy URL (the upload path returns
         // these for raw track files), resolve it against the API base. The
         // CompositionOutput.s3Url today is a fully-qualified S3 URL, but the
         // fallback keeps us safe if that shape ever changes.
         let resolved: URL
+        let isAppAPIRequest: Bool
         if url.scheme == nil {
             resolved = api.baseURL.appending(path: url.path)
+            isAppAPIRequest = true
         } else {
             resolved = url
+            // Only attach the bearer when the URL is on our own API host. Any
+            // external host (S3, CDN, etc.) gets a clean, auth-less request.
+            isAppAPIRequest = resolved.host != nil && resolved.host == api.baseURL.host
         }
         var request = URLRequest(url: resolved)
-        // Local dev: any localhost/LAN URL gets the auth token because the proxy
-        // path needs it. Public S3 URLs ignore it. Safe either way.
-        if let token = api.tokenStorage?.getToken() {
+        if isAppAPIRequest, let token = api.tokenStorage?.getToken() {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        let (tempURL, response) = try await api.session.download(for: request)
+        // External (S3) downloads use a dedicated session with no auth
+        // delegate; API-host downloads continue to use `api.session` so the
+        // DEBUG self-signed-cert delegate keeps working for local dev.
+        let session = isAppAPIRequest ? api.session : externalDownloadSession
+        let (tempURL, response) = try await session.download(for: request)
         defer { try? FileManager.default.removeItem(at: tempURL) }
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw StitchRenderError.exportFailed("Output download failed: HTTP \(http.statusCode)")
