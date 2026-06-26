@@ -164,6 +164,11 @@ public final class StitchEditorViewModel: ObservableObject {
             let durationS = (try? await avAsset.load(.duration)).map { CMTimeGetSeconds($0) } ?? 0
             timeline.updateClipSourceURL(id: clipId, url: url)
             timeline.updateClipDuration(id: clipId, durationS: durationS)
+            // In freezeReveal mode, eagerly seed the cutout the moment the creator
+            // clip's file is ready — this lets the user tap Render straight from
+            // Step 1 / Step 2 without ever opening Step 3 and still get a sensible
+            // centered default. The manifest builder otherwise throws code=2.
+            ensureFreezeRevealCutout()
         }
     }
 
@@ -317,6 +322,11 @@ public final class StitchEditorViewModel: ObservableObject {
                 removeClip(id: id)
             }
         }
+        // If the user already has the two clips with sourceURLs loaded, seed the
+        // cutout right now so Render works without ever opening Step 3.
+        if newStyle == .freezeReveal {
+            ensureFreezeRevealCutout()
+        }
     }
 
     /// Lazily seed the "STITCH INCOMING" text overlay on the reference clip the first time
@@ -338,10 +348,17 @@ public final class StitchEditorViewModel: ObservableObject {
         timeline.addTextOverlay(overlay)
     }
 
-    /// Lazily seed the cutout the first time the user reaches the cutout step in
-    /// `.freezeReveal` mode. The cutout points to the reference clip (so removal cascades
-    /// correctly via the existing logic) and uses the creator clip's video file as the
-    /// segmented source. Idempotent.
+    /// Eagerly seed the cutout for freezeReveal mode the moment both clips' files are
+    /// loaded. The cutout points to the reference clip (so removal cascades correctly
+    /// via the existing logic) and uses the creator clip's video file as the segmented
+    /// source. Idempotent — once a cutout exists (auto-seeded or user-positioned) this
+    /// is a no-op.
+    ///
+    /// The default `(0.5, 0.5)` position + `0.6` scale gives the creator a visually-
+    /// centered presentation that's the focal point but still leaves the frozen ref
+    /// frame readable around the edges. Step 3 lets the user fine-tune, but Render
+    /// works without ever opening Step 3 — previously the manifest builder threw
+    /// `freezeRevealMissingCutout` (code=2) when Render was tapped without a cutout.
     public func ensureFreezeRevealCutout() {
         guard timeline.style == .freezeReveal,
               timeline.clips.count >= 2,
@@ -353,8 +370,8 @@ public final class StitchEditorViewModel: ObservableObject {
             clipId: referenceClip.id,
             sourceURL: creatorURL,
             sourceDurationS: creatorClip.effectiveDurationS,
-            position: CGPoint(x: 0.5, y: 0.55),
-            scale: 0.9
+            position: CGPoint(x: 0.5, y: 0.5),
+            scale: 0.6
         ))
     }
 
