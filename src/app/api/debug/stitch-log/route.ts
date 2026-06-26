@@ -71,6 +71,7 @@ export async function DELETE() {
   if (process.env.NODE_ENV === 'production') {
     return NextResponse.json({ error: 'disabled' }, { status: 404 });
   }
-  await writeEntries([]);
+  await ensureDir();
+  await fs.writeFile(LOG_FILE, '', 'utf8');
   return NextResponse.json({ ok: true }, { status: 200 });
 }
