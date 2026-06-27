@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
       publishPlatforms: [],
       quoteGraphicsEnabled: false,
       quoteGraphicStyle: 'pull-quote',
+      autoGeneratePublishMeta: false,
     });
   }
 
@@ -51,6 +52,7 @@ export async function GET(req: NextRequest) {
     publishPlatforms: rule.publishPlatforms ?? [],
     quoteGraphicsEnabled: rule.quoteGraphicsEnabled,
     quoteGraphicStyle: rule.quoteGraphicStyle,
+    autoGeneratePublishMeta: rule.autoGeneratePublishMeta,
   });
 }
 
@@ -107,6 +109,9 @@ export async function PUT(req: NextRequest) {
       ? body.quoteGraphicStyle
       : undefined;
 
+  const autoGeneratePublishMeta =
+    typeof body.autoGeneratePublishMeta === 'boolean' ? body.autoGeneratePublishMeta : undefined;
+
   const data: Record<string, unknown> = {};
   if (enabled !== undefined) data.enabled = enabled;
   if (autoGenerateClips !== undefined) data.autoGenerateClips = autoGenerateClips;
@@ -119,6 +124,7 @@ export async function PUT(req: NextRequest) {
   if (viralitySettings !== undefined) data.viralitySettings = viralitySettings;
   if (quoteGraphicsEnabled !== undefined) data.quoteGraphicsEnabled = quoteGraphicsEnabled;
   if (quoteGraphicStyle !== undefined) data.quoteGraphicStyle = quoteGraphicStyle;
+  if (autoGeneratePublishMeta !== undefined) data.autoGeneratePublishMeta = autoGeneratePublishMeta;
 
   const rule = await prisma.automationRule.upsert({
     where: { userId: user.id },
@@ -141,5 +147,6 @@ export async function PUT(req: NextRequest) {
     publishPlatforms: rule.publishPlatforms ?? [],
     quoteGraphicsEnabled: rule.quoteGraphicsEnabled,
     quoteGraphicStyle: rule.quoteGraphicStyle,
+    autoGeneratePublishMeta: rule.autoGeneratePublishMeta,
   });
 }

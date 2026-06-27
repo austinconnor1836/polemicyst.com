@@ -15,7 +15,7 @@ ENV PATH="/venv/bin:$PATH"
 ENV PIP_NO_CACHE_DIR=1
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir faster-whisper rembg Pillow onnxruntime opencv-python-headless
+    pip install --no-cache-dir faster-whisper rembg Pillow onnxruntime opencv-python-headless mediapipe
 
 # Pre-download u2net model to avoid cold-start latency
 RUN python3 -c "from rembg import new_session; new_session('u2net')"

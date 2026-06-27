@@ -72,6 +72,9 @@ targets:
         API_BASE_URL: 'https://polemicyst.com'
       configs:
         Debug:
+          # LAN IP — works when iPhone is on same Wi-Fi as this Mac. Switch to
+          # Tailscale IP (e.g. https://100.124.11.69:3000) when iterating from
+          # a different network AND Tailscale is active on the phone.
           API_BASE_URL: 'https://192.168.0.16:3000'
           CODE_SIGN_STYLE: Automatic
           DEVELOPMENT_TEAM: L6AS5GG2MB
@@ -93,6 +96,8 @@ targets:
         UIBackgroundModes:
           - fetch
         ITSAppUsesNonExemptEncryption: false
+        NSPhotoLibraryUsageDescription: 'Clipfire reads videos directly from your photo library for the Stitch feature, so clips don''t need to be copied first.'
+        NSPhotoLibraryAddUsageDescription: 'Clipfire saves rendered stitches back to your photo library when you choose to.'
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSAllowsArbitraryLoads: true

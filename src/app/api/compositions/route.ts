@@ -110,11 +110,42 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.json(compositions);
+    return NextResponse.json(serializeBigInts(compositions));
   } catch (err) {
     console.error('[GET /api/compositions]', err);
     return NextResponse.json({ error: 'Failed to load compositions' }, { status: 500 });
   }
+}
+
+/**
+ * Recursively coerces BigInt values to plain JS numbers so `NextResponse.json`
+ * (standard `JSON.stringify`) doesn't throw on Prisma `BigInt?` columns —
+ * e.g. `CompositionOutput.fileSizeBytes`, which the stitch-render worker stamps
+ * once a render completes. Without this guard, any composition with a finished
+ * server-side render breaks every list/detail response.
+ */
+function serializeBigInts<T>(value: T): T {
+  if (typeof value === 'bigint') {
+    return Number(value) as unknown as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map(serializeBigInts) as unknown as T;
+  }
+  // Only descend into plain objects — Date / Buffer / etc. have their own JSON
+  // representations and recursing through them produces empty `{}` after
+  // `Object.entries` enumeration.
+  if (
+    value &&
+    typeof value === 'object' &&
+    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
+  ) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = serializeBigInts(v);
+    }
+    return out as T;
+  }
+  return value;
 }
 
 export async function POST(req: NextRequest) {
@@ -154,7 +185,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json(composition, { status: 201 });
+    return NextResponse.json(serializeBigInts(composition), { status: 201 });
   } catch (err) {
     console.error('[POST /api/compositions]', err);
     return NextResponse.json({ error: 'Failed to create composition' }, { status: 500 });

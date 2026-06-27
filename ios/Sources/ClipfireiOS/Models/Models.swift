@@ -629,6 +629,8 @@ public struct AutomationSettings: Codable {
     public var aspectRatio: String
     public var autoPublish: Bool
     public var publishPlatforms: [String]
+    /// When true, the Publish sheet auto-fills the title + caption via AI the moment it opens.
+    public var autoGeneratePublishMeta: Bool
 
     public init(
         enabled: Bool = false,
@@ -638,7 +640,8 @@ public struct AutomationSettings: Codable {
         captionStyle: String = "default",
         aspectRatio: String = "9:16",
         autoPublish: Bool = false,
-        publishPlatforms: [String] = []
+        publishPlatforms: [String] = [],
+        autoGeneratePublishMeta: Bool = false
     ) {
         self.enabled = enabled
         self.autoGenerateClips = autoGenerateClips
@@ -648,11 +651,13 @@ public struct AutomationSettings: Codable {
         self.aspectRatio = aspectRatio
         self.autoPublish = autoPublish
         self.publishPlatforms = publishPlatforms
+        self.autoGeneratePublishMeta = autoGeneratePublishMeta
     }
 
     enum CodingKeys: String, CodingKey {
         case enabled, autoGenerateClips, viralitySettings, captionsEnabled
         case captionStyle, aspectRatio, autoPublish, publishPlatforms
+        case autoGeneratePublishMeta
     }
 
     public init(from decoder: Decoder) throws {
@@ -664,6 +669,7 @@ public struct AutomationSettings: Codable {
         aspectRatio = try c.decode(String.self, forKey: .aspectRatio)
         autoPublish = try c.decode(Bool.self, forKey: .autoPublish)
         publishPlatforms = (try? c.decode([String].self, forKey: .publishPlatforms)) ?? []
+        autoGeneratePublishMeta = (try? c.decode(Bool.self, forKey: .autoGeneratePublishMeta)) ?? false
 
         // Decode viralitySettings from [String: AnyCodable] dictionary
         if let dict = try? c.decode([String: AnyCodable].self, forKey: .viralitySettings) {
@@ -689,6 +695,7 @@ public struct AutomationSettings: Codable {
         try c.encode(aspectRatio, forKey: .aspectRatio)
         try c.encode(autoPublish, forKey: .autoPublish)
         try c.encode(publishPlatforms, forKey: .publishPlatforms)
+        try c.encode(autoGeneratePublishMeta, forKey: .autoGeneratePublishMeta)
         try c.encode(viralitySettings.toDictionary(), forKey: .viralitySettings)
     }
 }
@@ -1105,6 +1112,10 @@ public struct Composition: Identifiable, Codable {
     public let creatorHeight: Int?
     public let creatorTrimStartS: Double
     public let creatorTrimEndS: Double?
+    /// Per-segment transcript of the creator clip. Optional; populated by the
+    /// transcription worker after the creator video is set. Used by the AI
+    /// publish helper to build the stitched-composition transcript prompt.
+    public let creatorTranscriptJson: [TranscriptSegment]?
     public let tracks: [CompositionTrack]?
     public let outputs: [CompositionOutput]?
     public let createdAt: Date
@@ -1125,6 +1136,10 @@ public struct CompositionTrack: Identifiable, Codable {
     public let trimEndS: Double?
     public let sortOrder: Int
     public let hasAudio: Bool
+    /// Per-segment transcript of this reference track. Optional; populated by
+    /// the transcription worker. Used by the AI publish helper to build the
+    /// stitched-composition transcript prompt.
+    public let transcriptJson: [TranscriptSegment]?
     public let createdAt: Date
     public let updatedAt: Date
 }
@@ -1139,13 +1154,82 @@ public struct CompositionOutput: Identifiable, Codable {
     public let renderError: String?
     public let durationMs: Int?
     public let fileSizeBytes: Int64?
+    /// Transcript of the actual rendered output, produced by a post-render
+    /// transcription job (server-side renders only). Preferred over the
+    /// per-source concatenation when present because it captures the audio-mode
+    /// mixing that the per-source concatenation can't reproduce.
+    public let transcript: String?
     public let createdAt: Date
     public let updatedAt: Date
 }
 
 public struct CreateCompositionRequest: Encodable {
     public let title: String?
-    public init(title: String? = nil) { self.title = title }
+    /// Composition mode: "pre-synced" (default, reaction), "timeline" (reaction), or "stitch" (on-device-rendered).
+    public let mode: String?
+    public init(title: String? = nil, mode: String? = nil) {
+        self.title = title
+        self.mode = mode
+    }
+}
+
+public struct ClientCompleteRenderRequest: Encodable {
+    public let layout: String   // "mobile" | "landscape"
+    public let s3Key: String
+    public let s3Url: String
+    public let durationMs: Int?
+    public init(layout: String, s3Key: String, s3Url: String, durationMs: Int?) {
+        self.layout = layout
+        self.s3Key = s3Key
+        self.s3Url = s3Url
+        self.durationMs = durationMs
+    }
+}
+
+public struct PublishVideoRequest: Encodable {
+    public let sourceKind: String   // "stitch" | "clip" | "reaction"
+    public let sourceId: String     // composition id or clip id
+    public let title: String
+    public let caption: String
+    public let platforms: [String]  // ids like "youtube", "instagram", "twitter", "bluesky", "tiktok"
+    public init(sourceKind: String, sourceId: String, title: String, caption: String, platforms: [String]) {
+        self.sourceKind = sourceKind
+        self.sourceId = sourceId
+        self.title = title
+        self.caption = caption
+        self.platforms = platforms
+    }
+}
+
+public struct PublishVideoResponse: Codable {
+    public let publishRequestId: String
+    public let queuedPlatforms: [String]
+}
+
+/// Response from `POST /api/compositions/<id>/stitch-render`. The endpoint returns
+/// 202 Accepted with this body so the iOS client knows the worker has picked up
+/// the job and can begin polling `fetchComposition(id:)` for the output status.
+public struct StitchRenderResponse: Codable, Equatable {
+    public let status: String       // "queued"
+    public let compositionId: String
+    public let outputId: String
+    public let layout: String       // "mobile" | "landscape"
+}
+
+public struct GenerateMetaRequest: Encodable {
+    public let context: String      // free-text context about the video (transcript, working title, etc.)
+    public let platforms: [String]  // tailor tone to these
+    public let seedTitle: String?
+    public init(context: String, platforms: [String], seedTitle: String? = nil) {
+        self.context = context
+        self.platforms = platforms
+        self.seedTitle = seedTitle
+    }
+}
+
+public struct GenerateMetaResponse: Codable {
+    public let title: String
+    public let caption: String
 }
 
 public struct UpdateCompositionRequest: Encodable {
@@ -1186,10 +1270,20 @@ public struct CreateTrackRequest: Encodable {
     public let width: Int?
     public let height: Int?
     public let hasAudio: Bool?
+    public let startAtS: Double?
+    public let trimStartS: Double?
+    public let trimEndS: Double?
+    /// "creator" or "reference". Omitted = server default ("reference"), which is what
+    /// stitch tracks want — the server worker auto-enqueues a transcription job for
+    /// reference tracks, populating `compositionTrack.transcript` by the time the
+    /// publish sheet calls AI suggest.
+    public let trackType: String?
 
     public init(s3Key: String, s3Url: String, durationS: Double,
                 label: String? = nil, width: Int? = nil, height: Int? = nil,
-                hasAudio: Bool? = nil) {
+                hasAudio: Bool? = nil,
+                startAtS: Double? = nil, trimStartS: Double? = nil, trimEndS: Double? = nil,
+                trackType: String? = nil) {
         self.s3Key = s3Key
         self.s3Url = s3Url
         self.durationS = durationS
@@ -1197,6 +1291,10 @@ public struct CreateTrackRequest: Encodable {
         self.width = width
         self.height = height
         self.hasAudio = hasAudio
+        self.startAtS = startAtS
+        self.trimStartS = trimStartS
+        self.trimEndS = trimEndS
+        self.trackType = trackType
     }
 }
 

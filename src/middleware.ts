@@ -145,7 +145,7 @@ export const config = {
     // Main matcher — excludes auth/webhook/static plumbing. NextAuth's own
     // /api/auth/* (callback, csrf, etc.) is excluded; `api/auth/mobile/*` is
     // matched explicitly below so rate-limiting can run on it.
-    '/((?!api/auth|api/webhooks|api/app/version-check|api/health|auth/signin|access-denied|_next/static|_next/image|assets|favicon).*)',
+    '/((?!api/auth|api/webhooks|api/app/version-check|api/health|api/debug|auth/signin|access-denied|_next/static|_next/image|assets|favicon).*)',
     // Rate-limited public endpoints — handled at the top of middleware().
     '/api/health',
     '/api/auth/mobile/:path*',

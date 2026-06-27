@@ -53,7 +53,6 @@ public final class ClipsViewModel: ObservableObject {
 
 public struct ClipsListView: View {
     @StateObject private var viewModel: ClipsViewModel
-    @State private var showErrorAlert = false
     @State private var showDeleteAlert = false
     @State private var clipToDelete: ClipVideo?
 
@@ -79,11 +78,27 @@ public struct ClipsListView: View {
                     ProgressView().progressViewStyle(.circular)
                 }
             }
-            .onChange(of: viewModel.errorMessage) { _, newValue in showErrorAlert = newValue != nil }
-            .alert("Error", isPresented: $showErrorAlert) {
-                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
-            } message: {
-                Text(viewModel.errorMessage ?? "")
+            .safeAreaInset(edge: .top) {
+                if let message = viewModel.errorMessage {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.yellow)
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button {
+                            viewModel.errorMessage = nil
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.white.opacity(0.8))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(10)
+                    .background(Color.red.opacity(0.85))
+                }
             }
             .alert("Delete Clip", isPresented: $showDeleteAlert, presenting: clipToDelete) { clip in
                 Button("Delete", role: .destructive) {

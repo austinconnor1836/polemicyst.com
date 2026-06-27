@@ -26,11 +26,44 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    return NextResponse.json(composition);
+    return NextResponse.json(serializeBigInts(composition));
   } catch (err) {
     console.error('[GET /api/compositions/[id]]', err);
     return NextResponse.json({ error: 'Failed to load composition' }, { status: 500 });
   }
+}
+
+/**
+ * Recursively coerces BigInt values to plain JS numbers so `NextResponse.json`
+ * (which uses standard `JSON.stringify`) doesn't throw "Do not know how to
+ * serialize a BigInt" — Prisma's `BigInt?` columns (e.g. `CompositionOutput.fileSizeBytes`)
+ * come back as native BigInts. Values are bytes / similar magnitudes, well within
+ * the safe-integer range. Without this, the iOS stitch-render poll loop silently
+ * fails on the 500 returned by this route once the server worker writes
+ * `fileSizeBytes`, leaving the UI stuck on "Rendering on server…".
+ */
+function serializeBigInts<T>(value: T): T {
+  if (typeof value === 'bigint') {
+    return Number(value) as unknown as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map(serializeBigInts) as unknown as T;
+  }
+  // Only descend into plain objects — Date / Buffer / etc. have their own JSON
+  // representations (Date → ISO string, Buffer → { type, data }) and recursing
+  // through them produces empty `{}` after Object.entries enumeration.
+  if (
+    value &&
+    typeof value === 'object' &&
+    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
+  ) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = serializeBigInts(v);
+    }
+    return out as T;
+  }
+  return value;
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -141,7 +174,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
-    return NextResponse.json(composition);
+    return NextResponse.json(serializeBigInts(composition));
   } catch (err) {
     console.error('[PATCH /api/compositions/[id]]', err);
     return NextResponse.json({ error: 'Failed to update composition' }, { status: 500 });

@@ -247,8 +247,7 @@ async function seedUsageMonths(users: SeededUser[]): Promise<number> {
       );
       // createdAt is set explicitly so the cohort signup proxy
       // (min(UsageMonth.createdAt) per user) lands on user.signupAt.
-      const createdAt =
-        monthStart.getTime() === months[0].getTime() ? user.signupAt : monthStart;
+      const createdAt = monthStart.getTime() === months[0].getTime() ? user.signupAt : monthStart;
       await prisma.usageMonth.upsert({
         where: { userId_yearMonth: { userId: user.id, yearMonth: ym } },
         update: { processedMinutes: minutes, clipCount },
@@ -275,10 +274,7 @@ async function seedCostEvents(users: SeededUser[]): Promise<number> {
 
   // Cost shape per stage — anchored on the cost model documented in
   // polemicyst.com/CLAUDE.md ("Cost estimation" section).
-  type StageGen = () => Omit<
-    Prisma.CostEventCreateManyInput,
-    'userId' | 'jobId' | 'createdAt'
-  >;
+  type StageGen = () => Omit<Prisma.CostEventCreateManyInput, 'userId' | 'jobId' | 'createdAt'>;
   const stageGens: Record<string, StageGen> = {
     download: () => ({
       stage: 'download',

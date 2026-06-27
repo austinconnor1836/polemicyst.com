@@ -22,17 +22,17 @@ The user authorised picking up the full 54 in the task description.
 
 ## Conflict resolution playbook (from the task)
 
-| Conflict shape | Default action |
-| --- | --- |
-| File new in theirs, doesn't exist in main | Take theirs |
-| File exists in main, theirs adds orthogonally | Hand-merge |
-| File exists in main, theirs wholesale replaces (e.g. `src/lib/plans.ts`) | Take theirs, sanity-check |
-| `package.json` / `package-lock.json` | Hand-merge dep list, re-run `npm install` at end |
-| `prisma/schema.prisma` | Hand-merge — preserve main's schema, append new models/cols |
-| `src/middleware.ts` | Layer additively |
-| `next.config.js` | Layer additively |
-| `version.json` | Keep main's value until final bump to `0.5.0` |
-| Markdown docs | Take theirs |
+| Conflict shape                                                           | Default action                                              |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| File new in theirs, doesn't exist in main                                | Take theirs                                                 |
+| File exists in main, theirs adds orthogonally                            | Hand-merge                                                  |
+| File exists in main, theirs wholesale replaces (e.g. `src/lib/plans.ts`) | Take theirs, sanity-check                                   |
+| `package.json` / `package-lock.json`                                     | Hand-merge dep list, re-run `npm install` at end            |
+| `prisma/schema.prisma`                                                   | Hand-merge — preserve main's schema, append new models/cols |
+| `src/middleware.ts`                                                      | Layer additively                                            |
+| `next.config.js`                                                         | Layer additively                                            |
+| `version.json`                                                           | Keep main's value until final bump to `0.5.0`               |
+| Markdown docs                                                            | Take theirs                                                 |
 
 ## Cherry-pick log
 
@@ -55,4 +55,3 @@ All 54 commits landed cleanly. Most picks (52/54) auto-merged without textual co
 #264, #266, #267, #268, #269, #270, #271, #272, #273, #274, #275, #276, #277, #278, #279,
 #280, #281, #282, #283, #284, #285, #286, #287, #288 — all applied via plain
 `git cherry-pick -x <sha>`.
-

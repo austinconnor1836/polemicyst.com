@@ -113,6 +113,19 @@ Ports define **what** the business logic needs; adapters provide the **how**. Ne
 - All S3 operations must use **SDK v3** (`@aws-sdk/client-s3`). Do not introduce `aws-sdk` v2 imports.
 - The `S3_BUCKET`, `S3_REGION`, and `S3_PREFIX` env vars are read from `storage-provider.ts`.
 
+#### Person Segmentation (`shared/lib/segmentation/`)
+
+| File                       | Role                                                                                                               |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `segmentation-provider.ts` | **Port** — `SegmentationProvider` interface + `createSegmentationProvider()` factory                               |
+| `mediapipe-adapter.ts`     | **Adapter** — drives `workers/clip-metadata-worker/tools/segment_video.py` (MediaPipe SelfieSegmentation + OpenCV) |
+
+**Rules:**
+
+- The default adapter is `mediapipe`. Override via the `SEGMENTATION_PROVIDER` env var.
+- New adapters (BackgroundMattingV2, RVM, server-side SAM, etc.) must implement `segmentVideo(input, output)` and produce a single-channel grayscale mp4 mask. The stitch compositor's FFmpeg `alphamerge` filter expects a mask, not an alpha-mp4.
+- Python sidecars live under `workers/clip-metadata-worker/tools/` (script path resolution in the adapter respects `SEGMENT_VIDEO_SCRIPT` for non-default layouts).
+
 #### Where ports/adapters are NOT used (and shouldn't be)
 
 | Concern              | Why                                        |
@@ -146,6 +159,73 @@ Cost tracking, training data collection, and job logging all follow the same **"
 | Job logs       | `logJob()` (`shared/lib/job-logger.ts`)                             | `JobLog` table               |
 
 All are non-fatal — failures are logged but never crash the pipeline.
+
+---
+
+## Stitch render (server-side, for iOS Clipfire)
+
+The iOS Clipfire app's **stitch editor** has a local renderer (AVFoundation +
+Core Image + Vision) for instant previews, but iOS kills any `AVAssetExportSession`
+when the user backgrounds the app. The server-side stitch renderer is a
+fire-and-forget pipeline that lets iOS hand off the export and close the app
+without losing the render.
+
+### Flow
+
+1. **Per clip**, iOS uploads to `POST /api/compositions/[id]/tracks` so the
+   server has a `CompositionTrack` with an S3 URL + transcript (existing flow).
+2. iOS POSTs the full **`StitchManifest`** (see `shared/lib/stitch/manifest.ts`)
+   to `POST /api/compositions/[id]/stitch-render`.
+3. The route validates the manifest (hand-rolled validator — zod isn't a dep),
+   persists it onto `Composition.renderConfig`, upserts a `CompositionOutput`
+   row in `pending`, and enqueues a `stitch-render` BullMQ job (jobId =
+   compositionId for idempotency). Returns `202 { status: 'queued', outputId }`.
+4. The **`stitch-render` worker** (in the existing `clip-metadata-worker`
+   image) downloads the referenced `CompositionTrack` videos, runs MediaPipe
+   person segmentation per clip whose `removeBackground` is true (via the
+   Python sidecar at `workers/clip-metadata-worker/tools/segment_video.py`),
+   composites + encodes with FFmpeg (libx265 / HEVC) via `shared/util/stitchCompose.ts`,
+   uploads the mp4 to S3 at `compositions/<id>/stitch/<layout>.mp4`, and
+   marks the `CompositionOutput` completed.
+5. iOS polls the existing composition endpoint to see the output ready and
+   downloads the rendered mp4.
+
+### Manifest contract
+
+`StitchManifest` is a mechanical mirror of the iOS draft model in
+`ios/Sources/ClipfireiOS/Features/Stitch/StitchModels.swift`. Two styles:
+
+- `freezeReveal`: ref clip plays in full; its last frame freezes; clip 1
+  (creator) plays alpha-merged (background removed) over the frozen frame.
+  Cutout position + scale are normalized 0..1 in the manifest.
+- `freeform`: concatenate the manifest's clips in order with per-clip text
+  overlays burned in. Server-side support is currently capped at 2 clips —
+  long freeform stays on-device until the iOS hook-up lands.
+
+`renderConfig` is JSONB on `Composition` (parallel to `cuts`, `detectedQuotes`,
+`autoEditResult`). It's the canonical record of the latest requested render
+so the worker can reproduce it without re-reading the iOS draft.
+
+### Where it lives
+
+- API route: `src/app/api/compositions/[id]/stitch-render/route.ts`
+- Manifest types + validator: `shared/lib/stitch/manifest.ts`
+- Compositor (pure filter-graph builders + ffmpeg invocation):
+  `shared/util/stitchCompose.ts`
+- Segmentation port + adapter: `shared/lib/segmentation/`
+- Python sidecar: `workers/clip-metadata-worker/tools/segment_video.py`
+- Worker block: in `workers/clip-metadata-worker/index.ts`, alongside
+  `reaction-compose` / `clip-generation`.
+- Queue + job type: `shared/queues.ts` (`getStitchRenderQueue`, `queueStitchRenderJob`)
+- Cost + job-log instrumentation: extended `CostStage` (added `segmentation`)
+  and `JobType` (added `stitch-render`).
+
+### Failure policy
+
+- No auto-retry on the BullMQ side. iOS will retry by re-posting the manifest
+  with a fresh attempt — the worker is idempotent on jobId = compositionId.
+- A failed render flips both `CompositionOutput.status` and `Composition.status`
+  to `failed`, writes a `JobLog` row, and throws so BullMQ records the failure.
 
 ---
 
@@ -214,6 +294,7 @@ In the Connected Accounts modal, users can set:
 | `transcription` | whisper         | duration (cost is $0 for local Whisper)                             |
 | `llm_scoring`   | gemini / ollama | input/output tokens, images, audio seconds, estimated USD, duration |
 | `ffmpeg_render` | ffmpeg          | duration (local compute, $0)                                        |
+| `segmentation`  | mediapipe       | frames processed, duration (local compute, $0)                      |
 | `s3_upload`     | s3              | estimated PUT + bandwidth cost                                      |
 
 ### Cost estimation

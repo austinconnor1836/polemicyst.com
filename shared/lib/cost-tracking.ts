@@ -5,7 +5,8 @@ export type CostStage =
   | 'transcription'
   | 'llm_scoring'
   | 'ffmpeg_render'
-  | 's3_upload';
+  | 's3_upload'
+  | 'segmentation';
 
 export type CostEventInput = {
   stage: CostStage;

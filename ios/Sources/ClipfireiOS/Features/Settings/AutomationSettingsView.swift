@@ -128,10 +128,12 @@ public struct AutomationSettingsView: View {
             Section {
                 Toggle("Auto-Publish", isOn: $viewModel.settings.autoPublish)
                     .onChange(of: viewModel.settings.autoPublish) { viewModel.markChanged() }
+                Toggle("Auto-generate title & caption with AI", isOn: $viewModel.settings.autoGeneratePublishMeta)
+                    .onChange(of: viewModel.settings.autoGeneratePublishMeta) { viewModel.markChanged() }
             } header: {
                 Text("Publishing")
             } footer: {
-                Text("Automatically publish generated clips to selected platforms.")
+                Text("Auto-Publish ships generated clips to your selected platforms automatically. Auto-generate fills in a title and caption suggestion the moment the Publish sheet opens — you can still edit before sending.")
                     .foregroundStyle(DesignTokens.muted)
             }
             .listRowBackground(DesignTokens.surface)

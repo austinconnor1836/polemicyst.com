@@ -13,7 +13,15 @@ class ClipfireAppDelegate: NSObject, UIApplicationDelegate {
         completionHandler: @escaping () -> Void
     ) {
         NSLog("[App] handleEventsForBackgroundURLSession: %@", identifier)
-        BackgroundUploadService.shared.systemCompletionHandler = completionHandler
+        // Two background URLSessions live in the app — route the wake to the
+        // one whose identifier matches.
+        //   `com.clipfire.upload`  — `BackgroundUploadService` (AddVideo flow)
+        //   `com.clipfire.uploads` — `VideoUploadService`      (Stitch / Reactions)
+        if identifier == "com.clipfire.uploads" {
+            VideoUploadService.shared.savedBackgroundCompletionHandler = completionHandler
+        } else {
+            BackgroundUploadService.shared.systemCompletionHandler = completionHandler
+        }
     }
 }
 
@@ -28,6 +36,7 @@ struct ClipfireApp: App {
     @State private var showPublicationWizard = false
     @State private var showAddVideo = false
     @State private var showSocialPostComposer = false
+    @State private var showStitchEditor = false
 
     private let apiClient: APIClient
 
@@ -69,11 +78,15 @@ struct ClipfireApp: App {
                                 }
                                 .tag(0)
 
-                            SocialPostsListView(viewModel: SocialPostsViewModel(api: apiClient), api: apiClient)
+                            NavigationStack {
+                                MyStitchesView(api: apiClient, onRetry: { stitchId in
+                                    StitchEditorViewModel.retryGenerateMeta(stitchId: stitchId, api: apiClient)
+                                })
+                            }
                                 .tabItem {
-                                    Label("Post", systemImage: "text.bubble")
+                                    Label("Stitches", systemImage: "rectangle.split.3x1")
                                 }
-                                .tag(1)
+                                .tag(6)
 
                             ConnectedAccountsView(viewModel: ConnectedAccountsViewModel(api: apiClient), authService: authService)
                                 .tabItem {
@@ -86,6 +99,12 @@ struct ClipfireApp: App {
                                     Label("Videos", systemImage: "list.bullet")
                                 }
                                 .tag(3)
+
+                            SocialPostsListView(viewModel: SocialPostsViewModel(api: apiClient), api: apiClient)
+                                .tabItem {
+                                    Label("Post", systemImage: "text.bubble")
+                                }
+                                .tag(1)
 
                             CompositionsListView(viewModel: CompositionsViewModel(api: apiClient), api: apiClient)
                                 .tabItem {
@@ -129,8 +148,22 @@ struct ClipfireApp: App {
                             onReaction: {
                                 showContentPicker = false
                                 tabSelection = 5
+                            },
+                            onStitch: {
+                                showContentPicker = false
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showStitchEditor = true
+                                }
                             }
                         )
+                    }
+                    .sheet(isPresented: $showStitchEditor) {
+                        StitchEditorView(api: apiClient, onRenderDispatched: {
+                            // W025: fire-and-forget render — switch to the
+                            // Stitches tab so the user lands on MyStitchesView
+                            // with their freshly-queued (Processing…) row.
+                            tabSelection = 6
+                        })
                     }
                     .sheet(isPresented: $showAddVideo) {
                         AddVideoView(api: apiClient, onVideoAdded: {
