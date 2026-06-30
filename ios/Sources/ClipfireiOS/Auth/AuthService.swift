@@ -48,6 +48,40 @@ public final class AuthService: ObservableObject {
         }
     }
 
+    // MARK: - Presentation helpers
+
+    /// Resolve the root view controller of the active key window.
+    ///
+    /// On iPad (especially iPadOS 26 with Stage Manager / multi-scene), simply taking
+    /// `windowScene.windows.first` can resolve to a system/overlay window rather than
+    /// the **key** window, which makes `GIDSignIn.sharedInstance.signIn(withPresenting:)`
+    /// fail with "Unable to find root view controller". Prefer the key window across
+    /// all active scenes; fall back to the first foreground-active scene's first window
+    /// if no key window is found (e.g., very early app launch).
+    static func keyRootVC() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+
+        // 1. Prefer the key window across all scenes.
+        if let rootVC = scenes
+            .flatMap({ $0.windows })
+            .first(where: { $0.isKeyWindow })?
+            .rootViewController {
+            return rootVC
+        }
+
+        // 2. Fallback: first foreground-active scene's first window's root.
+        if let rootVC = scenes
+            .first(where: { $0.activationState == .foregroundActive })?
+            .windows
+            .first?
+            .rootViewController {
+            return rootVC
+        }
+
+        // 3. Last resort: any window's root view controller.
+        return scenes.flatMap({ $0.windows }).first?.rootViewController
+    }
+
     // MARK: - Google Sign-In
 
     public func signInWithGoogle() async {
@@ -56,9 +90,7 @@ public final class AuthService: ObservableObject {
         defer { isLoading = false }
 
         do {
-            guard let windowScene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene }).first,
-                  let rootVC = windowScene.windows.first?.rootViewController else {
+            guard let rootVC = Self.keyRootVC() else {
                 errorMessage = "Unable to find root view controller"
                 return
             }
@@ -94,9 +126,7 @@ public final class AuthService: ObservableObject {
     /// Otherwise, performs a fresh Google Sign-In with YouTube scopes included.
     /// Returns the server auth code to exchange on the backend.
     public func requestYouTubeScope() async throws -> String {
-        guard let windowScene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene }).first,
-              let rootVC = windowScene.windows.first?.rootViewController else {
+        guard let rootVC = Self.keyRootVC() else {
             throw YouTubeAuthError.noRootViewController
         }
 
