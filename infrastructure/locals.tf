@@ -32,6 +32,13 @@ locals {
         GOOGLE_CLIENT_ID     = var.google_client_id
         GOOGLE_CLIENT_SECRET = var.google_client_secret
 
+        # Apple Sign-In — must match the iOS app bundle ID (aud claim in
+        # the Apple identity token). com.clipfire.app is the iOS Clipfire
+        # bundle id; pre-rebrand it was com.polemicyst.app. Without this
+        # set, the code default in src/app/api/auth/mobile/apple/route.ts
+        # is used.
+        APPLE_CLIENT_ID = "com.clipfire.app"
+
         # Auth allowlist (shared across environments)
         AUTH_ALLOWLIST_ENABLED = var.auth_allowlist_enabled
         AUTH_ALLOWED_EMAILS    = var.auth_allowed_emails
