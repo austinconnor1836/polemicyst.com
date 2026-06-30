@@ -156,6 +156,11 @@ public struct ConnectedAccountsView: View {
         NavigationStack {
             ZStack(alignment: .bottomLeading) {
                 VStack(spacing: 0) {
+                    // v0.5.0: quota bars hidden for App Store resubmission
+                    // (Apple Guideline 2.1(b) — no IAP submitted yet). The
+                    // `viewModel.subscription` data path is intentionally
+                    // preserved so re-enabling is a one-block restore.
+                    #if false
                     if let sub = viewModel.subscription {
                         HStack(spacing: DesignTokens.largeSpacing) {
                             QuotaBar(
@@ -174,6 +179,7 @@ public struct ConnectedAccountsView: View {
                         .padding()
                         .background(DesignTokens.surface)
                     }
+                    #endif
 
                     accountsList
                 }
@@ -206,7 +212,10 @@ public struct ConnectedAccountsView: View {
             .background(DesignTokens.background.ignoresSafeArea())
             .navigationTitle("Connected Accounts")
             .task {
-                await viewModel.loadSubscription()
+                // v0.5.0: skip subscription fetch — quota bars + Subscription
+                // tab are hidden for App Store resubmission (Guideline 2.1(b)).
+                // Restore `await viewModel.loadSubscription()` when monetization
+                // re-lands.
                 async let accountsTask: () = viewModel.loadAccounts()
                 async let brandsTask: () = viewModel.loadBrands()
                 async let publishingTask: () = viewModel.loadPublishingAccounts()
