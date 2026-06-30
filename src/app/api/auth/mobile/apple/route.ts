@@ -123,7 +123,24 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('[mobile-apple-auth] Error:', error.message);
-    return NextResponse.json({ error: 'Authentication failed' }, { status: 401 });
+    const msg = error?.message ?? String(error);
+    const code =
+      error?.code ?? (error?.name && /jwt|jws|jwk/i.test(error.name) ? error.name : undefined);
+    console.error('[mobile-apple-auth] Error:', code ?? '<no-code>', msg);
+    // Surface the cause back to the iOS client so failures are
+    // diagnosable from device logs. This route handles auth failures,
+    // so leaking the underlying jose/Prisma error type is acceptable.
+    // Surface the cause INSIDE the `error` field too — the iOS APIErrorResponse
+    // decoder only reads `error` + `code`, so this is the only way the failure
+    // mode reaches device logs without a new iOS build.
+    return NextResponse.json(
+      {
+        error: `Authentication failed [${code ?? 'NO_CODE'}]: ${msg} (expected aud=${APPLE_CLIENT_ID})`,
+        cause: msg,
+        code: code ?? undefined,
+        expectedAudience: APPLE_CLIENT_ID,
+      },
+      { status: 401 }
+    );
   }
 }
