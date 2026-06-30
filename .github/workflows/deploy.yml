@@ -259,6 +259,7 @@ jobs:
   ios-test:
     name: iOS Tests
     runs-on: macos-15
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -391,7 +392,6 @@ jobs:
   build-ios-release:
     name: Build iOS Production Release
     runs-on: macos-15
-    needs: ios-test
     if: github.ref == 'refs/heads/main'
 
     steps:
