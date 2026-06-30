@@ -53,6 +53,18 @@ struct ClipfireApp: App {
         }
 
         let storage = TokenStorage()
+
+        // Auto-login bypass for simulator/agent testing (DEBUG only).
+        // When a `--auto-login=<jwt>` launch arg or `CLIPFIRE_AUTO_LOGIN_JWT`
+        // env var is present, persist the injected JWT to the Keychain BEFORE
+        // AuthService.init reads `tokenStorage.isLoggedIn`, so the app boots
+        // straight into the authenticated UI and skips LoginView entirely.
+        // See `ios/Sources/ClipfireiOS/Auth/AutoLoginMode.swift`.
+        if AutoLoginMode.isEnabled, let token = AutoLoginMode.token {
+            storage.saveToken(token)
+            NSLog("[App] AutoLoginMode active — Bearer JWT injected into Keychain")
+        }
+
         let client = APIClient(
             baseURL: AppConfiguration.apiBaseURL,
             tokenStorage: storage
@@ -187,12 +199,19 @@ struct ClipfireApp: App {
             .task {
                 // Restore Google Sign-In session from Keychain so
                 // GIDSignIn.sharedInstance.currentUser is available
-                // for authenticated innertube caption requests
-                do {
-                    try await GIDSignIn.sharedInstance.restorePreviousSignIn()
-                } catch {
-                    // Not fatal — user may have signed in with Apple
-                    print("[App] Google session restore: \(error.localizedDescription)")
+                // for authenticated innertube caption requests.
+                //
+                // Skip when AutoLoginMode is active — the injected JWT does
+                // NOT come from a Google sign-in, so calling restore would
+                // either no-op or, worse, throw and surface a spurious error
+                // banner that confuses the agent that just auto-logged in.
+                if !AutoLoginMode.isEnabled {
+                    do {
+                        try await GIDSignIn.sharedInstance.restorePreviousSignIn()
+                    } catch {
+                        // Not fatal — user may have signed in with Apple
+                        print("[App] Google session restore: \(error.localizedDescription)")
+                    }
                 }
                 await checkAppVersion()
             }
