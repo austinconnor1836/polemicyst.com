@@ -220,12 +220,9 @@ struct SettingsTabView: View {
     var body: some View {
         NavigationStack {
             List {
-                NavigationLink {
-                    SubscriptionView(viewModel: SubscriptionViewModel(api: apiClient))
-                } label: {
-                    Label("Subscription & Billing", systemImage: "creditcard.fill")
-                }
-                .listRowBackground(DesignTokens.surface)
+                // v0.5.0: "Subscription & Billing" entry removed for App Store
+                // resubmission (Apple Guideline 2.1(b)). Will be reintroduced
+                // alongside the RevenueCat integration post-v1.0.
 
                 NavigationLink {
                     AutomationSettingsView(viewModel: AutomationSettingsViewModel(api: apiClient))
