@@ -40,9 +40,12 @@ locals {
         APPLE_CLIENT_ID = "com.clipfire.app"
 
         # Auth allowlist (shared across environments)
-        AUTH_ALLOWLIST_ENABLED = var.auth_allowlist_enabled
-        AUTH_ALLOWED_EMAILS    = var.auth_allowed_emails
-        AUTH_ALLOWED_PROVIDERS = var.auth_allowed_providers
+        # Hardcoded in IaC so reviewer + tester accounts are tracked alongside
+        # code changes; flip AUTH_ALLOWLIST_ENABLED to "false" on App Store launch
+        # day to open signups to everyone.
+        AUTH_ALLOWLIST_ENABLED = "true"
+        AUTH_ALLOWED_EMAILS    = "clipfire.appreview@gmail.com,austin.connor1123@gmail.com,aconnor731@gmail.com"
+        AUTH_ALLOWED_PROVIDERS = "google,apple"
 
         # Redis (environment-specific service discovery)
         REDIS_HOST = "redis-${env_name}.${var.app_name}.local"
