@@ -5,7 +5,7 @@ import { prisma } from '@shared/lib/prisma';
 
 const APPLE_JWKS = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
 
-const APPLE_CLIENT_ID = process.env.APPLE_CLIENT_ID || 'com.polemicyst.app';
+const APPLE_CLIENT_ID = process.env.APPLE_CLIENT_ID || 'com.clipfire.app';
 
 const AUTH_ALLOWLIST_ENABLED = process.env.AUTH_ALLOWLIST_ENABLED === 'true';
 const AUTH_ALLOWED_EMAILS = (process.env.AUTH_ALLOWED_EMAILS ?? '')
