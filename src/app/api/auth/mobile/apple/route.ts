@@ -65,7 +65,16 @@ export async function POST(req: NextRequest) {
     } else if (email) {
       // First sign-in: try to match by email
       if (!isAllowed(email)) {
-        return NextResponse.json({ error: 'Email not allowed' }, { status: 403 });
+        console.error(
+          '[mobile-apple-auth] Email not allowed:',
+          email,
+          'providers:',
+          AUTH_ALLOWED_PROVIDERS
+        );
+        return NextResponse.json(
+          { error: `Email not allowed: ${email} (providers=${AUTH_ALLOWED_PROVIDERS.join('|')})` },
+          { status: 403 }
+        );
       }
 
       user = await prisma.user.findUnique({ where: { email } });
