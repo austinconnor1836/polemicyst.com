@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, Scissors } from 'lucide-react';
 import { CompositionCard } from './_components/CompositionCard';
 import toast from 'react-hot-toast';
 
@@ -86,14 +87,22 @@ export default function ReactionsPage() {
             Compose reaction videos with your commentary alongside reference clips
           </p>
         </div>
-        <Button onClick={handleCreate} disabled={creating}>
-          {creating ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Plus className="mr-2 h-4 w-4" />
-          )}
-          New Composition
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/reactions/split">
+              <Scissors className="mr-2 h-4 w-4" />
+              Split a capture
+            </Link>
+          </Button>
+          <Button onClick={handleCreate} disabled={creating}>
+            {creating ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="mr-2 h-4 w-4" />
+            )}
+            New Composition
+          </Button>
+        </div>
       </div>
 
       {loading ? (

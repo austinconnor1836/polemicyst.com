@@ -41,6 +41,8 @@ model User {
   socialPosts              SocialPost[]
   compositions             Composition[]
   usageMonths              UsageMonth[]
+  captureTemplates         CaptureTemplate[]
+  reactionSessions         ReactionSession[]
 }
 
 /// Per-user, per-month usage rollup. Canonical meter for the upload-minutes
@@ -728,6 +730,9 @@ model Composition {
   thumbnailCutoutSize     String  @default("large")  // small | medium | large
   thumbnailBgMode         String  @default("frame") // "frame" | "ai"
   thumbnailBgCrop         String?               // JSON: {x,y,w,h} crop rect for thumbnail background
+  creatorSourceCrop       Json?                 // { x, y, w, h } | null — crop applied to the creator source before scaling (reaction capture splitter)
+  reactionSessionId       String?               // set when this composition was fanned out from a capture split
+  reactionSession         ReactionSession? @relation(fields: [reactionSessionId], references: [id], onDelete: SetNull)
   createdAt           DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -738,6 +743,7 @@ model Composition {
 
   @@index([userId])
   @@index([status])
+  @@index([reactionSessionId])
 }
 
 model CompositionTrack {
@@ -756,12 +762,57 @@ model CompositionTrack {
   trimEndS      Float?
   sortOrder     Int         @default(0)
   hasAudio      Boolean     @default(true)
+  sourceCrop    Json?       // { x, y, w, h } | null — user-supplied crop of the source; honored by the renderer in place of runtime cropdetect
   transcript    String?     @db.Text
   transcriptJson Json?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
   @@index([compositionId])
+}
+
+/// Saved on-screen layout for the reaction capture splitter: where the creator
+/// feed and the reference feed live within a single screen recording. Lets the
+/// splitter crop each feed deterministically instead of guessing.
+model CaptureTemplate {
+  id                   String   @id @default(cuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                 String
+  canvasWidth          Int
+  canvasHeight         Int
+  creatorRect          Json     // { x, y, w, h }
+  referenceRect        Json     // { x, y, w, h }
+  referenceOrientation String   @default("portrait") // portrait | landscape
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// One long reaction capture that has been (or will be) split into N per-reaction
+/// compositions. Holds the source capture + template + confirmed boundary list so
+/// the fan-out is reproducible.
+model ReactionSession {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  captureS3Key  String
+  captureS3Url  String
+  captureDurationS Float?
+  templateId    String?  // CaptureTemplate used (snapshotted into rects below)
+  creatorRect   Json     // { x, y, w, h } — snapshot at fan-out time
+  referenceRect Json     // { x, y, w, h }
+  referenceOrientation String @default("portrait") // portrait | landscape
+  boundaries    Json     // Array<{ startS: number; endS: number; overLimit: boolean }>
+  status        String   @default("draft") // draft | rendering | completed | failed
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  compositions  Composition[]
+
+  @@index([userId])
 }
 
 model CompositionOutput {

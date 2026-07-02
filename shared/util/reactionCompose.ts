@@ -164,6 +164,12 @@ export interface ComposeOptions {
   cuts?: Array<{ startS: number; endS: number }>;
   /** Pre-generated quote graphic overlays to composite during rendering */
   quoteOverlays?: QuoteOverlayInfo[];
+  /**
+   * Crop applied to the creator source before scaling. Used by the reaction capture
+   * splitter, where the creator feed is one region of a larger screen recording.
+   * Mirrors `TrackInfo.sourceCrop` for reference tracks.
+   */
+  creatorSourceCrop?: { w: number; h: number; x: number; y: number } | null;
 }
 
 /**
@@ -237,6 +243,11 @@ export function buildFilterComplex(opts: ComposeOptions): {
   const creatorAudioTrimFilter = needsCreatorTrim
     ? `atrim=start=${creatorTrimStart.toFixed(3)}:end=${creatorTrimEnd.toFixed(3)},asetpts=PTS-STARTPTS,`
     : '';
+  // Crop the creator source region before scaling (reaction capture splitter: the
+  // creator feed is one rectangle of a larger screen recording). Applied right after
+  // the trim so every creator variant (full/mobile/pip/left) starts from the crop.
+  const cc = opts.creatorSourceCrop;
+  const creatorCropFilter = cc ? `crop=${cc.w}:${cc.h}:${cc.x}:${cc.y},` : '';
 
   const isMobile = layout === 'mobile';
   const canvasW = isMobile ? 720 : 1280;
@@ -246,20 +257,20 @@ export function buildFilterComplex(opts: ComposeOptions): {
 
   // Full-frame creator (for solo / no-reference-active state)
   filters.push(
-    `[0:v]${creatorTrimFilter}scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1[creator_full]`
+    `[0:v]${creatorTrimFilter}${creatorCropFilter}scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase,crop=${canvasW}:${canvasH},setsar=1[creator_full]`
   );
 
   if (isMobile) {
     // Mobile: creator overlay at bottom of frame (reference fills full frame)
     filters.push(
-      `[0:v]${creatorTrimFilter}scale=${MOBILE_CREATOR_W}:${MOBILE_CREATOR_H}:force_original_aspect_ratio=increase,crop=${MOBILE_CREATOR_W}:${MOBILE_CREATOR_H},setsar=1[creator_mobile]`
+      `[0:v]${creatorTrimFilter}${creatorCropFilter}scale=${MOBILE_CREATOR_W}:${MOBILE_CREATOR_H}:force_original_aspect_ratio=increase,crop=${MOBILE_CREATOR_W}:${MOBILE_CREATOR_H},setsar=1[creator_mobile]`
     );
   } else {
     // Landscape: PIP creator only if there's at least one landscape reference
     const hasLandscapeRef = tracks.some((t) => !isPortrait(t) && effectiveDuration(t) > 0);
     if (hasLandscapeRef) {
       filters.push(
-        `[0:v]${creatorTrimFilter}scale=${PIP_W}:${PIP_H}:force_original_aspect_ratio=increase,crop=${PIP_W}:${PIP_H},setsar=1[creator_pip]`
+        `[0:v]${creatorTrimFilter}${creatorCropFilter}scale=${PIP_W}:${PIP_H}:force_original_aspect_ratio=increase,crop=${PIP_W}:${PIP_H},setsar=1[creator_pip]`
       );
     }
 
@@ -273,7 +284,7 @@ export function buildFilterComplex(opts: ComposeOptions): {
       const creatorFillW = canvasW - refScaledW;
       if (creatorFillW > 0) {
         filters.push(
-          `[0:v]${creatorTrimFilter}scale=${creatorFillW}:${canvasH}:force_original_aspect_ratio=increase,crop=${creatorFillW}:${canvasH},setsar=1[creator_left${i}]`
+          `[0:v]${creatorTrimFilter}${creatorCropFilter}scale=${creatorFillW}:${canvasH}:force_original_aspect_ratio=increase,crop=${creatorFillW}:${canvasH},setsar=1[creator_left${i}]`
         );
       }
     });

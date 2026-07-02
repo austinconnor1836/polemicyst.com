@@ -767,13 +767,39 @@ new Worker<ReactionComposeJob>(
         );
         tempFiles.push(trackPath);
 
-        // Detect embedded portrait content in landscape references
-        const { detectSourceAspectRatio } = await import('../../shared/util/cropDetect');
-        const cropResult = await detectSourceAspectRatio(trackPath, track.width, track.height);
-        if (cropResult.crop) {
-          console.log(
-            `🔍 Detected ${cropResult.sourceAspectRatio} source in reference "${track.label || track.id}"`
-          );
+        // Honor a persisted, user-supplied crop (reaction capture splitter: the
+        // reference feed is one region of a screen recording). Otherwise auto-detect
+        // embedded portrait content in landscape references.
+        let sourceCrop: { w: number; h: number; x: number; y: number } | null = null;
+        const persistedCrop = track.sourceCrop as {
+          w?: number;
+          h?: number;
+          x?: number;
+          y?: number;
+        } | null;
+        if (
+          persistedCrop &&
+          typeof persistedCrop.w === 'number' &&
+          typeof persistedCrop.h === 'number' &&
+          typeof persistedCrop.x === 'number' &&
+          typeof persistedCrop.y === 'number'
+        ) {
+          sourceCrop = {
+            w: persistedCrop.w,
+            h: persistedCrop.h,
+            x: persistedCrop.x,
+            y: persistedCrop.y,
+          };
+          console.log(`✂️ Using persisted sourceCrop for reference "${track.label || track.id}"`);
+        } else {
+          const { detectSourceAspectRatio } = await import('../../shared/util/cropDetect');
+          const cropResult = await detectSourceAspectRatio(trackPath, track.width, track.height);
+          if (cropResult.crop) {
+            console.log(
+              `🔍 Detected ${cropResult.sourceAspectRatio} source in reference "${track.label || track.id}"`
+            );
+          }
+          sourceCrop = cropResult.crop;
         }
 
         trackInfos.push({
@@ -786,7 +812,7 @@ new Worker<ReactionComposeJob>(
           height: track.height,
           hasAudio: track.hasAudio,
           sortOrder: track.sortOrder,
-          sourceCrop: cropResult.crop,
+          sourceCrop,
         });
       }
 
@@ -961,6 +987,21 @@ new Worker<ReactionComposeJob>(
                   creatorDurationS: effectiveCreatorDurationS,
                   creatorTrimStartS: creatorTracks.length > 0 ? 0 : composition.creatorTrimStartS,
                   creatorTrimEndS: creatorTracks.length > 0 ? null : composition.creatorTrimEndS,
+                  creatorSourceCrop: (() => {
+                    const c = composition.creatorSourceCrop as {
+                      w?: number;
+                      h?: number;
+                      x?: number;
+                      y?: number;
+                    } | null;
+                    return c &&
+                      typeof c.w === 'number' &&
+                      typeof c.h === 'number' &&
+                      typeof c.x === 'number' &&
+                      typeof c.y === 'number'
+                      ? { w: c.w, h: c.h, x: c.x, y: c.y }
+                      : null;
+                  })(),
                   tracks: trackInfos,
                   audioMode: composition.audioMode as 'creator' | 'reference' | 'both',
                   creatorVolume: composition.creatorVolume,
