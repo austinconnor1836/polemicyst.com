@@ -41,6 +41,7 @@ model User {
   socialPosts              SocialPost[]
   compositions             Composition[]
   usageMonths              UsageMonth[]
+  transcriptSearchQueries  TranscriptSearchQuery[]
 }
 
 /// Per-user, per-month usage rollup. Canonical meter for the upload-minutes
@@ -174,9 +175,47 @@ model FeedVideo {
   jobLogs         JobLog[]
   truthAnalyses   TruthAnalysis[]
   analysisChats   AnalysisChat[]
+  transcriptSearchHits TranscriptSearchHit[]
 
   @@unique([feedId, videoId])
   @@map("account_videos")
+}
+
+/// User-issued transcript searches. One row per (user, queryText, wordBoundary)
+/// tuple — running the same query text again reuses the row and re-runs the
+/// scan. The hits themselves live on TranscriptSearchHit.
+model TranscriptSearchQuery {
+  id           String                @id @default(cuid())
+  userId       String
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  queryText    String
+  /// Did the input compile as-is as a regex? False means we fell back to escaped substring.
+  isRegex      Boolean               @default(false)
+  wordBoundary Boolean               @default(false)
+  createdAt    DateTime              @default(now())
+  lastRunAt    DateTime?
+  hits         TranscriptSearchHit[]
+
+  @@index([userId, createdAt])
+}
+
+/// A single matching transcript segment from a TranscriptSearchQuery run. Unique
+/// on (query, video, startSec) so re-running the same query is idempotent.
+model TranscriptSearchHit {
+  id          String                @id @default(cuid())
+  queryId     String
+  query       TranscriptSearchQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  feedVideoId String
+  feedVideo   FeedVideo             @relation(fields: [feedVideoId], references: [id], onDelete: Cascade)
+  startSec    Float
+  endSec      Float?
+  matchText   String                @db.Text
+  matchedSpan String                @db.Text
+  createdAt   DateTime              @default(now())
+
+  @@unique([queryId, feedVideoId, startSec])
+  @@index([queryId])
+  @@index([feedVideoId])
 }
 
 model Account {
