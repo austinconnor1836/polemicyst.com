@@ -17,6 +17,7 @@ import ShowChartIcon from '@mui/icons-material/ShowChart';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import SettingsIcon from '@mui/icons-material/Settings';
 import VideoCallIcon from '@mui/icons-material/VideoCall';
+import SearchIcon from '@mui/icons-material/Search';
 import LoginIcon from '@mui/icons-material/Login';
 import { useSession } from 'next-auth/react';
 
@@ -35,6 +36,7 @@ const authenticatedNavItems: SideNavItem[] = [
   { label: 'Blog', element: <DescriptionIcon />, href: '/posts' },
   { label: 'NCAA Seeds', element: <SportsBasketballIcon />, href: '/ncaa-seed-probability' },
   { label: 'Reactions', element: <VideoCallIcon />, href: '/reactions' },
+  { label: 'Search Transcripts', element: <SearchIcon />, href: '/search-transcripts' },
   { label: 'Billing', element: <PaymentIcon />, href: '/billing' },
   { label: 'Jobs', element: <WorkIcon />, href: '/jobs' },
 ];

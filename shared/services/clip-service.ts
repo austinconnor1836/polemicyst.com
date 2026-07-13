@@ -22,6 +22,13 @@ interface TriggerClipInput {
   captionsEnabled?: boolean;
   captionFont?: string;
   captionFontSize?: string;
+  /**
+   * Optional starting timestamp (seconds) used by the transcript-search
+   * "Generate clip here" flow. Included in the job payload so the worker
+   * can bias candidate selection around this moment; unused for regular
+   * whole-video scoring runs.
+   */
+  startSec?: number;
 }
 
 type TriggerClipResult =
@@ -79,6 +86,7 @@ export async function triggerClipGeneration(input: TriggerClipInput): Promise<Tr
       captionsEnabled: input.captionsEnabled,
       captionFont: input.captionFont,
       captionFontSize: input.captionFontSize,
+      startSec: input.startSec,
     },
     { jobId: input.feedVideoId, removeOnComplete: true, removeOnFail: true }
   );
