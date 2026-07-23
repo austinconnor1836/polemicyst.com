@@ -9,6 +9,11 @@ import {
   fetchYouTubeCaptions,
   fetchYouTubeCaptionsHTTP,
 } from '@shared/lib/youtube-captions';
+import {
+  isInstagramUrl,
+  resolveInstagramMediaUrl,
+  InstagramSessionUnavailableError,
+} from '@shared/lib/instagram-captions';
 import { getValidGoogleToken } from '@shared/lib/google-token';
 import { logUpload, getUploadContext } from '@shared/lib/upload-logger';
 
@@ -30,6 +35,95 @@ export async function POST(req: NextRequest) {
     }
 
     const manualFeed = await findOrCreateManualFeed(user.id);
+
+    // Instagram path — resolve mp4 URL via instagram-private-api, then hand the
+    // CDN URL to the existing Whisper transcription worker. IG has no native
+    // transcript surface (see shared/lib/instagram-captions.ts for the full
+    // design note); we only fetch the media URL + author-written post caption
+    // here. `postCaption` is intentionally NOT written into `transcript` — it's
+    // author-written text, not spoken-word.
+    if (isInstagramUrl(url)) {
+      let mp4Url: string;
+      let postCaption: string | undefined;
+      let shortcode: string;
+      try {
+        const resolved = await resolveInstagramMediaUrl(url);
+        mp4Url = resolved.mp4Url;
+        postCaption = resolved.postCaption;
+        shortcode = resolved.shortcode;
+      } catch (err) {
+        if (err instanceof InstagramSessionUnavailableError) {
+          await logUpload({
+            userId: user.id,
+            stage: 'from-url',
+            status: 'failed',
+            filename: filename || url,
+            durationMs: Date.now() - startMs,
+            error: err.message,
+            userAgent,
+            metadata: { url, reason: 'instagram-session-unavailable' },
+          });
+          return NextResponse.json(
+            {
+              error: 'Instagram integration not configured',
+              detail: err.message,
+            },
+            { status: 503 }
+          );
+        }
+        throw err;
+      }
+
+      const newVideo = await createFeedVideoRecord({
+        feedId: manualFeed.id,
+        userId: user.id,
+        title: filename || `Instagram ${shortcode}`,
+        s3Url: mp4Url,
+        status: 'ready',
+      });
+
+      // NOTE: the author-written post caption is intentionally NOT written into
+      // `transcript` / `transcriptJson` — those fields are reserved for the
+      // Whisper transcript that the transcription worker will produce next.
+      // We log the caption + return it to the client for surfacing separately;
+      // persisting it as a first-class column is deferred to a follow-up PR to
+      // keep this change minimal.
+      if (postCaption) {
+        console.info(
+          `[from-url] Instagram post caption for ${newVideo.id} (${postCaption.length} chars, not persisted)`
+        );
+      }
+
+      await queueTranscriptionJob({ feedVideoId: newVideo.id }).catch((err) =>
+        console.warn('[from-url] Failed to queue Instagram transcription:', err)
+      );
+
+      const durationMs = Date.now() - startMs;
+      await logUpload({
+        userId: user.id,
+        stage: 'from-url',
+        status: 'success',
+        filename: filename || url,
+        durationMs,
+        userAgent,
+        metadata: {
+          feedVideoId: newVideo.id,
+          url,
+          source: 'instagram',
+          shortcode,
+          hasPostCaption: !!postCaption,
+        },
+      });
+
+      console.info(
+        `[upload:from-url] SUCCESS instagram user=${user.id} feedVideoId=${newVideo.id} shortcode=${shortcode} (${durationMs}ms)`
+      );
+
+      // Return the feedVideo shape the URL importer expects, plus the
+      // separately-named `postCaption` field so the client can surface the
+      // author-written text distinctly from the (upcoming) Whisper transcript.
+      return NextResponse.json({ ...newVideo, postCaption });
+    }
 
     // Generate thumbnail for YouTube URLs
     const youtubeId = extractYouTubeId(url);
