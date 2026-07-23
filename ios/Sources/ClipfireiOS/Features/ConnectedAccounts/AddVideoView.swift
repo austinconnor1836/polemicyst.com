@@ -507,12 +507,32 @@ public final class BackgroundUploadService: NSObject, URLSessionDataDelegate {
             switch apiError {
             case .statusCode(let code):
                 switch code {
+                case 400: return "That URL isn't recognized. Try a YouTube or Instagram Reel link."
                 case 401: return "Authentication expired. Please sign out and sign back in."
                 case 413: return "File is too large for the server to accept."
                 case 500: return "Server error. Please try again later."
+                case 503: return "Instagram integration is temporarily unavailable. Try again later or import from a different platform."
                 default: return "Server returned HTTP \(code)."
                 }
             case .serverError(let code, let response):
+                // Server-side reasons we want to translate to friendly copy
+                // without exposing implementation details.
+                if code == 503 {
+                    // Backend returns "Instagram integration not configured"
+                    // when the IG session cookies are missing / flagged. Any
+                    // 503 from this endpoint means the same class of problem.
+                    NSLog("[Upload] 503 from server (raw): %@", response.error)
+                    return "Instagram integration is temporarily unavailable. Try again later or import from a different platform."
+                }
+                if code == 500 && response.error.lowercased().contains("instagram") {
+                    // IG challenge / rate-limit surfaces as 500 with an IG-flavored
+                    // message — log the raw text for triage, show a generic message.
+                    NSLog("[Upload] 500 IG error (raw): %@", response.error)
+                    return "Instagram couldn't complete the request right now. Try again shortly."
+                }
+                if code == 400 {
+                    return "That URL isn't recognized. Try a YouTube or Instagram Reel link."
+                }
                 return "Server error (\(code)): \(response.error)"
             }
         }
@@ -612,8 +632,23 @@ public final class AddVideoViewModel: ObservableObject {
     }
 
     var canImportURL: Bool {
-        !urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && urlText.lowercased().hasPrefix("http")
+        let trimmed = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.lowercased().hasPrefix("http") else { return false }
+        // Any http(s) URL passes the button gate; the recognizable-platform
+        // check is a soft warning surfaced separately (see `urlValidationHint`).
+        return true
+    }
+
+    /// Soft validation hint shown under the text field. Nil = URL is either
+    /// empty (nothing to say) or recognized (YouTube / Instagram). Non-nil =
+    /// URL is unrecognized; backend will likely reject it, but we still let
+    /// the user try (e.g. direct mp4 links are a legitimate niche case).
+    var urlValidationHint: String? {
+        let trimmed = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.lowercased().hasPrefix("http") else { return nil }
+        if YouTubeCaptionService.isYouTubeURL(trimmed) { return nil }
+        if InstagramURLDetector.isInstagramURL(trimmed) { return nil }
+        return "Unrecognized URL — YouTube and Instagram Reels work best."
     }
 
     // MARK: - URL Import
@@ -791,17 +826,25 @@ public struct AddVideoView: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(DesignTokens.textPrimary)
 
-                Text("Paste a YouTube or direct video link")
+                Text("Paste a YouTube or Instagram Reel link")
                     .font(.subheadline)
                     .foregroundStyle(DesignTokens.textSecondary)
             }
 
-            TextField("https://...", text: $viewModel.urlText)
-                .textFieldStyle(.roundedBorder)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .keyboardType(.URL)
-                .padding(.horizontal, DesignTokens.largeSpacing)
+            VStack(alignment: .leading, spacing: 6) {
+                TextField("https://...", text: $viewModel.urlText)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+
+                if let hint = viewModel.urlValidationHint {
+                    Text(hint)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+            .padding(.horizontal, DesignTokens.largeSpacing)
 
             importButton
 

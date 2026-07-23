@@ -408,6 +408,15 @@ Switch to the private model when:
   the route surfaces as HTTP 503 "Instagram integration not configured".
 - New env var documented in `ENV_VARS.template`:
   `INSTAGRAM_SESSION_STATE_PATH`.
+- **iOS parity** — the existing `AddVideoView` URL-import tab now accepts
+  Instagram Reel URLs alongside YouTube. Zero new API surface: the same
+  `POST /api/uploads/from-url` handles both. Added
+  `ios/Sources/ClipfireiOS/Services/InstagramURLDetector.swift` (client-side
+  soft validator, mirrors `isInstagramUrl` in `shared/lib/instagram-captions.ts`)
+  and mapped the backend's 503 "Instagram integration not configured" to a
+  user-friendly error message that doesn't leak implementation detail.
+  IG-flavored 500s (challenge / rate-limit) get a generic "try again shortly"
+  message; raw text is `NSLog`'d for triage.
 
 ### 2026-06-11
 
