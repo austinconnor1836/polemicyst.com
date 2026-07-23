@@ -377,6 +377,38 @@ Switch to the private model when:
 
 ## Change log
 
+### 2026-07-23
+
+- **Instagram video transcript support** — users can now paste an Instagram
+  Reel / Post / TV / Reels URL into the URL importer and get a Whisper
+  transcript, mirroring the YouTube URL-import flow.
+- **Design (not a 4-layer fallback stack)**: a prior scouting spike confirmed
+  Instagram exposes ZERO native transcripts. Meta's Graph API has no transcript
+  field on video media, all anonymous scrape paths were killed in the June 2026
+  doc_id migration, and every third-party IG transcript product is Whisper-on-
+  audio underneath. So the implementation is one metadata path + reuse of the
+  existing Whisper worker — nothing else.
+- New `shared/lib/instagram-captions.ts`: exposes
+  `parseInstagramUrl(url)`, `shortcodeToMediaId(shortcode)`, and
+  `resolveInstagramMediaUrl(url)` — the last one logs in via
+  `instagram-private-api` with a persisted session state, calls
+  `media.info(mediaId)`, and returns the highest-quality signed CDN mp4 URL +
+  author-written post caption. Does NOT run Whisper.
+- Wired into `POST /api/uploads/from-url` (Option A — no new API surface). When
+  the incoming URL matches `isInstagramUrl`, the route resolves the mp4 URL,
+  seeds `FeedVideo.s3Url` with it, and enqueues the existing transcription job.
+  The existing `transcription-worker` is format-agnostic (just `fetch()`es a
+  URL and pipes into `python3 scripts/transcribe.py -`), so no worker changes.
+- Honest naming: the response includes `postCaption` (author-written) as a
+  distinct field from `transcript` (Whisper output). Transcript `source` will
+  be `whisper` — never `instagram-native`, that surface does not exist.
+- Session-state gating: reads `INSTAGRAM_SESSION_STATE_PATH` (defaults to
+  `<repo-root>/ig-state-source.json`, matching `scripts/generate-ig-state.ts`).
+  When the file is missing, throws `InstagramSessionUnavailableError`, which
+  the route surfaces as HTTP 503 "Instagram integration not configured".
+- New env var documented in `ENV_VARS.template`:
+  `INSTAGRAM_SESSION_STATE_PATH`.
+
 ### 2026-06-11
 
 - **Added pricing strategy proposal** — `docs/PRICING_STRATEGY.md` documents a pricing

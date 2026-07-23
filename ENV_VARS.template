@@ -104,6 +104,20 @@ SENTRY_AUTH_TOKEN=
 SENTRY_ORG=
 SENTRY_PROJECT=
 
+# --- Instagram transcript resolver ---
+# Instagram has NO native transcript surface (Meta Graph API doesn't expose one,
+# and all anonymous scrape paths were killed in the June 2026 doc_id migration).
+# Our resolver logs in via `instagram-private-api` using a persisted session
+# state produced by `scripts/generate-ig-state.ts`, calls `media.info(mediaId)`
+# to get the signed CDN mp4 URL, then hands that URL to the existing Whisper
+# transcription worker.
+#
+# INSTAGRAM_SESSION_STATE_PATH points at a JSON file produced by
+# `scripts/generate-ig-state.ts` (defaults to `<repo-root>/ig-state-source.json`).
+# When the file is missing, the IG import endpoint returns HTTP 503 rather than
+# silently falling back — there is no working fallback.
+INSTAGRAM_SESSION_STATE_PATH=
+
 # --- Analytics (PostHog) ---
 # Both keys are optional — when unset, all PostHog calls are no-ops so dev/test
 # environments never touch PostHog. The cookie banner (clipfire-cookie-consent
