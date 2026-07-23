@@ -91,15 +91,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <link rel="alternate" type="application/rss+xml" href="/feed.xml" />
       </head>
       <body className={`${inter.className} bg-background text-foreground`}>
-        <StoreProvider>
-          <HamburgerProvider>
-            <SessionProviderWrapper>
-              {' '}
-              {/* ✅ Wrap with Client Component */}
+        <SessionProviderWrapper>
+          <StoreProvider>
+            <HamburgerProvider>
               <SharedLayout>{children}</SharedLayout>
-            </SessionProviderWrapper>
-          </HamburgerProvider>
-        </StoreProvider>
+            </HamburgerProvider>
+          </StoreProvider>
+        </SessionProviderWrapper>
         <CookieBanner />
       </body>
     </html>
