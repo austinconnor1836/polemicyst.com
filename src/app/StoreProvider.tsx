@@ -7,10 +7,10 @@ import { identifyClientPostHog, initClientPostHog } from '../lib/posthog-client'
 // Both checks live inside `initClientPostHog`/`identifyClientPostHog` so this
 // hook is a no-op in dev/test or before the user accepts cookies.
 function PostHogBootstrap() {
-  // `StoreProvider` mounts ABOVE `SessionProviderWrapper`, so during the
-  // static `_not-found` prerender (which doesn't include the SessionProvider
-  // in its tree) `useSession` returns undefined. Default to a safe shape so
-  // we don't crash the build.
+  // `StoreProvider` mounts INSIDE `SessionProviderWrapper` (see layout.tsx),
+  // so `useSession` here is safe. During the static `_not-found` prerender
+  // NextAuth's SessionProvider yields a null/undefined value; default to a
+  // safe shape so we don't crash the build.
   const sessionResult = useSession() as
     | { data: { user?: { id?: string } } | null; status: string }
     | undefined;

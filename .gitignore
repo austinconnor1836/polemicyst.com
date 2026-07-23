@@ -21,6 +21,11 @@ clip-worker/node_modules
 /coverage
 /test-files
 
+# playwright
+/playwright-report/
+/test-results/
+/playwright/.cache/
+
 .copilot/
 
 # next.js
