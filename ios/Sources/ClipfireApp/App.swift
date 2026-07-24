@@ -112,6 +112,12 @@ struct ClipfireApp: App {
                                 }
                                 .tag(3)
 
+                            TranscribeView(api: apiClient)
+                                .tabItem {
+                                    Label("Transcribe", systemImage: "waveform")
+                                }
+                                .tag(7)
+
                             SocialPostsListView(viewModel: SocialPostsViewModel(api: apiClient), api: apiClient)
                                 .tabItem {
                                     Label("Post", systemImage: "text.bubble")
