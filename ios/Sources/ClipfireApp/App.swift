@@ -83,6 +83,16 @@ struct ClipfireApp: App {
                     ForceUpdateView(storeUrl: forceUpdateStoreUrl)
                 } else if authService.isAuthenticated || ScreenshotMode.isActive {
                     ZStack(alignment: .bottomTrailing) {
+                        // Tab order matters: on iPhone, `TabView` only renders the
+                        // first 4 items in the primary tab bar; items 5+ collapse
+                        // under a "More" overflow. We keep the primary bar focused
+                        // on the four surfaces a creator uses every session — Clips
+                        // (generated output feed), Stitches (creation output),
+                        // Videos (their imported library), Transcribe (URL → text).
+                        // Accounts / Post / Reactions / Settings are setup or
+                        // secondary surfaces and are fine under "More". Tag values
+                        // are preserved so deep links + `tabSelection` writes still
+                        // resolve to the intended tab.
                         TabView(selection: $tabSelection) {
                             ClipsListView(viewModel: ClipsViewModel(api: apiClient))
                                 .tabItem {
@@ -100,12 +110,6 @@ struct ClipfireApp: App {
                                 }
                                 .tag(6)
 
-                            ConnectedAccountsView(viewModel: ConnectedAccountsViewModel(api: apiClient), authService: authService)
-                                .tabItem {
-                                    Label("Accounts", systemImage: "link")
-                                }
-                                .tag(2)
-
                             FeedVideosView(viewModel: FeedVideosViewModel(api: apiClient))
                                 .tabItem {
                                     Label("Videos", systemImage: "list.bullet")
@@ -117,6 +121,12 @@ struct ClipfireApp: App {
                                     Label("Transcribe", systemImage: "waveform")
                                 }
                                 .tag(7)
+
+                            ConnectedAccountsView(viewModel: ConnectedAccountsViewModel(api: apiClient), authService: authService)
+                                .tabItem {
+                                    Label("Accounts", systemImage: "link")
+                                }
+                                .tag(2)
 
                             SocialPostsListView(viewModel: SocialPostsViewModel(api: apiClient), api: apiClient)
                                 .tabItem {
