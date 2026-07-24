@@ -417,6 +417,20 @@ Switch to the private model when:
   user-friendly error message that doesn't leak implementation detail.
   IG-flavored 500s (challenge / rate-limit) get a generic "try again shortly"
   message; raw text is `NSLog`'d for triage.
+- **Standalone iOS Transcribe screen** — new top-level tab (`Transcribe`,
+  `waveform` icon) that lets a user paste a video URL and see the transcript
+  text without the mental model of "importing a video to my library." Wraps
+  the SAME `POST /api/uploads/from-url` + poll `GET /api/feedVideos/:id`
+  backend the Import URL flow uses (server-side the FeedVideo row is where
+  the transcript hangs, so it's preserved — but the UX foregrounds the
+  transcript, not the library entry). Includes empty/loading/result/error
+  states, Copy + Share sheet on the result, and an unobtrusive "View in
+  Library" NavigationLink to the underlying `FeedVideoDetailView`. Existing
+  `AddVideoView` Import URL flow is untouched — different use case. Files:
+  `ios/Sources/ClipfireiOS/Features/Transcribe/{TranscribeView.swift,
+TranscribeViewModel.swift}`, `Services/URLImportErrorMessage.swift`
+  (shared error-copy helper), plus `APIClient.fetchFeedVideoById(id:)` and
+  the new tab in `ClipfireApp/App.swift`.
 
 ### 2026-06-11
 

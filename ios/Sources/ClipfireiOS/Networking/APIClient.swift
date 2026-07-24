@@ -172,6 +172,13 @@ public struct APIClient {
         try await get(path: "/api/feedVideos")
     }
 
+    /// Fetch a single FeedVideo by id — used by the Transcribe screen to poll
+    /// for `transcript` to become non-nil. Returns the raw Prisma FeedVideo
+    /// record (same shape as list items).
+    public func fetchFeedVideoById(id: String) async throws -> FeedVideo {
+        try await get(path: "/api/feedVideos/\(id)")
+    }
+
     public func deleteFeedVideo(id: String) async throws {
         try await delete(path: "/api/feedVideos/\(id)")
     }
