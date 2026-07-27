@@ -26,19 +26,22 @@ public struct ContentTypePicker: View {
     var onSocialPost: (() -> Void)?
     var onReaction: (() -> Void)?
     var onStitch: (() -> Void)?
+    var onSplitFrame: (() -> Void)?
 
     public init(
         onPublication: @escaping () -> Void,
         onVideo: @escaping () -> Void,
         onSocialPost: (() -> Void)? = nil,
         onReaction: (() -> Void)? = nil,
-        onStitch: (() -> Void)? = nil
+        onStitch: (() -> Void)? = nil,
+        onSplitFrame: (() -> Void)? = nil
     ) {
         self.onPublication = onPublication
         self.onVideo = onVideo
         self.onSocialPost = onSocialPost
         self.onReaction = onReaction
         self.onStitch = onStitch
+        self.onSplitFrame = onSplitFrame
     }
 
     public var body: some View {
@@ -143,6 +146,28 @@ public struct ContentTypePicker: View {
                             }
                         } icon: {
                             Image(systemName: "rectangle.split.3x1")
+                                .foregroundStyle(DesignTokens.accent)
+                                .frame(width: 32)
+                        }
+                    }
+                    .listRowBackground(DesignTokens.surface)
+                }
+
+                if let onSplitFrame {
+                    Button {
+                        onSplitFrame()
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Split Frame")
+                                    .font(.body)
+                                    .foregroundStyle(DesignTokens.textPrimary)
+                                Text("Portrait video on top, image on bottom")
+                                    .font(.caption)
+                                    .foregroundStyle(DesignTokens.muted)
+                            }
+                        } icon: {
+                            Image(systemName: "rectangle.tophalf.filled")
                                 .foregroundStyle(DesignTokens.accent)
                                 .frame(width: 32)
                         }
