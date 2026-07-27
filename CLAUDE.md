@@ -229,6 +229,87 @@ so the worker can reproduce it without re-reading the iOS draft.
 
 ---
 
+## Split-Frame render (server-side, for iOS Clipfire)
+
+Portrait 9:16 composed video where the top half is a user-provided video and
+the bottom half is a user-provided still image. Sits next to Stitch and
+Reactions as an iOS composer; renders server-side so the user can background
+the app the moment they tap Render.
+
+### Flow
+
+1. iOS composer (`ios/Sources/ClipfireiOS/Features/SplitFrame/`) picks a video
+   - image via two `PHPickerViewController` instances (no
+     `PHPhotoLibrary.requestAuthorization` — see the `reference_phpicker_via_nsitemprovider`
+     memory).
+2. Tapping Render uploads the video via the existing background URLSession
+   (`com.clipfire.uploads`, `VideoUploadService.shared`), POSTs the image
+   multipart to `POST /api/split-frame/upload-image`, then POSTs the manifest
+   to `POST /api/split-frame/render`.
+3. The render route creates a `Composition` (mode = `split-frame`), upserts a
+   pending `CompositionOutput` (layout = `split-frame`), and enqueues a
+   `split-frame-render` BullMQ job (jobId = compositionId). Returns
+   `202 { status: 'queued', compositionId, outputId }`.
+4. The `split-frame-render` worker (same `clip-metadata-worker` image as
+   `stitch-render`) downloads both assets, composes with FFmpeg via
+   `shared/util/splitFrameCompose.ts`, uploads the mp4 to S3 at
+   `compositions/<id>/split-frame/output.mp4`, and marks the output completed.
+5. iOS `MySplitFramesView` polls `GET /api/split-frame/[id]` (or refreshes
+   the list at `GET /api/split-frame`) and plays the finished mp4 from S3.
+
+### Manifest contract
+
+`SplitFrameManifest` (`shared/lib/split-frame/manifest.ts`):
+
+```ts
+{
+  version: 1;
+  videoUrl: string;
+  imageUrl: string;
+  outputWidth: 720;
+  outputHeight: 1280;
+  caption?: string;
+}
+```
+
+Both dimensions are pinned to 720 × 1280 — reserving a future `outputWidth`
+override without breaking clients that hard-code the value today. The
+compositor splits the canvas into two 720 × 640 halves, fits each asset with
+`force_original_aspect_ratio=decrease` + a black `pad`, and vstacks them.
+Optional `caption` is burned in over the bottom half via `drawtext`.
+
+### Where it lives
+
+- API routes: `src/app/api/split-frame/{upload-image,render,route}.ts` +
+  `src/app/api/split-frame/[id]/route.ts` (GET + DELETE).
+- Manifest types + validator: `shared/lib/split-frame/manifest.ts`.
+- Compositor (pure filter-graph builders + ffmpeg invocation):
+  `shared/util/splitFrameCompose.ts`.
+- Worker block: in `workers/clip-metadata-worker/index.ts`, alongside the
+  `stitch-render` block.
+- Queue + job type: `shared/queues.ts`
+  (`getSplitFrameRenderQueue`, `queueSplitFrameRenderJob`).
+- Cost + job-log instrumentation: extended `JobType` (added
+  `split-frame-render`); reuses existing `download` / `ffmpeg_render` /
+  `s3_upload` cost stages.
+- iOS composer: `ios/Sources/ClipfireiOS/Features/SplitFrame/`
+  (`SplitFrameEditorView`, `SplitFrameViewModel`, `SplitFrameAssetPickers`,
+  `MySplitFramesView`, `SplitFrameModels`).
+- iOS access: FAB → ContentTypePicker → “Split Frame” option. Post-dispatch
+  the user lands on Settings → Split Frames (deep-linked via `SettingsRoute`)
+  where their queued row is visible. No new primary tab (iPhone bar is
+  already crowded).
+
+### Failure policy
+
+Same convention as `stitch-render`: no automatic retries; a failed job flips
+both `CompositionOutput.status` and `Composition.status` to `failed`,
+writes a `JobLog` row, and throws so BullMQ records the failure. iOS retries
+by re-issuing the flow — the worker's `jobId = compositionId` deduplication
+makes the re-render idempotent.
+
+---
+
 ## Current LLM scoring architecture
 
 ### High-level flow
@@ -376,6 +457,47 @@ Switch to the private model when:
 - **Cost tracking**: each chat call tracked as `llm_scoring` stage with `metadata: { type: 'truth_chat' }`.
 
 ## Change log
+
+### 2026-07-27
+
+- **Split-Frame composer** — new iOS composer + server-side render pipeline
+  that produces a portrait 9:16 video where the top half is a user-supplied
+  video and the bottom half is a user-supplied still image. Ships as a
+  sibling of Publication / Video / Social Post / Reaction / Stitch in the
+  iOS `ContentTypePicker`.
+- **Backend**: new manifest + validator (`shared/lib/split-frame/manifest.ts`),
+  new compositor (`shared/util/splitFrameCompose.ts` — reuses the same
+  filter-graph patterns as `stitchCompose.ts`), new BullMQ queue
+  (`split-frame-render`) + job type in `shared/queues.ts`, new API routes
+  under `src/app/api/split-frame/` (`upload-image` for the multipart image
+  upload, `render` for the manifest POST, `route.ts` for the list, and
+  `[id]/route.ts` for GET + DELETE). The `split-frame-render` worker block
+  lives alongside the `stitch-render` block in
+  `workers/clip-metadata-worker/index.ts`.
+- **DB**: no schema change. Reuses `Composition` (with `mode = 'split-frame'`)
+  and `CompositionOutput` (with `layout = 'split-frame'`); the manifest is
+  persisted onto `Composition.renderConfig` JSONB.
+- **iOS**: new feature dir `ios/Sources/ClipfireiOS/Features/SplitFrame/`
+  containing `SplitFrameEditorView` (sheet-style composer with live 9:16
+  preview), `SplitFrameViewModel` (upload + dispatch + cleanup),
+  `SplitFrameAssetPickers` (video + image via `PHPickerViewController`,
+  no `PHPhotoLibrary.requestAuthorization`), `MySplitFramesView` (server-
+  list of past renders with polling + delete), and `SplitFrameModels`.
+- **iOS wiring**: `ContentTypePicker` gets a new `onSplitFrame` callback
+  behind a `rectangle.tophalf.filled` icon. Post-dispatch the user lands on
+  Settings → Split Frames via a deep-link route (no new primary tab — the
+  iPhone tab bar is already at its 4-item practical cap).
+- **Instrumentation**: `JobType = 'split-frame-render'` added; the worker
+  emits `logJob` events at started/completed/failed and threads a
+  `CostTracker` through the download → ffmpeg_render → s3_upload chain.
+- **Tests**: `tests/lib/split-frame-compose.test.ts` — 15 unit tests
+  covering the validator, canvas math, filter-graph shape, drawtext
+  escaping, and the ffmpeg argv builder. No FFmpeg needed to run them.
+- **Constraints observed**: uses `getAuthenticatedUser(req)` on every new
+  route, uses `unauthorized() / badRequest() / notFound() / serverError() / ok()`
+  helpers, reuses the S3 helper in `src/lib/s3-client.ts`, reuses
+  `VideoUploadService.shared` for the video upload, follows the deletion
+  UX + Card page conventions in `MySplitFramesView`.
 
 ### 2026-07-23
 
