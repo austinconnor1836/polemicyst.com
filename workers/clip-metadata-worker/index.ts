@@ -33,10 +33,12 @@ import type {
   GenericTranscriptionJob,
   ThumbnailGenerationJob,
   StitchRenderJob,
+  SplitFrameRenderJob,
 } from '@shared/queues';
 import { queueGenericTranscriptionJob } from '@shared/queues';
 import { renderComposition } from '@shared/util/reactionCompose';
 import { renderStitch } from '@shared/util/stitchCompose';
+import { composeSplitFrame } from '@shared/util/splitFrameCompose';
 import { createSegmentationProvider } from '@shared/lib/segmentation/segmentation-provider';
 import { layoutCanvasSize } from '@shared/lib/stitch/manifest';
 import { transcribeFromS3Url, transcribeLocalFile } from '@shared/lib/transcription';
@@ -1733,6 +1735,235 @@ new Worker<StitchRenderJob>(
       }
       if (tempFiles.length > 0) {
         console.log(`🧹 [stitch-render] Cleaned up ${tempFiles.length} temp files.`);
+      }
+    }
+  },
+  { connection: redisConnection as any }
+);
+
+// ============================================================================
+// Split-frame render worker
+// ============================================================================
+//
+// Composes a portrait 9:16 mp4 where the top half is the user's video and the
+// bottom half is a still image. Follows the same failure policy as the
+// stitch-render block above: no automatic retries (BullMQ defaults),
+// `CompositionOutput.status` + `Composition.status` both flip to `failed` on
+// error, a `JobLog` row is written, and the error is thrown so BullMQ records
+// the failure. `jobId` is the compositionId — POSTing the manifest again is
+// idempotent.
+
+new Worker<SplitFrameRenderJob>(
+  'split-frame-render',
+  async (job) => {
+    const { compositionId, userId, manifest } = job.data;
+    const costTracker = new CostTracker(userId, compositionId);
+    const startMs = Date.now();
+
+    await logJob({
+      feedVideoId: compositionId,
+      jobType: 'split-frame-render',
+      status: 'started',
+      message: `Worker picked up split-frame-render job (${manifest.outputWidth}×${manifest.outputHeight})`,
+    });
+
+    console.log(`🖼️ [split-frame-render] Processing composition ${compositionId}`);
+
+    const tempFiles: string[] = [];
+    let outputRowId: string | null = null;
+
+    try {
+      // 1. Load composition + the single 'split-frame' output row.
+      const composition = await prisma.composition.findUnique({
+        where: { id: compositionId },
+        include: { outputs: true },
+      });
+      if (!composition) {
+        throw new Error(`Composition ${compositionId} not found`);
+      }
+
+      const output = composition.outputs.find((o: any) => o.layout === 'split-frame');
+      if (!output) {
+        throw new Error(`No CompositionOutput row exists for layout=split-frame`);
+      }
+      outputRowId = output.id;
+
+      await prisma.compositionOutput.update({
+        where: { id: output.id },
+        data: { status: 'rendering' },
+      });
+
+      // 2. Download the video and the image to local temp files.
+      const videoLocalPath = await costTracker.track(
+        'download',
+        () => downloadFeedVideoToTemp(manifest.videoUrl),
+        (resultPath) => {
+          let fileSizeBytes: number | undefined;
+          try {
+            const fsSync = require('fs');
+            fileSizeBytes = fsSync.statSync(resultPath).size;
+          } catch {}
+          return {
+            provider: 's3',
+            fileSizeBytes,
+            estimatedCostUsd: fileSizeBytes ? estimateS3Cost(fileSizeBytes) : 0,
+            metadata: { asset: 'video' },
+          };
+        }
+      );
+      tempFiles.push(videoLocalPath);
+
+      const imageLocalPath = await costTracker.track(
+        'download',
+        () => downloadFeedVideoToTemp(manifest.imageUrl),
+        (resultPath) => {
+          let fileSizeBytes: number | undefined;
+          try {
+            const fsSync = require('fs');
+            fileSizeBytes = fsSync.statSync(resultPath).size;
+          } catch {}
+          return {
+            provider: 's3',
+            fileSizeBytes,
+            estimatedCostUsd: fileSizeBytes ? estimateS3Cost(fileSizeBytes) : 0,
+            metadata: { asset: 'image' },
+          };
+        }
+      );
+      tempFiles.push(imageLocalPath);
+
+      // 3. Compose + encode with FFmpeg.
+      const outputLocalPath = (() => {
+        const pathSync = require('path');
+        const osSync = require('os');
+        return pathSync.join(osSync.tmpdir(), `split-frame-${compositionId}-${Date.now()}.mp4`);
+      })();
+      tempFiles.push(outputLocalPath);
+
+      await costTracker.track(
+        'ffmpeg_render',
+        () =>
+          composeSplitFrame({
+            manifest,
+            inputs: { videoLocalPath, imageLocalPath },
+            outputPath: outputLocalPath,
+          }),
+        () => ({ provider: 'ffmpeg', estimatedCostUsd: 0 })
+      );
+
+      // 4. Upload result to S3.
+      const fsSync = require('fs');
+      const fileSizeBytes = fsSync.statSync(outputLocalPath).size;
+      const s3Key = `compositions/${compositionId}/split-frame/output.mp4`;
+      const region = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-2';
+      const bucket = process.env.S3_BUCKET || 'clips-genie-uploads';
+
+      await costTracker.track(
+        's3_upload',
+        async () => {
+          const { S3Client } = await import('@aws-sdk/client-s3');
+          const { Upload } = await import('@aws-sdk/lib-storage');
+          const s3 = new S3Client({ region });
+          const upload = new Upload({
+            client: s3,
+            params: {
+              Bucket: bucket,
+              Key: s3Key,
+              Body: fsSync.createReadStream(outputLocalPath),
+              ContentType: 'video/mp4',
+            },
+          });
+          await upload.done();
+        },
+        () => ({
+          provider: 's3',
+          fileSizeBytes,
+          estimatedCostUsd: estimateS3Cost(fileSizeBytes),
+          metadata: { s3Key },
+        })
+      );
+
+      const s3Url = `https://${bucket}.s3.${region}.amazonaws.com/${s3Key}`;
+
+      // 5. Mark CompositionOutput + Composition completed.
+      const durationMs = Date.now() - startMs;
+      await prisma.compositionOutput.update({
+        where: { id: output.id },
+        data: {
+          status: 'completed',
+          s3Key,
+          s3Url,
+          durationMs,
+          fileSizeBytes: BigInt(fileSizeBytes),
+        },
+      });
+      await prisma.composition.update({
+        where: { id: compositionId },
+        data: { status: 'completed' },
+      });
+
+      await logJob({
+        feedVideoId: compositionId,
+        jobType: 'split-frame-render',
+        status: 'completed',
+        message: `Split-frame render finished — ${fileSizeBytes} bytes`,
+        durationMs,
+        metadata: {
+          s3Url,
+          outputWidth: manifest.outputWidth,
+          outputHeight: manifest.outputHeight,
+        },
+      });
+
+      console.log(
+        `🏁 [split-frame-render] Completed ${compositionId} -> ${s3Url} (${durationMs}ms)`
+      );
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('❌ [split-frame-render] failed:', errorMessage);
+
+      if (outputRowId) {
+        try {
+          await prisma.compositionOutput.update({
+            where: { id: outputRowId },
+            data: { status: 'failed', renderError: errorMessage },
+          });
+        } catch (updateErr) {
+          console.error('⚠️ failed to mark CompositionOutput failed (non-fatal):', updateErr);
+        }
+      }
+      try {
+        await prisma.composition.update({
+          where: { id: compositionId },
+          data: { status: 'failed' },
+        });
+      } catch {}
+
+      await logJob({
+        feedVideoId: compositionId,
+        jobType: 'split-frame-render',
+        status: 'failed',
+        message: 'Split-frame render failed',
+        error: errorMessage,
+        durationMs: Date.now() - startMs,
+      });
+
+      throw err;
+    } finally {
+      try {
+        await costTracker.flush();
+      } catch (costErr) {
+        console.error('⚠️ Cost tracking flush failed (non-fatal):', costErr);
+      }
+
+      const fs = await import('fs');
+      for (const f of tempFiles) {
+        try {
+          if (fs.existsSync(f)) fs.unlinkSync(f);
+        } catch {}
+      }
+      if (tempFiles.length > 0) {
+        console.log(`🧹 [split-frame-render] Cleaned up ${tempFiles.length} temp files.`);
       }
     }
   },
