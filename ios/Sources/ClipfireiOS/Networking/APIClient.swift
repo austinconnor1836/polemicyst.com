@@ -476,6 +476,76 @@ public struct APIClient {
         let _: AnyCodable = try await post(path: "/api/compositions/\(compositionId)/render/cancel", body: EmptyBody())
     }
 
+    // MARK: - Split-Frame renders
+    //
+    // Portrait 9:16 composed video where the top half is a user video and the
+    // bottom half is a still image. The composer lives at
+    // `Features/SplitFrame/` and drives these three endpoints:
+    //   POST /api/split-frame/upload-image  — multipart image → S3
+    //   POST /api/split-frame/render        — manifest → BullMQ split-frame-render
+    //   GET  /api/split-frame               — list the caller's renders
+    //   GET  /api/split-frame/[id]          — poll one render
+
+    /// Upload a still image to S3 for the bottom half of a Split-Frame render.
+    /// Returns the S3 URL the client hands back in `startSplitFrameRender`.
+    public func uploadSplitFrameImage(
+        fileURL: URL,
+        contentType: String
+    ) async throws -> SplitFrameImageUploadResponse {
+        let url = baseURL.appending(path: "/api/split-frame/upload-image")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        if let token = tokenStorage?.getToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let boundary = "----ClipfireBoundary-\(UUID().uuidString)"
+        request.setValue(
+            "multipart/form-data; boundary=\(boundary)",
+            forHTTPHeaderField: "Content-Type"
+        )
+
+        let filename = fileURL.lastPathComponent
+        let fileData = try Data(contentsOf: fileURL)
+
+        var body = Data()
+        func appendString(_ s: String) {
+            if let d = s.data(using: .utf8) { body.append(d) }
+        }
+        appendString("--\(boundary)\r\n")
+        appendString("Content-Disposition: form-data; name=\"image\"; filename=\"\(filename)\"\r\n")
+        appendString("Content-Type: \(contentType)\r\n\r\n")
+        body.append(fileData)
+        appendString("\r\n--\(boundary)--\r\n")
+
+        request.httpBody = body
+
+        let (data, response) = try await session.data(for: request)
+        try ensureSuccess(response, data: data)
+        return try decoder.decode(SplitFrameImageUploadResponse.self, from: data)
+    }
+
+    /// POST the render manifest; server enqueues the BullMQ job. Fire-and-forget.
+    public func startSplitFrameRender(
+        _ request: SplitFrameRenderRequest
+    ) async throws -> SplitFrameRenderResponse {
+        try await post(path: "/api/split-frame/render", body: request)
+    }
+
+    /// Fetch a single Split-Frame composition (for polling render status).
+    public func fetchSplitFrameComposition(id: String) async throws -> SplitFrameComposition {
+        try await get(path: "/api/split-frame/\(id)")
+    }
+
+    /// List the caller's Split-Frame compositions (newest first).
+    public func fetchSplitFrameCompositions() async throws -> [SplitFrameComposition] {
+        try await get(path: "/api/split-frame")
+    }
+
+    public func deleteSplitFrameComposition(id: String) async throws {
+        try await delete(path: "/api/split-frame/\(id)")
+    }
+
     public func probeVideo(s3Key: String) async throws -> ProbeResponse {
         struct Body: Encodable { let s3Key: String }
         return try await post(path: "/api/compositions/probe", body: Body(s3Key: s3Key))
