@@ -5,7 +5,8 @@ export type JobType =
   | 'speaker-transcription'
   | 'clip-generation'
   | 'download'
-  | 'stitch-render';
+  | 'stitch-render'
+  | 'split-frame-render';
 
 export type JobStatus = 'queued' | 'started' | 'completed' | 'failed';
 

@@ -1,6 +1,7 @@
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import type { StitchManifest } from './lib/stitch/manifest';
+import type { SplitFrameManifest } from './lib/split-frame/manifest';
 
 let redis: Redis | null = null;
 let videoDownloadQueue: Queue | null = null;
@@ -12,6 +13,7 @@ let reactionComposeQueue: Queue | null = null;
 let genericTranscriptionQueue: Queue | null = null;
 let thumbnailGenerationQueue: Queue | null = null;
 let stitchRenderQueue: Queue | null = null;
+let splitFrameRenderQueue: Queue | null = null;
 
 export function getRedisConnection() {
   if (redis) return redis;
@@ -210,6 +212,34 @@ export function getStitchRenderQueue() {
 
 export function queueStitchRenderJob(data: StitchRenderJob) {
   return getStitchRenderQueue().add('stitch-render', data, {
+    jobId: data.compositionId,
+    removeOnComplete: true,
+    removeOnFail: true,
+  });
+}
+
+// --- Split-frame render queue ---
+// Server-side renderer for the iOS Clipfire Split-Frame composer. iOS uploads
+// a video + image, POSTs a `SplitFrameManifest`, and this worker composes a
+// portrait 9:16 mp4 where the top half is the video and the bottom half is
+// the image. Fire-and-forget: iOS can background the app once queued.
+
+export interface SplitFrameRenderJob {
+  compositionId: string;
+  userId: string;
+  manifest: SplitFrameManifest;
+}
+
+export function getSplitFrameRenderQueue() {
+  if (splitFrameRenderQueue) return splitFrameRenderQueue;
+  splitFrameRenderQueue = new Queue('split-frame-render', {
+    connection: getRedisConnection() as any,
+  });
+  return splitFrameRenderQueue;
+}
+
+export function queueSplitFrameRenderJob(data: SplitFrameRenderJob) {
+  return getSplitFrameRenderQueue().add('split-frame-render', data, {
     jobId: data.compositionId,
     removeOnComplete: true,
     removeOnFail: true,

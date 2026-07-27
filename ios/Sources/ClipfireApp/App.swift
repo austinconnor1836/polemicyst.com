@@ -37,6 +37,8 @@ struct ClipfireApp: App {
     @State private var showAddVideo = false
     @State private var showSocialPostComposer = false
     @State private var showStitchEditor = false
+    @State private var showSplitFrameEditor = false
+    @State private var navigateToSplitFramesAfterDispatch = false
 
     private let apiClient: APIClient
 
@@ -140,7 +142,11 @@ struct ClipfireApp: App {
                                 }
                                 .tag(5)
 
-                            SettingsTabView(apiClient: apiClient, authService: authService)
+                            SettingsTabView(
+                                apiClient: apiClient,
+                                authService: authService,
+                                pushSplitFramesTrigger: $navigateToSplitFramesAfterDispatch
+                            )
                                 .tabItem {
                                     Label("Settings", systemImage: "gearshape.fill")
                                 }
@@ -182,6 +188,12 @@ struct ClipfireApp: App {
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                     showStitchEditor = true
                                 }
+                            },
+                            onSplitFrame: {
+                                showContentPicker = false
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showSplitFrameEditor = true
+                                }
                             }
                         )
                     }
@@ -191,6 +203,15 @@ struct ClipfireApp: App {
                             // Stitches tab so the user lands on MyStitchesView
                             // with their freshly-queued (Processing…) row.
                             tabSelection = 6
+                        })
+                    }
+                    .sheet(isPresented: $showSplitFrameEditor) {
+                        SplitFrameEditorView(api: apiClient, onRenderDispatched: {
+                            // Fire-and-forget: after the render is queued we
+                            // route the user to Settings → Split Frames via
+                            // the trigger flag so their queued row is visible.
+                            navigateToSplitFramesAfterDispatch = true
+                            tabSelection = 4 // Settings tab (see SettingsTabView)
                         })
                     }
                     .sheet(isPresented: $showAddVideo) {
@@ -251,9 +272,16 @@ struct ClipfireApp: App {
 struct SettingsTabView: View {
     let apiClient: APIClient
     @ObservedObject var authService: AuthService
+    /// One-shot flag flipped from the App scene when a Split-Frame render is
+    /// dispatched. On the next render we push `MySplitFramesView` onto the
+    /// nav stack so the user sees their queued row without having to hunt
+    /// through Settings.
+    @Binding var pushSplitFramesTrigger: Bool
+
+    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 // v0.5.0: "Subscription & Billing" entry removed for App Store
                 // resubmission (Apple Guideline 2.1(b)). Will be reintroduced
@@ -280,6 +308,13 @@ struct SettingsTabView: View {
                 }
                 .listRowBackground(DesignTokens.surface)
 
+                Section("My Renders") {
+                    NavigationLink(value: SettingsRoute.splitFrames) {
+                        Label("Split Frames", systemImage: "rectangle.tophalf.filled")
+                    }
+                    .listRowBackground(DesignTokens.surface)
+                }
+
                 Section {
                     Button(role: .destructive) {
                         authService.signOut()
@@ -292,6 +327,28 @@ struct SettingsTabView: View {
             .scrollContentBackground(.hidden)
             .background(DesignTokens.background.ignoresSafeArea())
             .navigationTitle("Settings")
+            .navigationDestination(for: SettingsRoute.self) { route in
+                switch route {
+                case .splitFrames:
+                    MySplitFramesView(api: apiClient)
+                }
+            }
+            .onChange(of: pushSplitFramesTrigger) { _, newValue in
+                if newValue {
+                    // Ensure the Split Frames screen sits on top of the stack.
+                    if path.count == 0 {
+                        path.append(SettingsRoute.splitFrames)
+                    }
+                    pushSplitFramesTrigger = false
+                }
+            }
         }
     }
+}
+
+/// Deep-linkable destinations inside the Settings NavigationStack. Kept in a
+/// dedicated enum so the split-frame dispatch code can push a value onto the
+/// path without knowing the concrete view type.
+private enum SettingsRoute: Hashable {
+    case splitFrames
 }
