@@ -1,0 +1,27 @@
+{
+  "name": "polemicyst-graphic-render",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browserless (Satori + resvg) render service for the Polemicyst brand graphic. Stateless, no DB/S3/auth coupling.",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "start": "tsx src/server.ts",
+    "dev": "tsx watch src/server.ts",
+    "test": "tsx --test test/pagination.test.ts",
+    "verify": "tsx verify/run-verify.ts"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "satori": "^0.12.1"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^23.0.0",
+    "tsx": "^4.23.11",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20.6"
+  }
+}
