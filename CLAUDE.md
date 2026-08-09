@@ -458,6 +458,60 @@ Switch to the private model when:
 
 ## Change log
 
+### 2026-08-09
+
+- **Polemicyst Graphic composer** — new iOS composer + a SYNCHRONOUS web render
+  endpoint that typesets pasted plain text into the fixed Polemicyst brand card
+  (cream 1080×1350, Spectral serif, hairline-ruled body frame, `@polemicyst`
+  footer) and returns one or more PNG pages. A short post is a single card; a
+  long post is an Instagram carousel. **100% PROGRAMMATIC — no AI/LLM anywhere
+  in the runtime path.** The template is fixed; the only "smart" step is pure
+  geometry (measuring rendered paragraph heights in headless Chromium and
+  packing them across pages).
+- **Sync vs async decision — SYNCHRONOUS.** Unlike Stitch / Split-Frame (which
+  enqueue BullMQ jobs because FFmpeg renders are long-running), this is a fast
+  Puppeteer HTML→PNG pass with no model call. Puppeteer already runs in the
+  Next.js web API runtime here — see the established
+  `POST /api/articles/[id]/rasterize-graphics` route, which rasterizes brand
+  graphics the same way and returns inline. So the new route renders inline and
+  returns `{ imageUrls, pageCount }` — no queue, worker, DB row, or polling.
+  Best UX: the iOS composer shows the finished carousel immediately.
+- **Backend**: new `shared/util/polemicystGraphic.ts` holds the verbatim brand
+  CSS as a single source of truth plus the pure text→layout pipeline
+  (`parseInput` splits paragraphs on blank lines + honors explicit `---`/`===`
+  page-break markers; `escapeHtml`; `splitIntoSentences`; `paginate` greedily
+  packs paragraphs per page with a sentence-boundary fallback for an over-tall
+  paragraph; `selectFontSizeAndPaginate` keeps a comfortable fixed font-size
+  and only applies a uniform shrink when the carousel would exceed
+  `MAX_PAGES = 10`). `renderPolemicystGraphic()` is the browser orchestrator
+  (measure heights → paginate → screenshot each 1080×1350 `.card` at
+  deviceScaleFactor 2). New route `src/app/api/polemicyst-graphic/render/route.ts`
+  (`getAuthenticatedUser` + `badRequest/unauthorized/serverError/ok`, uploads
+  each page to S3 at `polemicyst-graphic/<userId>/<batch>-<n>.png` via
+  `makeS3v3Client`).
+- **Page indicator**: multi-page output adds a subtle maroon (`#8a2b1e`)
+  "i / N" indicator in the footer opposite the handle (Roboto Condensed, styled
+  like the old `.edition`); single-page output shows none. Toggleable via the
+  `showPageIndicator` request flag.
+- **DB**: no schema change — the render is stateless (S3 URLs returned inline).
+- **Tests**: `tests/lib/polemicyst-graphic.test.ts` — 28 unit tests covering
+  HTML escaping, paragraph splitting on blank lines, explicit `---`/`===`
+  breaks, greedy packing, sentence-level fallback, page counts, slot injection
+  - indicator presence, and the font-size selection loop. All pure — no browser.
+- **iOS**: new `ios/Sources/ClipfireiOS/Features/PolemicystGraphic/`
+  (`PolemicystGraphicEditorView` — paste `TextEditor` + Generate, then a
+  swipeable `TabView(.page)` carousel of `AsyncImage`s with Save-to-Photos
+  (add-only `PHPhotoLibrary`), Share (`ShareLink` of the page PNGs), and
+  Regenerate; `PolemicystGraphicViewModel`; `PhotoLibrarySaver`;
+  `PolemicystGraphicModels`). New `APIClient.renderPolemicystGraphic(_:)`.
+  Reachable via FAB → `ContentTypePicker` (`text.quote` icon, new
+  `onPolemicystGraphic` callback wired in `ClipfireApp/App.swift`).
+- **On-device verification** via `ios/scripts/xcode-run.sh` (Build-and-Run) is
+  the real done-gate — no device build was available in the authoring
+  environment. The web render path WAS verified end-to-end against local
+  Chromium (single card, an 8-page auto-carousel, and an explicit-`---`
+  3-panel carousel all rendered brand-faithfully at 2160×2700).
+
 ### 2026-07-27
 
 - **Split-Frame composer** — new iOS composer + server-side render pipeline

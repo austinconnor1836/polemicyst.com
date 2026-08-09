@@ -27,6 +27,7 @@ public struct ContentTypePicker: View {
     var onReaction: (() -> Void)?
     var onStitch: (() -> Void)?
     var onSplitFrame: (() -> Void)?
+    var onPolemicystGraphic: (() -> Void)?
 
     public init(
         onPublication: @escaping () -> Void,
@@ -34,7 +35,8 @@ public struct ContentTypePicker: View {
         onSocialPost: (() -> Void)? = nil,
         onReaction: (() -> Void)? = nil,
         onStitch: (() -> Void)? = nil,
-        onSplitFrame: (() -> Void)? = nil
+        onSplitFrame: (() -> Void)? = nil,
+        onPolemicystGraphic: (() -> Void)? = nil
     ) {
         self.onPublication = onPublication
         self.onVideo = onVideo
@@ -42,6 +44,7 @@ public struct ContentTypePicker: View {
         self.onReaction = onReaction
         self.onStitch = onStitch
         self.onSplitFrame = onSplitFrame
+        self.onPolemicystGraphic = onPolemicystGraphic
     }
 
     public var body: some View {
@@ -168,6 +171,28 @@ public struct ContentTypePicker: View {
                             }
                         } icon: {
                             Image(systemName: "rectangle.tophalf.filled")
+                                .foregroundStyle(DesignTokens.accent)
+                                .frame(width: 32)
+                        }
+                    }
+                    .listRowBackground(DesignTokens.surface)
+                }
+
+                if let onPolemicystGraphic {
+                    Button {
+                        onPolemicystGraphic()
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Polemicyst Graphic")
+                                    .font(.body)
+                                    .foregroundStyle(DesignTokens.textPrimary)
+                                Text("Typeset pasted text into a branded card or carousel")
+                                    .font(.caption)
+                                    .foregroundStyle(DesignTokens.muted)
+                            }
+                        } icon: {
+                            Image(systemName: "text.quote")
                                 .foregroundStyle(DesignTokens.accent)
                                 .frame(width: 32)
                         }
