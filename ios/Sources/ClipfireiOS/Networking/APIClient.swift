@@ -549,15 +549,10 @@ public struct APIClient {
     // MARK: - Polemicyst Graphic
     //
     // The Polemicyst Graphic composer lives in `Features/PolemicystGraphic/`.
-    // Unlike Stitch / Split-Frame (async BullMQ renders), this is a SYNCHRONOUS
-    // programmatic HTML→PNG render — the response carries the finished S3 URLs,
-    // so there is no upload step, no polling, and NO AI/LLM.
-    //   POST /api/polemicyst-graphic/render  — { text } → { imageUrls, pageCount }
-    public func renderPolemicystGraphic(
-        _ request: PolemicystGraphicRequest
-    ) async throws -> PolemicystGraphicResponse {
-        try await post(path: "/api/polemicyst-graphic/render", body: request)
-    }
+    // It no longer routes through this monolith `APIClient` — it calls the
+    // standalone render service directly via `PolemicystGraphicService`
+    // (separate host, `x-render-secret` header, base64 PNGs returned inline).
+    // See `Features/PolemicystGraphic/PolemicystGraphicService.swift`.
 
     public func probeVideo(s3Key: String) async throws -> ProbeResponse {
         struct Body: Encodable { let s3Key: String }

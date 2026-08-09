@@ -70,6 +70,13 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: 'UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight'
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: 'UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight'
         API_BASE_URL: 'https://polemicyst.com'
+        # Standalone Polemicyst Graphic render service (separate from the monolith
+        # so it stays up while the monolith is hibernated). Same value in Debug +
+        # Release. The secret only gates a public, stateless render endpoint — no
+        # user data — so shipping it in the binary is acceptable (mirrors how
+        # API_BASE_URL is wired as a build setting → Info.plist).
+        GRAPHIC_RENDER_URL: 'https://polemicyst-graphic-render.vercel.app'
+        GRAPHIC_RENDER_SECRET: 'cc07c64dc799c9faabaf706ba6038b2209cbb51dd4cb9dbb'
       configs:
         Debug:
           # LAN IP — works when iPhone is on same Wi-Fi as this Mac. Switch to
@@ -88,6 +95,8 @@ targets:
       properties:
         CFBundleDisplayName: Clipfire
         API_BASE_URL: '$(API_BASE_URL)'
+        GRAPHIC_RENDER_URL: '$(GRAPHIC_RENDER_URL)'
+        GRAPHIC_RENDER_SECRET: '$(GRAPHIC_RENDER_SECRET)'
         GIDClientID: '$(GOOGLE_CLIENT_ID)'
         GOOGLE_SERVER_CLIENT_ID: '$(GOOGLE_SERVER_CLIENT_ID)'
         CFBundleURLTypes:

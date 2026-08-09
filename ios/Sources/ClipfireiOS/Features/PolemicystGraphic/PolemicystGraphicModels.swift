@@ -1,6 +1,6 @@
 import Foundation
 
-/// Request body for `POST /api/polemicyst-graphic/render`.
+/// Request body for `POST /render` on the standalone render service.
 ///
 /// 100% programmatic server-side render — the pasted `text` is typeset into the
 /// fixed Polemicyst brand card and rasterized to one or more 1080×1350 PNG
@@ -19,17 +19,21 @@ public struct PolemicystGraphicRequest: Encodable, Equatable {
     }
 }
 
-/// Response from `POST /api/polemicyst-graphic/render`.
+/// Response from `POST /render` on the standalone render service.
 ///
-/// `imageUrls` is an ordered array of S3 PNG URLs — one entry per carousel page
-/// (a short post yields a single URL). The render is synchronous, so these URLs
-/// are ready to display the instant the request returns; there is no polling.
+/// `images` is an ordered array of base64-encoded PNGs — one entry per carousel
+/// page (a short post yields a single image). The render is synchronous, so the
+/// bytes are inline in the response (no S3, no URLs, no polling).
 public struct PolemicystGraphicResponse: Decodable, Equatable {
-    public let imageUrls: [String]
+    /// Base64-encoded PNG bytes, one per page, in carousel order.
+    public let images: [String]
     public let pageCount: Int
+    /// The font size (px) the service settled on. Informational only.
+    public let fontSize: Double?
 
-    public init(imageUrls: [String], pageCount: Int) {
-        self.imageUrls = imageUrls
+    public init(images: [String], pageCount: Int, fontSize: Double? = nil) {
+        self.images = images
         self.pageCount = pageCount
+        self.fontSize = fontSize
     }
 }

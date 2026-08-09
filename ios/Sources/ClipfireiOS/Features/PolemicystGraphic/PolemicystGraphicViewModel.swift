@@ -5,21 +5,20 @@ import UIKit
 
 /// View-model for the Polemicyst Graphic composer.
 ///
-/// Flow: the user pastes text, taps Generate, the server SYNCHRONOUSLY renders
-/// the branded 1080×1350 PNG carousel and returns the S3 URLs. There is NO
-/// AI/LLM step, NO BullMQ job, and NO polling — the URLs come back in the
-/// response, so `stage` moves straight from `.generating` to `.result`.
+/// Flow: the user pastes text, taps Generate, the standalone render service
+/// SYNCHRONOUSLY typesets the branded 1080×1350 PNG carousel and returns the
+/// pages as base64 PNGs inline. There is NO AI/LLM step, NO BullMQ job, NO S3,
+/// and NO polling — the images come back in the response, so `stage` moves
+/// straight from `.generating` to `.result`.
 ///
-/// After a result lands we eagerly download the PNGs into `pageImages` (for
-/// Save-to-Photos) and write them to temp files (`shareURLs`) so Share hands the
-/// system real image files. The on-screen carousel itself uses `AsyncImage`
-/// against the returned S3 URLs.
+/// The decoded `[UIImage]` pages drive the on-screen carousel (`Image(uiImage:)`),
+/// Save-to-Photos, and Share directly — no network fetch after the render.
 @MainActor
 public final class PolemicystGraphicViewModel: ObservableObject {
     public enum Stage: Equatable {
         case idle
         case generating
-        case result(imageUrls: [String])
+        case result(pageCount: Int)
         case failed(String)
 
         public var isGenerating: Bool {
@@ -34,17 +33,15 @@ public final class PolemicystGraphicViewModel: ObservableObject {
     @Published public var showPageIndicator: Bool = true
     @Published public var stage: Stage = .idle
 
-    /// Downloaded page images, populated after a successful render. Used for
-    /// Save-to-Photos and as the Share payload source.
+    /// Rendered page images, populated after a successful render. Drives the
+    /// carousel, Save-to-Photos, and Share.
     @Published public var pageImages: [UIImage] = []
-    /// Temp-file URLs of the page PNGs, for `ShareLink`.
-    @Published public var shareURLs: [URL] = []
     @Published public var isSaving = false
 
-    private let api: APIClient
+    private let service: PolemicystGraphicService
 
-    public init(api: APIClient) {
-        self.api = api
+    public init(service: PolemicystGraphicService = PolemicystGraphicService()) {
+        self.service = service
     }
 
     // MARK: - Derived
@@ -57,13 +54,12 @@ public final class PolemicystGraphicViewModel: ObservableObject {
         !trimmedText.isEmpty && !stage.isGenerating
     }
 
-    public var resultUrls: [String] {
-        if case .result(let urls) = stage { return urls }
-        return []
+    public var hasResult: Bool {
+        !pageImages.isEmpty
     }
 
-    public var hasResult: Bool {
-        !resultUrls.isEmpty
+    public var pageCount: Int {
+        pageImages.count
     }
 
     // MARK: - Actions
@@ -77,23 +73,17 @@ public final class PolemicystGraphicViewModel: ObservableObject {
 
         stage = .generating
         pageImages = []
-        shareURLs = []
 
-        let api = self.api
+        let service = self.service
         let payload = PolemicystGraphicRequest(text: text, showPageIndicator: showPageIndicator)
 
         Task { @MainActor in
             do {
-                let response = try await api.renderPolemicystGraphic(payload)
-                self.stage = .result(imageUrls: response.imageUrls)
-                await self.loadRenderedAssets(from: response.imageUrls)
+                let images = try await service.render(payload)
+                self.pageImages = images
+                self.stage = .result(pageCount: images.count)
             } catch {
-                let message: String
-                if let apiError = error as? APIError {
-                    message = apiError.errorDescription ?? "Render failed."
-                } else {
-                    message = error.localizedDescription
-                }
+                let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 self.stage = .failed(message)
             }
         }
@@ -109,7 +99,6 @@ public final class PolemicystGraphicViewModel: ObservableObject {
     public func startOver() {
         stage = .idle
         pageImages = []
-        shareURLs = []
     }
 
     /// Save every rendered page to the photo library (add-only).
@@ -118,36 +107,5 @@ public final class PolemicystGraphicViewModel: ObservableObject {
         isSaving = true
         defer { isSaving = false }
         try await PhotoLibrarySaver.saveImages(pageImages)
-    }
-
-    // MARK: - Asset download
-
-    /// Download the rendered PNGs for Save/Share. Non-fatal: if a page fails to
-    /// download the carousel still renders via `AsyncImage`; only Save/Share are
-    /// affected, and they guard on `pageImages` being non-empty.
-    private func loadRenderedAssets(from urls: [String]) async {
-        var images: [UIImage] = []
-        var fileURLs: [URL] = []
-        let tmpDir = FileManager.default.temporaryDirectory
-
-        for (index, urlString) in urls.enumerated() {
-            guard let url = URL(string: urlString) else { continue }
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                guard let image = UIImage(data: data) else { continue }
-                images.append(image)
-
-                let fileURL = tmpDir.appendingPathComponent(
-                    "polemicyst-graphic-\(index + 1)-\(UUID().uuidString.prefix(8)).png"
-                )
-                try? data.write(to: fileURL)
-                fileURLs.append(fileURL)
-            } catch {
-                NSLog("[PolemicystGraphic] Failed to download page %d: %@", index + 1, error.localizedDescription)
-            }
-        }
-
-        self.pageImages = images
-        self.shareURLs = fileURLs
     }
 }

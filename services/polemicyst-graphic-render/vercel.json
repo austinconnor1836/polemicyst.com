@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/render.ts": {
+      "maxDuration": 30,
+      "memory": 1024,
+      "includeFiles": "assets/fonts/**"
+    }
+  },
+  "rewrites": [
+    { "source": "/render", "destination": "/api/render" },
+    { "source": "/health", "destination": "/api/render" }
+  ]
+}

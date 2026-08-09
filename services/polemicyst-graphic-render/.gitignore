@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+verify/out/*.svg
+.vercel/
+.vercel
+.secrets/
+.env
+.env.*

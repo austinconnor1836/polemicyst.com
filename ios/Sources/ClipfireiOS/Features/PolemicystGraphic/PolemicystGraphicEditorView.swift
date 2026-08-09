@@ -1,12 +1,13 @@
 import SwiftUI
+import UIKit
 
 /// Sheet-style composer for the Polemicyst Graphic.
 ///
-/// The user pastes plain text into ONE box and taps Generate. The server
-/// SYNCHRONOUSLY typesets it into the fixed Polemicyst brand card (cream card,
-/// Spectral serif, hairline-ruled body, `@polemicyst` footer) and returns one
-/// or more 1080×1350 PNG pages. A short post is a single card; a long post is an
-/// Instagram carousel. NO AI/LLM anywhere in the path.
+/// The user pastes plain text into ONE box and taps Generate. The standalone
+/// render service SYNCHRONOUSLY typesets it into the fixed Polemicyst brand card
+/// (cream card, Spectral serif, hairline-ruled body, `@polemicyst` footer) and
+/// returns one or more 1080×1350 PNG pages as base64 bytes inline. A short post
+/// is a single card; a long post is an Instagram carousel. NO AI/LLM anywhere.
 ///
 /// Two visual states share this view: the editor (paste + Generate) and the
 /// result (swipeable carousel preview + Save / Share / Regenerate). Structure +
@@ -19,9 +20,10 @@ public struct PolemicystGraphicEditorView: View {
     @State private var showErrorAlert = false
     @State private var saveMessage: String?
     @State private var showSaveAlert = false
+    @State private var showShareSheet = false
 
-    public init(api: APIClient) {
-        _viewModel = StateObject(wrappedValue: PolemicystGraphicViewModel(api: api))
+    public init() {
+        _viewModel = StateObject(wrappedValue: PolemicystGraphicViewModel())
     }
 
     public var body: some View {
@@ -57,6 +59,9 @@ public struct PolemicystGraphicEditorView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 if let saveMessage { Text(saveMessage) }
+            }
+            .sheet(isPresented: $showShareSheet) {
+                GraphicShareSheet(images: viewModel.pageImages)
             }
         }
     }
@@ -151,8 +156,8 @@ public struct PolemicystGraphicEditorView: View {
     private var resultSection: some View {
         VStack(alignment: .leading, spacing: DesignTokens.largeSpacing) {
             carousel
-            if viewModel.resultUrls.count > 1 {
-                Text("\(viewModel.resultUrls.count) pages \u{00B7} swipe to preview")
+            if viewModel.pageCount > 1 {
+                Text("\(viewModel.pageCount) pages \u{00B7} swipe to preview")
                     .font(.caption)
                     .foregroundStyle(DesignTokens.muted)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -163,50 +168,20 @@ public struct PolemicystGraphicEditorView: View {
 
     private var carousel: some View {
         TabView(selection: $carouselIndex) {
-            ForEach(Array(viewModel.resultUrls.enumerated()), id: \.offset) { index, urlString in
-                AsyncImage(url: URL(string: urlString)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cornerRadius))
-                    case .failure:
-                        placeholderTile(systemImage: "exclamationmark.triangle", label: "Couldn't load page \(index + 1)")
-                    default:
-                        placeholderTile(systemImage: "photo", label: nil, showsSpinner: true)
-                    }
-                }
-                .padding(.horizontal, 4)
-                .tag(index)
+            ForEach(Array(viewModel.pageImages.enumerated()), id: \.offset) { index, image in
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cornerRadius))
+                    .padding(.horizontal, 4)
+                    .tag(index)
             }
         }
-        .tabViewStyle(.page(indexDisplayMode: viewModel.resultUrls.count > 1 ? .automatic : .never))
+        .tabViewStyle(.page(indexDisplayMode: viewModel.pageCount > 1 ? .automatic : .never))
         .indexViewStyle(.page(backgroundDisplayMode: .interactive))
         // 1080 : 1350 == 4 : 5 portrait aspect ratio of the brand card.
         .aspectRatio(1080.0 / 1350.0, contentMode: .fit)
         .frame(maxWidth: .infinity)
-    }
-
-    private func placeholderTile(systemImage: String, label: String?, showsSpinner: Bool = false) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: DesignTokens.cornerRadius)
-                .fill(DesignTokens.surface)
-            VStack(spacing: DesignTokens.smallSpacing) {
-                if showsSpinner {
-                    ProgressView().tint(DesignTokens.accent)
-                } else {
-                    Image(systemName: systemImage)
-                        .font(.largeTitle)
-                        .foregroundStyle(DesignTokens.muted)
-                }
-                if let label {
-                    Text(label)
-                        .font(.caption)
-                        .foregroundStyle(DesignTokens.muted)
-                }
-            }
-        }
     }
 
     private var actionButtons: some View {
@@ -223,14 +198,13 @@ public struct PolemicystGraphicEditorView: View {
                 }
                 .disabled(viewModel.pageImages.isEmpty || viewModel.isSaving)
 
-                if viewModel.shareURLs.isEmpty {
+                Button {
+                    showShareSheet = true
+                } label: {
                     actionLabel(systemImage: "square.and.arrow.up", title: "Share", filled: false)
-                        .opacity(0.5)
-                } else {
-                    ShareLink(items: viewModel.shareURLs) {
-                        actionLabel(systemImage: "square.and.arrow.up", title: "Share", filled: false)
-                    }
                 }
+                .disabled(viewModel.pageImages.isEmpty)
+                .opacity(viewModel.pageImages.isEmpty ? 0.5 : 1)
             }
 
             Button {
@@ -279,4 +253,16 @@ public struct PolemicystGraphicEditorView: View {
         }
         showSaveAlert = true
     }
+}
+
+/// Wraps `UIActivityViewController` so the rendered page images can be shared
+/// (AirDrop, Messages, Save to Files, Instagram, etc.) directly as `UIImage`s.
+private struct GraphicShareSheet: UIViewControllerRepresentable {
+    let images: [UIImage]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: images, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
