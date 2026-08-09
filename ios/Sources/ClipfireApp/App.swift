@@ -225,7 +225,7 @@ struct ClipfireApp: App {
                         // Synchronous render — the composer shows the finished
                         // carousel inline (Save / Share / Regenerate), so there's
                         // no tab switch or list surface to route to afterward.
-                        PolemicystGraphicEditorView(api: apiClient)
+                        PolemicystGraphicEditorView()
                     }
                     .sheet(isPresented: $showAddVideo) {
                         AddVideoView(api: apiClient, onVideoAdded: {
