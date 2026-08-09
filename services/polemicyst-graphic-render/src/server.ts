@@ -7,7 +7,7 @@
  */
 
 import { createServer } from 'node:http';
-import { handleRender, type RenderRequestBody } from './handler.ts';
+import { handleRender, type RenderRequestBody } from './handler';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const MAX_BODY_BYTES = 1_000_000; // 1 MB — text-only payload

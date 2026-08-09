@@ -23,7 +23,7 @@ import {
   PARAGRAPH_GAP,
   LINE_HEIGHT,
   POLEMICYST_HANDLE,
-} from './pagination.ts';
+} from './pagination';
 
 // Loose element type — Satori accepts this shape.
 type SNode = {

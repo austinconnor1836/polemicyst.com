@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Resvg } from '@resvg/resvg-js';
 
-import { renderPolemicystGraphic as renderSatori } from '../src/render.ts';
+import { renderPolemicystGraphic as renderSatori } from '../src/render';
 
 // Ground truth: the monolith's Chromium renderer, pointed at system Chrome.
 process.env.PUPPETEER_EXECUTABLE_PATH =

@@ -30,9 +30,9 @@ import {
   CARD_WIDTH,
   CARD_HEIGHT,
   DEVICE_SCALE_FACTOR,
-} from './pagination.ts';
-import { card, measureParagraph, measureFooter } from './template.ts';
-import { loadFonts, type SatoriFont } from './fonts.ts';
+} from './pagination';
+import { card, measureParagraph, measureFooter } from './template';
+import { loadFonts, type SatoriFont } from './fonts';
 
 const HEIGHT_RE = /<svg[^>]*\bheight="([\d.]+)"/;
 

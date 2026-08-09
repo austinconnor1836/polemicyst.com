@@ -1,8 +1,8 @@
 import satori from 'satori';
-import { loadFonts } from '../src/fonts.ts';
-import { card, measureParagraph, measureFooter } from '../src/template.ts';
-import { renderPolemicystGraphic } from '../src/render.ts';
-import { FRAME_CONTENT_WIDTH } from '../src/pagination.ts';
+import { loadFonts } from '../src/fonts';
+import { card, measureParagraph, measureFooter } from '../src/template';
+import { renderPolemicystGraphic } from '../src/render';
+import { FRAME_CONTENT_WIDTH } from '../src/pagination';
 import { writeFileSync } from 'node:fs';
 
 const fonts = loadFonts();

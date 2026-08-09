@@ -14,7 +14,7 @@ import {
   CARD_HEIGHT,
   CARD_PADDING,
   FRAME_CHROME,
-} from '../src/pagination.ts';
+} from '../src/pagination';
 
 // --- parseInput -------------------------------------------------------------
 

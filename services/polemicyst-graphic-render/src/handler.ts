@@ -16,7 +16,7 @@
  */
 
 import { timingSafeEqual } from 'node:crypto';
-import { renderPolemicystGraphic } from './render.ts';
+import { renderPolemicystGraphic } from './render';
 
 /** Max accepted input length — a hard guard against pathological payloads. */
 export const MAX_TEXT_LENGTH = 20_000;
