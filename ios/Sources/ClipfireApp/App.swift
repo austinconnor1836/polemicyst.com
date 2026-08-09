@@ -38,6 +38,7 @@ struct ClipfireApp: App {
     @State private var showSocialPostComposer = false
     @State private var showStitchEditor = false
     @State private var showSplitFrameEditor = false
+    @State private var showPolemicystGraphicEditor = false
     @State private var navigateToSplitFramesAfterDispatch = false
 
     private let apiClient: APIClient
@@ -194,6 +195,12 @@ struct ClipfireApp: App {
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                     showSplitFrameEditor = true
                                 }
+                            },
+                            onPolemicystGraphic: {
+                                showContentPicker = false
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showPolemicystGraphicEditor = true
+                                }
                             }
                         )
                     }
@@ -213,6 +220,12 @@ struct ClipfireApp: App {
                             navigateToSplitFramesAfterDispatch = true
                             tabSelection = 4 // Settings tab (see SettingsTabView)
                         })
+                    }
+                    .sheet(isPresented: $showPolemicystGraphicEditor) {
+                        // Synchronous render — the composer shows the finished
+                        // carousel inline (Save / Share / Regenerate), so there's
+                        // no tab switch or list surface to route to afterward.
+                        PolemicystGraphicEditorView(api: apiClient)
                     }
                     .sheet(isPresented: $showAddVideo) {
                         AddVideoView(api: apiClient, onVideoAdded: {
