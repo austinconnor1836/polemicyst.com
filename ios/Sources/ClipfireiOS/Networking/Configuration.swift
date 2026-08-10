@@ -39,4 +39,31 @@ public enum AppConfiguration {
         }
         return secret
     }
+
+    /// Base URL of the standalone transcript service (a tiny Python
+    /// `youtube-transcript-api` server, separate from the monolith). The
+    /// on-device raw caption fetch returns empty for auto-generated captions
+    /// after recent YouTube changes; this service fetches them from a
+    /// residential IP instead. Read from Info.plist (set via build settings).
+    /// In DEBUG this points at `http://localhost:8791` — the simulator reaches
+    /// the host Mac (and its residential IP) via localhost. Release points at a
+    /// placeholder until the public deploy lands. Falls back to localhost for
+    /// SPM-only builds.
+    public static var transcriptServiceURL: URL {
+        if let urlString = Bundle.main.infoDictionary?["TRANSCRIPT_SERVICE_URL"] as? String,
+           let url = URL(string: urlString) {
+            return url
+        }
+        return URL(string: "http://localhost:8791")!
+    }
+
+    /// Shared secret sent as `x-render-secret` to the transcript service. `nil`
+    /// when unset (typical for the local/simulator path — the service runs open).
+    public static var transcriptServiceSecret: String? {
+        guard let secret = Bundle.main.infoDictionary?["TRANSCRIPT_SERVICE_SECRET"] as? String,
+              !secret.isEmpty else {
+            return nil
+        }
+        return secret
+    }
 }

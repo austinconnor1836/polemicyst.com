@@ -12,6 +12,9 @@ import UIKit
 public struct TranscribeView: View {
     @StateObject private var viewModel = TranscribeViewModel()
     @AppStorage("transcribe.lastURL") private var storedURL: String = ""
+    #if DEBUG
+    @State private var didAutoTrigger = false
+    #endif
 
     public init() {}
 
@@ -34,6 +37,20 @@ public struct TranscribeView: View {
                 if viewModel.urlText.isEmpty, !storedURL.isEmpty {
                     viewModel.urlText = storedURL
                 }
+                #if DEBUG
+                // Agent/CI hook: when `UITEST_TRANSCRIBE_URL` is set (via
+                // `SIMCTL_CHILD_UITEST_TRANSCRIBE_URL=…` at launch), auto-fill
+                // the URL field and fire the fetch, so the screen can be driven
+                // and screenshotted without UI automation. DEBUG-only dead code
+                // in Release.
+                if !didAutoTrigger,
+                   let autoURL = ProcessInfo.processInfo.environment["UITEST_TRANSCRIBE_URL"],
+                   !autoURL.isEmpty {
+                    didAutoTrigger = true
+                    viewModel.urlText = autoURL
+                    viewModel.submit()
+                }
+                #endif
             }
             .onChange(of: viewModel.urlText) { _, newValue in
                 storedURL = newValue
