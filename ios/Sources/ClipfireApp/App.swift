@@ -119,7 +119,7 @@ struct ClipfireApp: App {
                                 }
                                 .tag(3)
 
-                            TranscribeView(api: apiClient)
+                            TranscribeView()
                                 .tabItem {
                                     Label("Transcribe", systemImage: "waveform")
                                 }
