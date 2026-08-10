@@ -1,21 +1,19 @@
 import SwiftUI
 import UIKit
 
-/// Standalone "Get Transcript" screen. Users paste a video URL, tap the
+/// Standalone "Get Transcript" screen. Users paste a YouTube URL, tap the
 /// button, and see the transcript text — without the mental model of
-/// "importing a video to my library." Backend-wise this reuses the same
-/// `POST /api/uploads/from-url` + `GET /api/feedVideos/:id` pair the Import
-/// URL flow uses; only the UX framing differs.
+/// "importing a video to my library."
+///
+/// FULLY ON-DEVICE: captions are fetched client-side by `TranscribeViewModel`
+/// via `YouTubeCaptionService`; there is no backend call, so this screen works
+/// even when the monolith is hibernated. (The Import URL flow in `AddVideoView`
+/// is separate and still hits the backend.)
 public struct TranscribeView: View {
-    @StateObject private var viewModel: TranscribeViewModel
+    @StateObject private var viewModel = TranscribeViewModel()
     @AppStorage("transcribe.lastURL") private var storedURL: String = ""
 
-    private let api: APIClient
-
-    public init(api: APIClient) {
-        self.api = api
-        _viewModel = StateObject(wrappedValue: TranscribeViewModel(api: api))
-    }
+    public init() {}
 
     public var body: some View {
         NavigationStack {
@@ -55,7 +53,7 @@ public struct TranscribeView: View {
                 .font(.title3)
                 .fontWeight(.semibold)
                 .foregroundStyle(DesignTokens.textPrimary)
-            Text("Paste a YouTube video or Instagram Reel URL to get its transcript.")
+            Text("Paste a YouTube video or Shorts URL to get its transcript.")
                 .font(.subheadline)
                 .foregroundStyle(DesignTokens.textSecondary)
                 .multilineTextAlignment(.center)
@@ -109,8 +107,8 @@ public struct TranscribeView: View {
             emptyState
         case .loading(let stage):
             loadingState(stage: stage)
-        case .ready(let feedVideoId, let transcript):
-            resultState(feedVideoId: feedVideoId, transcript: transcript)
+        case .ready(let transcript):
+            resultState(transcript: transcript)
         case .failed(let message):
             errorState(message: message)
         }
@@ -146,7 +144,7 @@ public struct TranscribeView: View {
         .padding(.vertical, DesignTokens.largeSpacing * 2)
     }
 
-    private func resultState(feedVideoId: String, transcript: String) -> some View {
+    private func resultState(transcript: String) -> some View {
         VStack(alignment: .leading, spacing: DesignTokens.spacing) {
             HStack(spacing: DesignTokens.spacing) {
                 Button {
@@ -176,18 +174,6 @@ public struct TranscribeView: View {
                 .foregroundStyle(DesignTokens.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
-
-            NavigationLink {
-                FeedVideoDetailView(api: api, feedVideoId: feedVideoId)
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.up.right.square")
-                    Text("View in Library")
-                }
-                .font(.footnote)
-                .foregroundStyle(DesignTokens.accent)
-            }
-            .padding(.top, DesignTokens.spacing)
         }
         .padding(DesignTokens.spacing)
         .background(DesignTokens.surface)
