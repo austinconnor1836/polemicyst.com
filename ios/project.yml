@@ -77,16 +77,33 @@ targets:
         # API_BASE_URL is wired as a build setting → Info.plist).
         GRAPHIC_RENDER_URL: 'https://polemicyst-graphic-render.vercel.app'
         GRAPHIC_RENDER_SECRET: 'cc07c64dc799c9faabaf706ba6038b2209cbb51dd4cb9dbb'
+        # Standalone transcript service (tiny Python `youtube-transcript-api`
+        # server). The on-device raw caption fetch returns empty for
+        # auto-generated captions after recent YouTube changes; this service
+        # fetches them from a residential IP instead. DEBUG points at the host
+        # Mac via localhost (the simulator shares the Mac's network); Release is
+        # a placeholder until the public deploy lands. No secret for the local
+        # path (the service runs open); set TRANSCRIPT_SERVICE_SECRET once the
+        # public deploy gates on x-render-secret.
+        TRANSCRIPT_SERVICE_URL: 'http://localhost:8791'
+        TRANSCRIPT_SERVICE_SECRET: 'cc07c64dc799c9faabaf706ba6038b2209cbb51dd4cb9dbb'
       configs:
         Debug:
           # LAN IP — works when iPhone is on same Wi-Fi as this Mac. Switch to
           # Tailscale IP (e.g. https://100.124.11.69:3000) when iterating from
           # a different network AND Tailscale is active on the phone.
           API_BASE_URL: 'https://192.168.0.16:3000'
+          # Simulator reaches the host Mac (and its residential IP) via localhost.
+          TRANSCRIPT_SERVICE_URL: 'http://localhost:8791'
           CODE_SIGN_STYLE: Automatic
           DEVELOPMENT_TEAM: L6AS5GG2MB
         Release:
           API_BASE_URL: 'https://polemicyst.com'
+          # Free residential-IP backend: the transcript service runs on Austin's
+          # Mac (youtube-transcript-api needs a residential IP — YouTube blocks
+          # datacenter IPs) and is exposed publicly via Tailscale Funnel. Works
+          # when the Mac is awake. Gated by TRANSCRIPT_SERVICE_SECRET.
+          TRANSCRIPT_SERVICE_URL: 'https://austins-macbook-pro.tailbdd40e.ts.net'
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: 'Apple Distribution'
           DEVELOPMENT_TEAM: '$(DEVELOPMENT_TEAM)'
@@ -97,6 +114,8 @@ targets:
         API_BASE_URL: '$(API_BASE_URL)'
         GRAPHIC_RENDER_URL: '$(GRAPHIC_RENDER_URL)'
         GRAPHIC_RENDER_SECRET: '$(GRAPHIC_RENDER_SECRET)'
+        TRANSCRIPT_SERVICE_URL: '$(TRANSCRIPT_SERVICE_URL)'
+        TRANSCRIPT_SERVICE_SECRET: '$(TRANSCRIPT_SERVICE_SECRET)'
         GIDClientID: '$(GOOGLE_CLIENT_ID)'
         GOOGLE_SERVER_CLIENT_ID: '$(GOOGLE_SERVER_CLIENT_ID)'
         CFBundleURLTypes:

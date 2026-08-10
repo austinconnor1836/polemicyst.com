@@ -75,6 +75,15 @@ struct ClipfireApp: App {
         self.apiClient = client
         _authService = StateObject(wrappedValue: AuthService(api: client, tokenStorage: storage))
 
+        #if DEBUG
+        // Agent/CI hook: when driving the Transcribe screen via
+        // `UITEST_TRANSCRIBE_URL`, boot straight onto the Transcribe tab (tag 7)
+        // so its `onAppear` auto-trigger fires without any UI navigation.
+        if let autoURL = ProcessInfo.processInfo.environment["UITEST_TRANSCRIBE_URL"], !autoURL.isEmpty {
+            _tabSelection = State(initialValue: 7)
+        }
+        #endif
+
         // Configure the background upload service so it can reconnect to in-progress uploads
         BackgroundUploadService.shared.configure(api: client)
     }

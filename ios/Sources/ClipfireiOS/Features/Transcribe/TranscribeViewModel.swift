@@ -3,13 +3,17 @@ import Foundation
 /// State machine for the standalone "Transcribe" screen — paste a YouTube URL,
 /// hit the button, get back plain-text captions.
 ///
-/// FULLY ON-DEVICE: captions are fetched directly via `YouTubeCaptionService`
-/// running from the phone's residential IP (which is what dodges YouTube's
-/// datacenter-IP blocking). The fetched transcript is displayed straight away
-/// — there is NO backend round-trip. This screen does not create a FeedVideo,
-/// does not persist anything server-side, and does not depend on the monolith
-/// being awake. (The "Import URL" flow in `AddVideoView` is separate and still
-/// uses the backend to add a video to the user's library.)
+/// Captions are fetched via the standalone `TranscriptService`
+/// (`TRANSCRIPT_SERVICE_URL`), a tiny Python `youtube-transcript-api` server.
+/// The on-device raw fetch (`YouTubeCaptionService`) returns empty for
+/// auto-generated (ASR) captions after recent YouTube changes; the service
+/// fetches them from a residential IP instead (in DEBUG the host Mac via
+/// localhost — the simulator shares the Mac's network, so YouTube's
+/// datacenter-IP blocking doesn't apply). The transcript is displayed straight
+/// away. This screen does not create a FeedVideo, does not persist anything
+/// server-side, and does not depend on the monolith being awake. (The "Import
+/// URL" flow in `AddVideoView` is separate and still uses the backend to add a
+/// video to the user's library.)
 ///
 /// No Whisper fallback here: if a YouTube video has no captions / auto-captions,
 /// we surface that as an error rather than shipping audio off-device. Non-YouTube
@@ -27,8 +31,11 @@ public final class TranscribeViewModel: ObservableObject {
     @Published public private(set) var state: State = .idle
 
     private var fetchTask: Task<Void, Never>?
+    private let transcriptService: TranscriptService
 
-    public init() {}
+    public init(transcriptService: TranscriptService = TranscriptService()) {
+        self.transcriptService = transcriptService
+    }
 
     // Intentionally no `deinit { fetchTask?.cancel() }` — touching MainActor-
     // isolated state from a non-isolated deinit trips Swift 6 concurrency
@@ -81,27 +88,26 @@ public final class TranscribeViewModel: ObservableObject {
     private func performSubmit(url: String) async {
         // This screen is YouTube-captions-only. Reject anything else up-front.
         guard YouTubeCaptionService.isYouTubeURL(url),
-              let videoId = YouTubeCaptionService.extractVideoId(from: url) else {
+              YouTubeCaptionService.extractVideoId(from: url) != nil else {
             state = .failed(
                 message: "This screen transcribes YouTube videos that have captions. Paste a YouTube video or Shorts URL."
             )
             return
         }
 
-        // Fetch captions client-side. Running from the device's residential IP
-        // bypasses YouTube's data-center bot detection — no OAuth token is used
-        // (innertube rejects Bearer tokens with ACCESS_TOKEN_SCOPE_INSUFFICIENT).
-        let captionService = YouTubeCaptionService()
-        guard let captions = await captionService.fetchCaptions(videoId: videoId),
-              !captions.transcript.isEmpty else {
+        // Fetch via the standalone transcript service. It runs the
+        // `youtube-transcript-api` library from a residential IP (in DEBUG the
+        // host Mac via localhost), which returns auto-generated captions the
+        // on-device raw fetch can no longer retrieve.
+        do {
+            let result = try await transcriptService.fetch(url: url)
             if Task.isCancelled { return }
-            state = .failed(
-                message: "No captions found for this video. Try one that has captions or auto-captions."
-            )
-            return
+            state = .ready(transcript: result.transcript)
+        } catch {
+            if Task.isCancelled { return }
+            let message = (error as? LocalizedError)?.errorDescription
+                ?? "Couldn't fetch the transcript. Check your connection and try again."
+            state = .failed(message: message)
         }
-
-        if Task.isCancelled { return }
-        state = .ready(transcript: captions.transcript)
     }
 }
