@@ -86,7 +86,7 @@ targets:
         # path (the service runs open); set TRANSCRIPT_SERVICE_SECRET once the
         # public deploy gates on x-render-secret.
         TRANSCRIPT_SERVICE_URL: 'http://localhost:8791'
-        TRANSCRIPT_SERVICE_SECRET: ''
+        TRANSCRIPT_SERVICE_SECRET: 'cc07c64dc799c9faabaf706ba6038b2209cbb51dd4cb9dbb'
       configs:
         Debug:
           # LAN IP — works when iPhone is on same Wi-Fi as this Mac. Switch to
@@ -99,9 +99,11 @@ targets:
           DEVELOPMENT_TEAM: L6AS5GG2MB
         Release:
           API_BASE_URL: 'https://polemicyst.com'
-          # Placeholder — replace with the public transcript deploy (Vercel-IP
-          # test or a stable tunnel) as a separate follow-up.
-          TRANSCRIPT_SERVICE_URL: 'https://polemicyst-transcript.invalid'
+          # Free residential-IP backend: the transcript service runs on Austin's
+          # Mac (youtube-transcript-api needs a residential IP — YouTube blocks
+          # datacenter IPs) and is exposed publicly via Tailscale Funnel. Works
+          # when the Mac is awake. Gated by TRANSCRIPT_SERVICE_SECRET.
+          TRANSCRIPT_SERVICE_URL: 'https://austins-macbook-pro.tailbdd40e.ts.net'
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: 'Apple Distribution'
           DEVELOPMENT_TEAM: '$(DEVELOPMENT_TEAM)'
