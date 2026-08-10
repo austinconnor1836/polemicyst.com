@@ -1,0 +1,6 @@
+# Keep the local stdlib service out of the Vercel bundle so Vercel uses the
+# `api/` serverless-function convention (api/transcript.py) rather than
+# auto-detecting server.py as a root "backend framework" entrypoint.
+server.py
+run.sh
+README.md

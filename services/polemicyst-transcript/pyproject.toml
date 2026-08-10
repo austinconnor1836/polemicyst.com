@@ -1,0 +1,15 @@
+[project]
+name = "polemicyst-transcript"
+version = "0.1.0"
+description = "Vercel serverless YouTube-transcript service (youtube-transcript-api)."
+requires-python = ">=3.12"
+dependencies = [
+    "youtube-transcript-api==1.2.4",
+]
+
+# Vercel's Python builder serves this BaseHTTPRequestHandler subclass as the
+# app. The handler ignores the request path (GET -> health, POST -> transcript),
+# so it works as a catch-all at the project root: POST /transcript hits it
+# directly, no rewrites needed.
+[tool.vercel]
+entrypoint = "api.transcript:handler"

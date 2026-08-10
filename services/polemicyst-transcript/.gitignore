@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.log
+.vercel/
+.vercel
+.secrets/
+.env
+.env.*
