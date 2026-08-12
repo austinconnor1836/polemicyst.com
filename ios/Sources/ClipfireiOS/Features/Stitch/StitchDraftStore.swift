@@ -132,24 +132,15 @@ public enum StitchDraftStore {
         try? data.write(to: draftJSONURL, options: .atomic)
     }
 
-    /// Full nuke — JSON manifest AND every clip file. Use only when you're sure no
-    /// in-flight render is still pointing at the clip files. The editor's dispatch path
-    /// uses `clearManifestOnly()` instead so the detached renderer can still read the
-    /// clips it captured in its snapshot.
+    /// Full nuke — JSON manifest AND every clip file. Called once the on-device render
+    /// has finished consuming the clips it captured in its snapshot (the editor's
+    /// `render()` awaits the export before resetting), so there's no in-flight reader
+    /// still pointing at the files.
     public static func clear() {
         try? FileManager.default.removeItem(at: draftJSONURL)
         if let files = try? FileManager.default.contentsOfDirectory(at: clipsDir, includingPropertiesForKeys: nil) {
             for f in files { try? FileManager.default.removeItem(at: f) }
         }
-    }
-
-    /// Clear just the JSON draft, leave the clip files alone. The renderer is detached
-    /// and still holds URLs to those files via its snapshot — deleting them out from
-    /// under it was the cause of the -11800/-17913 export crash. Files are cleaned up
-    /// after Phase 1 of `runRenderPipeline` completes (or after the user dismisses a
-    /// failed render).
-    public static func clearManifestOnly() {
-        try? FileManager.default.removeItem(at: draftJSONURL)
     }
 
     /// Delete the specific files referenced by a finished render's snapshot. Safe to

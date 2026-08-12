@@ -402,27 +402,27 @@ public final class StitchEditorViewModel: ObservableObject {
 
     // MARK: Render
 
-    /// Fire-and-forget render dispatch.
+    /// On-device render — 100% local, free, no AWS.
     ///
-    /// The editor returns control to the caller in milliseconds — a placeholder
-    /// `LocalStitch` is inserted into the store with `.uploadingClips(progress: 0)`,
-    /// the editor's `onRenderDispatched` closure fires (the parent uses it to
-    /// dismiss + switch tabs), and the upload → POST manifest → server-poll →
-    /// download → transcript-wait → generate-meta chain runs in a detached
-    /// background task that mutates the stitch's `processingState` as it
-    /// progresses.
+    /// Runs the whole export in the editor while the app is foregrounded, driving
+    /// the `.rendering(fraction)` stage so Step 3's render card shows a real
+    /// progress bar. On success we move the finished mp4 into `LocalStitchStore`
+    /// as a `.ready` row (playable / saveable / shareable in My Stitches), reset
+    /// the editor, and fire `onRenderDispatched` so the parent dismisses + switches
+    /// to the Stitches tab. On failure the editor stays put with a retryable error
+    /// (the render card's "Try again" re-runs this against the still-live timeline).
+    ///
+    /// Backgrounding policy — foreground + grace: the export is wrapped in a
+    /// `beginBackgroundTask` so a brief app switch doesn't kill it. If iOS reclaims
+    /// us anyway the expiration handler cancels the render and the user sees a clear,
+    /// retryable "keep Clipfire open" message rather than a corrupt file.
     public func render() {
         currentRenderTask?.cancel()
         let chosenTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let api = self.api
-        let uploader = self.uploader
+        let existingCompositionId = timeline.serverCompositionId
+        let renderer = self.renderer
 
-        // STEP 1 (synchronous from the UI's POV): seed a placeholder stitch in
-        // the store and dismiss the editor. We need the snapshot — and that
-        // needs the in-flight clip copies finished — so we still await
-        // briefly. The vast majority of the time those tasks are already done
-        // by the time the user makes it to the render step.
-        Task { [weak self] in
+        currentRenderTask = Task { [weak self] in
             guard let self else { return }
             await self.waitForPendingFileLoads()
             let snap = self.timeline.snapshot()
@@ -430,19 +430,87 @@ public final class StitchEditorViewModel: ObservableObject {
                 self.stage = .failed("No clips to render")
                 return
             }
-            let existingCompositionId = self.timeline.serverCompositionId
+            // The on-device renderer composites straight from each clip's local file —
+            // every clip must have finished copying out of Photos first.
+            guard snap.clips.allSatisfy({ $0.sourceURL != nil }) else {
+                self.stage = .failed("A clip is still copying — please wait a moment and try again.")
+                return
+            }
             let durationS = snap.clips.reduce(0) { $0 + $1.effectiveDurationS }
             let layoutKey = snap.layout == .mobile ? "mobile" : "landscape"
 
+            self.stage = .rendering(0)
+
+            // Foreground + grace. Buys ~30s if the user briefly leaves the app; the
+            // expiration handler cancels cleanly so we never get force-killed mid-write.
+            var bgTaskId = UIBackgroundTaskIdentifier.invalid
+            bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "stitch-render") { [weak self] in
+                self?.currentRenderTask?.cancel()
+                if bgTaskId != .invalid {
+                    UIApplication.shared.endBackgroundTask(bgTaskId)
+                    bgTaskId = .invalid
+                }
+            }
+            defer {
+                if bgTaskId != .invalid {
+                    UIApplication.shared.endBackgroundTask(bgTaskId)
+                    bgTaskId = .invalid
+                }
+            }
+
+            let outputURL: URL
+            do {
+                outputURL = try await renderer.render(snapshot: snap) { progress in
+                    // The renderer's callback runs off the main actor — map the phase to a
+                    // single 0..1 bar and hop back to the main actor to update the stage.
+                    let fraction: Double
+                    switch progress.phase {
+                    case .composing: fraction = 0.02
+                    case .exporting: fraction = 0.05 + progress.fraction * 0.95
+                    case .completed: fraction = 1
+                    case .failed: fraction = 0
+                    }
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if case .rendering = self.stage {
+                            self.stage = .rendering(min(1, max(0, fraction)))
+                        }
+                    }
+                }
+            } catch is CancellationError {
+                self.stage = .failed("Keep Clipfire open while your stitch renders — tap Try again.")
+                return
+            } catch StitchRenderError.cancelled {
+                self.stage = .failed("Keep Clipfire open while your stitch renders — tap Try again.")
+                return
+            } catch {
+                self.stage = .failed(Self.describeRenderError(error))
+                return
+            }
+
+            if Task.isCancelled {
+                try? FileManager.default.removeItem(at: outputURL)
+                self.stage = .failed("Keep Clipfire open while your stitch renders — tap Try again.")
+                return
+            }
+
+            // Move the finished mp4 into the persistent stitches dir so the play card,
+            // Save-to-Photos, Share, and publish flows all work unchanged.
             let stitchId = UUID()
             let filename = "\(stitchId.uuidString).mp4"
             let stitchesDir = LocalStitchStore.stitchesDir
-            try? FileManager.default.createDirectory(
-                at: stitchesDir,
-                withIntermediateDirectories: true
-            )
+            try? FileManager.default.createDirectory(at: stitchesDir, withIntermediateDirectories: true)
             let destURL = stitchesDir.appendingPathComponent(filename)
+            do {
+                try? FileManager.default.removeItem(at: destURL)
+                try FileManager.default.moveItem(at: outputURL, to: destURL)
+            } catch {
+                self.stage = .failed("Couldn't save the rendered video: \(error.localizedDescription)")
+                return
+            }
 
+            // Register the local output. `outputS3Url` stays nil — this stitch is
+            // fully on-device; playback resolves to the local file.
             let stitch = LocalStitch(
                 id: stitchId,
                 title: chosenTitle.isEmpty ? "Untitled stitch" : chosenTitle,
@@ -451,499 +519,31 @@ public final class StitchEditorViewModel: ObservableObject {
                 durationS: durationS,
                 localFilename: filename,
                 serverCompositionId: existingCompositionId,
-                processingState: .uploadingClips(progress: 0)
+                outputS3Url: nil,
+                processingState: .ready
             )
             LocalStitchStore.shared.add(stitch)
 
-            // Reset editor + dismiss BEFORE the heavy work kicks off. Crucial: clear ONLY
-            // the JSON manifest here — the detached renderer below still holds URLs to the
-            // clip files via its snapshot. Deleting them now causes -11800/-17913 at export
-            // time (the snapshot's URLs point at vanished files). Files are removed in
-            // runRenderPipeline once Phase 1 reads them.
-            StitchDraftStore.clearManifestOnly()
+            StitchRemoteLogger.log("render-succeeded", payload: [
+                "stitchId": stitchId.uuidString,
+                "durationS": durationS,
+                "style": snap.style.rawValue,
+                "clipCount": snap.clips.count,
+                "textOverlayCount": snap.textOverlays.count,
+                "onDevice": true,
+            ])
+
+            // The render consumed the source clip files — drop them and the draft.
+            let sourceURLs = snap.clips.compactMap(\.sourceURL)
+            StitchDraftStore.removeFiles(urls: sourceURLs)
+            StitchDraftStore.clear()
+
+            // Reset the editor and hand off to the parent (dismiss + switch to Stitches).
             self.timeline = StitchTimeline()
             self.title = ""
             self.trackUploadTasks.removeAll()
             self.stage = .completed(stitchId.uuidString)
             self.onRenderDispatched?()
-
-            // STEP 2: heavy lifting in a detached background task. The editor
-            // is gone at this point; all UI updates happen via the store
-            // mutating `processingState` on the LocalStitch row in
-            // MyStitchesView.
-            self.currentRenderTask = Task.detached { @Sendable in
-                await Self.runRenderPipeline(
-                    stitchId: stitchId,
-                    snapshot: snap,
-                    destURL: destURL,
-                    durationS: durationS,
-                    layoutKey: layoutKey,
-                    chosenTitle: chosenTitle,
-                    existingCompositionId: existingCompositionId,
-                    api: api,
-                    uploader: uploader
-                )
-            }
-        }
-    }
-
-    /// The full post-dispatch pipeline. Lives on the type (not the instance)
-    /// because the editor view-model is gone by the time most of these phases
-    /// run. Every phase boundary updates the store on the main actor.
-    ///
-    /// Server-side render flow:
-    ///   A. Ensure server `Composition` exists, then upload every clip to S3
-    ///      and POST `/api/compositions/<id>/tracks` for each → `.uploadingClips`.
-    ///   B. Build a `StitchManifest` and POST `/api/compositions/<id>/stitch-render`
-    ///      → `.queued`.
-    ///   C. Poll `GET /api/compositions/<id>` every 5s until the layout's
-    ///      `CompositionOutput.status` lands on `completed` or `failed` →
-    ///      `.renderingOnServer`.
-    ///   D. Download the output S3 MP4 to `destURL` so the local play card
-    ///      works unchanged.
-    ///   E. Wait briefly for transcripts on any audio-bearing track (needed for
-    ///      AI Suggest copy quality).
-    ///   F. Call generate-meta to seed title + caption → `.ready`.
-    private static func runRenderPipeline(
-        stitchId: UUID,
-        snapshot: StitchTimelineSnapshot,
-        destURL: URL,
-        durationS: Double,
-        layoutKey: String,
-        chosenTitle: String,
-        existingCompositionId: String?,
-        api: APIClient,
-        uploader: VideoUploadService
-    ) async {
-        // Memory-warning observer — kept from the old local-render flow because the
-        // multipart upload can OOM on extremely long source files. Worth knowing
-        // about in the logs even though we no longer composite locally.
-        let memWarningObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil,
-            queue: nil
-        ) { _ in
-            StitchRemoteLogger.log("render-phase", payload: [
-                "phase": "memory-warning",
-                "stitchId": stitchId.uuidString,
-            ])
-        }
-        defer { NotificationCenter.default.removeObserver(memWarningObserver) }
-
-        // PHASE A — ensure composition + upload every clip as a CompositionTrack.
-        StitchRemoteLogger.log("render-phase", payload: [
-            "phase": "phase-a-start",
-            "stitchId": stitchId.uuidString,
-            "clipCount": snapshot.clips.count,
-        ])
-        await MainActor.run {
-            LocalStitchStore.shared.setProcessingState(id: stitchId, .uploadingClips(progress: 0))
-        }
-
-        // Ensure we have a server composition before any uploads. If the timeline
-        // already has one (e.g. the editor was reopened on an existing draft) we
-        // reuse it; otherwise we POST /api/compositions now.
-        let compositionId: String
-        do {
-            if let existingCompositionId {
-                compositionId = existingCompositionId
-            } else {
-                let composition = try await api.createComposition(
-                    body: CreateCompositionRequest(
-                        title: chosenTitle.isEmpty ? nil : chosenTitle,
-                        mode: "stitch"
-                    )
-                )
-                compositionId = composition.id
-            }
-            await MainActor.run {
-                LocalStitchStore.shared.setServerCompositionId(id: stitchId, compositionId: compositionId)
-            }
-        } catch {
-            await failPipeline(stitchId: stitchId, phase: "phase-a-create-composition", error: error)
-            return
-        }
-
-        // For every clip, ensure a server track id. Clips picked in this session
-        // start with sourceURL set and serverTrackId nil — we upload them here.
-        // Clips that were re-loaded from a draft might already have a serverTrackId
-        // set (from the previous build's eager upload path), in which case we trust
-        // it and skip the upload. Track IDs are accumulated into a map that's then
-        // fed to the manifest builder.
-        var trackIdForClip: [UUID: String] = [:]
-        let totalClips = max(1, snapshot.clips.count)
-        var completedClips = 0
-        for clip in snapshot.clips {
-            if let existing = clip.serverTrackId, !existing.isEmpty {
-                trackIdForClip[clip.id] = existing
-                completedClips += 1
-                await MainActor.run {
-                    LocalStitchStore.shared.setProcessingState(
-                        id: stitchId,
-                        .uploadingClips(progress: Double(completedClips) / Double(totalClips))
-                    )
-                }
-                continue
-            }
-            guard let sourceURL = clip.sourceURL else {
-                await failPipeline(
-                    stitchId: stitchId,
-                    phase: "phase-a-missing-source",
-                    error: StitchRenderError.exportFailed("A clip never finished copying — try again.")
-                )
-                return
-            }
-
-            do {
-                let upload = try await uploader.upload(
-                    fileURL: sourceURL,
-                    prefix: "compositions/\(compositionId)/raw/",
-                    contentType: "video/mp4",
-                    deleteAfterUpload: false,
-                    progress: nil
-                )
-                let (width, height, hasAudio) = await Self.probeLocalAssetForRender(url: sourceURL)
-                let track = try await api.addTrack(
-                    compositionId: compositionId,
-                    body: CreateTrackRequest(
-                        s3Key: upload.s3Key,
-                        s3Url: upload.s3Url,
-                        durationS: clip.durationS,
-                        label: nil,
-                        width: width,
-                        height: height,
-                        hasAudio: hasAudio,
-                        trackType: "reference"
-                    )
-                )
-                trackIdForClip[clip.id] = track.id
-                completedClips += 1
-                await MainActor.run {
-                    LocalStitchStore.shared.setProcessingState(
-                        id: stitchId,
-                        .uploadingClips(progress: Double(completedClips) / Double(totalClips))
-                    )
-                }
-            } catch {
-                await failPipeline(stitchId: stitchId, phase: "phase-a-upload-clip", error: error)
-                return
-            }
-        }
-        StitchRemoteLogger.log("render-phase", payload: [
-            "phase": "phase-a-done",
-            "stitchId": stitchId.uuidString,
-            "uploadedClips": completedClips,
-        ])
-
-        // PHASE B — build manifest + POST /stitch-render.
-        let manifest: StitchManifest
-        do {
-            manifest = try StitchManifestBuilder.build(
-                snapshot: snapshot,
-                trackIdForClip: trackIdForClip,
-                title: chosenTitle.isEmpty ? nil : chosenTitle
-            )
-        } catch {
-            await failPipeline(stitchId: stitchId, phase: "phase-b-build-manifest", error: error)
-            return
-        }
-        StitchRemoteLogger.log("render-phase", payload: [
-            "phase": "phase-b-post-start",
-            "stitchId": stitchId.uuidString,
-            "compositionId": compositionId,
-            "layout": layoutKey,
-        ])
-        do {
-            _ = try await api.startStitchRender(
-                compositionId: compositionId,
-                manifest: manifest
-            )
-        } catch {
-            await failPipeline(stitchId: stitchId, phase: "phase-b-post-start", error: error)
-            return
-        }
-        await MainActor.run {
-            LocalStitchStore.shared.setProcessingState(id: stitchId, .queued)
-        }
-
-        // PHASE C — poll until the layout's CompositionOutput resolves. Reuses the
-        // shared poll helper so MyStitchesView can rejoin after a foreground.
-        let pollOutcome = await Self.pollForServerRender(
-            compositionId: compositionId,
-            layoutKey: layoutKey,
-            stitchId: stitchId,
-            api: api
-        )
-        switch pollOutcome {
-        case .failed(let message):
-            await MainActor.run {
-                LocalStitchStore.shared.setProcessingState(id: stitchId, .failed(message))
-            }
-            StitchRemoteLogger.log("render-failed", payload: [
-                "stitchId": stitchId.uuidString,
-                "phase": "phase-c-poll",
-                "message": message,
-            ])
-            return
-        case .timedOut:
-            await MainActor.run {
-                LocalStitchStore.shared.setProcessingState(
-                    id: stitchId,
-                    .failed("Server render didn't finish in time — check Stitches later")
-                )
-            }
-            return
-        case .cancelled:
-            return
-        case .completed(let output):
-            // Persist the S3 URL even before the download, so a crash during the
-            // download still leaves us able to retry from the URL.
-            if let url = output.s3Url {
-                await MainActor.run {
-                    LocalStitchStore.shared.setOutputS3Url(id: stitchId, url: url)
-                }
-            }
-
-            // PHASE D — download the rendered MP4 into the local stitches dir so
-            // the existing play card / publish flow works without code changes.
-            if let s3UrlString = output.s3Url, let s3URL = URL(string: s3UrlString) {
-                do {
-                    try await Self.downloadOutput(from: s3URL, to: destURL, api: api)
-                } catch {
-                    await failPipeline(stitchId: stitchId, phase: "phase-d-download", error: error)
-                    return
-                }
-            } else {
-                await failPipeline(
-                    stitchId: stitchId,
-                    phase: "phase-d-no-url",
-                    error: StitchRenderError.exportFailed("Server output is missing its S3 URL")
-                )
-                return
-            }
-
-            // Now safe to drop source clip files — the server has its copies and the
-            // result MP4 is local. Keep error swallowed; if files were already gone
-            // (re-attached editor) the user doesn't care.
-            let sourceURLs = snapshot.clips.compactMap(\.sourceURL)
-            StitchDraftStore.removeFiles(urls: sourceURLs)
-            StitchRemoteLogger.log("render-succeeded", payload: [
-                "stitchId": stitchId.uuidString,
-                "durationS": durationS,
-                "style": snapshot.style.rawValue,
-                "clipCount": snapshot.clips.count,
-                "textOverlayCount": snapshot.textOverlays.count,
-                "compositionId": compositionId,
-            ])
-        }
-
-        // PHASE E — wait for transcripts so generate-meta has context.
-        StitchRemoteLogger.log("render-phase", payload: [
-            "phase": "phase-e-transcripts-start", "stitchId": stitchId.uuidString,
-        ])
-        await Self.waitForTranscripts(compositionId: compositionId, api: api)
-        StitchRemoteLogger.log("render-phase", payload: [
-            "phase": "phase-e-transcripts-done", "stitchId": stitchId.uuidString,
-        ])
-
-        // PHASE F — generate-meta. Errors here are not terminal-fatal because the
-        // user can re-run AI Suggest later; we mark ready with the placeholder
-        // title and surface a retry via the StitchCard.
-        do {
-            let response = try await VideoPublishSheet.generateMeta(
-                api: api,
-                kind: .stitch,
-                seedTitle: chosenTitle,
-                seedCaption: "",
-                serverCompositionId: compositionId,
-                platforms: ["youtube", "instagram", "twitter", "bluesky", "tiktok"]
-            )
-            await MainActor.run {
-                LocalStitchStore.shared.setTitleAndCaption(
-                    id: stitchId,
-                    title: response.title,
-                    caption: response.caption
-                )
-            }
-        } catch {
-            StitchRemoteLogger.log("render-phase", payload: [
-                "phase": "phase-f-generate-meta-failed",
-                "stitchId": stitchId.uuidString,
-                "error": StitchRemoteLogger.flatten(error),
-            ])
-            await MainActor.run {
-                LocalStitchStore.shared.setProcessingState(
-                    id: stitchId,
-                    .failed("Couldn't generate copy — tap to retry")
-                )
-            }
-        }
-    }
-
-    /// Probe a local video for width/height/hasAudio so the CompositionTrack row
-    /// has accurate metadata. Duplicates the instance method so this static path
-    /// doesn't need a live view-model.
-    private static func probeLocalAssetForRender(url: URL) async -> (Int?, Int?, Bool?) {
-        let asset = AVURLAsset(url: url)
-        let videoTracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
-        let audioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
-        var width: Int? = nil
-        var height: Int? = nil
-        if let videoTrack = videoTracks.first {
-            if let size = try? await videoTrack.load(.naturalSize),
-               let transform = try? await videoTrack.load(.preferredTransform) {
-                let applied = size.applying(transform)
-                width = Int(abs(applied.width).rounded())
-                height = Int(abs(applied.height).rounded())
-            }
-        }
-        return (width, height, !audioTracks.isEmpty)
-    }
-
-    /// Result of one full server-render poll.
-    enum ServerRenderOutcome {
-        case completed(CompositionOutput)
-        case failed(String)
-        case timedOut
-        case cancelled
-    }
-
-    /// Poll `GET /api/compositions/<id>` every 5s for up to 30 minutes until the
-    /// composition's output for the requested layout resolves. Shared by both the
-    /// in-flight pipeline (phase C) and `MyStitchesView`'s resume-on-foreground
-    /// loop — pulling this out makes both callers use the exact same status logic.
-    static func pollForServerRender(
-        compositionId: String,
-        layoutKey: String,
-        stitchId: UUID,
-        api: APIClient
-    ) async -> ServerRenderOutcome {
-        let deadline = Date().addingTimeInterval(30 * 60)
-        var lastReportedRendering = false
-        while Date() < deadline {
-            if Task.isCancelled { return .cancelled }
-            do {
-                let composition = try await api.fetchComposition(id: compositionId)
-                if let output = (composition.outputs ?? []).first(where: { $0.layout == layoutKey }) {
-                    switch output.status {
-                    case "completed":
-                        return .completed(output)
-                    case "failed":
-                        let msg = output.renderError ?? "Server render failed"
-                        return .failed(msg)
-                    case "rendering":
-                        if !lastReportedRendering {
-                            await MainActor.run {
-                                LocalStitchStore.shared.setProcessingState(
-                                    id: stitchId,
-                                    .renderingOnServer(progress: nil)
-                                )
-                            }
-                            lastReportedRendering = true
-                        }
-                    case "pending":
-                        // Worker hasn't picked up yet — keep state as .queued (set by caller).
-                        break
-                    default:
-                        break
-                    }
-                }
-            } catch {
-                // Network blip — keep trying until the deadline.
-            }
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-        }
-        return .timedOut
-    }
-
-    /// Dedicated URLSession for fetching external (non-API) resources like the
-    /// CompositionOutput S3 URL. Critically: NO auth-injecting delegate, and
-    /// NOT the APIClient's session. AWS S3 returns HTTP 400 InvalidArgument if
-    /// the request carries `Authorization: Bearer <jwt>` (it tries to parse it
-    /// as a SigV4 signature) — so we never let our app's bearer token leak to
-    /// arbitrary external hosts. Composition `cmqvebb7w0077ydya2ma141fy`
-    /// reproduced this bug in production.
-    private static let externalDownloadSession: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 120
-        return URLSession(configuration: config)
-    }()
-
-    /// Download the server-rendered MP4 to the local stitches directory.
-    ///
-    /// `CompositionOutput.s3Url` is a fully-qualified S3 URL (e.g.
-    /// `https://clips-genie-uploads.s3.us-east-2.amazonaws.com/...`) — these
-    /// must be fetched WITHOUT our auth bearer (S3 rejects it as a malformed
-    /// SigV4 signature with HTTP 400). The fallback "relative proxy URL" path
-    /// hits our own API and still needs the bearer.
-    static func downloadOutput(from url: URL, to destURL: URL, api: APIClient) async throws {
-        // If the server returned a relative proxy URL (the upload path returns
-        // these for raw track files), resolve it against the API base. The
-        // CompositionOutput.s3Url today is a fully-qualified S3 URL, but the
-        // fallback keeps us safe if that shape ever changes.
-        let resolved: URL
-        let isAppAPIRequest: Bool
-        if url.scheme == nil {
-            resolved = api.baseURL.appending(path: url.path)
-            isAppAPIRequest = true
-        } else {
-            resolved = url
-            // Only attach the bearer when the URL is on our own API host. Any
-            // external host (S3, CDN, etc.) gets a clean, auth-less request.
-            isAppAPIRequest = resolved.host != nil && resolved.host == api.baseURL.host
-        }
-        var request = URLRequest(url: resolved)
-        if isAppAPIRequest, let token = api.tokenStorage?.getToken() {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        // External (S3) downloads use a dedicated session with no auth
-        // delegate; API-host downloads continue to use `api.session` so the
-        // DEBUG self-signed-cert delegate keeps working for local dev.
-        let session = isAppAPIRequest ? api.session : externalDownloadSession
-        let (tempURL, response) = try await session.download(for: request)
-        defer { try? FileManager.default.removeItem(at: tempURL) }
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw StitchRenderError.exportFailed("Output download failed: HTTP \(http.statusCode)")
-        }
-        try? FileManager.default.removeItem(at: destURL)
-        try FileManager.default.moveItem(at: tempURL, to: destURL)
-    }
-
-    /// Helper to turn an in-pipeline thrown error into a logged failure + a
-    /// terminal `.failed` state on the row. Keeps the pipeline body skim-able.
-    private static func failPipeline(stitchId: UUID, phase: String, error: Error) async {
-        let msg = describeRenderError(error)
-        NSLog("[Stitch] pipeline failed at %@: %@", phase, msg)
-        StitchRemoteLogger.log("render-failed", payload: [
-            "stitchId": stitchId.uuidString,
-            "phase": phase,
-            "message": msg,
-            "error": StitchRemoteLogger.flatten(error),
-        ])
-        await MainActor.run {
-            LocalStitchStore.shared.setProcessingState(id: stitchId, .failed(msg))
-        }
-    }
-
-    /// Poll `/api/compositions/<id>` every 3s until every audio-bearing track
-    /// has a non-empty transcript OR a 90s budget elapses. Best-effort —
-    /// returns on timeout so the pipeline can still call generate-meta.
-    private static func waitForTranscripts(compositionId: String, api: APIClient) async {
-        let deadline = Date().addingTimeInterval(90)
-        while Date() < deadline {
-            if Task.isCancelled { return }
-            do {
-                let composition = try await api.fetchComposition(id: compositionId)
-                let audioTracks = (composition.tracks ?? []).filter { $0.hasAudio }
-                let allReady = !audioTracks.isEmpty && audioTracks.allSatisfy { track in
-                    if let segments = track.transcriptJson, !segments.isEmpty { return true }
-                    return false
-                }
-                if allReady || audioTracks.isEmpty { return }
-            } catch {
-                // Network blip — keep trying until the deadline.
-            }
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
         }
     }
 
