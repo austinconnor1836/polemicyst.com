@@ -284,14 +284,14 @@ public final class PersonSegmentationCompositor: NSObject, AVVideoCompositing {
     // MARK: - Vision person segmentation
 
     /// Reused across frames — the request object holds the segmentation model. Re-creating
-    /// one per frame burns memory until iOS OOM-kills the app on long renders. `.balanced`
-    /// uses Apple's middle-tier model which gives noticeably cleaner contours (especially
-    /// around hair and shoulders) than `.fast`. We tolerate the higher per-frame cost
-    /// because we dropped the render canvas to 720×1280 — net workload is lower than
-    /// `.fast` at 1080×1920 was.
+    /// one per frame burns memory until iOS OOM-kills the app on long renders. `.accurate`
+    /// is Apple's top-tier on-device model — the cleanest contours (hair, shoulders, fingers)
+    /// of the three quality levels. This is the live, 100%-on-device background-removal path
+    /// (no MediaPipe, no server); we ship `.accurate` because the render canvas is capped at
+    /// 720×1280, which keeps per-frame Vision cost within the encoder's thermal headroom.
     private static let personSegmentationRequest: VNGeneratePersonSegmentationRequest = {
         let r = VNGeneratePersonSegmentationRequest()
-        r.qualityLevel = .balanced
+        r.qualityLevel = .accurate
         r.outputPixelFormat = kCVPixelFormatType_OneComponent8
         return r
     }()

@@ -40,14 +40,16 @@ public enum StitchRenderError: LocalizedError {
 public final class StitchRenderer {
     public init() {}
 
-    /// Render the stitch to a temp MP4 file. Returns the output URL.
+    /// Render the stitch to a temp MP4 file entirely on-device, for free. Returns
+    /// the output URL.
     ///
-    /// Deprecated: the production render pipeline runs server-side now. The
-    /// editor uploads source tracks + POSTs a `StitchManifest` to
-    /// `/api/compositions/<id>/stitch-render` and polls for the output. This
-    /// local renderer is kept as a reference implementation for a future
-    /// in-editor preview, but is no longer invoked by `runRenderPipeline`.
-    @available(*, deprecated, message: "Use server-side render via APIClient.startStitchRender(...)")
+    /// This is the LIVE render path. `StitchEditorViewModel.render()` calls it
+    /// directly with the local `StitchTimelineSnapshot` — the clips carry local
+    /// sandbox `sourceURL`s, so nothing is uploaded to a server and no network is
+    /// required. Background removal is done with Vision's
+    /// `VNGeneratePersonSegmentationRequest` (see `PersonSegmentationCompositor`),
+    /// compositing is AVFoundation + Core Image, and encoding is a local
+    /// `AVAssetExportSession` (HEVC). There is no AWS / BullMQ dependency.
     public func render(
         snapshot: StitchTimelineSnapshot,
         progress: (@Sendable (StitchRenderProgress) -> Void)? = nil
