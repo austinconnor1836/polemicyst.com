@@ -6,17 +6,40 @@
 #
 # Then paste the needed variables from below and fill in secrets.
 #
-# --- Database (local dev) ---
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/clips-genie
+# --- Database (local dev, or Neon in prod) ---
+# In prod (Neon): use the POOLED endpoint (?pgbouncer=true, hostname ends with -pooler).
+# In local dev: use docker-compose Postgres at localhost.
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/clipfire
+# Direct (non-pooled) URL used by `prisma migrate`. In prod: Neon direct endpoint
+# (same host without -pooler). In local dev: same as DATABASE_URL.
+DIRECT_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/clipfire
 #
-# --- Redis (local dev) ---
+# --- Redis (BullMQ) — local dev, or Upstash in prod ---
+# Local dev: docker-compose redis at localhost:6379.
+# Prod (Upstash): TCP TLS endpoint. Set REDIS_PASSWORD + REDIS_TLS=true.
 REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_TLS=false
 #
-# --- Optional: AWS (only needed for S3 upload/download flows) ---
+# --- Object storage ---
+# STORAGE_PROVIDER picks the adapter: 'r2' (Cloudflare R2) or 's3' (AWS S3).
+# Default: 's3'. Auto-detected as 'r2' if R2_ACCOUNT_ID is set.
+STORAGE_PROVIDER=s3
+#
+# --- Cloudflare R2 (when STORAGE_PROVIDER=r2) ---
+R2_ACCOUNT_ID=
+R2_BUCKET=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+# Optional override; default is https://<accountId>.r2.cloudflarestorage.com
+R2_ENDPOINT=
+# Optional; only if the R2 bucket is exposed as a public pub-<hash>.r2.dev URL.
+R2_PUBLIC_BASE_URL=
+#
+# --- Optional: AWS (only when STORAGE_PROVIDER=s3 or during S3→R2 migration) ---
 AWS_REGION=us-east-1
-# S3 bucket used by uploads/feeds (set per environment)
 S3_BUCKET=
-# Some parts of the codebase read S3_REGION (fallbacks vary), so set both for consistency.
 S3_REGION=us-east-1
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=

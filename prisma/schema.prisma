@@ -10,9 +10,25 @@ generator client {
   binaryTargets = ["native", "darwin-arm64"]
 }
 
+// Neon Postgres 16.
+//
+// Neon serves connections through a pgBouncer pool in front of the actual
+// Postgres. The runtime app should hit the POOLED endpoint (short-lived
+// connections, works from serverless), but migrations MUST hit the direct
+// endpoint — pgBouncer's transaction pooling breaks the advisory locks
+// Prisma uses during migrate.
+//
+// - DATABASE_URL      → pooled pgBouncer URL (`?pgbouncer=true`, hostname
+//                       ends with `-pooler.<region>.aws.neon.tech`).
+// - DIRECT_DATABASE_URL → direct URL (same host WITHOUT `-pooler`), used
+//                       only by `prisma migrate` and one-off scripts.
+//
+// If DIRECT_DATABASE_URL is unset (local docker-compose Postgres), Prisma
+// falls back to DATABASE_URL, which is what we want in dev.
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 model User {
