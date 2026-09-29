@@ -6,6 +6,12 @@ on:
       - main
   workflow_dispatch:
 
+# Auto-cancel in-flight runs when a new commit lands on the same PR — saves CI minutes
+# and gives faster feedback on the latest push.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   changes:
     name: Detect changes
@@ -45,6 +51,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    # Fail-fast bounded to this job — a hung build should not eat 6h of runner time. The
+    # normal happy-path build takes ~4 min; 20 min gives ~5x headroom for cold cache
+    # + Prisma engine downloads.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -56,8 +66,26 @@ jobs:
           node-version: 20
           cache: npm
 
+      # Cache the .next/cache dir — Next.js incremental compiler stores turbopack /
+      # webpack fingerprints here. On a warm cache the "Build" step drops from ~4 min
+      # to ~1 min. Keyed on the lockfile hash so cache invalidates on dep bumps.
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('next.config.js') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            nextjs-${{ runner.os }}-
+
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
+
+      # Guardrail — schema.prisma must be valid before we generate. `prisma validate`
+      # is instantaneous and catches typos that `prisma generate` might silently accept.
+      - name: Validate Prisma schema
+        run: npx prisma validate --schema=prisma/schema.prisma
 
       - name: Generate Prisma client
         run: npx prisma generate
@@ -88,6 +116,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout

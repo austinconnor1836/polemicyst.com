@@ -172,3 +172,46 @@ NEXT_PUBLIC_POSTHOG_HOST=
 # local builds, and ship it via CI secrets (base64-encoded) for TestFlight/App Store builds.
 # When the plist is absent, FirebaseApp.configure() logs a warning and Crashlytics stays disabled —
 # the app still launches and runs normally.
+
+# --- Migration: Neon (Postgres) ---
+# Set post-migration. Pooled URL for the app; direct URL for prisma migrate + backup.
+# DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/polemicyst?sslmode=require&pgbouncer=true
+# DIRECT_DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/polemicyst?sslmode=require
+
+# --- Migration: Upstash (Redis, TLS) ---
+# `shared/queues.ts` currently reads REDIS_HOST / REDIS_PORT only; extend it with the
+# password + TLS fields before the cutover. See docs/migration/env-vars.md.
+# REDIS_URL=rediss://default:<token>@fond-koi-12345.upstash.io:6379
+# REDIS_PASSWORD=
+# REDIS_TLS=true
+
+# --- Migration: Cloudflare R2 (S3-compatible object storage) ---
+# The same AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY vars are reused with R2-issued
+# credentials. `S3_REGION=auto`, `S3_ENDPOINT` set to your R2 API endpoint, and the
+# `NEXT_PUBLIC_R2_CDN_HOST` var below is the public playback host that iOS + Android
+# receive from the API.
+# S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com
+# NEXT_PUBLIC_R2_CDN_HOST=pub-<hash>.r2.dev
+
+# --- Observability: Sentry ---
+# DSN is not a secret (URL identifying the ingest project). Set SENTRY_RELEASE in CI to
+# the deploy's git SHA so Sentry can group regressions across releases.
+SENTRY_DSN=
+NEXT_PUBLIC_SENTRY_DSN=
+SENTRY_ENVIRONMENT=
+SENTRY_RELEASE=
+# CI-only (GitHub Actions repo secrets), used to upload source maps at build time.
+# SENTRY_AUTH_TOKEN=
+# SENTRY_ORG=
+# SENTRY_PROJECT=
+
+# --- Observability: Axiom (log ingest) ---
+# Set on Fly for the workers + backend; Vercel logs ship via the Log Drain integration
+# (dashboard-configured, not env-var-configured).
+AXIOM_TOKEN=
+AXIOM_DATASET=
+
+# --- Health / build metadata ---
+# Exposed at /api/health as `version`. Vercel auto-injects VERCEL_GIT_COMMIT_SHA in prod;
+# set NEXT_PUBLIC_APP_VERSION on Fly workers so their health endpoints report the same.
+NEXT_PUBLIC_APP_VERSION=
