@@ -1,0 +1,77 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "npx prisma generate && next build",
+  "installCommand": "npm ci",
+  "outputDirectory": ".next",
+  "regions": ["iad1"],
+  "functions": {
+    "src/app/api/feedVideos/[id]/truth-analysis/route.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "src/app/api/feedVideos/[id]/truth-analysis/chat/route.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "src/app/api/feedVideos/[id]/generate-metadata/route.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "src/app/api/feedVideos/[id]/transcribe/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/feedVideos/[id]/save-transcript/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/feedVideos/[id]/innertube-transcribe/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/feedVideos/[id]/speaker-transcribe/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/feedVideos/[id]/clips/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/clips/[id]/export/route.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "src/app/api/clip-jobs/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/polemicyst-graphic/render/route.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "src/app/api/trigger-clip/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/uploads/from-url/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/connected-accounts/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/stripe/webhook/route.ts": {
+      "maxDuration": 30
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/health",
+      "schedule": "*/15 * * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }]
+    }
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "main": true
+    }
+  }
+}

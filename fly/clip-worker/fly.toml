@@ -1,0 +1,75 @@
+# fly.toml — clip-metadata-worker
+#
+# BullMQ consumer for `clip-generation`, `transcription`, `speaker-transcription`.
+# Consumes from Upstash Redis (TCP endpoint) via ioredis blocking reads.
+#
+# Sizing target: matches ECS Fargate `1024 CPU / 2048 MB` today, but Fly's
+# `shared-cpu-2x` gives us 2 vCPU-shares at $0.0000022/s (~$5.70/mo always-on)
+# vs Fargate Spot ~$8-12/mo. FFmpeg + faster-whisper are the hot paths — they
+# want CPU-bound cores, so shared-cpu-2x + 2GB is the right starting point.
+#
+# min_machines_running = 1 is a DELIBERATE choice: BullMQ workers are pull-based
+# and need a warm consumer to hold the blocking Redis connection. Autoscale-to-zero
+# is not viable without a job-arrival webhook (Upstash QStash could do this, but
+# BullMQ doesn't natively support HTTP-triggered job pickup — it'd require a shim
+# that wakes the machine on QStash POST, which is a follow-up refactor).
+#
+# When min=1 with shared-cpu-2x + 2GB, expected cost is ~$5.70/machine/month.
+
+app = "polemicyst-clip-worker"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../workers/clip-metadata-worker/Dockerfile"
+  # Fly builds the image with the repo root as the build context (Dockerfile
+  # references `./workers/clip-metadata-worker/...` and `./shared`, `./prisma`,
+  # `./scripts` — all repo-root-relative). Deploy with:
+  #   flyctl deploy --config fly/clip-worker/fly.toml \
+  #                 --dockerfile workers/clip-metadata-worker/Dockerfile \
+  #                 --build-arg ... .
+  # from the repo root.
+
+[env]
+  NODE_ENV = "production"
+  ENVIRONMENT = "prod"
+  HTTP_PORT = "3001"
+  # LOG_LEVEL, YT_DLP_TIMEOUT_MS, etc. left to Fly Secrets so they can be
+  # tuned without a code deploy.
+
+# Machines expose port 3001 for the internal http health endpoint. Fly's
+# proxy is not needed — this worker doesn't serve public traffic — but a
+# health check is required for the auto-restart / rolling deploy logic.
+[[services]]
+  internal_port = 3001
+  protocol = "tcp"
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "30s"
+
+[[services.http_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "60s"
+    method = "get"
+    path = "/health"
+
+# One shared-cpu-2x machine, 2GB RAM. Bump to shared-cpu-4x + 4GB if
+# faster-whisper transcription queues start backing up.
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"
+  cpus = 2
+  cpu_kind = "shared"
+
+# No [deploy] release_command — Prisma migrations run in the Vercel deploy
+# pipeline (see .github/workflows/deploy-fly.yml + docs/migration/compute-plane.md),
+# not per-worker.
+
+[metrics]
+  port = 3001
+  path = "/metrics"
