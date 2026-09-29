@@ -1,9 +1,42 @@
 import { Queue } from 'bullmq';
-import Redis from 'ioredis';
+import Redis, { RedisOptions } from 'ioredis';
 import type { StitchManifest } from './lib/stitch/manifest';
 import type { SplitFrameManifest } from './lib/split-frame/manifest';
 
 let redis: Redis | null = null;
+
+/**
+ * Build ioredis connection options that work for BOTH:
+ *   - In-cluster AWS ECS Redis (no auth, no TLS)
+ *   - Upstash Redis (password + TLS required)
+ *
+ * Behavior:
+ *   - REDIS_HOST / REDIS_PORT → host + port (defaults localhost:6379).
+ *   - REDIS_PASSWORD → passed only when set (in-cluster Redis has no auth,
+ *     and ioredis fails if `password: undefined` is passed on Node <18).
+ *   - REDIS_TLS === 'true' → enables TLS via an empty `tls: {}` object
+ *     (Upstash + any managed Redis). Leaving it unset uses plain TCP.
+ *
+ * Shared with `workers/llm-worker/src/index.ts` and `src/lib/rate-limit.ts`
+ * (Upstash Ratelimit uses the REST client, so it has its own env pair
+ * `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` — see comment there).
+ */
+export function buildRedisConnectionOptions(overrides: Partial<RedisOptions> = {}): RedisOptions {
+  const opts: RedisOptions = {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379', 10),
+    maxRetriesPerRequest: null,
+    ...overrides,
+  };
+  if (process.env.REDIS_PASSWORD) {
+    opts.password = process.env.REDIS_PASSWORD;
+  }
+  if (process.env.REDIS_TLS === 'true') {
+    // Empty object → enable TLS with defaults (Upstash needs this).
+    opts.tls = {};
+  }
+  return opts;
+}
 let videoDownloadQueue: Queue | null = null;
 let feedDownloadQueue: Queue | null = null;
 let transcriptionQueue: Queue | null = null;
@@ -17,11 +50,7 @@ let splitFrameRenderQueue: Queue | null = null;
 
 export function getRedisConnection() {
   if (redis) return redis;
-  redis = new Redis({
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379', 10),
-    maxRetriesPerRequest: null,
-  });
+  redis = new Redis(buildRedisConnectionOptions());
   return redis;
 }
 

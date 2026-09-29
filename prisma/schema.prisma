@@ -868,3 +868,17 @@ model ThumbnailAsset {
 
   @@index([compositionId, type])
 }
+
+/// Small durable key/value store for state that must survive ephemeral
+/// filesystem restarts (Vercel serverless, Fly Machines). Used for the
+/// Instagram session-state blob today; open to any small (< ~100KB) blob
+/// that doesn't warrant its own model.
+///
+/// Not intended for hot-path reads — hits Neon on every lookup. Use R2 for
+/// larger blobs and cache in-process where possible.
+model KeyValueStore {
+  key       String   @id
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}

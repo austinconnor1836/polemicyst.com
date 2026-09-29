@@ -10,8 +10,12 @@
  *   - Every third-party IG transcript product is Whisper-on-audio underneath
  *
  * So the design here is exactly:
- *   1. Log in via `instagram-private-api` with a persisted session state
- *      (produced by `scripts/generate-ig-state.ts`)
+ *   1. Log in via `instagram-private-api` with a persisted session state.
+ *      Session state is fetched from R2 (primary) → Neon KeyValueStore
+ *      (fallback) → local filesystem (dev), via `instagram-session-store.ts`,
+ *      so this works on the ephemeral Vercel + Fly Machines filesystems where
+ *      the old on-disk `ig-state-source.json` would be wiped on every restart.
+ *      Initial state is produced by `scripts/generate-ig-state.ts`.
  *   2. Convert shortcode -> mediaId (community-standard base64 -> int64)
  *   3. Call `ig.media.info(mediaId)` and return the highest-quality mp4 URL +
  *      the author-written post caption (NOT the transcript)
@@ -24,8 +28,7 @@
  * concatenate or conflate them anywhere in the UI.
  */
 
-import fs from 'fs';
-import path from 'path';
+import { loadInstagramSessionState, saveInstagramSessionState } from './instagram-session-store';
 
 export interface TranscriptSegment {
   start: number;
@@ -129,43 +132,29 @@ export function shortcodeToMediaId(shortcode: string): string {
   return id.toString();
 }
 
-function resolveSessionStatePath(): string {
-  const envPath = process.env.INSTAGRAM_SESSION_STATE_PATH;
-  if (envPath && envPath.trim()) return envPath;
-  // Default: repo-root filename produced by scripts/generate-ig-state.ts
-  return path.resolve(process.cwd(), 'ig-state-source.json');
-}
-
 let cachedClient: unknown = null;
 let cachedClientState: string | null = null;
 
 /**
- * Lazily load `instagram-private-api` (requires the persisted session state).
+ * Lazily load `instagram-private-api` — session state is fetched via
+ * `instagram-session-store` (R2 → Neon KV → local fs), so this works on
+ * ephemeral serverless filesystems (Vercel + Fly Machines) where the pre-
+ * cutover on-disk `ig-state-source.json` would vanish on every restart.
  * The client is cached in-process so a burst of requests reuses one login.
- * Throws `InstagramSessionUnavailableError` when the state file is missing
- * or malformed — upstream should map that to HTTP 503.
+ * Throws `InstagramSessionUnavailableError` when NO backend has the state.
  */
 async function getInstagramClient(): Promise<any> {
-  const statePath = resolveSessionStatePath();
-
-  if (!fs.existsSync(statePath)) {
+  const loaded = await loadInstagramSessionState();
+  if (!loaded) {
     throw new InstagramSessionUnavailableError(
-      `Instagram session state file not found at ${statePath}. ` +
-        `Run "npx ts-node scripts/generate-ig-state.ts" to produce it, or set ` +
-        `INSTAGRAM_SESSION_STATE_PATH to point at an existing state file.`
+      'Instagram session state not found in R2, Neon KV, or on the local filesystem. ' +
+        'Run "npx ts-node scripts/generate-ig-state.ts" to produce it, or set the R2 / ' +
+        'DATABASE_URL / INSTAGRAM_SESSION_STATE_PATH env for the appropriate backend.'
     );
   }
+  const { raw } = loaded;
 
-  let raw: string;
-  try {
-    raw = fs.readFileSync(statePath, 'utf-8');
-  } catch (err) {
-    throw new InstagramSessionUnavailableError(
-      `Failed to read Instagram session state at ${statePath}: ${(err as Error).message}`
-    );
-  }
-
-  // Reuse the cached client if the state file hasn't changed.
+  // Reuse the cached client if the state hasn't changed.
   if (cachedClient && cachedClientState === raw) {
     return cachedClient;
   }
@@ -175,7 +164,7 @@ async function getInstagramClient(): Promise<any> {
     parsed = JSON.parse(raw);
   } catch (err) {
     throw new InstagramSessionUnavailableError(
-      `Instagram session state at ${statePath} is not valid JSON: ${(err as Error).message}`
+      `Instagram session state is not valid JSON: ${(err as Error).message}`
     );
   }
 
@@ -194,6 +183,29 @@ async function getInstagramClient(): Promise<any> {
   cachedClient = ig;
   cachedClientState = raw;
   return ig;
+}
+
+/**
+ * Serialize + persist the current session state back to whichever backend
+ * served the read. `instagram-private-api` refreshes cookies + tokens on
+ * every login, so we should write those back so the next call doesn't need
+ * a full re-login. Best-effort — logs on failure but does not throw.
+ */
+async function persistUpdatedSessionState(ig: any): Promise<void> {
+  try {
+    const serialized = await ig.state.serialize();
+    // The serializer emits a hydrated proxy — strip it to plain JSON.
+    delete serialized.constants;
+    const rawJson = JSON.stringify(serialized);
+    if (rawJson === cachedClientState) return; // no change
+    await saveInstagramSessionState(rawJson);
+    cachedClientState = rawJson;
+  } catch (err) {
+    console.warn(
+      '[instagram-captions] Failed to persist refreshed session state:',
+      (err as Error).message
+    );
+  }
 }
 
 /**
@@ -239,6 +251,10 @@ export async function resolveInstagramMediaUrl(url: string): Promise<InstagramMe
   }
 
   const postCaption = typeof item?.caption?.text === 'string' ? item.caption.text : undefined;
+
+  // Best-effort persist the refreshed cookies/tokens so we don't force a full
+  // re-login next call. Non-blocking, non-fatal.
+  void persistUpdatedSessionState(ig);
 
   return {
     mp4Url,
