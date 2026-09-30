@@ -84,7 +84,12 @@ jobs:
 
       # Guardrail — schema.prisma must be valid before we generate. `prisma validate`
       # is instantaneous and catches typos that `prisma generate` might silently accept.
+      # DATABASE_URL / DIRECT_DATABASE_URL are only referenced (not connected to) during
+      # validation, so dummy placeholders are sufficient.
       - name: Validate Prisma schema
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          DIRECT_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
         run: npx prisma validate --schema=prisma/schema.prisma
 
       - name: Generate Prisma client
