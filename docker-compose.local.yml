@@ -1,0 +1,104 @@
+# docker-compose.local.yml
+#
+# Local dev-only stack that mirrors the production data plane (Neon +
+# Cloudflare R2 + Upstash Redis) with fully offline substitutes:
+#
+#   Postgres 16     → drop-in for Neon (same major version).
+#   Redis 7         → BullMQ-compatible; behaves identically to Upstash Redis
+#                     for the subset BullMQ uses.
+#   MinIO           → S3-compatible; the R2 adapter points at it via
+#                     R2_ENDPOINT because R2 also speaks the S3 API.
+#
+# Purpose: kills the dedicated `dev` RDS + `dev` ECS Redis. Dev = local.
+#
+# Usage:
+#   docker compose -f docker-compose.local.yml up -d
+#   # first time only — provision the MinIO bucket:
+#   docker compose -f docker-compose.local.yml run --rm mc-init
+#
+# Env expected in the Next.js / worker processes:
+#   DATABASE_URL="postgresql://postgres:postgres@localhost:5432/clipfire"
+#   DIRECT_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/clipfire"
+#   REDIS_HOST=localhost
+#   REDIS_PORT=6379
+#   STORAGE_PROVIDER=r2
+#   R2_ACCOUNT_ID=local
+#   R2_ENDPOINT=http://localhost:9000
+#   R2_ACCESS_KEY_ID=minioadmin
+#   R2_SECRET_ACCESS_KEY=minioadmin
+#   R2_BUCKET=clipfire-local
+
+version: '3.9'
+
+services:
+  db:
+    image: postgres:16
+    container_name: clipfire-local-db
+    restart: unless-stopped
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_DB: clipfire
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - local-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: clipfire-local-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # MinIO emulates R2 / S3 locally. R2 is S3-API compatible so the same
+  # `@aws-sdk/client-s3` client we use in prod works against MinIO with a
+  # different endpoint. Bucket must exist before the app starts — see
+  # `mc-init` below.
+  minio:
+    image: minio/minio:latest
+    container_name: clipfire-local-minio
+    restart: unless-stopped
+    ports:
+      - '9000:9000' # S3 API
+      - '9001:9001' # web console (http://localhost:9001, minioadmin/minioadmin)
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - local-minio-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot bucket provisioner. Not started with `up` unless targeted.
+  mc-init:
+    image: minio/mc:latest
+    profiles: ['init']
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        (mc mb -p local/clipfire-local || true) &&
+        mc anonymous set download local/clipfire-local &&
+        echo 'bucket clipfire-local ready.'
+      "
+
+volumes:
+  local-pg-data:
+  local-minio-data:
