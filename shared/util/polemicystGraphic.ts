@@ -17,6 +17,7 @@
  */
 
 import puppeteerCore from 'puppeteer-core';
+import { resolvePuppeteerLaunchOptions } from './puppeteerLaunch';
 
 // ---------------------------------------------------------------------------
 // Canonical template constants (verbatim from the brand card)
@@ -469,9 +470,8 @@ export interface RenderPolemicystGraphicOptions {
   showPageIndicator?: boolean;
 }
 
-function getChromiumPath(): string | undefined {
-  return process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
-}
+// Chromium binary resolution (`PUPPETEER_EXECUTABLE_PATH` for dev/Docker,
+// `@sparticuz/chromium` for Vercel serverless) lives in ./puppeteerLaunch.ts.
 
 /**
  * Render the pasted text into 1..N branded 1080×1350 PNG carousel pages.
@@ -490,12 +490,11 @@ export async function renderPolemicystGraphic(
     throw new Error('No text to render');
   }
 
-  const launchOptions: Record<string, unknown> = {
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-  };
-  const executablePath = getChromiumPath();
-  if (executablePath) launchOptions.executablePath = executablePath;
+  const launchOptions = await resolvePuppeteerLaunchOptions([
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+  ]);
 
   const browser = await puppeteerCore.launch(
     launchOptions as Parameters<typeof puppeteerCore.launch>[0]

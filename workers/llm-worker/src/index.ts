@@ -1,16 +1,27 @@
 import { Worker, Job } from 'bullmq';
 import { z } from 'zod';
-import Redis from 'ioredis';
+import Redis, { RedisOptions } from 'ioredis';
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
 const SCORING_TYPE = process.env.SCORING_TYPE || 'PROVOCATIVENESS';
 const MODEL_NAME = process.env.MODEL_NAME || 'llama3';
 
-const connection = new Redis({
+// Mirrors `buildRedisConnectionOptions` in `shared/queues.ts` — this worker
+// runs as a standalone process (no @shared alias resolution) so the helper
+// is inlined. Update BOTH sites when adding new Redis env vars.
+// Supports: in-cluster ECS Redis (no auth/TLS) AND Upstash (password + TLS).
+const redisOpts: RedisOptions = {
   host: process.env.REDIS_HOST || 'localhost',
   port: parseInt(process.env.REDIS_PORT || '6379', 10),
   maxRetriesPerRequest: null,
-});
+};
+if (process.env.REDIS_PASSWORD) {
+  redisOpts.password = process.env.REDIS_PASSWORD;
+}
+if (process.env.REDIS_TLS === 'true') {
+  redisOpts.tls = {};
+}
+const connection = new Redis(redisOpts);
 
 // Prompts
 const PROMPTS = {

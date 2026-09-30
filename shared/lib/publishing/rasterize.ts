@@ -1,12 +1,14 @@
 /**
  * Rasterize self-contained HTML graphics to PNG buffers using Puppeteer.
+ *
+ * Called from Next.js API routes (`/api/articles/[id]/rasterize-graphics` and
+ * `shared/lib/publishing/publish-service.ts`) which deploy to Vercel. Chromium
+ * binary resolution — including the `@sparticuz/chromium` fallback for Vercel's
+ * serverless runtime — lives in `shared/util/puppeteerLaunch.ts`.
  */
 
 import puppeteerCore from 'puppeteer-core';
-
-function getChromiumPath(): string | undefined {
-  return process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
-}
+import { resolvePuppeteerLaunchOptions } from '../../util/puppeteerLaunch';
 
 interface RasterizeOptions {
   width?: number;
@@ -15,23 +17,21 @@ interface RasterizeOptions {
 
 /**
  * Render an HTML string to a PNG buffer.
- * Uses system Chromium in production (PUPPETEER_EXECUTABLE_PATH env var)
- * or bundled Chromium in development.
+ *
+ * Binary resolution:
+ *   - On Vercel (`VERCEL === '1'`), uses `@sparticuz/chromium`.
+ *   - Elsewhere, uses `PUPPETEER_EXECUTABLE_PATH` or macOS default Chrome.
  */
 export async function rasterizeGraphic(
   htmlContent: string,
   options: RasterizeOptions = {}
 ): Promise<Buffer> {
   const { width = 1200, height = 630 } = options;
-  const launchOptions: Record<string, unknown> = {
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-  };
-
-  const executablePath = getChromiumPath();
-  if (executablePath) {
-    launchOptions.executablePath = executablePath;
-  }
+  const launchOptions = await resolvePuppeteerLaunchOptions([
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+  ]);
 
   const browser = await puppeteerCore.launch(
     launchOptions as Parameters<typeof puppeteerCore.launch>[0]

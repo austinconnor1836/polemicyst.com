@@ -4,16 +4,17 @@
  * Uses Puppeteer to navigate to the source URL, locate the quoted text,
  * highlight it, and capture a viewport screenshot at the target video
  * dimensions (mobile 720x1280 or landscape 1280x720).
+ *
+ * Called from `/api/compositions/[id]/quote-screenshot` (Vercel-bound).
+ * Binary resolution — including the `@sparticuz/chromium` fallback for
+ * Vercel's serverless runtime — lives in `./puppeteerLaunch.ts`.
  */
 
 import puppeteerCore from 'puppeteer-core';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-
-function getChromiumPath(): string | undefined {
-  return process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
-}
+import { resolvePuppeteerLaunchOptions } from './puppeteerLaunch';
 
 export interface ScreenshotQuoteOptions {
   /** URL of the article/webpage containing the quote */
@@ -48,15 +49,12 @@ export async function screenshotQuoteFromUrl(
 ): Promise<ScreenshotResult> {
   const { sourceUrl, quoteText, width, height, attribution } = opts;
 
-  const launchOptions: Record<string, unknown> = {
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-  };
-
-  const executablePath = getChromiumPath();
-  if (executablePath) {
-    launchOptions.executablePath = executablePath;
-  }
+  const launchOptions = await resolvePuppeteerLaunchOptions([
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+  ]);
 
   const browser = await puppeteerCore.launch(
     launchOptions as Parameters<typeof puppeteerCore.launch>[0]

@@ -17,6 +17,8 @@ DIRECT_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/clipfire
 # --- Redis (BullMQ) — local dev, or Upstash in prod ---
 # Local dev: docker-compose redis at localhost:6379.
 # Prod (Upstash): TCP TLS endpoint. Set REDIS_PASSWORD + REDIS_TLS=true.
+# REDIS_PASSWORD is passed to ioredis only when set (in-cluster Redis has no auth).
+# REDIS_TLS enables TLS (ioredis `tls: {}`). Required for Upstash; leave off for in-cluster.
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_PASSWORD=
@@ -135,11 +137,18 @@ SENTRY_PROJECT=
 # to get the signed CDN mp4 URL, then hands that URL to the existing Whisper
 # transcription worker.
 #
-# INSTAGRAM_SESSION_STATE_PATH points at a JSON file produced by
-# `scripts/generate-ig-state.ts` (defaults to `<repo-root>/ig-state-source.json`).
-# When the file is missing, the IG import endpoint returns HTTP 503 rather than
-# silently falling back — there is no working fallback.
+# Session state backends, in priority order (see shared/lib/instagram-session-store.ts):
+#   1. R2 (primary post-cutover):
+#        R2_ENDPOINT (or R2_ACCOUNT_ID) + R2_ACCESS_KEY_ID + R2_SECRET_ACCESS_KEY +
+#        IG_SESSION_R2_BUCKET (or R2_BUCKET).
+#   2. Neon KeyValueStore table (falls back automatically when R2 unset).
+#   3. Local filesystem via INSTAGRAM_SESSION_STATE_PATH (dev only; wiped on
+#      Vercel / Fly Machines restarts).
+# When NONE of these have a session state, the IG import endpoint returns 503.
+# Optional: SESSION_ENCRYPTION_KEY = 32-byte hex or base64 → AES-256-GCM at rest.
 INSTAGRAM_SESSION_STATE_PATH=
+IG_SESSION_R2_BUCKET=
+SESSION_ENCRYPTION_KEY=
 
 # --- Analytics (PostHog) ---
 # Both keys are optional — when unset, all PostHog calls are no-ops so dev/test
