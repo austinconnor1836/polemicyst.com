@@ -2,6 +2,12 @@
 
 Analysis of moving the Next.js web app from ECS Fargate to Vercel.
 
+> **Superseded by the compute-plane runbook.** This doc is kept for its
+> pros/cons/risk analysis (still accurate). The operational plan — env var
+> mapping, Fly.io worker sizing, DNS cutover order, rollback, cost math — now
+> lives in [`docs/migration/compute-plane.md`](../migration/compute-plane.md).
+> When making changes to the migration plan, edit the runbook, not this file.
+
 ## Current Architecture (ECS)
 
 | Resource                         | Monthly Cost (est.) |

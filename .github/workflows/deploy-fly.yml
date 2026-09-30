@@ -1,0 +1,125 @@
+name: Deploy Workers to Fly.io
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'workers/**'
+      - 'shared/**'
+      - 'prisma/**'
+      - 'scripts/**'
+      - 'fly/**'
+      - '.github/workflows/deploy-fly.yml'
+
+  # Manual trigger — useful for redeploying a single worker without a code change.
+  workflow_dispatch:
+    inputs:
+      worker:
+        description: 'Which worker to deploy (or "all")'
+        required: true
+        default: 'clip-worker'
+        type: choice
+        options:
+          - all
+          - clip-worker
+          - provocativeness
+          - comedic
+
+concurrency:
+  # Serialize deploys of the same worker; different workers can go in parallel.
+  group: fly-deploy-${{ github.workflow }}-${{ matrix.worker || 'push' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ matrix.worker }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # provocativeness + comedic are dormant (min_machines_running=0 on ECS
+        # today via desired_count=0). Their fly.toml files exist as stubs but
+        # we don't deploy them by default — enable via workflow_dispatch when
+        # the LLM-strategy agent decides they should come back online.
+        include:
+          - worker: clip-worker
+            fly_app: polemicyst-clip-worker
+            dockerfile: workers/clip-metadata-worker/Dockerfile
+            enabled: true
+          - worker: provocativeness
+            fly_app: polemicyst-provocativeness
+            dockerfile: workers/llm-worker/Dockerfile
+            enabled: false
+          - worker: comedic
+            fly_app: polemicyst-comedic
+            dockerfile: workers/llm-worker/Dockerfile
+            enabled: false
+
+    steps:
+      - name: Skip disabled worker
+        if: matrix.enabled != true && (github.event.inputs.worker == '' || github.event.inputs.worker != matrix.worker)
+        run: |
+          echo "Worker '${{ matrix.worker }}' is disabled by default (dormant on ECS). Skipping."
+          echo "To force-deploy: Actions → Deploy Workers to Fly.io → Run workflow → pick '${{ matrix.worker }}'."
+          exit 0
+
+      - name: Force-deploy override
+        if: github.event.inputs.worker == matrix.worker || github.event.inputs.worker == 'all'
+        run: echo "Manual override active — deploying ${{ matrix.worker }}."
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly
+        if: matrix.enabled == true || github.event.inputs.worker == matrix.worker || github.event.inputs.worker == 'all'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl deploy \
+            --config fly/${{ matrix.worker }}/fly.toml \
+            --dockerfile ${{ matrix.dockerfile }} \
+            --app ${{ matrix.fly_app }} \
+            --remote-only \
+            --wait-timeout 600 \
+            .
+
+      - name: Post-deploy health check
+        if: matrix.enabled == true || github.event.inputs.worker == matrix.worker || github.event.inputs.worker == 'all'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl status --app ${{ matrix.fly_app }}
+          # Non-fatal — deploy is already committed; this is diagnostic only.
+          flyctl logs --app ${{ matrix.fly_app }} --no-tail || true
+
+  # Prisma migrations run in a separate job that gates the worker deploy on
+  # success. Uses Neon (Postgres) DIRECT_URL to run `prisma migrate deploy` from
+  # the Actions runner — the data-plane agent's manifest defines
+  # NEON_DATABASE_URL_DIRECT.
+  migrate-db:
+    name: Run Prisma migrations
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install prisma
+        run: npm ci --ignore-scripts
+
+      - name: Apply migrations to prod
+        env:
+          # Use Neon's DIRECT_URL (non-pooled) for migrations — Prisma migrate
+          # doesn't work through pgbouncer transaction pooling.
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL_DIRECT }}
+        run: npx prisma migrate deploy --schema=prisma/schema.prisma
